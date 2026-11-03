@@ -114,6 +114,7 @@ const TABS = {
   ON_HAND:             'On Hand',              // Meal Plan: what's in the house this week (OnHand.js)
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
+  CYCLE_LOG:          'Cycle Log',           // Family Planning › Trying › Cycle (period tracker)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
   GIFT_PLACE_IDEAS:   'Gift Place Ideas',    // Gift ideas per place, asked once (#227)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
@@ -156,6 +157,7 @@ const NOTIF_REGISTRY = [
   { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false },
   { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false },
   { key: 'career_cert_expiry',  label: 'Certification Expiry',  emoji: '🎓', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'A certification 90, 30 and 7 days before it expires, and renewal credits behind pace', locked: false },
+  { key: 'cycle_reminders',     label: 'Cycle Reminders',       emoji: '🌸', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Only while Family Planning is on Trying: period due soon, fertile window and peak days, late (Cycle.js). A private channel or DM is best.', locked: false },
   { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false },
   { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false },
   { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false },
@@ -232,6 +234,7 @@ const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller',
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited', 'Occasion', 'Trip Idea']; // Occasion, Trip Idea: #228
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
+const CYCLE_LOG_HEADERS        = ['ID', 'Start', 'End', 'Logged By', 'Logged At', 'Notes']; // Cycle.js
 const GIFT_PLACE_IDEAS_HEADERS  = ['Place', 'Ideas', 'Updated']; // #227: gift ideas per place, one Claude call each
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];
 // Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary
@@ -1299,6 +1302,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'ppSyncFlags_', ppSyncFlags_);
     // Family Planning: dated items due within two weeks (FamilyPlanning.js).
     nightlyStep_(ctx, 'fpSyncFlags_', fpSyncFlags_);
+    // Cycle: reminders while Trying (Cycle.js).
+    nightlyStep_(ctx, 'cySyncReminders_', cySyncReminders_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

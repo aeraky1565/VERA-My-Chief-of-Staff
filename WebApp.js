@@ -422,6 +422,7 @@ function doGet(e) {
       case 'my_trips':              return jsonOut_(webMyTrips_());
       case 'planned_purchases':     return jsonOut_(webPlannedPurchases_());
       case 'fp_get':                return jsonOut_(webFpGet_(e.parameter));
+      case 'cycle_get':             return jsonOut_(webCycleGet_());
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
       case 'grocery_month':         return jsonOut_(webGroceryMonth_(e.parameter));
       case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
@@ -663,6 +664,10 @@ function doPost(e) {
       case 'pp_old_plan':                return jsonOut_(webPpOldPlan_(body));
       case 'pp_delete':                  return jsonOut_(webPpDelete_(body));
       case 'fp_setup_save':              return jsonOut_(webFpSetupSave_(body));
+      case 'cycle_log':                  return jsonOut_(webCycleLog_(body));
+      case 'cycle_edit':                 return jsonOut_(webCycleEdit_(body));
+      case 'cycle_end':                  return jsonOut_(webCycleEnd_(body));
+      case 'cycle_delete':               return jsonOut_(webCycleDelete_(body));
       case 'fp_block_save':              return jsonOut_(webFpBlockSave_(body));
       case 'fp_block_delete':            return jsonOut_(webFpBlockDelete_(body));
       case 'fp_policy_save':             return jsonOut_(webFpPolicySave_(body));

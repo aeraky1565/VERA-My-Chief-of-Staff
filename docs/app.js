@@ -2868,6 +2868,105 @@ function fpSuggestBlocks(policy,settings,split){var bp=settings.birthParent||'Vi
     else{out.push({parent:op,kind:'parental',startWeek:1,weeks:min});out.push({parent:op,kind:'parental',startWeek:w,weeks:opar-min});}}
   return out;}
 
+// The Cycle card (Cycle.js), shown under Trying: a ring of the cycle (period, fertile window, peak,
+// estimated ovulation, today), the period-day mood note, a special note for the fertile window, late,
+// a week strip, logging and history. Either of you logs; both see it.
+var CY_COL={period:'#e86a8f',fertile:'#3f9c88',peak:'#7be3c9',other:'#1e2a44',late:'#f0c040'};
+function cyfMs(d){return Date.parse(d+'T00:00:00Z');}
+function cyfAdd(d,n){return new Date(cyfMs(d)+n*864e5).toISOString().slice(0,10);}
+function cyfDays(a,b){return Math.round((cyfMs(b)-cyfMs(a))/864e5);}
+function cyfNice(d,dow){var x=new Date(cyfMs(d));return (dow?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][x.getUTCDay()]+' ':'')+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x.getUTCMonth()]+' '+x.getUTCDate();}
+// Pure: what a cycle day is, for the ring and the week strip.
+function cyfKind(v,d){if(!v)return 'other';if(d>v.next)return 'late';if(d>=v.start&&d<=v.periodEnd)return 'period';if(d>=v.peakStart&&d<=v.peakEnd)return 'peak';if(d>=v.fertileStart&&d<=v.fertileEnd)return 'fertile';return 'other';}
+// Pure: "Days 1–2 the hardest day, day 3 better, days 4–5 okay to good" from the mood words.
+function cyfMoodLine(m){var ks=Object.keys(m||{}).map(Number).sort(function(a,b){return a-b;}),out=[];ks.forEach(function(k){var w=String(m[k]).replace(/^usually /,''),l=out[out.length-1];
+  if(l&&l.w===w&&l.to===k-1)l.to=k;else out.push({from:k,to:k,w:w});});
+  return out.map(function(g,i){var t=(g.from===g.to?'day '+g.from:'days '+g.from+'–'+g.to)+' '+g.w;return i===0?t.charAt(0).toUpperCase()+t.slice(1):t;}).join(', ');}
+function FpCycleCard(props){var h=React.createElement,who=props.who;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _m=React.useState(null),mode=_m[0],setMode=_m[1];var _f=React.useState({}),form=_f[0],setForm=_f[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'cycle_get'}).then(function(r){if(r&&r.ok)setD(r);else setErr((r&&r.error)||'Could not load the cycle.');}).catch(function(e){setErr(e.message||'Could not load the cycle.');});};
+  React.useEffect(function(){if(props.apiUrl&&props.apiToken)load();},[props.apiUrl,props.apiToken]);
+  var post=function(body,then){setBusy(true);setErr('');apiPost(props.apiUrl,props.apiToken,Object.assign({by:who},body)).then(function(r){setBusy(false);if(r&&r.ok===false){setErr(r.error||'Could not save');return;}if(then)then(r);load();}).catch(function(e){setBusy(false);setErr(e.message||'Could not save');});};
+  var card={background:'#0d1526',border:'1px solid #1e2a44',borderRadius:16,padding:16,display:'flex',flexDirection:'column',gap:14};
+  var btn=function(primary){return {flex:1,minHeight:46,borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer',background:primary?'#c9a84c':'transparent',border:primary?'none':'1px solid #2a3f6f',color:primary?'#14120a':'#aab6d6'};};
+  var inp={minHeight:44,borderRadius:10,background:'#0a1220',border:'1px solid #2a3f6f',color:'#dde1f0',padding:'0 12px',fontSize:14,width:'100%',boxSizing:'border-box',colorScheme:'dark'};
+  var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:'#9aa8c8'};
+  if(!d)return h('section',{className:'cy-card',style:card},h('h3',{style:{margin:0,fontSize:16}},'Cycle'),err?h('div',{style:{color:'#f87171',fontSize:13}},err):h('div',{className:'loading-text'},'Loading…'));
+  var v=d.view,st=d.stats,today=d.today;
+  var openLog=function(){setForm({when:'today',date:today,notes:''});setMode('log');};
+  var saveLog=function(){var day=form.when==='today'?today:form.when==='yesterday'?cyfAdd(today,-1):form.date;post({action:'cycle_log',start:day,notes:form.notes||''},function(){setMode(null);});};
+  var logSheet=mode==='log'?h('div',{className:'cy-log',role:'dialog','aria-label':'Period started',style:{display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid #16213a',paddingTop:12}},
+    h('h4',{style:{margin:0,fontSize:15}},'Period started'),
+    h('div',{role:'group','aria-label':'When',style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:6}},[['today','Today'],['yesterday','Yesterday'],['pick','Pick a date']].map(function(x){var on=form.when===x[0];
+      return h('button',{key:x[0],type:'button','aria-pressed':on,className:'cy-when','data-when':x[0],onClick:function(){setForm(Object.assign({},form,{when:x[0]}));},style:{minHeight:44,borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer',background:on?'#1d1a0c':'#0a1220',border:'1px solid '+(on?'#c9a84c':'#1c2a48'),color:on?'#e3c46a':'#aab6d6'}},x[1]);})),
+    form.when==='pick'?h('label',{style:lab},'Date',h('input',{type:'date',className:'cy-date',value:form.date,max:today,onChange:function(e){setForm(Object.assign({},form,{date:e.target.value}));},style:inp})):null,
+    h('label',{style:lab},'Note (optional)',h('input',{className:'cy-note',value:form.notes,placeholder:'e.g. cramps, light',onChange:function(e){setForm(Object.assign({},form,{notes:e.target.value}));},style:inp})),
+    h('span',{style:{fontSize:12,color:'#9aa8c8',lineHeight:1.5}},'Logged twice within 10 days counts as one period, so a double tap from either of you is fine.'),
+    h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'cy-cancel',onClick:function(){setMode(null);},style:btn(false)},'Cancel'),h('button',{type:'button',className:'cy-save',disabled:busy,onClick:saveLog,style:Object.assign(btn(true),{flex:2})},'Save'))):null;
+  var history=mode==='history'?h('div',{className:'cy-history',style:{display:'flex',flexDirection:'column',gap:8,borderTop:'1px solid #16213a',paddingTop:12}},
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}},[[String(st.cycle),'avg cycle'],[st.min!=null?st.min+'–'+st.max:'—','range'],[String(st.period),'period days']].map(function(x){
+      return h('div',{key:x[1],style:{background:'#0a1220',borderRadius:10,padding:10,display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:20,fontWeight:700,color:'#e3c46a'}},x[0]),h('span',{style:{fontSize:11,color:'#9aa8c8'}},x[1]));})),
+    (d.log||[]).slice(0,12).map(function(r,i){var prev=(d.log||[])[i+1],len=prev?cyfDays(prev.start,r.start):null,ed=form.edit===r.id;
+      return h('div',{key:r.id,className:'cy-row','data-id':r.id,style:{display:'flex',flexDirection:'column',gap:6,padding:'8px 0',borderTop:'1px solid #16213a'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:13}},h('b',null,cyfNice(r.start,true)+', '+r.start.slice(0,4)),
+          h('span',{style:{color:'#9aa8c8',fontSize:12}},(i===0?'current':'') +(len!=null?(i===0?' · ':'')+'came '+len+' days after the one before':'')+(r.end?' · '+(cyfDays(r.start,r.end)+1)+' period days':''))),
+        ed?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8}},
+          h('label',{style:lab},'Started',h('input',{type:'date',className:'cy-ed-start',value:form.es,max:today,onChange:function(e){setForm(Object.assign({},form,{es:e.target.value}));},style:inp})),
+          h('label',{style:lab},'Ended',h('input',{type:'date',className:'cy-ed-end',value:form.ee,max:today,onChange:function(e){setForm(Object.assign({},form,{ee:e.target.value}));},style:inp})),
+          h('button',{type:'button',onClick:function(){setForm(Object.assign({},form,{edit:null}));},style:btn(false)},'Cancel'),
+          h('button',{type:'button',className:'cy-ed-save',disabled:busy,onClick:function(){post({action:'cycle_edit',id:r.id,start:form.es,end:form.ee||''},function(){setForm(Object.assign({},form,{edit:null}));});},style:btn(true)},'Save'))
+        :h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:{fontSize:12,color:'#9aa8c8'}},'Logged by '+(r.by||'—')+(r.notes?' · '+r.notes:'')),
+          h('span',{style:{display:'flex',gap:4}},h('button',{type:'button',className:'cy-edit',onClick:function(){setForm(Object.assign({},form,{edit:r.id,es:r.start,ee:r.end||''}));},style:{minHeight:32,padding:'0 10px',borderRadius:8,background:'transparent',border:'1px solid #2a3f6f',color:'#8ab4f8',fontSize:12,cursor:'pointer'}},'Edit'),
+            h('button',{type:'button',className:'cy-del','aria-label':'Delete '+r.start,onClick:function(){if(window.confirm('Delete this entry?'))post({action:'cycle_delete',id:r.id});},style:{minHeight:32,minWidth:32,borderRadius:8,background:'transparent',border:'1px solid #6b2a2a',color:'#f87171',fontSize:14,cursor:'pointer'}},'×'))));}),
+    (d.log||[]).length===0?h('span',{style:{fontSize:13,color:'#9aa8c8'}},'Nothing logged yet.'):null):null;
+  if(!v)return h('section',{className:'cy-card',style:card},h('h3',{style:{margin:0,fontSize:16}},'Cycle'),
+    h('span',{style:{fontSize:13,color:'#c4cde4',lineHeight:1.5}},'Log when a period starts, and VERA works out the next one and the fertile window. It gets more exact after two or three cycles.'),
+    err?h('div',{role:'alert',style:{color:'#f87171',fontSize:13}},err):null,
+    mode?null:h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'cy-start',onClick:openLog,style:btn(true)},'Period started')),logSheet);
+  // the ring
+  var total=Math.max(st.cycle,v.day),cx=74,cy0=74,rr=60,pt=function(i){var a=(i/total)*2*Math.PI-Math.PI/2;return {x:Math.round((cx+rr*Math.cos(a))*10)/10,y:Math.round((cy0+rr*Math.sin(a))*10)/10};};
+  var segs=[];for(var i=0;i<total;i++){var a0=pt(i+0.08),a1=pt(i+0.92),k=cyfKind(v,cyfAdd(v.start,i));segs.push(h('path',{key:i,d:'M '+a0.x+' '+a0.y+' A '+rr+' '+rr+' 0 0 1 '+a1.x+' '+a1.y,fill:'none',stroke:CY_COL[k],strokeWidth:k==='other'?10:14}));}
+  var tp=pt(v.day-0.5),op=pt(cyfDays(v.start,v.ovulation)+0.5);
+  var P={period:['Period · day '+v.day,'#3a1724','#f3a6bd','#5a2a3c'],fertile:['Fertile window','#12302a','#7be3c9','#2f6f62'],peak:['Peak fertile days','#12302a','#7be3c9','#2f6f62'],
+    late:[v.lateBy+' day'+(v.lateBy===1?'':'s')+' later than usual','#2a2410','#f0c040','#6b5a10'],follicular:['Before the fertile window','#14203a','#8ab4f8','#1e2a44'],luteal:['After the fertile window','#14203a','#8ab4f8','#1e2a44']}[v.phase];
+  var head,sub,note=null;
+  if(v.phase==='period'){head='Day '+v.day+(v.mood?': '+v.mood:'');sub='Started '+cyfNice(v.start,true)+'. Periods here usually last about '+st.period+' days.';
+    note=['How it usually goes',cyfMoodLine(d.mood)+'. Go easy.','#2a1420','#5a2a3c','#f3a6bd'];}
+  else if(v.phase==='fertile'||v.phase==='peak'){head='Fertile window: '+(today>v.fertileStart?'now':'from today')+' through '+cyfNice(v.fertileEnd,true);
+    sub='Peak '+cyfNice(v.peakStart,true).slice(0,3)+'–'+cyfNice(v.peakEnd,true).slice(0,3)+'; ovulation estimated around '+cyfNice(v.ovulation,true)+'.';
+    note=[v.phase==='peak'?'Peak days: today'+(today===v.peakStart?' and tomorrow':'')+' are the best chance':'A special note for this week','The best time of the cycle when trying, especially '+cyfNice(v.peakStart,true).slice(0,3)+' and '+cyfNice(v.peakEnd,true).slice(0,3)+'. It is an estimate from past cycles, not a test: an ovulation kit or her own signs are more exact.','#0f2a25','#2f6f62','#7be3c9'];}
+  else if(v.phase==='late'){head='Expected '+cyfNice(v.next,true)+', not logged yet';sub=st.min!=null?'Her cycles have run '+st.min+'–'+st.max+' days.':'Only one cycle logged so far, so this is a rough guess.';
+    note=['Worth noting','Cycles vary, and a few days late is common. If it started and wasn’t logged, add it now. When trying, this may be a good time for a test.','#1d1a0c','#6b5a10','#f0c040'];}
+  else if(v.phase==='follicular'){head='Fertile window starts '+cyfNice(v.fertileStart,true);sub='In '+cyfDays(today,v.fertileStart)+' day'+(cyfDays(today,v.fertileStart)===1?'':'s')+'. Peak '+cyfNice(v.peakStart).slice(0,6).trim()+'–'+cyfNice(v.peakEnd)+'.';}
+  else {head='Next period ~'+cyfNice(v.next,true);sub='In '+v.daysToNext+' day'+(v.daysToNext===1?'':'s')+'. The fertile window has passed for this cycle.';}
+  var ws=cyfAdd(today,-((new Date(cyfMs(today)).getUTCDay()+6)%7)),week=[];
+  for(var j=0;j<7;j++){var dd=cyfAdd(ws,j),kk=cyfKind(v,dd),isT=dd===today;week.push(h('div',{key:dd,role:'listitem',className:'cy-day','data-kind':kk,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'6px 0',borderRadius:10,background:isT?'#1d1a0c':'#0a1220',border:'1px solid '+(isT?'#c9a84c':'#16213a')}},
+    h('span',{style:{fontSize:10,color:'#9aa8c8'}},['Mo','Tu','We','Th','Fr','Sa','Su'][j]),h('span',{style:{fontSize:14,fontWeight:700}},String(new Date(cyfMs(dd)).getUTCDate())),
+    h('span',{style:{width:8,height:8,borderRadius:'50%',background:kk==='other'?'transparent':CY_COL[kk],boxShadow:dd===v.ovulation?'0 0 0 2px #ffffff':'none'}})));}
+  var rows=[['Next period',v.phase==='late'?'expected '+cyfNice(v.next,true):'~'+cyfNice(v.next,true)+' · in '+v.daysToNext+' day'+(v.daysToNext===1?'':'s')],['Fertile window',cyfNice(v.fertileStart)+' – '+cyfNice(v.fertileEnd)+' · peak '+cyfNice(v.peakStart).replace(/^\w+ /,'')+'–'+cyfNice(v.peakEnd).replace(/^\w+ /,'')],['Logged by',(d.log[0].by||'—')+' · '+cyfNice(d.log[0].start)]];
+  return h('section',{className:'cy-card','data-phase':v.phase,'aria-label':'Cycle',style:Object.assign({},card,{border:'1px solid '+P[3]})},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('h3',{style:{margin:0,fontSize:16}},'Cycle ',h('span',{style:{fontSize:11,fontWeight:600,color:'#7be3c9'}},'· Trying')),
+      h('span',{className:'cy-avg',style:{fontSize:12,color:'#9aa8c8'}},st.estimated?'About '+st.cycle+' days (estimate until 2 cycles)':'Avg '+st.cycle+' days · range '+st.min+'–'+st.max)),
+    h('div',{style:{display:'flex',gap:16,alignItems:'center'}},
+      h('div',{style:{position:'relative',width:148,height:148,flexShrink:0}},
+        h('svg',{width:148,height:148,viewBox:'0 0 148 148',role:'img','aria-label':'Cycle day '+v.day+' of about '+st.cycle+'; fertile window '+cyfNice(v.fertileStart)+' to '+cyfNice(v.fertileEnd)+'; next period '+cyfNice(v.next)},segs,
+          h('circle',{cx:op.x,cy:op.y,r:4,fill:'#ffffff'}),h('circle',{cx:tp.x,cy:tp.y,r:7,fill:'#0b1020',stroke:'#e3c46a',strokeWidth:3})),
+        h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},h('span',{style:{fontSize:11,color:'#9aa8c8'}},'Day'),
+          h('span',{className:'cy-dayno',style:{fontSize:34,fontWeight:700,lineHeight:1}},String(v.day)),h('span',{style:{fontSize:11,color:'#9aa8c8'}},'of ~'+st.cycle))),
+      h('div',{style:{flex:1,display:'flex',flexDirection:'column',gap:6,minWidth:0}},h('span',{className:'cy-phase',style:{fontSize:12,fontWeight:700,padding:'3px 9px',borderRadius:999,alignSelf:'flex-start',background:P[1],color:P[2]}},P[0]),
+        h('span',{className:'cy-head',style:{fontSize:15,fontWeight:700,lineHeight:1.35}},head),h('span',{style:{fontSize:12,color:'#9aa8c8',lineHeight:1.45}},sub))),
+    note?h('div',{className:'cy-note-box',style:{display:'flex',flexDirection:'column',gap:4,borderRadius:12,padding:12,background:note[2],border:'1px solid '+note[3]}},h('span',{style:{fontSize:13,fontWeight:700,color:note[4]}},note[0]),h('span',{style:{fontSize:12,lineHeight:1.5,color:'#c4cde4'}},note[1])):null,
+    h('div',{role:'list','aria-label':'This week',style:{display:'grid',gridTemplateColumns:'repeat(7, minmax(0, 1fr))',gap:4}},week),
+    h('div',null,rows.map(function(r){return h('div',{key:r[0],style:{display:'flex',justifyContent:'space-between',gap:10,padding:'9px 0',borderTop:'1px solid #16213a',fontSize:13}},h('span',{style:{color:'#9aa8c8'}},r[0]),h('span',{style:{textAlign:'right',fontWeight:600}},r[1]));})),
+    err?h('div',{role:'alert',style:{color:'#f87171',fontSize:13}},err):null,
+    mode==='log'?logSheet:h('div',{style:{display:'flex',gap:8}},
+      v.phase==='period'&&!d.log[0].end?h('button',{type:'button',className:'cy-end',disabled:busy,onClick:function(){post({action:'cycle_end',id:d.log[0].id});},style:btn(true)},'Period ended')
+        :h('button',{type:'button',className:'cy-start',onClick:openLog,style:btn(true)},'Period started'),
+      h('button',{type:'button',className:'cy-hist',onClick:function(){setMode(mode==='history'?null:'history');},style:btn(false)},mode==='history'?'Hide history':'History')),
+    history,
+    h('div',{style:{display:'flex',flexWrap:'wrap',gap:12,fontSize:11,color:'#9aa8c8'}},[['period','Period'],['fertile','Fertile'],['peak','Peak']].map(function(x){return h('span',{key:x[0],style:{display:'flex',alignItems:'center',gap:5}},h('span',{style:{width:10,height:10,borderRadius:3,background:CY_COL[x[0]]}}),x[1]);}),
+      h('span',{style:{display:'flex',alignItems:'center',gap:5}},h('span',{style:{width:10,height:10,borderRadius:'50%',background:'#ffffff'}}),'Ovulation (est.)')));}
 function FamilyPlanningPanel(props){
   var h=React.createElement,who=props.who==='Victoria'?'Victoria':'Ahmed';
   var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];
@@ -2918,6 +3017,7 @@ function FamilyPlanningPanel(props){
         onClick:function(){if(phase!==p[0])post({action:'fp_setup_save',settings:{phase:p[0]}});}},p[1]);})),
       h('span',{style:{fontSize:13,color:'#c9cfe3',lineHeight:1.5}},FP_PHASE_NOTE[phase]),
       data.weekToday?h('span',{className:'fp-week',style:{fontSize:13,color:FP_C.acc}},'Week '+data.weekToday+' today · due '+fpDay(s.dueDate)):s.whatIf?h('span',{style:{fontSize:13,color:FP_C.mute}},'Planning around a “what if” date of '+fpDay(s.whatIf)+'.'):null),
+    phase==='trying'?h(FpCycleCard,{key:'cy',apiUrl:props.apiUrl,apiToken:props.apiToken,who:who}):null,
     h('div',{key:'nx',className:'fp-next',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Next 3 things'),
       (data.next||[]).length?(data.next||[]).map(function(n,i){return h('div',{key:i,style:{display:'flex',gap:12,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:'12px 14px'}},
         h('span',{style:{flexShrink:0,minWidth:72,fontSize:12,fontWeight:700,color:FP_C.acc}},/^\d{4}-/.test(n.when)?fpDay(n.when):n.when),h('span',{style:{fontSize:13,lineHeight:1.45}},n.what));}):
