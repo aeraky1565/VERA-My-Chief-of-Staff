@@ -10860,6 +10860,110 @@ function GroceriesCard(props){var h=React.createElement;
           style:{flexShrink:0,width:52,height:32,borderRadius:16,border:0,padding:3,cursor:'pointer',display:'flex',justifyContent:st.counts?'flex-end':'flex-start',background:st.counts?GRC.acc:'#2a3a5c'}},
           h('span',{style:{width:26,height:26,borderRadius:13,background:'#0d1528',display:'block'}})));})):null);}
 // ---- end GroceriesCard ----
+// ---- TravelerProfilesPanel (Travel › Travelers › Profiles, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// One person, many items: documents, trusted traveller, memberships, preferences, health, and
+// (after a birth) children. Numbers are kept as their last 4 only; the server enforces it.
+var TP_ALLIANCES=['Star Alliance','oneworld','SkyTeam','None'];
+var TP_FIELDS={document:['country','last4','issued','expiry','notes'],trusted:['last4','expiry','notes'],membership:['label','last4','tier','value','notes'],
+  preference:['value','notes'],health:['label','value','issued','expiry','notes'],child:['label','country','last4','expiry','notes']};
+var TP_FIELD_LABEL={country:'Country',last4:'Number (last 4 only)',issued:'Issued / date',expiry:'Expires',notes:'Notes',label:'Name',tier:'Status tier',value:'Detail'};
+var TP_HINTS={home_airports:'e.g. IAD, DCA',seat:'window, aisle or front',cabin:'economy, premium, business',max_layover_h:'e.g. 4',red_eyes:'yes or no',hotel_bed:'king, two queens',hotel_room:'high floor, quiet',diet:'e.g. vegetarian',allergy:'e.g. peanuts',vaccine:'e.g. Yellow fever'};
+function tpDaysTo_(ymd,today){if(!ymd||!today)return null;var p=function(s){var x=s.split('-').map(Number);return Date.UTC(x[0],x[1]-1,x[2]);};return Math.round((p(ymd)-p(today))/864e5);}
+function tpExpTone_(ymd,today){var d=tpDaysTo_(ymd,today);if(d==null)return null;if(d<0)return ['bad','Expired '+ymd];if(d<180)return ['bad','Expires '+ymd];if(d<365)return ['warn','Expires '+ymd];return ['ok','Valid to '+ymd];}
+function tpKindName_(sections,sec,kind){var s=(sections||[]).filter(function(x){return x.id===sec;})[0];var k=s&&(s.kinds||[]).filter(function(x){return x[0]===kind;})[0];return k?k[1]:kind;}
+function TravelerProfilesPanel(props){
+  var h=React.createElement;
+  var st=React.useState(null),d=st[0],setD=st[1];
+  var pe=React.useState(''),person=pe[0],setPerson=pe[1];
+  var fm=React.useState(null),form=fm[0],setForm=fm[1];
+  var ms=React.useState(''),msg=ms[0],setMsg=ms[1];
+  var bz=React.useState(false),busy=bz[0],setBusy=bz[1];
+  var np=React.useState(null),newName=np[0],setNewName=np[1];
+  var load=function(keep){return apiGet(props.apiUrl,props.apiToken,{action:'tp_get'}).then(function(r){setD(r);setPerson(function(p){if(keep&&p)return p;var pp=r.people||[];return pp.indexOf(props.who)!==-1?props.who:(pp[0]||'');});}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(function(){load(false);},[]);
+  if(!d)return h('div',{className:'tp-panel',style:{color:'#9aa8c8',fontSize:13,padding:12}},'Loading profiles…');
+  if(d.ok===false)return h('div',{className:'tp-panel',style:{color:'#f87171',fontSize:13,padding:12}},'Couldn’t load profiles: '+d.error);
+  var people=(d.people||[]).slice();if(person&&people.indexOf(person)===-1)people.push(person);
+  var mine=(d.items||[]).filter(function(i){return i.person===person;});
+  var sections=(d.sections||[]).filter(function(s){return s.id!=='child'||d.hasChild;});
+  var save=function(){setBusy(true);setMsg('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'tp_save',person:person},form)).then(function(r){setBusy(false);setForm(null);setMsg(r.note||'Saved.');load(true);}).catch(function(e){setBusy(false);setMsg(e.message);});};
+  var del=function(i){if(!window.confirm('Remove this '+tpKindName_(d.sections,i.section,i.kind)+'?'))return;setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'tp_delete',id:i.id}).then(function(){setBusy(false);setMsg('Removed.');load(true);}).catch(function(e){setBusy(false);setMsg(e.message);});};
+  var chip=function(on){return {minHeight:36,padding:'6px 14px',borderRadius:18,border:'1px solid '+(on?'#c9a84c':'#2a3a5a'),background:on?'#2a2410':'#0d1526',color:on?'#e3c46a':'#9aa8c8',fontSize:13,fontWeight:on?700:500,cursor:'pointer'};};
+  var btn={minHeight:36,padding:'6px 12px',borderRadius:8,border:'1px solid #2a3a5a',background:'#13203a',color:'#dde1f0',fontSize:13,cursor:'pointer'};
+  var inp={width:'100%',boxSizing:'border-box',minHeight:36,padding:'7px 10px',borderRadius:8,border:'1px solid #2a3a5a',background:'#0a1220',color:'#dde1f0',fontSize:14};
+  var TONE={ok:['#0a2a1a','#4ade80'],warn:['#2a2200','#fbbf24'],bad:['#2a0a0a','#f87171']};
+  var field=function(f){
+    var v=form[f]==null?'':form[f],set=function(e){var x=e.target.value;setForm(function(o){var n=Object.assign({},o);n[f]=x;return n;});};
+    var lab=TP_FIELD_LABEL[f];
+    if(f==='label'&&form.section==='membership')lab='Programme';
+    if(f==='label'&&form.section==='health')lab=form.kind==='medication'?'Medication':'What';
+    if(f==='label'&&form.section==='child')lab='For (first name)';
+    if(f==='value'&&form.section==='membership')lab='Alliance';
+    if(f==='value'&&form.section==='health'&&form.kind==='medication')lab='Linked prescription';
+    if(f==='value'&&form.section==='health'&&form.kind!=='medication')return null;
+    if((f==='issued'||f==='expiry')&&form.section==='health'&&form.kind!=='vaccine')return null;
+    if(f==='country'&&form.section==='document'&&/^(real_id)$/.test(form.kind))return null;
+    var el;
+    if(f==='value'&&form.section==='membership')el=h('select',{className:'tp-f-value',value:v,onChange:set,style:inp},[''].concat(TP_ALLIANCES).map(function(a){return h('option',{key:a,value:a},a||'—');}));
+    else if(f==='value'&&form.kind==='medication')el=h('select',{className:'tp-f-value',value:v,onChange:set,style:inp},[h('option',{key:'',value:''},'— none —')].concat((d.prescriptions||[]).filter(function(r){return !r.person||r.person===person;}).map(function(r){return h('option',{key:r.id,value:r.id},r.medication+(r.refillDate?' · refill '+r.refillDate:''));})));
+    else if(f==='notes')el=h('textarea',{className:'tp-f-notes',value:v,onChange:set,rows:2,style:Object.assign({},inp,{resize:'vertical'})});
+    else el=h('input',{className:'tp-f-'+f,type:f==='issued'||f==='expiry'?'date':'text',value:v,onChange:set,maxLength:f==='last4'?40:200,placeholder:f==='value'?(TP_HINTS[form.kind]||''):f==='last4'?'e.g. 1234':'',style:inp,inputMode:f==='last4'?'text':undefined});
+    return h('label',{key:f,style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#9aa8c8'}},lab,el,
+      f==='last4'?h('span',{className:'tp-hint',style:{fontSize:11,color:'#7f8db0'}},'Only the last 4 are kept. Keep the full number in your wallet or password manager.'):null);
+  };
+  var formView=function(sec){
+    return h('div',{className:'tp-form',style:{display:'flex',flexDirection:'column',gap:10,padding:12,borderRadius:10,background:'#0a1220',border:'1px solid #2a3a5a'}},
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#9aa8c8'}},'Kind',
+        h('select',{className:'tp-kind',value:form.kind,onChange:function(e){var x=e.target.value;setForm(function(o){return Object.assign({},o,{kind:x});});},style:inp},(sec.kinds||[]).map(function(k){return h('option',{key:k[0],value:k[0]},k[1]);}))),
+      (TP_FIELDS[sec.id]||[]).map(field),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'tp-save',disabled:busy,onClick:save,style:Object.assign({},btn,{background:'#c9a84c',color:'#1a1406',border:'none',fontWeight:700})},busy?'Saving…':'Save'),
+        h('button',{type:'button',className:'tp-cancel',onClick:function(){setForm(null);},style:btn},'Cancel')));
+  };
+  var itemLine=function(i){
+    var bits=[];
+    if(i.label)bits.push(i.label);
+    if(i.country)bits.push(i.country);
+    if(i.last4)bits.push('••'+i.last4);
+    if(i.tier)bits.push(i.tier);
+    if(i.value){var rx=i.kind==='medication'?(d.prescriptions||[]).filter(function(r){return r.id===i.value;})[0]:null;bits.push(rx?'Rx: '+rx.medication+(rx.refillDate?' (refill '+rx.refillDate+')':''):i.value);}
+    if(i.kind==='vaccine'&&i.issued)bits.push('given '+i.issued);
+    return bits.join(' · ');
+  };
+  return h('div',{className:'tp-panel',style:{display:'flex',flexDirection:'column',gap:14,maxWidth:760}},
+    h('div',{role:'group','aria-label':'Whose profile',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+      people.map(function(p){return h('button',{key:p,type:'button',className:'tp-person','data-p':p,'aria-pressed':p===person,onClick:function(){setPerson(p);setForm(null);setMsg('');},style:chip(p===person)},p);}),
+      newName==null?h('button',{type:'button',className:'tp-add-person',onClick:function(){setNewName('');},style:chip(false)},'＋ Person')
+        :h('span',{style:{display:'flex',gap:6}},h('input',{className:'tp-new-name',value:newName,placeholder:'Name',onChange:function(e){setNewName(e.target.value);},style:Object.assign({},inp,{width:140})}),
+          h('button',{type:'button',className:'tp-new-ok',onClick:function(){var n=(newName||'').trim();if(n){setPerson(n);}setNewName(null);},style:btn},'Add'))),
+    msg?h('div',{className:'tp-msg',role:'status',style:{fontSize:13,color:/^(Saved|Removed|Kept)/.test(msg)?'#4ade80':'#f87171'}},msg):null,
+    !person?h('div',{style:{fontSize:13,color:'#9aa8c8'}},'Add a person to start a profile.'):
+    sections.map(function(sec){
+      var list=mine.filter(function(i){return i.section===sec.id;});
+      var editing=form&&form.section===sec.id;
+      return h('section',{key:sec.id,className:'tp-sec','data-sec':sec.id,style:{background:'#0d1526',border:'1px solid #1e2a44',borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:10}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
+          h('h3',{style:{margin:0,fontSize:15,color:'#dde1f0'}},sec.label),
+          !editing?h('button',{type:'button',className:'tp-add','data-sec':sec.id,onClick:function(){setMsg('');setForm({section:sec.id,kind:(sec.kinds[0]||[])[0]});},style:btn},'＋ Add'):null),
+        h('div',{className:'tp-used',style:{fontSize:12,color:'#7f8db0'}},sec.usedFor),
+        list.length===0&&!editing?h('div',{style:{fontSize:13,color:'#5c6a8a'}},'Nothing here yet.'):null,
+        list.map(function(i){
+          if(form&&form.id===i.id)return h('div',{key:i.id},formView(sec));
+          var tone=sec.id==='health'&&i.kind!=='vaccine'?null:tpExpTone_(i.expiry,d.today);
+          return h('div',{key:i.id,className:'tp-item','data-id':i.id,style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start',padding:'8px 0',borderTop:'1px solid #16213a'}},
+            h('div',{style:{display:'flex',flexDirection:'column',gap:4,minWidth:0}},
+              h('div',{style:{fontSize:14,color:'#dde1f0',fontWeight:600}},tpKindName_(d.sections,i.section,i.kind)),
+              itemLine(i)?h('div',{style:{fontSize:13,color:'#9aa8c8',overflowWrap:'anywhere'}},itemLine(i)):null,
+              tone?h('span',{className:'tp-exp','data-tone':tone[0],style:{alignSelf:'flex-start',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10,background:TONE[tone[0]][0],color:TONE[tone[0]][1]}},tone[1]):null,
+              i.notes?h('div',{style:{fontSize:12,color:'#7f8db0',overflowWrap:'anywhere'}},i.notes):null),
+            h('div',{style:{display:'flex',gap:6,flexShrink:0}},
+              h('button',{type:'button',className:'tp-edit','aria-label':'Edit',onClick:function(){setMsg('');setForm(Object.assign({},i));},style:btn},'Edit'),
+              h('button',{type:'button',className:'tp-del','aria-label':'Remove',disabled:busy,onClick:function(){del(i);},style:Object.assign({},btn,{color:'#f87171',borderColor:'#6b2a2a',minWidth:36})},'×')));
+        }),
+        editing&&!form.id?formView(sec):null);
+    }));
+}
+// ---- /TravelerProfilesPanel ----
 // ---- TripGiftsPanel (Travel › Gifts, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // A trip's gifts in three groups (for our hosts: bought before going; souvenirs; for us), each moving
 // To buy → Bought → Packed with one tap; the trip's gift budget; ideas for the place; a warning when the
@@ -11199,7 +11303,6 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   }
 
   useEffect(() => {
-    if (travSub === 'profiles' && profiles.length === 0 && !profilesLoading) loadProfiles();
   }, [travSub]);
 
   function goToItinerary(tripKey) {
@@ -11430,15 +11533,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
         <TripGiftsPanel trips={trips} apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
-      {travSub === 'profiles' && (
-        <ProfilesView
-          profiles={profiles}
-          loading={profilesLoading}
-          busy={busy}
-          onSave={handleSaveProfile}
-          onDelete={handleDeleteProfile}
-        />
-      )}
+      {travSub === 'profiles' && <TravelerProfilesPanel apiUrl={apiUrl} apiToken={apiToken} />}
 
       {travSub === 'ideas' && <TripIdeasView apiUrl={apiUrl} apiToken={apiToken} openIdea={openIdea} />}
       {travSub === 'aria' && <AriaView apiUrl={apiUrl} apiToken={apiToken} />}
@@ -12736,7 +12831,7 @@ const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 
   wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
 const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '💳 Card cheat sheet' }, { id: 'coupons', label: '🎟️ Coupons' }];
 const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
-const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'gifts', label: '🎁 Gifts' }];
+const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'gifts', label: '🎁 Gifts' }];
 // Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
 const HF_GROUPS_LITE = [
   { id: 'kitchen', label: 'Kitchen', icon: '🍽️', items: ['meal_plan', 'recipes', 'pantry', 'takeouts'] },

@@ -94,6 +94,7 @@ const TABS = {
   GATHERINGS:         'Gatherings',          // Hosting: parties, birthdays, holidays — guests, menu, to-dos, shopping (HomeFront.js)
   CHORES_FOR_OTHERS:  'ChoresForOthers',     // One-off tasks assigned to neighbor kids / helpers (Issue #180)
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
+  TRAVELER_ITEMS:     'Traveler Items',      // Travel › Travelers › Profiles: documents, trusted traveller, memberships, preferences, health (issue #227)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
   FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
@@ -168,6 +169,7 @@ const NOTIF_REGISTRY = [
   { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false },
   { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
   { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-notifications', description: 'ARIA says a watched fare is worth booking (once per trip)', locked: false },
+  { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false },
   // Routines
   { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false },
   { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false },
@@ -324,6 +326,7 @@ const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring'
 const GATHERINGS_HEADERS         = ['ID', 'Title', 'Type', 'Date', 'Start', 'End', 'Place', 'Guests', 'Menu', 'Todos', 'Shopping', 'Budget', 'Spent', 'Notes', 'Created', 'Updated'];
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date', 'Last Done', 'Due By'];  // Last Done / Due By: upkeep (HomeFront.js)
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
+const TRAVELER_ITEM_HEADERS      = ['ID', 'Person', 'Section', 'Kind', 'Label', 'Country', 'Last 4', 'Issued', 'Expiry', 'Tier', 'Value', 'Notes', 'Updated'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
@@ -1382,6 +1385,7 @@ function nightlyRun() {
     // Career › Credentials (#223): import once, keep the job agent's line current, and raise the
     // expiry and pace reminders. It writes flags, so it runs before checkCrossPatternFlags_.
     nightlyStep_(ctx, 'carCredNightly_', carCredNightly_);
+    nightlyStep_(ctx, 'tpNightly_', tpNightly_);
     // Life › Growth (#222): yesterday's "Did it?" asks from the calendar, and the weekly nudge for a
     // Now goal gone quiet. Writes no flags, but stays with the other planning steps.
     nightlyStep_(ctx, 'lgNightly_', lgNightly_);

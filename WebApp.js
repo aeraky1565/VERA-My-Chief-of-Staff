@@ -423,6 +423,7 @@ function doGet(e) {
       case 'planned_purchases':     return jsonOut_(webPlannedPurchases_());
       case 'fp_get':                return jsonOut_(webFpGet_(e.parameter));
       case 'cycle_get':             return jsonOut_(webCycleGet_());
+      case 'tp_get':                return jsonOut_(webTpGet_());
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
       case 'grocery_month':         return jsonOut_(webGroceryMonth_(e.parameter));
       case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
@@ -665,6 +666,8 @@ function doPost(e) {
       case 'pp_delete':                  return jsonOut_(webPpDelete_(body));
       case 'fp_setup_save':              return jsonOut_(webFpSetupSave_(body));
       case 'cycle_log':                  return jsonOut_(webCycleLog_(body));
+      case 'tp_save':                    return jsonOut_(webTpSave_(body));
+      case 'tp_delete':                  return jsonOut_(webTpDelete_(body));
       case 'cycle_edit':                 return jsonOut_(webCycleEdit_(body));
       case 'cycle_end':                  return jsonOut_(webCycleEnd_(body));
       case 'cycle_delete':               return jsonOut_(webCycleDelete_(body));
@@ -8746,77 +8749,8 @@ function webDeleteImportantDate_(e) {
 
 // ---- Traveler Profiles (Issue #123) ----------------------------------------
 
-function webGetProfiles_() {
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
-  var profiles = [];
-  if (sheet && sheet.getLastRow() >= 2) {
-    var rows = sheet.getDataRange().getValues();
-    var hdrs = rows[0];
-    rows.slice(1).forEach(function(r) {
-      if (!r[0]) return;
-      var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? Utilities.formatDate(r[i], Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(r[i] || ''); });
-      // camelCase aliases expected by the frontend
-      profiles.push({
-        id:              String(obj['ID'] || ''),
-        name:            String(obj['Name'] || ''),
-        passportCountry: String(obj['Passport Country'] || ''),
-        passportExpiry:  String(obj['Passport Expiry'] || '').substring(0, 10),
-        specialDocs:     String(obj['Special Docs'] || ''),
-        notes:           String(obj['Notes'] || ''),
-      });
-    });
-  }
-  return { ok: true, profiles: profiles };
-}
-
-function webSaveProfile_(e) {
-  var p               = e.parameter || {};
-  var id              = (p.id              || '').trim();
-  var name            = (p.name            || '').trim();
-  var passportCountry = (p.passportCountry || '').trim();
-  var passportExpiry  = (p.passportExpiry  || '').trim();
-  var specialDocs     = (p.specialDocs     || '').trim();
-  var notes           = (p.notes           || '').trim();
-  if (!name || !passportCountry) return { ok: false, error: 'name and passportCountry required' };
-
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
-
-  if (id) {
-    // Update existing row
-    var rows  = sheet.getDataRange().getValues();
-    var hdrs  = rows[0];
-    var idIdx = hdrs.indexOf('ID');
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][idIdx]).trim() !== id) continue;
-      var rowNum = i + 1;
-      var vals = [id, name, passportCountry, passportExpiry, specialDocs, notes];
-      sheet.getRange(rowNum, 1, 1, TRAVELER_PROFILE_HEADERS.length).setValues([vals]);
-      return { ok: true, id: id };
-    }
-    return { ok: false, error: 'profile not found: ' + id };
-  } else {
-    // Insert new row
-    var newId = 'prof_' + Date.now();
-    sheet.appendRow([newId, name, passportCountry, passportExpiry, specialDocs, notes]);
-    return { ok: true, id: newId };
-  }
-}
-
-function webDeleteProfile_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
-  if (!sheet) return { ok: false, error: 'Traveler Profiles sheet not found' };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
-  }
-  return { ok: false, error: 'not found' };
-}
+// The profile routes now live in TravelerProfiles.js (issue #227): webGetProfiles_,
+// webSaveProfile_ and webDeleteProfile_ read and write Traveler Items.
 
 // ---------------------------------------------------------------------------
 
@@ -10526,6 +10460,9 @@ function webGetTripDocuments_(params) {
   if (!tripKey) return { ok: false, error: 'tripKey required' };
   var items = tripItemsFor_(tripKey, String(params.startDate || ''), endDate, 'trip_documents');
   var profiles = webGetProfiles_().profiles.filter(function(p) { return p.passportCountry; });
+  // Visas and travel authorisations already held (Traveler Items) cover a country.
+  var held = null;
+  try { held = typeof tpHeld_ === 'function' && typeof tpItems_ === 'function' ? tpHeld_(tpItems_()) : null; } catch (e) { held = null; }
   var csv;
   try { csv = passportIndexCsv_(); }
   catch (err) { return { ok: false, error: 'Could not fetch visa data: ' + err.message }; }
@@ -10559,6 +10496,7 @@ function webGetTripDocuments_(params) {
         return Object.assign({}, p, { passport: tripPassportCheck_(p.passportExpiry, endDate, c.country) });
       }) };
     });
+    if (held) tpApplyHeld_(travelers, held, c.country, endDate);
     tripPickPassports_(travelers);
     return Object.assign({}, c, { travelers: travelers, worst: tripDocWorst_(travelers), note: v.note || '' });
   });
