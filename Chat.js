@@ -2523,7 +2523,8 @@ function executeActions_(rawText) {
         } else {
           // Claude names the option loosely ("the beach one"), so resolve it
           // against the group's real members rather than trusting an item id.
-          var dtItin = webGetItinerary_({ parameter: { tripKey: dtTrip } }, { skipEventTz: true });
+          var dtRange = tdDecideRange_(dtTrip, dtGroup, {});   // #232: the calendar's holds need the trip's dates
+          var dtItin = webGetItinerary_({ parameter: { tripKey: dtTrip, startDate: dtRange.start, endDate: dtRange.end } }, { skipEventTz: true });
           var dtMembers = (dtItin.items || []).filter(function(it) {
             var m = {}; try { m = JSON.parse(it.metadata || '{}') || {}; } catch (e2) {}
             return m.optionGroup === dtGroup;
@@ -2542,7 +2543,7 @@ function executeActions_(rawText) {
             errors.push('decide_trip_option: "' + dtPick + '" matches none of ' +
                         dtMembers.map(function(m) { return '"' + m.title + '"'; }).join(', '));
           } else {
-            webDecideTripOption_({ parameter: { tripKey: dtTrip, groupKey: dtGroup, itemId: dtMatch.id } });
+            webDecideTripOption_({ parameter: { tripKey: dtTrip, groupKey: dtGroup, itemId: dtMatch.id, startDate: dtRange.start, endDate: dtRange.end } });
             executed.push('decide_trip_option (' + dtMatch.title + ')');
           }
         }

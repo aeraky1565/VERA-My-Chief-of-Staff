@@ -11671,7 +11671,8 @@ function TravelLiteTab({ apiUrl, apiToken }) {
     if (!g) return;
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, { action:'decide_trip_option', tripKey, groupKey: g, itemId: option.id });
+      const trip = trips.find(t => `${t.startDate}|${t.label}` === tripKey) || {};
+      await apiGet(apiUrl, apiToken, { action:'decide_trip_option', tripKey, groupKey: g, itemId: option.id, startDate: trip.startDate || '', endDate: trip.endDate || '' });
       showToast('Confirmed');
       await refreshItin(tripKey);
     } catch (e) { setError(e.message || 'Could not confirm'); }

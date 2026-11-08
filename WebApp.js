@@ -4786,6 +4786,27 @@ function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, sno
 }
 
 /**
+ * The dates to read a trip over when confirming a decision (#232). The calendar's
+ * holds only join the itinerary when a range is given, and a confirm sent without
+ * one found no decision at all ("No open decision found"). The caller's dates
+ * when it sent both; else the trip's own (the Trips tab); else from the trip key's
+ * start to the slot's day, so the slot itself is always inside.
+ */
+function tdDecideRange_(tripKey, groupKey, p) {
+  p = p || {};
+  var ymd = function(s) { var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s || '').trim()); return m ? m[1] : ''; };
+  var s = ymd(p.startDate), e = ymd(p.endDate);
+  if (s && e) return { start: s, end: e };
+  try {
+    var id = typeof tripIdForKey_ === 'function' ? tripIdForKey_(tripKey) : '';
+    var rec = id ? readTripRegistry_().byId[id] : null;
+    if (rec && rec.startDate) return { start: rec.startDate, end: rec.endDate || rec.startDate };
+  } catch (err) { Logger.log('tdDecideRange_: registry — ' + err.message); }
+  var start = ymd(tripKey) || ymd(groupKey), slot = ymd(groupKey) || start;
+  return { start: start < slot ? start : slot, end: slot > start ? slot : start };
+}
+
+/**
  * Confirms one option. The losing holds stay on the calendar — VERA records the
  * decision, it does not tidy up someone's calendar as a side effect, which also
  * makes this trivially reversible.
@@ -4800,8 +4821,8 @@ function webDecideTripOption_(e) {
   // The dashboard's list can be minutes old. Confirming an option that is not
   // in that group any more would record a decision about nothing, so verify
   // against a fresh read first — the same guard webDeleteHomeItem_ carries.
-  var parts = tripKey.split('|');
-  var itin  = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: p.startDate || '', endDate: p.endDate || '' } },
+  var range = tdDecideRange_(tripKey, groupKey, p);
+  var itin  = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: range.start, endDate: range.end } },
                                { skipEventTz: true });
   var members = (itin.items || []).filter(function(it) {
     var m = {}; try { m = JSON.parse(it.metadata || '{}'); } catch (err) {}
