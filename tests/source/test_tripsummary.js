@@ -291,7 +291,7 @@ check('full: Travel has no Packing sub-tab; each trip gets its own packing list'
       && /renderPacking:function\(t\)\{[^]*?React\.createElement\(PackingPanel,\{trips:\[t\],[^]*?focusTripKey:t\.startDate\+'\|'\+t\.label,/.test(APP)
       && /renderPacking:renderPacking\?function\(\)\{return renderPacking\(t\);\}:null,/.test(APP));
 check('full: a jump to packing opens the itinerary, not a removed tab', /if\(!packingFocusTripKey\)return;setSub\('itinerary'\);/.test(APP));
-check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:renderPacking\?function\(\)\{setViewMode\('packing'\);\}:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
+check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,who:'Ahmed',items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:renderPacking\?function\(\)\{setViewMode\('packing'\);\}:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
 check('full: the old per-day summary is gone', !/viewMode==='summary'&&orderedDays/.test(itin));
 check('full: tapping a day opens Agenda at that day', /onOpenDay:function\(d\)\{setViewMode\('agenda'\);/.test(itin) && /id:tsDayId_\(trip\.tripKey,day\)/.test(itin));
 check('full: VERA Notices and Useful to know stand down on Summary', /\(viewMode==='agenda'\|\|viewMode==='map'\)&&allNotices\.length>0/.test(itin) && /\(viewMode==='agenda'\|\|viewMode==='map'\)&&itinInsights&&/.test(itin));
@@ -304,7 +304,7 @@ check('both: a panel opened on one trip loads it and skips the picker', [APP, LI
 check('lite: no Discover or Budget in the Travel menu; they are trip tabs', !/\['discover','✨ Discover'\],\['countries'/.test(LITE) && !/travSub === 'discover'/.test(LITE) && !/travSub === 'budget'/.test(LITE)
       && /<RecommendationsPanel trips=\{\[t\]\} focusTripKey=\{tripKey\}/.test(LITE) && /<TripBudgetPanel trips=\{\[t\]\} focusTripKey=\{tripKey\}/.test(LITE));
 check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\],\['discover','✨ Discover'\],\['budget','💰 Budget'\]\]/.test(LITE));
-check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
+check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} who="Victoria" items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));
 check('full: the Visa view and its state are gone', !/viewMode==='visa'/.test(itin) && !/handleVisaCheck/.test(itin));
 check('lite: Summary gets the API to load documents', /items=\{filteredItin\.items\} legs=\{travelLegs\[tripKey\]\} meta=\{meta\|\|\{\}\} apiUrl=\{apiUrl\} apiToken=\{apiToken\}/.test(LITE));

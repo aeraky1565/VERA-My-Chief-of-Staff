@@ -907,6 +907,15 @@ function sendPreTripEmail_NightBefore_(trip, opts) {
     }
   } catch (bErr) { Logger.log('PreTrip: briefing section failed \u2014 ' + bErr.message); }
 
+  // Leaving home (#231): what's still to do before you head out.
+  var leaveHome = null;
+  try {
+    if (typeof lhEmailSection_ === 'function') {
+      var lhEnd = trip.endDate instanceof Date ? Utilities.formatDate(trip.endDate, tz, 'yyyy-MM-dd') : depDateStr;
+      leaveHome = lhEmailSection_(trip.tripKey, depDateStr, lhEnd);
+    }
+  } catch (lhErr) { Logger.log('PreTrip: leaving-home section failed \u2014 ' + lhErr.message); }
+
   var sections = [
     { id: 'note',      data: noteHtml },
     { id: 'briefing',  data: briefingHtml },
@@ -914,6 +923,7 @@ function sendPreTripEmail_NightBefore_(trip, opts) {
     { id: 'weather',   data: nbWeatherHtml },
     { id: 'decisions', data: decisionsHtml },
     { id: 'packing',   data: openPackingHtml },
+    { id: 'leave_home', data: leaveHome ? leaveHome.html : '' },
     { id: 'tip',       data: tipHtml },
   ];
 
@@ -941,6 +951,7 @@ function sendPreTripEmail_NightBefore_(trip, opts) {
   if (openItems.length) {
     plain.push('STILL TO PACK', openItems.map(function(i) { return '• ' + i; }).join('\n'), '');
   }
+  if (leaveHome) plain.push(leaveHome.text, '');
   if (tip) plain.push('Tip: ' + tip, '');
   plain.push('— VERA');
 

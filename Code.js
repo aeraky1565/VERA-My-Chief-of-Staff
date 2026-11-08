@@ -118,6 +118,9 @@ const TABS = {
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   CYCLE_LOG:          'Cycle Log',           // Family Planning › Trying › Cycle (period tracker)
+  BAGS:               'Bags',                // Travel › Travelers › Our bags: name, type, size, empty weight (lb), whose (issue #230)
+  LEAVE_HOME:         'Leaving Home',        // Home Front › House › Leaving home: one checklist template per home (issue #231)
+  LEAVE_RUNS:         'Leaving Home Runs',   // each trip's or time away's leaving-home list: ticks, one-offs, leave time (issue #231)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
   GIFT_PLACE_IDEAS:   'Gift Place Ideas',    // Gift ideas per place, asked once (#227)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
@@ -172,6 +175,7 @@ const NOTIF_REGISTRY = [
   { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
   { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-notifications', description: 'ARIA says a watched fare is worth booking (once per trip)', locked: false },
   { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false },
+  { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false },
   // Routines
   { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false },
   { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false },
@@ -239,6 +243,9 @@ const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Trav
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
 const CYCLE_LOG_HEADERS        = ['ID', 'Start', 'End', 'Logged By', 'Logged At', 'Notes']; // Cycle.js
+const BAG_HEADERS              = ['ID', 'Name', 'Type', 'Size', 'Empty Weight (lb)', 'Whose', 'Notes', 'Updated']; // Luggage.js (#230)
+const LEAVE_HOME_HEADERS       = ['ID', 'Home', 'Group', 'Item', 'Order', 'Updated', 'By']; // LeavingHome.js (#231)
+const LEAVE_RUN_HEADERS        = ['ID', 'Kind', 'Trip Key', 'Home', 'Leave At', 'Nights', 'Leaving', 'Ticks JSON', 'One-offs JSON', 'Sent', 'Updated']; // LeavingHome.js (#231)
 const GIFT_PLACE_IDEAS_HEADERS  = ['Place', 'Ideas', 'Updated']; // #227: gift ideas per place, one Claude call each
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];
 // Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary

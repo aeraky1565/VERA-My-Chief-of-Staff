@@ -35,6 +35,13 @@ check('Travel 4, Health 3, People 4',
   && ids('health', T(['fitness', 'morning_routine', 'prescriptions', 'appointments', 'family_planning'])).split(' ').length === 3
   && ids('people', T(['people', 'dates', 'gifts', 'wishlists'])).split(' ').length === 4);
 check('a subtab not on offer is left out, and an emptied group is hidden', ids('travel', T(['gifts', 'trips'])) === 'trips:trips travelers:gifts');
+{
+  const liteTabs = eval(((LITE.match(/const LITE_TRAVEL_TABS = (\[[^\n]*\]);/) || [])[1]) || '[]');
+  const got = ids('lite_travel', liteTabs).split(' ').map(g => g.split(':')[1]).join('+').split('+');
+  check('every tab on Victoria’s Travel is in a tile group (none hidden)', liteTabs.length === 5 && liteTabs.every(t => got.indexOf(t.id) !== -1), got.join());
+  check('lite Travel: My Trips, Bucket List, Travelers (Profiles, Our bags), Gifts', ids('lite_travel', liteTabs) === 'trips:trips bucketlist:bucketlist travelers:profiles+bags gifts:gifts', ids('lite_travel', liteTabs));
+  check('full Travel › Travelers: Profiles, Our bags, Gifts', /travelers:profiles\+bags\+gifts/.test(ids('travel', T(['profiles', 'bags', 'gifts']))));
+}
 check('an unknown tab name has no groups', ids('nope', T(['a'])) === '');
 check('each subtab finds its group; an unknown one finds none',
   vm.runInContext('vnGroupOf_("career","market")+","+vnGroupOf_("career","network")+","+vnGroupOf_("system","flags")+","+vnGroupOf_("life","x")', C) === 'search,network,settings,');
@@ -60,7 +67,7 @@ check('old top tabs still land in the right place',
 check('Shopping holds the card cheat sheet, and Money › Cards has no cheat sheet',
   /<CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cheat" \/>/.test(LITE) && /part="cards" \/>/.test(LITE)
   && /display: part === 'cards' \? 'none' : undefined/.test(LITE) && /display: part === 'cheat' \? 'none' : 'flex'/.test(LITE));
-check('Travel is My Trips, Bucket List, Profiles and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE));
+check('Travel is My Trips, Bucket List, Profiles, Our bags and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'bags', label: '🧳 Our bags' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE));
 check('Your assistants stays on lite Today', LITE.indexOf('<VeraRoster links={status && status.rosterLinks} veraHref="./" />') !== -1);
 check('no Home slot on lite', LITE.indexOf('HomeSlot') === -1);
 

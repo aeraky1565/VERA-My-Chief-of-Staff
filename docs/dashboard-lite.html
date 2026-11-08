@@ -5061,7 +5061,7 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
 // Also here, shared by both dashboards: Coming up on Household, upkeep in Chores (HfUpkeep), Hosting's
 // Gatherings, and the sitter & guest guide.
 var HF_GROUPS=[
-  {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch']},
+  {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch','leaving_home']},
   {id:'chores',label:'Chores',icon:'🧹',items:['chores','chores_for_others']},
   {id:'kitchen',label:'Kitchen',icon:'🍽️',items:['meal_plan','recipes','pantry','takeouts']},
   {id:'hosting',label:'Hosting',icon:'🎉',items:['guests','gatherings','guide']},
@@ -5440,6 +5440,7 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
     { id:'steward',   label:'🛡️ Warranties & Service' },
     { id:'vehicles',  label:'🚗 Vehicles'  },
     { id:'neighborhood_watch', label:'🏘 Neighborhood' },
+    { id:'leaving_home', label:'🚪 Leaving home' },
     { id:'chores',    label:'✅ Chores'    },
     { id:'chores_for_others', label:'🧒 For Others' },
     // No featureKey. It had one, and a Config row set to 'false' silently removed the
@@ -5810,6 +5811,10 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
 
       {sub === 'neighborhood_watch' && (
         <NeighborhoodWatchView apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {sub === 'leaving_home' && (
+        <LeaveHomePanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />
       )}
 
       {toast && (
@@ -8472,6 +8477,7 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
     h(TsTripPeople,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,card:card,label:label}),
     h(TsReadinessSection,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,readiness:props.readiness,card:card,label:label}),
+    h(TsLeaveHome,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),
     // Before you go
     documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking||abroad)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
@@ -11360,6 +11366,214 @@ function TravelerProfilesPanel(props){
     }));
 }
 // ---- /TravelerProfilesPanel ----
+// ---- LuggageLeave (Packing › Luggage, Travel › Travelers › Our bags, Home Front › House › Leaving home, issues #230 #231) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Luggage advice at the top of a trip's Packing (which bags, about-weights, the airline box, what
+// goes in each bag), the "Our bags" list, the leaving-home templates with "Heading out", and each
+// trip's "Before you head out" checklist. Ticks are shared by both dashboards. lb by default.
+var LU_C={card:'#0d1526',deep:'#0a1220',line:'#1e2a44',edge:'#2a3f6f',text:'#dde1f0',mute:'#9aa8c8',faint:'#7f8db0',gold:'#c9a84c',goldT:'#e3c46a',blue:'#8ab4f8',green:'#4ade80',amber:'#fbbf24',red:'#f87171'};
+var LU_KIND={checked:['#2a2200','#fbbf24','Checked'],'carry-on':['#13203a','#8ab4f8','Carry-on'],personal:['#14301f','#4ade80','Personal item']};
+var LU_TONE={ok:LU_C.green,near:LU_C.amber,over:LU_C.red};
+function luUnitGet_(){try{return window.localStorage.getItem('vera_lu_unit')==='kg'?'kg':'lb';}catch(e){return 'lb';}}
+function luUnitSet_(u){try{window.localStorage.setItem('vera_lu_unit',u);}catch(e){}}
+function luW_(lb,unit){var n=Number(lb)||0;return unit==='kg'?Math.round(n/2.20462*10)/10:Math.round(n*10)/10;}
+function luWeightText_(b,unit){return 'about '+(b.limitLb?Math.round(luW_(b.weightLb,unit))+' of '+Math.round(luW_(b.limitLb,unit)):luW_(b.weightLb,unit))+' '+unit;}
+function luName_(name,who){return who&&String(name).toLowerCase()===String(who).toLowerCase()?'You':name;}
+var LU_BTN={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:13,cursor:'pointer'};
+var LU_INPUT={minHeight:44,borderRadius:10,background:'#0a1220',border:'1px solid #2a3f6f',color:'#dde1f0',padding:'0 12px',fontSize:14,boxSizing:'border-box',width:'100%',minWidth:0};
+function LuChip(props){var on=!!props.on;return React.createElement('button',{type:'button',className:props.className,'aria-pressed':on,'data-v':props.v,onClick:props.onClick,
+  style:{minHeight:props.small?36:40,padding:'0 12px',borderRadius:999,background:on?'#2a2410':'#0d1526',border:'1px solid '+(on?LU_C.gold:'#2a3a5a'),color:on?LU_C.goldT:LU_C.mute,fontSize:12,fontWeight:on?700:400,cursor:'pointer'}},props.children);}
+
+function LuggageCard(props){var h=React.createElement,C=LU_C;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _u=React.useState(luUnitGet_),unit=_u[0],setUnitS=_u[1];
+  var _s=React.useState(false),split=_s[0],setSplit=_s[1];var _b=React.useState(false),bagsOpen=_b[0],setBagsOpen=_b[1];
+  var _p=React.useState(null),person=_p[0],setPerson=_p[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'luggage',tripKey:props.tripKey,startDate:props.startDate||'',endDate:props.endDate||''}).then(function(r){setD(r);}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(load,[props.apiUrl,props.apiToken,props.tripKey,props.refreshKey]);
+  var setUnit=function(u){luUnitSet_(u);setUnitS(u);};
+  var card={background:C.card,border:'1px solid '+C.line,borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:12,marginBottom:12,boxSizing:'border-box',maxWidth:'100%'};
+  if(!d)return h('section',{className:'lu-card','aria-label':'Luggage',style:card},h('span',{style:{fontSize:13,color:C.mute}},'Working out the luggage…'));
+  if(d.ok===false)return h('section',{className:'lu-card','aria-label':'Luggage',style:card},h('span',{className:'lu-error',style:{fontSize:13,color:C.red}},'Couldn’t work out the luggage: '+d.error));
+  var people=d.people||[];var cur=people.filter(function(p){return p.name===person;})[0]||people[0];
+  var move=function(item,bag){setMsg('');apiPost(props.apiUrl,props.apiToken,{action:'lu_move',tripKey:props.tripKey,item:item,bag:bag}).then(function(){load();}).catch(function(e){setMsg(e.message);});};
+  var head=[d.nights?d.nights+' night'+(d.nights===1?'':'s'):'',d.laundry?'laundry':'',d.road?'road trip':''].filter(Boolean).join(' · ');
+  var units=h('div',{role:'group','aria-label':'Weight units',style:{display:'flex',gap:6,alignSelf:'flex-end'}},
+    ['lb','kg'].map(function(u){return h(LuChip,{key:u,className:'lu-unit',v:u,small:true,on:unit===u,onClick:function(){setUnit(u);}},u);}));
+  var bagRow=function(b){var pct=b.limitLb?Math.min(100,Math.round(b.weightLb/b.limitLb*100)):Math.min(100,Math.round(b.weightLb/30*100));var tone=LU_TONE[b.state]||C.green;
+    return h('div',{key:b.id,className:'lu-bag','data-state':b.state,style:{display:'flex',flexDirection:'column',gap:4}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:13,color:C.text}},h('span',{style:{minWidth:0}},b.name,h('span',{style:{color:C.mute}},' · '+(LU_KIND[b.type]||['','',b.type])[2].toLowerCase())),
+        h('span',{className:'lu-weight',style:{color:tone,flexShrink:0}},luWeightText_(b,unit)+(b.state==='over'?' · over':''))),
+      h('div',{role:'img','aria-label':luWeightText_(b,unit),style:{height:6,borderRadius:3,background:'#16213a',overflow:'hidden'}},h('div',{style:{width:pct+'%',height:'100%',background:tone}})));};
+  var main=h(React.Fragment,null,
+    people.map(function(p){return h('div',{key:p.key,className:'lu-person','data-name':p.name,style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:12,background:C.deep,border:'1px solid '+C.line}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:15,fontWeight:700,color:C.text}},luName_(p.name,props.who)),
+        h('span',{style:{fontSize:12,color:C.mute}},p.count+' item'+(p.count===1?'':'s')+(p.gifts?' · '+p.gifts+' gift'+(p.gifts===1?'':'s'):''))),
+      p.bags.map(bagRow),
+      h('span',{className:'lu-why',style:{fontSize:12,color:C.mute,lineHeight:1.5}},p.why));}),
+    d.road?h('span',{className:'lu-road',style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Road trip: the bags, without airline rules.')
+      :d.airline?h('div',{className:'lu-air',style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:12,background:'#0f1a2e',border:'1px solid #24386a'}},
+        h('span',{style:{fontSize:13,fontWeight:700,color:C.text}},'What’s free'),
+        d.airline.none?h('span',{style:{fontSize:12,color:C.mute}},d.airline.note):null,
+        (d.airline.lines||[]).map(function(l,i){return h('span',{key:i,className:'lu-air-line','data-tone':l.tone,style:{fontSize:12,lineHeight:1.5,color:l.tone==='warn'?C.amber:l.tone==='good'?'#a7f3c8':'#c4d4f4'}},l.text);}),
+        d.airline.none?null:h('span',{className:'lu-limits',style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Checked limit '+Math.round(luW_(d.airline.checkedLimitLb,unit))+' '+unit+(d.airline.carryLimitLb?'; carry-on about '+Math.round(luW_(d.airline.carryLimitLb,unit))+' '+unit+' on this airline':'')+'. About only: check before you fly.')):null,
+    h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'Weights are rough, from typical items (shoes about '+luW_(2,unit)+' '+unit+', jeans about '+luW_(1.5,unit)+' '+unit+') plus each bag’s own weight.'+(d.bagsListed?'':' List your bags under Our bags and VERA uses them by name.')));
+  var splitView=cur?h('div',{className:'lu-split',style:{display:'flex',flexDirection:'column',gap:10}},
+    people.length>1?h('div',{role:'group','aria-label':'Whose bags',style:{display:'flex',gap:6,flexWrap:'wrap'}},people.map(function(p){return h(LuChip,{key:p.key,className:'lu-split-person',v:p.name,on:p===cur,onClick:function(){setPerson(p.name);}},luName_(p.name,props.who));})):null,
+    cur.bags.map(function(b){return h('section',{key:b.id,className:'lu-split-bag','data-bag':b.id,style:{background:C.deep,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:6}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700,color:C.text}},b.name+' ('+(LU_KIND[b.type]||['','',b.type])[2].toLowerCase()+')'),h('span',{style:{fontSize:12,color:LU_TONE[b.state]||C.mute}},luWeightText_(b,unit))),
+      b.items.length?null:h('span',{style:{fontSize:12,color:C.faint}},'Nothing here yet.'),
+      b.items.map(function(i){return h('div',{key:i.key,className:'lu-split-item','data-key':i.key,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0',borderTop:'1px solid #16213a'}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:C.text,overflowWrap:'anywhere'}},i.item),i.why?h('span',{style:{fontSize:11,color:i.tone==='warn'?C.amber:C.blue}},i.why):null),
+        h('label',{style:{fontSize:11,color:C.mute,display:'flex',flexDirection:'column',gap:2,flexShrink:0}},'Move to',
+          h('select',{className:'lu-move','data-item':i.key,value:b.id,onChange:function(e){move(i.key,e.target.value);},style:{minHeight:36,borderRadius:8,background:C.deep,border:'1px solid '+C.edge,color:C.text,fontSize:12,maxWidth:150}},
+            cur.bags.map(function(o){return h('option',{key:o.id,value:o.id},o.name);}),h('option',{value:''},'VERA’s pick'))));}));}),
+    h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'Rules VERA uses: liquids over 100 ml and fragile gifts go checked; passports, meds, chargers and batteries and anything valuable stay with you.')):null;
+  return h('section',{className:'lu-card','aria-label':'Luggage',style:card},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},split?'What goes in each bag':'Luggage'),head?h('span',{style:{fontSize:12,color:C.mute}},head):null),
+    units,
+    msg?h('span',{role:'status',style:{fontSize:12,color:C.red}},msg):null,
+    split?splitView:main,
+    bagsOpen?h(OurBagsPanel,{apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,embedded:true,onChanged:load}):null,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'lu-split-open','aria-expanded':split,onClick:function(){setSplit(!split);},style:Object.assign({},LU_BTN,{background:C.gold,border:'none',color:'#14120a',fontWeight:700})},split?'Back to the bags':'See what goes in each bag'),
+      h('button',{type:'button',className:'lu-bags-open','aria-expanded':bagsOpen,onClick:function(){setBagsOpen(!bagsOpen);},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue})},bagsOpen?'Close Our bags':'Our bags')));}
+
+function OurBagsPanel(props){var h=React.createElement,C=LU_C;
+  var _d=React.useState(null),bags=_d[0],setBags=_d[1];var _f=React.useState(null),form=_f[0],setForm=_f[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];var _u=React.useState(luUnitGet_),unit=_u[0];
+  var _bz=React.useState(false),busy=_bz[0],setBusy=_bz[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'lu_bags'}).then(function(r){setBags(r.bags||[]);}).catch(function(e){setMsg(e.message);setBags([]);});};
+  React.useEffect(load,[props.apiUrl,props.apiToken]);
+  var blank={id:'',name:'',type:'checked',size:'',weight:'',whose:'Shared'};
+  var f=form||blank;var set=function(k,v){var n=Object.assign({},f);n[k]=v;setForm(n);};
+  var save=function(){setBusy(true);setMsg('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'lu_bag_save',unit:unit},f)).then(function(r){setBusy(false);setBags(r.bags||[]);setForm(null);setMsg('Saved.');if(props.onChanged)props.onChanged();}).catch(function(e){setBusy(false);setMsg(e.message);});};
+  var del=function(b){if(!window.confirm('Remove '+b.name+' from Our bags?'))return;apiPost(props.apiUrl,props.apiToken,{action:'lu_bag_delete',id:b.id}).then(function(r){setBags(r.bags||[]);if(props.onChanged)props.onChanged();}).catch(function(e){setMsg(e.message);});};
+  var owners=['Shared','Ahmed','Victoria'];
+  var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute,minWidth:0};
+  return h('div',{className:'ob-panel',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:720}},
+    props.embedded?h('h3',{style:{margin:0,fontSize:15,fontWeight:700,color:C.text}},'Our bags'):h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:20,fontWeight:700,color:C.text}},'Our bags'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},'List them once. VERA names the real bags in each trip’s advice and counts their own weight.')),
+    msg?h('span',{role:'status',className:'ob-msg',style:{fontSize:13,color:msg==='Saved.'?C.green:C.red}},msg):null,
+    bags===null?h('span',{style:{fontSize:13,color:C.mute}},'Loading bags…'):bags.length?null:h('span',{className:'ob-empty',style:{fontSize:13,color:C.mute}},'No bags yet. Add your first below.'),
+    (bags||[]).map(function(b){var k=LU_KIND[b.type]||LU_KIND['carry-on'];
+      return h('div',{key:b.id,className:'ob-bag','data-id':b.id,style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:3,minWidth:0}},h('span',{style:{fontSize:15,fontWeight:700,color:C.text,overflowWrap:'anywhere'}},b.name),
+          h('span',{className:'ob-meta',style:{fontSize:12,color:C.mute}},[b.size,b.emptyLb?luW_(b.emptyLb,unit)+' '+unit:'',luName_(b.whose,props.who).replace(/^Shared$/,'shared')].filter(Boolean).join(' · '))),
+        h('div',{style:{display:'flex',alignItems:'center',gap:6,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}},
+          h('span',{style:{fontSize:11,padding:'3px 8px',borderRadius:999,background:k[0],color:k[1]}},k[2]),
+          h('button',{type:'button',className:'ob-edit','aria-label':'Edit '+b.name,onClick:function(){setMsg('');setForm({id:b.id,name:b.name,type:b.type,size:b.size,weight:b.emptyLb?String(luW_(b.emptyLb,unit)):'',whose:b.whose});},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Edit'),
+          h('button',{type:'button',className:'ob-del','aria-label':'Remove '+b.name,onClick:function(){del(b);},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid #4a2020',color:C.red})},'×')));}),
+    h('section',{className:'ob-form','aria-label':f.id?'Edit a bag':'Add a bag',style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:10}},
+      h('h3',{style:{margin:0,fontSize:14,fontWeight:700,color:C.text}},f.id?'Edit '+f.name:'Add a bag'),
+      h('label',{style:lab},'Name',h('input',{className:'ob-name',value:f.name,placeholder:'e.g. Red large spinner',onChange:function(e){set('name',e.target.value);},style:LU_INPUT})),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('label',{style:lab},'Type',h('select',{className:'ob-type',value:f.type,onChange:function(e){set('type',e.target.value);},style:LU_INPUT},h('option',{value:'checked'},'Checked'),h('option',{value:'carry-on'},'Carry-on'),h('option',{value:'personal'},'Personal item'))),
+        h('label',{style:lab},'Empty weight ('+unit+')',h('input',{className:'ob-weight',value:f.weight,inputMode:'decimal',placeholder:unit==='kg'?'e.g. 4.2':'e.g. 9.3',onChange:function(e){set('weight',e.target.value);},style:LU_INPUT}))),
+      h('label',{style:lab},'Size (cm or inches, as on the tag)',h('input',{className:'ob-size',value:f.size,placeholder:'e.g. 76 × 52 × 31 cm',onChange:function(e){set('size',e.target.value);},style:LU_INPUT})),
+      h('label',{style:lab},'Whose',h('select',{className:'ob-whose',value:f.whose,onChange:function(e){set('whose',e.target.value);},style:LU_INPUT},owners.map(function(o){return h('option',{key:o,value:o},luName_(o,props.who));}))),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'ob-save',disabled:busy||!String(f.name).trim(),onClick:save,style:Object.assign({},LU_BTN,{minHeight:48,background:C.gold,border:'none',color:'#14120a',fontWeight:700,opacity:busy||!String(f.name).trim()?0.6:1})},busy?'Saving…':'Save bag'),
+        f.id?h('button',{type:'button',className:'ob-cancel',onClick:function(){setForm(null);},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.mute})},'Cancel'):null)));}
+
+// The leaving-home list for one trip or one time away. target: {run} or {tripKey, startDate, endDate}.
+function LhChecklist(props){var h=React.createElement,C=LU_C;var v=props.view;
+  var _t=React.useState(''),text=_t[0],setText=_t[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];var _l=React.useState(null),leave=_l[0],setLeave=_l[1];
+  var post=function(action,extra){setMsg('');return apiPost(props.apiUrl,props.apiToken,Object.assign({action:action,by:props.who||''},props.target,extra)).then(function(r){props.onView(r);return r;}).catch(function(e){setMsg(e.message);});};
+  var pct=v.total?Math.round(v.done/v.total*100):0;var hh=v.household||[];
+  return h('div',{className:'lh-check',style:{display:'flex',flexDirection:'column',gap:10}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:13,color:C.mute}},v.left?v.left+' left':'All done'),h('span',{className:'lh-progress',style:{fontSize:13,color:C.goldT,fontWeight:700}},v.done+' of '+v.total)),
+    h('div',{role:'progressbar','aria-valuemin':0,'aria-valuemax':v.total,'aria-valuenow':v.done,'aria-label':'Done',style:{height:8,borderRadius:4,background:'#0a1530',overflow:'hidden'}},h('div',{style:{width:pct+'%',height:'100%',background:C.gold}})),
+    h('span',{className:'lh-why',style:{fontSize:12,color:'#9aa9cc',lineHeight:1.5}},v.why),
+    msg?h('span',{role:'status',className:'lh-msg',style:{fontSize:12,color:C.red}},msg):null,
+    v.items.map(function(i){return h('div',{key:i.key,className:'lh-item','data-key':i.key,'data-done':i.done?'1':'0',style:{display:'flex',alignItems:'center',gap:8,borderTop:'1px solid #16213a'}},
+      h('label',{style:{minHeight:48,display:'flex',alignItems:'center',gap:12,padding:'4px 0',flex:1,minWidth:0,cursor:'pointer'}},
+        h('input',{type:'checkbox',className:'lh-box',checked:i.done,onChange:function(e){post('lh_tick',{key:i.key,done:e.target.checked});},style:{width:22,height:22,accentColor:C.gold,flexShrink:0}}),
+        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:i.done?C.faint:C.text,overflowWrap:'anywhere'}},i.text),
+          h('span',{className:'lh-meta',style:{fontSize:11,color:C.faint}},i.groupLabel+(i.done&&i.by?' · ticked by '+luName_(i.by,props.who)+(i.at?' · '+i.at:''):'')))),
+      i.oneOff?h('button',{type:'button',className:'lh-oneoff-del','aria-label':'Remove '+i.text,onClick:function(){post('lh_oneoff',{remove:i.key});},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid #4a2020',color:C.red})},'×'):null);}),
+    h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'Shared: a tick on either dashboard shows on both. Add a one-off item for '+(v.run.kind==='away'?'this time away':'this trip')+' only:'),
+    h('div',{style:{display:'flex',gap:8}},h('input',{className:'lh-oneoff-input','aria-label':'One-off item',value:text,placeholder:'e.g. Leave a key with Sam',onChange:function(e){setText(e.target.value);},style:Object.assign({},LU_INPUT,{flex:1,width:'auto'})}),
+      h('button',{type:'button',className:'lh-oneoff-add',disabled:!text.trim(),onClick:function(){post('lh_oneoff',{text:text}).then(function(r){if(r)setText('');});},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,flexShrink:0})},'Add')),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8,paddingTop:4}},
+      h('label',{style:{display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute}},'Heading out at'+(v.run.defaultLeave?' (2 hours before the first flight; change it if you like)':''),
+        h('div',{style:{display:'flex',gap:8}},h('input',{type:'datetime-local',className:'lh-leave',value:leave===null?v.run.leaveAt||'':leave,onChange:function(e){setLeave(e.target.value);},style:Object.assign({},LU_INPUT,{flex:1,width:'auto'})}),
+          h('button',{type:'button',className:'lh-leave-save',disabled:leave===null||leave===v.run.leaveAt,onClick:function(){post('lh_run_set',{leaveAt:leave}).then(function(r){if(r)setLeave(null);});},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,flexShrink:0})},'Save'))),
+      h('fieldset',{style:{border:'none',padding:0,margin:0,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},h('legend',{style:{fontSize:12,color:C.mute,marginBottom:6}},'Who’s leaving'),
+        hh.map(function(n){var on=(v.run.leaving||[]).some(function(x){return String(x).toLowerCase()===n.toLowerCase();});
+          return h(LuChip,{key:n,className:'lh-leaving',v:n,on:on,onClick:function(){var next=on?(v.run.leaving||[]).filter(function(x){return String(x).toLowerCase()!==n.toLowerCase();}):(v.run.leaving||[]).concat([n]);post('lh_run_set',{leaving:next});}},luName_(n,props.who));})),
+      h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'A message goes at that time if anything’s left (System › Notifications › Leaving Home). Nothing goes once everything is ticked.')));}
+
+// The trip's "Before you head out", inside the trip summary.
+function TsLeaveHome(props){var h=React.createElement;var trip=props.trip||{};var tk=trip.tripKey||(trip.startDate+'|'+trip.label);
+  var _v=React.useState(null),v=_v[0],setV=_v[1];
+  React.useEffect(function(){if(!props.apiUrl||!trip.startDate)return;apiGet(props.apiUrl,props.apiToken,{action:'lh_trip',tripKey:tk,startDate:trip.startDate,endDate:trip.endDate||trip.startDate}).then(setV).catch(function(e){setV({ok:false,error:e.message});});},[props.apiUrl,tk]);
+  if(!v||v.ok===false||!v.total&&!(v.items||[]).length)return null;
+  return h('section',{style:Object.assign({},props.card,{background:'#0d1b3e',border:'1px solid #1e3060'}),'aria-label':'Before you head out',className:'ts-leavehome'},
+    h('span',{style:props.label},'Before you head out'),
+    h(LhChecklist,{view:v,who:props.who,apiUrl:props.apiUrl,apiToken:props.apiToken,target:{tripKey:tk,startDate:trip.startDate,endDate:trip.endDate||trip.startDate},onView:setV}));}
+
+function lhAppliesC_(g,month,nights,empty){if(g==='always')return true;if(g==='summer')return month>=5&&month<=9;if(g==='winter')return month>=11||(month>=1&&month<=3);if(g==='nights3')return nights>=3;if(g==='nights7')return nights>=7;if(g==='empty')return !!empty;return false;}
+
+function LeaveHomePanel(props){var h=React.createElement,C=LU_C;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _h=React.useState(null),home=_h[0],setHome=_h[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var _n=React.useState({text:'',group:'always',id:''}),add=_n[0],setAdd=_n[1];var _nh=React.useState(null),newHome=_nh[0],setNewHome=_nh[1];
+  var _a=React.useState(null),away=_a[0],setAway=_a[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'lh_get'}).then(function(r){setD(r);}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(load,[props.apiUrl,props.apiToken]);
+  if(!d)return h('div',{className:'lh-panel',style:{color:C.mute,fontSize:13,padding:12}},'Loading the leaving-home lists…');
+  if(d.ok===false)return h('div',{className:'lh-panel',style:{color:C.red,fontSize:13,padding:12}},'Couldn’t load the leaving-home lists: '+d.error);
+  var homes=d.homes.slice();if(newHome&&!homes.some(function(x){return x.toLowerCase()===newHome.toLowerCase();}))homes.push(newHome);
+  var cur=home&&homes.indexOf(home)!==-1?home:homes[0];
+  var items=(d.template||[]).filter(function(t){return t.home.toLowerCase()===cur.toLowerCase();});
+  var hh=d.household||[];
+  var a=away||{leaveAt:'',nights:'2',home:cur,leaving:props.who?[props.who]:hh.slice()};
+  var setA=function(k,v){var n=Object.assign({},a);n[k]=v;setAway(n);};
+  var month=Number(String(a.leaveAt).slice(5,7))||0,empty=hh.every(function(x){return a.leaving.indexOf(x)!==-1;});
+  var count=(d.template||[]).filter(function(t){return t.home.toLowerCase()===String(a.home||cur).toLowerCase()&&lhAppliesC_(t.group,month,Number(a.nights)||0,empty);}).length;
+  var saveItem=function(){setMsg('');apiPost(props.apiUrl,props.apiToken,{action:'lh_item_save',id:add.id,home:cur,group:add.group,item:add.text,by:props.who||''}).then(function(r){setD(Object.assign({},d,{template:r.template,homes:r.homes}));setAdd({text:'',group:add.group,id:''});setNewHome(null);}).catch(function(e){setMsg(e.message);});};
+  var delItem=function(t){if(!window.confirm('Remove “'+t.item+'” from the '+cur+' list?'))return;apiPost(props.apiUrl,props.apiToken,{action:'lh_item_delete',id:t.id}).then(function(r){setD(Object.assign({},d,{template:r.template,homes:r.homes}));}).catch(function(e){setMsg(e.message);});};
+  var go=function(){setMsg('');apiPost(props.apiUrl,props.apiToken,{action:'lh_away',leaveAt:a.leaveAt,nights:a.nights,home:a.home||cur,leaving:a.leaving,by:props.who||''}).then(function(){setAway(null);load();}).catch(function(e){setMsg(e.message);});};
+  var removeAway=function(v){if(!window.confirm('Remove this Heading out list?'))return;apiPost(props.apiUrl,props.apiToken,{action:'lh_away_delete',id:v.run.id}).then(load).catch(function(e){setMsg(e.message);});};
+  var card={background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8};
+  var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute,minWidth:0};
+  return h('div',{className:'lh-panel',style:{display:'flex',flexDirection:'column',gap:14,maxWidth:720}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:20,fontWeight:700,color:C.text}},'Leaving home'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},'One list per home. Each trip gets the items that fit: the season, how long you’re away, and whether someone stays home. Ahmed and Victoria can both edit it.')),
+    msg?h('span',{role:'status',className:'lh-panel-msg',style:{fontSize:13,color:C.red}},msg):null,
+    h('div',{role:'group','aria-label':'Home',style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
+      homes.map(function(x){return h(LuChip,{key:x,className:'lh-home',v:x,on:x===cur,onClick:function(){setHome(x);}},x);}),
+      newHome===null?h('button',{type:'button',className:'lh-home-new',onClick:function(){setNewHome('');},style:Object.assign({},LU_BTN,{minHeight:40,background:'transparent',border:'1px dashed #2a3a5a',color:C.blue,borderRadius:999})},'+ Add a home')
+        :h('input',{className:'lh-home-name','aria-label':'New home name',value:newHome,placeholder:'e.g. Beach flat',onChange:function(e){setNewHome(e.target.value);},onBlur:function(){if(newHome.trim())setHome(newHome.trim());},style:Object.assign({},LU_INPUT,{width:180})})),
+    (d.groups||[]).map(function(g){var list=items.filter(function(t){return t.group===g.id;});
+      return h('section',{key:g.id,className:'lh-group','data-group':g.id,style:card},
+        h('h3',{style:{margin:0,fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.mute,fontWeight:700}},g.label),
+        list.length?null:h('span',{style:{fontSize:12,color:C.faint}},'Nothing here.'),
+        list.map(function(t){return h('div',{key:t.id,className:'lh-tpl','data-id':t.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,minHeight:44,borderTop:'1px solid #16213a'}},
+          h('span',{style:{fontSize:14,color:C.text,minWidth:0,overflowWrap:'anywhere'}},t.item),
+          h('div',{style:{display:'flex',gap:6,flexShrink:0}},
+            h('button',{type:'button',className:'lh-tpl-edit','aria-label':'Edit '+t.item,onClick:function(){setAdd({text:t.item,group:t.group,id:t.id});},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Edit'),
+            h('button',{type:'button',className:'lh-tpl-del','aria-label':'Remove '+t.item,onClick:function(){delItem(t);},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid #4a2020',color:C.red})},'×')));}));}),
+    h('section',{className:'lh-add','aria-label':add.id?'Edit an item':'Add an item',style:card},
+      h('h3',{style:{margin:0,fontSize:14,fontWeight:700,color:C.text}},add.id?'Edit the item':'Add to the '+cur+' list'),
+      h('label',{style:lab},'What to do',h('input',{className:'lh-add-item',value:add.text,placeholder:'e.g. Turn off the water heater',onChange:function(e){setAdd(Object.assign({},add,{text:e.target.value}));},style:LU_INPUT})),
+      h('label',{style:lab},'When',h('select',{className:'lh-add-group',value:add.group,onChange:function(e){setAdd(Object.assign({},add,{group:e.target.value}));},style:LU_INPUT},(d.groups||[]).map(function(g){return h('option',{key:g.id,value:g.id},g.label);}))),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'lh-add-btn',disabled:!add.text.trim(),onClick:saveItem,style:Object.assign({},LU_BTN,{background:C.gold,border:'none',color:'#14120a',fontWeight:700,opacity:add.text.trim()?1:0.6})},add.id?'Save':'Add'),
+        add.id?h('button',{type:'button',onClick:function(){setAdd({text:'',group:add.group,id:''});},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.mute})},'Cancel'):null)),
+    h('section',{className:'lh-away-form','aria-label':'Heading out',style:Object.assign({},card,{border:'1px solid '+C.gold,borderRadius:14,padding:14,gap:12})},
+      h('h3',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Heading out'),
+      h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'For time away that isn’t a trip on the calendar: a weekend at a friend’s, a hospital stay.'),
+      h('label',{style:lab},'Leaving',h('input',{type:'datetime-local',className:'lh-away-at',value:a.leaveAt,onChange:function(e){setA('leaveAt',e.target.value);},style:LU_INPUT})),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('label',{style:lab},'Nights away',h('input',{className:'lh-away-nights',value:a.nights,inputMode:'numeric',onChange:function(e){setA('nights',e.target.value.replace(/[^0-9]/g,''));},style:LU_INPUT})),
+        h('label',{style:lab},'From',h('select',{className:'lh-away-home',value:a.home||cur,onChange:function(e){setA('home',e.target.value);},style:LU_INPUT},d.homes.map(function(x){return h('option',{key:x,value:x},x);})))),
+      h('fieldset',{style:{border:'none',padding:0,margin:0,display:'flex',flexDirection:'column',gap:6}},h('legend',{style:{fontSize:12,color:C.mute,marginBottom:6}},'Who’s leaving'),
+        hh.map(function(n){var on=a.leaving.indexOf(n)!==-1;return h('label',{key:n,style:{minHeight:40,display:'flex',alignItems:'center',gap:10,fontSize:14,color:C.text}},
+          h('input',{type:'checkbox',className:'lh-away-who','data-name':n,checked:on,onChange:function(){setA('leaving',on?a.leaving.filter(function(x){return x!==n;}):a.leaving.concat([n]));},style:{width:20,height:20,accentColor:C.gold}}),luName_(n,props.who),
+          !on?h('span',{style:{fontSize:12,color:C.mute}},'(stays: empty-house items skipped)'):null);})),
+      h('button',{type:'button',className:'lh-away-go',disabled:!a.leaveAt||!a.leaving.length,onClick:go,style:Object.assign({},LU_BTN,{minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontWeight:700,fontSize:14,opacity:!a.leaveAt||!a.leaving.length?0.6:1})},'Make my list ('+count+' thing'+(count===1?'':'s')+')')),
+    (d.away||[]).map(function(v){return h('section',{key:v.run.id,className:'lh-away','data-id':v.run.id,'aria-label':'Heading out list',style:Object.assign({},card,{background:'#0d1b3e',border:'1px solid #1e3060'})},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('h3',{style:{margin:0,fontSize:16,fontWeight:700,color:C.text}},'Heading out'),
+        h('button',{type:'button',className:'lh-away-del',onClick:function(){removeAway(v);},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid #4a2020',color:C.red})},'Remove')),
+      h(LhChecklist,{view:v,who:props.who,apiUrl:props.apiUrl,apiToken:props.apiToken,target:{run:v.run.id},onView:function(nv){setD(Object.assign({},d,{away:(d.away||[]).map(function(x){return x.run.id===nv.run.id?nv:x;})}));}}));}));}
+// ---- /LuggageLeave ----
 // ---- TripGiftsPanel (Travel › Gifts, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // A trip's gifts in three groups (for our hosts: bought before going; souvenirs; for us), each moving
 // To buy → Bought → Packed with one tap; the trip's gift budget; ideas for the place; a warning when the
@@ -11917,6 +12131,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
       )}
 
       {travSub === 'profiles' && <TravelerProfilesPanel apiUrl={apiUrl} apiToken={apiToken} />}
+      {travSub === 'bags' && <OurBagsPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />}
 
       {travSub === 'ideas' && <TripIdeasView apiUrl={apiUrl} apiToken={apiToken} openIdea={openIdea} />}
       {travSub === 'aria' && <AriaView apiUrl={apiUrl} apiToken={apiToken} />}
@@ -12036,19 +12251,21 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                   ) : activeTab === 'budget' ? (
                     <TripBudgetPanel trips={[t]} focusTripKey={tripKey} apiUrl={apiUrl} apiToken={apiToken} />
                   ) : activeTab === 'packing' ? (
+                    <><LuggageCard apiUrl={apiUrl} apiToken={apiToken} tripKey={tripKey} startDate={t.startDate} endDate={t.endDate} who="Victoria"
+                      refreshKey={((packingData[tripKey] && packingData[tripKey].items) || []).length} />
                     <PackingLitePanel
                       tripKey={tripKey}
                       endDate={t.endDate}
                       packingData={packingData[tripKey]}
                       apiUrl={apiUrl} apiToken={apiToken}
                       onReload={()=>loadPacking(tripKey)}
-                    />
+                    /></>
                   ) : isItinLoading ? (
                     <div style={{padding:'24px 0',textAlign:'center',color:'#6b7fa8',fontSize:13}}>
                       Loading itinerary…
                     </div>
                   ) : activeTab === 'summary' ? (
-                    <TripSummaryView trip={{...t,tripKey}} items={filteredItin.items} legs={travelLegs[tripKey]} meta={meta||{}} apiUrl={apiUrl} apiToken={apiToken}
+                    <TripSummaryView trip={{...t,tripKey}} who="Victoria" items={filteredItin.items} legs={travelLegs[tripKey]} meta={meta||{}} apiUrl={apiUrl} apiToken={apiToken}
                       insights={flightInsights[tripKey]} onGoToPacking={()=>setTripTab(tripKey,'packing')}
                       onOpenDay={d=>{setTripTab(tripKey,'agenda');setTimeout(()=>{const el=document.getElementById(tsDayId_(tripKey,d));if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},80);}} />
                   ) : (
@@ -13154,7 +13371,7 @@ function AddressBookContactModal({ form, setForm, onSave, busy }) {
 // doesn't offer is left out, and a group with none left is hidden.
 var VN_GROUPS={
   travel:[{id:'plan',label:'Plan',icon:'🗺️',items:['ideas','aria']},{id:'trips',label:'Trips',icon:'✈️',items:['trips','itinerary']},
-    {id:'places',label:'Places',icon:'🌍',items:['countries','bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','gifts']}],
+    {id:'places',label:'Places',icon:'🌍',items:['countries','bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags','gifts']}],
   career:[{id:'direction',label:'Direction',icon:'🧭',items:['northstar','readiness']},{id:'proof',label:'Proof',icon:'📎',items:['evidence','credentials']},
     {id:'search',label:'Search',icon:'🔍',items:['brand','market']},{id:'agents',label:'Agents',icon:'🔁',items:['pipeline','exchange']},{id:'network',label:'Network',icon:'🤝',items:['network']}],
   health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['prescriptions','appointments']},
@@ -13167,7 +13384,7 @@ var VN_GROUPS={
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
   // dashboard-lite (Victoria): only what she uses, one tap down
   lite_shopping:[{id:'lists',label:'Lists',icon:'🛒',items:['lists']},{id:'cheat',label:'Which card',icon:'💳',items:['cheat']},{id:'coupons',label:'Coupons',icon:'🎟️',items:['coupons']}],
-  lite_travel:[{id:'trips',label:'My Trips',icon:'✈️',items:['trips']},{id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']}],
+  lite_travel:[{id:'trips',label:'My Trips',icon:'✈️',items:['trips']},{id:'bucketlist',label:'Bucket List',icon:'🪣',items:['bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags']},{id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']}],
   lite_family:[{id:'planning',label:'Planning',icon:'👶',items:['planning']},{id:'health',label:'Health',icon:'💊',items:['prescriptions']},
     {id:'gifts',label:'Gifts',icon:'🎄',items:['wishlists']},{id:'contacts',label:'Contacts',icon:'📒',items:['contacts']}]};
 // Pure: the groups that have subtabs on offer, each with those subtabs in group order ({id,label} from tabs).
@@ -13214,11 +13431,11 @@ const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 
   wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
 const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '💳 Card cheat sheet' }, { id: 'coupons', label: '🎟️ Coupons' }];
 const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
-const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'bucketlist', label: '🪣 Bucket List' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'gifts', label: '🎁 Gifts' }];
+const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'bucketlist', label: '🪣 Bucket List' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'bags', label: '🧳 Our bags' }, { id: 'gifts', label: '🎁 Gifts' }];
 // Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
 const HF_GROUPS_LITE = [
   { id: 'kitchen', label: 'Kitchen', icon: '🍽️', items: ['meal_plan', 'recipes', 'pantry', 'takeouts'] },
-  { id: 'house',   label: 'House',   icon: '🏠', items: ['household', 'steward', 'vehicles', 'neighborhood_watch'] },
+  { id: 'house',   label: 'House',   icon: '🏠', items: ['household', 'steward', 'vehicles', 'neighborhood_watch', 'leaving_home'] },
   { id: 'chores',  label: 'Chores',  icon: '🧹', items: ['chores', 'chores_for_others'] },
   { id: 'hosting', label: 'Hosting', icon: '🎉', items: ['guests', 'gatherings', 'guide', 'resell'] }];
 // Money, her way: what this month costs, what we're saving toward, and the cards.

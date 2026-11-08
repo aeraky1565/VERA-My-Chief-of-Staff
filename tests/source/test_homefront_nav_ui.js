@@ -119,7 +119,7 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
         s = await state();
       } else check(L + ': five groups', s.groups.map(g => g.replace(/^\S+\s/, '')).join() === 'House,Chores,Kitchen,Hosting,Savings', JSON.stringify(s.groups));
       check(L + ': it opens on Household, in House', /House/.test(s.on) && /Household/.test(s.active)
-        && s.tabs.join('|') === '🏡 Household|🛡️ Warranties & Service|🚗 Vehicles|🏘 Neighborhood', JSON.stringify(s.tabs));
+        && s.tabs.join('|') === '🏡 Household|🛡️ Warranties & Service|🚗 Vehicles|🏘 Neighborhood|🚪 Leaving home', JSON.stringify(s.tabs));
       check(L + ': …showing the household cheat sheet', /Example ISP/.test(s.text), s.text.slice(0, 300));
       const cuText = await page.$eval('#hfnprobe .hf-coming', n => n.innerText).catch(() => '');
       check(L + ': Coming up sits above the cheat sheet, overdue marked', /COMING UP ACROSS HOME FRONT/.test(cuText) && /Replace HVAC filter · Overdue since 2026-10-02[\s\S]*OVERDUE/.test(cuText) && /Tacos · Dinner tonight/.test(cuText), cuText);

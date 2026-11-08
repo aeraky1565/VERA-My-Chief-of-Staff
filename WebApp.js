@@ -426,6 +426,10 @@ function doGet(e) {
       case 'tp_get':                return jsonOut_(webTpGet_());
       case 'te_get':                return jsonOut_(webTeGet_());
       case 'te_trip':               return jsonOut_(webTeTrip_(e.parameter));
+      case 'luggage':               return jsonOut_(webLuggage_(e.parameter));
+      case 'lu_bags':               return jsonOut_(webLuBags_());
+      case 'lh_get':                return jsonOut_(webLhGet_());
+      case 'lh_trip':               return jsonOut_(webLhTrip_(e.parameter));
       case 'bucket_facts':          return jsonOut_(webBucketFacts_(e.parameter));
       case 'trip_readiness':        return jsonOut_(webTripReadiness_(e.parameter));
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
@@ -673,6 +677,16 @@ function doPost(e) {
       case 'tp_save':                    return jsonOut_(webTpSave_(body));
       case 'tp_delete':                  return jsonOut_(webTpDelete_(body));
       case 'te_set':                     return jsonOut_(webTeSet_(body));
+      case 'lu_bag_save':                return jsonOut_(webLuBagSave_(body));
+      case 'lu_bag_delete':              return jsonOut_(webLuBagDelete_(body));
+      case 'lu_move':                    return jsonOut_(webLuMove_(body));
+      case 'lh_item_save':               return jsonOut_(webLhItemSave_(body));
+      case 'lh_item_delete':             return jsonOut_(webLhItemDelete_(body));
+      case 'lh_tick':                    return jsonOut_(webLhTick_(body));
+      case 'lh_oneoff':                  return jsonOut_(webLhOneOff_(body));
+      case 'lh_run_set':                 return jsonOut_(webLhRunSet_(body));
+      case 'lh_away':                    return jsonOut_(webLhAway_(body));
+      case 'lh_away_delete':             return jsonOut_(webLhAwayDelete_(body));
       case 'te_legacy':                  return jsonOut_(webTeLegacy_(body));
       case 'bucket_facts_set':           return jsonOut_(webBucketFactsSet_(body));
       case 'trip_readiness_pack':        return jsonOut_(webTripReadinessPack_(body));

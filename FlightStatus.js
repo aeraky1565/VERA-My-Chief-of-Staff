@@ -354,6 +354,8 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
   var _fsStart = Date.now();
   var checked = 0, skipped = 0, errors = 0;
+  // Leaving home (#231): the heading-out message rides this 15-minute trigger. Cheap when nothing is due.
+  if (!targetTripKey) { try { if (typeof lhMorningCheck_ === 'function') lhMorningCheck_(); } catch (lhErr) { Logger.log('lhMorningCheck_: ' + lhErr.message); } }
   try {
   // Short-circuit if we received a 429 recently — don't waste requests
   if (!forceRefresh && isAviationStackRateLimited_()) {
