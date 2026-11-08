@@ -39,9 +39,9 @@ check('every Finances subtab in both dashboards is in a group',
   appIds.length === 13 && liteIds.length === 9 && /phone/.test(appIds.join()) && /fin_phone/.test(liteIds.join())
   && appIds.concat(liteIds).every(x => vm.runInContext('finGroupOf_(' + JSON.stringify(x.replace(/^id: ?'|'$/g, '')) + ')', C) !== ''), appIds.length + ' ' + liteIds.length);
 check('both dashboards mount the full Groceries card on its own subtab, and keep it on Summary',
-  APP.indexOf("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1
-  && LITE.indexOf("{activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1
-  && LITE.indexOf("groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1 && APP.indexOf("groceriesCard:React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1);
+  APP.indexOf("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'})") !== -1
+  && LITE.indexOf("{activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} who=\"Victoria\" />}") !== -1
+  && LITE.indexOf("groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} who=\"Victoria\" />}") !== -1 && APP.indexOf("groceriesCard:React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'})") !== -1);
 check('the lite Finances uses FinNav, with Victoria’s own groups', LITE.indexOf('<FinNav tabs={FINANCE_TABS} groups={FIN_GROUPS_LITE} sub={activeFinanceTab} onPick={setActiveFinanceTab} />') !== -1);
 check('Victoria’s Money has no Bills, Accounts, Contracts or Tax, and Cards is in it', !/fin_billscash|fin_accounts|fin_contracts|id: 'tax'/.test((LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0]) && /\{ id: 'fin_cards',    label: '💳 Cards' \}/.test(LITE) && /activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cards" \/>/.test(LITE));
 

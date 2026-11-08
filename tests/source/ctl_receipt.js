@@ -26,7 +26,7 @@ const CONTROLS = [
   ['last week\'s check-off is filled', one(P, "if (day === today && String(c[2] || '').trim() === x.norm", "if (String(c[2] || '').trim() === x.norm")],
   ['a priced row is overwritten', one(P, " && (c[8] === '' || c[8] === null)) {", ") {")],
   ['the price is not filled in', one(P, "          if (x.price !== null) sh.getRange(i + 2, 9).setValue(x.price);\n", "")],
-  ['receipt rows are marked as check-offs', one(P, "if (fresh.length) logPurchaseItems_(fresh, 'receipt');", "if (fresh.length) logPurchaseItems_(fresh, 'checkout');")],
+  ['receipt rows are marked as check-offs', one(P, "if (fresh.length) logPurchaseItems_(fresh, 'receipt', today);", "if (fresh.length) logPurchaseItems_(fresh, 'checkout', today);")],
   ['VERA\'s markers stay on a picked line', one(P, "    var name = String((x && x.name) || '').replace(/^🤖\\s*/, '').replace(/\\s*\\(est\\..*?\\)$/, '').trim();", "    var name = String((x && x.name) || '').trim();")],
   ['no lock', one(P, "  if (!lock.tryLock(10000)) throw new Error('Purchase History is busy — try again.');\n", "")],
   ['the scan sends the list with VERA\'s markers', one(W, "String(i.text || '').replace(/^🤖\\s*/, '').replace(/\\s*\\(est\\..*?\\)$/, '').trim(); }).filter(String);", "String(i.text || '').trim(); }).filter(String);")],

@@ -440,6 +440,7 @@ function doGet(e) {
       case 'trip_readiness':        return jsonOut_(webTripReadiness_(e.parameter));
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
       case 'grocery_month':         return jsonOut_(webGroceryMonth_(e.parameter));
+      case 'gq_setup':              return jsonOut_(webGqSetup_(e.parameter));   // GroceryRun.js (#229)
       case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
       case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));
       case 'trip_aria':             return jsonOut_(webTripAria_(e.parameter));
@@ -606,6 +607,8 @@ function doPost(e) {
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
       case 'receipt_scan':               return jsonOut_(webReceiptScan_(body));
       case 'receipt_log':                return jsonOut_(webReceiptLog_(body));
+      case 'gq_scan':                    return jsonOut_(webGqScan_(body));        // GroceryRun.js (#229): a receipt, no list needed
+      case 'gq_log':                     return jsonOut_(webGqLog_(body));
       case 'meal_apply':                 return jsonOut_(webMealApply_(body));
       // Coupons (Issue #173)
       case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));

@@ -251,11 +251,12 @@ function getItemsDue_(daysAhead) {
  * items: [{ item, normalized, category, qty, unit, store, price }]
  * source: 'checkout' | 'receipt' | 'manual'
  */
-function logPurchaseItems_(items, source) {
+function logPurchaseItems_(items, source, onDate) {
   if (!items || !items.length) return { ok: false, count: 0, error: 'No items provided' };
   var sh     = getPurchaseHistorySheet_();
   var tz     = Session.getScriptTimeZone();
-  var today  = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  // onDate: the day of the purchase when it isn't today (a receipt from yesterday, #229).
+  var today  = /^\d{4}-\d{2}-\d{2}$/.test(String(onDate || '')) ? String(onDate) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
   // Pre-read existing IDs to handle same-day duplicates
   var existingIds = {};
@@ -382,7 +383,7 @@ function receiptClean_(text, listNames) {
  * the same purchase. Anything else is a new row with source 'receipt'.
  * items: [{ name, qty, price }]. Returns { ok, filled, added }.
  */
-function receiptLog_(storeName, items) {
+function receiptLog_(storeName, items, onDate) {
   var store = String(storeName || '').trim();
   var clean = (items || []).map(function(x) {
     var name = String((x && x.name) || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
@@ -396,7 +397,8 @@ function receiptLog_(storeName, items) {
   try {
     var sh = getPurchaseHistorySheet_(), last = sh.getLastRow();
     var tz = Session.getScriptTimeZone();
-    var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    // The receipt's own day when given (#229): a check-off that day is the same purchase.
+    var today = /^\d{4}-\d{2}-\d{2}$/.test(String(onDate || '')) ? String(onDate) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
     var rows = last >= 2 ? sh.getRange(2, 1, last - 1, PURCHASE_HISTORY_HEADERS.length).getValues() : [];
     var used = {}, filled = 0, fresh = [];
     clean.forEach(function(x) {
@@ -415,7 +417,7 @@ function receiptLog_(storeName, items) {
       }
       fresh.push({ item: x.name, normalized: x.norm, category: x.food ? pantryAisle_(x.name) : 'Household', qty: x.qty, unit: '', store: store, price: x.price });
     });
-    if (fresh.length) logPurchaseItems_(fresh, 'receipt');
+    if (fresh.length) logPurchaseItems_(fresh, 'receipt', today);
     return { ok: true, filled: filled, added: fresh.length };
   } finally {
     lock.releaseLock();
