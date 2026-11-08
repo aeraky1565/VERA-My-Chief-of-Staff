@@ -28,31 +28,35 @@ function engine(decisionRows) {
   vm.runInContext(fs.readFileSync(ENGINE + '/TripDecisions.js','utf8'), ctx);
   return ctx;
 }
+// Dates are relative to the day the test runs: the slot is 30 days out, so the open group is
+// never past its decide-by. (Fixed dates here turned "3 options" into "decide now" on the day.)
+const nowT = new Date();
+const TODAY = nowT.getFullYear() + '-' + String(nowT.getMonth()+1).padStart(2,'0') +
+              '-' + String(nowT.getDate()).padStart(2,'0');
+const addDays = (ymd, n) => new Date(Date.UTC(+ymd.slice(0,4), +ymd.slice(5,7) - 1, +ymd.slice(8,10)) + n * 86400000).toISOString().slice(0, 10);
+const SLOT = addDays(TODAY, 30), EARLY = addDays(SLOT, -38), DECIDED_AT = addDays(SLOT, -37), NATURAL = addDays(SLOT, -3);
 const mk = () => ([
-  { id:'A', tripKey:'T', type:'museum',   title:'Maybe the Frost Museum', date:'2026-11-08', startTime:'14:00', endTime:'16:30', location:'Biscayne', notes:'', metadata:'{}' },
-  { id:'B', tripKey:'T', type:'beach',    title:'Beach afternoon (tentative)', date:'2026-11-08', startTime:'14:30', endTime:'17:00', location:'South Beach', notes:'', metadata:'{}' },
-  { id:'C', tripKey:'T', type:'shopping', title:'Lincoln Road — option', date:'2026-11-08', startTime:'15:00', endTime:'17:00', location:'Lincoln Rd', notes:'', metadata:'{}' },
+  { id:'A', tripKey:'T', type:'museum',   title:'Maybe the Frost Museum', date:SLOT, startTime:'14:00', endTime:'16:30', location:'Biscayne', notes:'', metadata:'{}' },
+  { id:'B', tripKey:'T', type:'beach',    title:'Beach afternoon (tentative)', date:SLOT, startTime:'14:30', endTime:'17:00', location:'South Beach', notes:'', metadata:'{}' },
+  { id:'C', tripKey:'T', type:'shopping', title:'Lincoln Road — option', date:SLOT, startTime:'15:00', endTime:'17:00', location:'Lincoln Rd', notes:'', metadata:'{}' },
 ]);
 const E1 = engine([]);            const OPEN = mk();
-E1.annotateOptionGroups_(OPEN);   E1.applyTripDecisions_(OPEN, 'T', '2026-10-01');
-const E2 = engine([['TD-1','T','2026-11-08|14:00','2026-11-08','Decided','C','','2026-10-02','']]);
+E1.annotateOptionGroups_(OPEN);   E1.applyTripDecisions_(OPEN, 'T', EARLY);
+const E2 = engine([['TD-1','T',SLOT + '|14:00',SLOT,'Decided','C','',DECIDED_AT,'']]);
 const DECIDED = mk();
-E2.annotateOptionGroups_(DECIDED); E2.applyTripDecisions_(DECIDED, 'T', '2026-10-01');
+E2.annotateOptionGroups_(DECIDED); E2.applyTripDecisions_(DECIDED, 'T', EARLY);
 
 // The overdue fixture. The server clamps decide-by to [today, slotDate], so a
 // deadline that has slipped arrives at the client as TODAY, never as a past
 // date — which is why the client predicate has to be <=. Built by asking the
 // real engine for a payload whose decide-by is the browser's own today.
-const nowT = new Date();
-const TODAY = nowT.getFullYear() + '-' + String(nowT.getMonth()+1).padStart(2,'0') +
-              '-' + String(nowT.getDate()).padStart(2,'0');
 const OVERDUE = mk();
 const E3 = engine([]);
 E3.annotateOptionGroups_(OVERDUE);
-// slotDate is 2026-11-08 and the museum wants slot-3, so any "today" at or past
+// slotDate is SLOT and the museum wants slot-3, so any "today" at or past
 // that pins decide-by to today. Pass the real today so the page agrees.
-E3.applyTripDecisions_(OVERDUE, 'T', TODAY >= '2026-11-05' ? TODAY : '2026-11-05');
-if (TODAY < '2026-11-05') {
+E3.applyTripDecisions_(OVERDUE, 'T', TODAY >= NATURAL ? TODAY : NATURAL);
+if (TODAY < NATURAL) {
   // Before the natural deadline, force the clamped case the server would
   // produce on the day itself: rewrite decide-by to today, as the clamp does.
   OVERDUE.forEach(it => {

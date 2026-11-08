@@ -118,7 +118,7 @@ const CARD = "{padding:12,borderRadius:12,display:'flex',flexDirection:'column',
     await page.goto('http://probe.local/'); await page.waitForSelector(sel, { timeout: 5000 }).catch(() => {}); await wait(200);
     return { page, errs };
   };
-  const tap = async (page, sel) => { const el = await page.$(sel); if (el) await el.click(); await wait(200); return !!el; };
+  const tap = async (page, sel) => { const el = await page.$(sel); if (el) await el.click(); await wait(80); return !!el; };
   const text = (page, sel) => page.$eval(sel, n => n.innerText).catch(() => '');
   const noScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
   const buttons = page => page.$$eval('button', ns => ns.filter(n => n.offsetParent).map(n => n.getBoundingClientRect().height));

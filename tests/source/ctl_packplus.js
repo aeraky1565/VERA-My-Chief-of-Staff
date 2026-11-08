@@ -51,18 +51,12 @@ const CONTROLS = [
   ['worn on the plane stays in the bag', lu("if (moves[i.key] === 'wear') {", 'if (false) {'), SRVT],
   ['a liquid can be moved into the cabin', lu("if (cabin && (i.place === 'checked' || i.place === 'checked-soft')) return false;", ''), SRVT],
   ['packed so far counts everything', lu("var inBag = b.items.filter(function(i) { return i.status === 'bag'; });", 'var inBag = b.items;'), SRVT],
-  // screens
+  // screens (the rest are in ctl_packplus_ui.js, so each file fits the suite’s 5-minute limit)
   ['the circle doesn’t move the item', both("onClick:function(){post({action:'pk_status',id:i.id,status:st[5],by:props.who||''});}", 'onClick:function(){}')],
   ['a new count isn’t saved', both("post({action:'pk_qty',id:i.id,qty:qty.v})", "post({action:'pk_qty',id:i.id,qty:''})")],
   ['“Need to buy it” is ignored', both("status:add.buy?'buy':'ready'", "status:'ready'")],
   ['no bag chips', both("bagOf['p:'+i.id]?h('span',{className:'pk-bag'", "false?h('span',{className:'pk-bag'")],
   ['ticking in Pack a bag does nothing', both('var tick=function(i,on){if(!/^p:/.test(i.key))return;props.post(', 'var tick=function(i,on){return;props.post(')],
-  ['“wear it” does nothing', both("if(f.kind==='wear')props.post({action:'lu_move',tripKey:props.tripKey,item:f.key,bag:'wear'});", "if(f.kind==='wear'){}")],
-  ['checkout shows mid-trip', both('on=end&&today>=pkAddDays_(end,-1)&&today<=pkAddDays_(end,1);', 'on=true;')],
-  ['the review shows during the trip', both('on=end&&today>end&&today<=pkAddDays_(end,60);', 'on=true;')],
-  ['accepting a staple does nothing', both('onClick:function(){accept(p.name,x);}', 'onClick:function(){}')],
-  ['Copy does nothing', both('onClick:function(){copy(t);}', 'onClick:function(){}')],
-  ['the trip summary has no checkout', both('    h(TsCheckout,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),\n', '')],
 ];
 
 const HAS_BROWSER = (() => {
