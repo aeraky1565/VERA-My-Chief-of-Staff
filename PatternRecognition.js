@@ -380,11 +380,11 @@ function evaluateCrossPatterns_(snap) {
   // Pattern 8: Prescription Refill Due Soon
   if (snap.prescriptionsDueSoon && snap.prescriptionsDueSoon.length > 0) {
     snap.prescriptionsDueSoon.forEach(function(rx) {
-      var urgency = rx.daysUntil <= 3 ? 'High' : 'Medium';
+      var urgency = rx.daysLeft <= 3 ? 'High' : 'Medium';
       add(
         'cross_rx_refill_' + rx.medication.replace(/\s+/g, '_').toLowerCase(),
-        rx.who + '’s Rx for ' + rx.medication + ' refill ' + (rx.daysUntil <= 0 ? 'is overdue' : 'due in ' + rx.daysUntil + ' day' + (rx.daysUntil === 1 ? '' : 's')),
-        rx.who + '’s prescription for ' + rx.medication + (rx.daysUntil <= 0 ? ' is past refill date' : ' refill due in ' + rx.daysUntil + ' day(s)') + ' · Contact pharmacy or prescriber',
+        rx.person + '’s Rx for ' + rx.medication + ' refill ' + (rx.daysLeft <= 0 ? 'is overdue' : 'due in ' + rx.daysLeft + ' day' + (rx.daysLeft === 1 ? '' : 's')),
+        rx.person + '’s prescription for ' + rx.medication + (rx.daysLeft <= 0 ? ' is past refill date' : ' refill due in ' + rx.daysLeft + ' day(s)') + ' · Contact pharmacy or prescriber',
         urgency
       );
     });

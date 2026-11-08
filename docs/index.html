@@ -2342,6 +2342,43 @@ function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var
     (needFlights||openNights>0)&&h('section',{className:'ts-still',style:props.card,'aria-label':'Still to book'},h('span',{style:props.label},'Still to book'),
       needFlights&&h(TsAriaFlights,{data:data,ends:props.ends,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}}),
       openNights>0&&h('span',{className:'ts-still-stays',style:{fontSize:13,color:'#f6d27a'}},'🏨 '+openNights+' night'+(openNights===1?'':'s')+' with no place to sleep · not watched (ARIA watches flights for now)')));}
+// Readiness per traveller (TripReadiness.js, issue #227): blocks first, then to do, then ready.
+var TS_RD_TONE={blocks:['#2a0a0a','#f87171','Blocks the trip'],todo:['#2a2200','#fbbf24','To do'],ready:['#0a2a1a','#4ade80','Ready']};
+function tsReadinessHas_(d){return !!(d&&!d.error&&!d.empty&&!d.loading&&((d.people||[]).length||(d.cards||[]).length||(d.health||[]).length));}
+function TsReadiness(props){var h=React.createElement;var trip=props.trip||{};var d=props.data;
+  var _p=React.useState({}),packed=_p[0],setPacked=_p[1];
+  if(!tsReadinessHas_(d))return null;
+  var people=d.people||[];
+  var pack=function(a){setPacked(function(o){var n=Object.assign({},o);n[a.item]='busy';return n;});
+    apiPost(props.apiUrl,props.apiToken,{action:'trip_readiness_pack',tripKey:trip.tripKey,person:a.person,item:a.item})
+      .then(function(){setPacked(function(o){var n=Object.assign({},o);n[a.item]='done';return n;});}).catch(function(){setPacked(function(o){var n=Object.assign({},o);delete n[a.item];return n;});});};
+  return h('div',{className:'ts-readiness',style:{display:'flex',flexDirection:'column',gap:10}},
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',gap:10}},
+      people.map(function(p){var t=TS_RD_TONE[p.state]||TS_RD_TONE.ready;
+        return h('div',{key:p.person,className:'ts-rd-person','data-state':p.state,style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',minWidth:0}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('strong',{style:{fontSize:14,color:'#dde1f0'}},p.person),
+            h('span',{className:'ts-rd-state',style:{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10,background:t[0],color:t[1]}},t[2])),
+          p.rows.length===0?h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Nothing to check yet.'):null,
+          p.rows.map(function(r,i){var c=TS_RD_TONE[r.state]||TS_RD_TONE.ready,st=r.action?packed[r.action.item]:null;
+            return h('div',{key:i,className:'ts-rd-row','data-state':r.state,'data-area':r.area,style:{display:'flex',gap:8,alignItems:'flex-start',fontSize:13,color:'#c8d2ea',lineHeight:1.4}},
+              h('span',{'aria-hidden':'true',style:{width:8,height:8,borderRadius:4,background:c[1],marginTop:6,flexShrink:0}}),
+              h('span',{style:{flex:1,minWidth:0,overflowWrap:'anywhere'}},r.text,
+                r.action&&r.action.kind==='pack'?h('button',{type:'button',className:'ts-rd-pack',disabled:!!st,onClick:function(){pack(r.action);},style:{display:'block',marginTop:6,minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:st?'default':'pointer'}},st==='done'?'Added to packing ✓':st?'Adding…':'Add to packing'):null));}));})),
+    (d.cards||[]).length?h('div',{className:'ts-rd-cards',style:{fontSize:12,color:'#9aa9cc'}},d.cards.join(' · ')):null,
+    (d.health||[]).map(function(x){return h('div',{key:x.country,className:'ts-rd-health',style:{fontSize:12,color:'#9aa9cc',lineHeight:1.5}},
+      x.vaccines&&x.vaccines.length?h('div',null,x.country+': vaccines to ask your doctor about: '+x.vaccines.join(', ')+'.'):null,
+      x.phrase?h('div',null,'Allergy phrase ('+x.phrase.language+'): “'+x.phrase.text+'”'+(x.phrase.english?' ('+x.phrase.english+')':'')):null);}),
+    (d.health||[]).length?h('div',{style:{fontSize:11,color:'#7f8db0'}},'Check with your doctor or a travel clinic before you go.'):null);
+}
+function TsReadinessSection(props){var h=React.createElement;var trip=props.trip||{};
+  var _r=React.useState(null),data=_r[0],setData=_r[1];
+  React.useEffect(function(){if(props.readiness!==undefined||!props.apiUrl||!props.apiToken||!trip.tripKey)return;var dead=false;setData({loading:true});
+    apiGet(props.apiUrl,props.apiToken,{action:'trip_readiness',tripKey:trip.tripKey,startDate:trip.startDate||'',endDate:trip.endDate||''})
+      .then(function(r){if(!dead)setData(r&&r.ok?r:{error:(r&&r.error)||'no answer'});}).catch(function(e){if(!dead)setData({error:e.message});});
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
+  var d=props.readiness!==undefined?props.readiness:data;
+  if(!tsReadinessHas_(d))return null;
+  return h('section',{style:props.card,'aria-label':'Readiness',className:'ts-rd-section'},h('span',{style:props.label},'Readiness: is everyone set?'),h(TsReadiness,{trip:trip,data:d,apiUrl:props.apiUrl,apiToken:props.apiToken}));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
@@ -2455,6 +2492,7 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Departure'),h('span',null,[fs.dep_scheduled&&'Sched '+fs.dep_scheduled,fs.dep_estimated&&fs.dep_estimated!==fs.dep_scheduled&&'Est '+fs.dep_estimated+(fs.delay_min>0?' (+'+fs.delay_min+'min)':''),fs.dep_actual&&'Actual '+fs.dep_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
+    h(TsReadinessSection,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,readiness:props.readiness,card:card,label:label}),
     // Before you go
     documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking||abroad)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),

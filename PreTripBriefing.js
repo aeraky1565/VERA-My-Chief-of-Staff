@@ -332,7 +332,10 @@ function buildPreTripBriefingFlag_(trip) {
   var header = '\u2708\uFE0F PRE-TRIP BRIEF \u2014 ' + trip.tripLabel + '\n' +
                'Departs in ' + hoursN + ' hours (' + depLabel + ')';
 
-  var sections = [header, weatherSection, flightSection, itinSection, packSection, actionSection]
+  // Readiness from the traveller profiles (issue #227): what blocks or is still to do, vaccines, an allergy phrase.
+  var readinessSection = typeof trdBriefSection_ === 'function' ? trdBriefSection_(trip.tripKey, startDateStr, endDateStr) : '';
+
+  var sections = [header, weatherSection, flightSection, itinSection, packSection, readinessSection, actionSection]
     .filter(function(s) { return s && s.trim(); });
   var reason = sections.join('\n\n');
 
