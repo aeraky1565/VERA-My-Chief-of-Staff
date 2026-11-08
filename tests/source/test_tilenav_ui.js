@@ -60,7 +60,7 @@ check('old top tabs still land in the right place',
 check('Shopping holds the card cheat sheet, and Money › Cards has no cheat sheet',
   /<CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cheat" \/>/.test(LITE) && /part="cards" \/>/.test(LITE)
   && /display: part === 'cards' \? 'none' : undefined/.test(LITE) && /display: part === 'cheat' \? 'none' : 'flex'/.test(LITE));
-check('Travel is My Trips, Profiles and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE));
+check('Travel is My Trips, Bucket List, Profiles and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE));
 check('Your assistants stays on lite Today', LITE.indexOf('<VeraRoster links={status && status.rosterLinks} veraHref="./" />') !== -1);
 check('no Home slot on lite', LITE.indexOf('HomeSlot') === -1);
 

@@ -313,7 +313,9 @@ function webGetPlaces_() {
   } catch (e) { Logger.log('webGetPlaces_: notes — ' + e.message); }
   var picks = plPicks_(getConfigValues()['places_occasions']);
   var used = visits.map(function(x) { return x.Occasion; }).concat(bucket.map(function(x) { return x.Occasion; }));
-  return { ok: true, visits: visits, bucket: bucket, planned: planned, notes: notes, picks: picks, occasions: plSuggestions_(picks, used) };
+  var extras = {};
+  try { extras = typeof bpPlacesExtras_ === 'function' ? bpPlacesExtras_(bucket) : {}; } catch (e) { Logger.log('webGetPlaces_: extras — ' + e.message); }
+  return Object.assign({ ok: true, visits: visits, bucket: bucket, planned: planned, notes: notes, picks: picks, occasions: plSuggestions_(picks, used) }, extras);
 }
 
 /** Bucket rows with their things to do, by header. */
@@ -340,7 +342,9 @@ function webPlacesPlanPreview_(body) {
   var items = plBucketRows_().filter(function(b) { return ids.indexOf(String(b.ID)) !== -1; });
   if (!items.length) return { ok: false, error: 'Choose at least one place.' };
   var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  return { ok: true, brief: plBriefFrom_(items, today, plPicks_(getConfigValues()['places_occasions'])), places: items.map(plPlaceName_) };
+  var brief = plBriefFrom_(items, today, plPicks_(getConfigValues()['places_occasions'])), extra = {};
+  try { extra = typeof bpPlanExtras_ === 'function' ? bpPlanExtras_(items, brief, today) : {}; } catch (e) { Logger.log('places_plan_preview: extras — ' + e.message); }
+  return Object.assign({ ok: true, brief: brief, places: items.map(plPlaceName_) }, extra);
 }
 
 /**

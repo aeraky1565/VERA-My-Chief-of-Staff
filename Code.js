@@ -96,6 +96,7 @@ const TABS = {
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
   TRAVELER_ITEMS:     'Traveler Items',      // Travel › Travelers › Profiles: documents, trusted traveller, memberships, preferences, health (issue #227)
   TRIP_HEALTH_NOTES:  'Trip Health Notes',   // per country: vaccines and an allergy phrase for the pre-trip briefing (issue #227)
+  PLACE_FACTS:        'Place Facts',         // Bucket List: best months and direct flight times per place, one lookup each (issue #228)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
   FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
@@ -234,7 +235,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
 const TRIP_CHARACTERISTICS      = ['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'];
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes', 'Occasion']; // Occasion: #228
-const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited', 'Occasion', 'Trip Idea']; // Occasion, Trip Idea: #228
+const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited', 'Occasion', 'Trip Idea', 'Best Months']; // Occasion, Trip Idea, Best Months: #228
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
 const CYCLE_LOG_HEADERS        = ['ID', 'Start', 'End', 'Logged By', 'Logged At', 'Notes']; // Cycle.js
@@ -329,6 +330,7 @@ const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked',
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const TRAVELER_ITEM_HEADERS      = ['ID', 'Person', 'Section', 'Kind', 'Label', 'Country', 'Last 4', 'Issued', 'Expiry', 'Tier', 'Value', 'Notes', 'Updated'];
 const TRIP_HEALTH_NOTE_HEADERS  = ['Key', 'Notes', 'Updated'];
+const PLACE_FACT_HEADERS        = ['Place', 'Best Months', 'Flights', 'Updated', 'Edited'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];

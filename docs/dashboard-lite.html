@@ -10898,6 +10898,263 @@ function GroceriesCard(props){var h=React.createElement;
           style:{flexShrink:0,width:52,height:32,borderRadius:16,border:0,padding:3,cursor:'pointer',display:'flex',justifyContent:st.counts?'flex-end':'flex-start',background:st.counts?GRC.acc:'#2a3a5c'}},
           h('span',{style:{width:26,height:26,borderRadius:13,background:'#0d1528',display:'block'}})));})):null);}
 // ---- end GroceriesCard ----
+// ---- PlacesCountries (Travel › Countries, issue #228) ----
+// Three views of where we've been: Map & stats, By year, List. Each country is visited (gold),
+// planned (on an upcoming trip, solid blue) or on the bucket list (dashed). Filters: who went, and
+// the occasion. Flags come from countryToIso. "+ Add a visit" opens the existing Add Visit form.
+var PC_C={card:'#0d1526',line:'#1e2a44',deep:'#0a1220',text:'#dde1f0',mute:'#9aa8c8',gold:'#c9a84c',goldT:'#e3c46a',blue:'#8ab4f8',plan:'#2f5bb7',pink:'#f0a8c8',green:'#6fcf97'};
+var PC_CONT={Europe:'AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SE CH UA GB VA GI',
+  Asia:'AF AM AZ BH BD BT BN KH CN GE HK IN ID IR IQ IL JP JO KZ KW KG LA LB MO MY MV MN MM NP KP OM PK PS PH QA SA SG KR LK SY TW TJ TH TL TR TM AE UZ VN YE',
+  Africa:'DZ AO BJ BW BF BI CV CM CF TD KM CD CG CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML MR MU MA MZ NA NE NG RW ST SN SC SL SO ZA SS SD TZ TG TN UG ZM ZW',
+  'North America':'AG BS BB BZ CA CR CU DM DO SV GD GT HT HN JM MX NI PA KN LC VC TT US PR AW CW BM KY VI TC',
+  'South America':'AR BO BR CL CO EC GY PY PE SR UY VE',Oceania:'AU FJ KI MH FM NR NZ PW PG WS SB TO TV VU PF NC CK'};
+function pcContinent_(iso){for(var k in PC_CONT){if((' '+PC_CONT[k]+' ').indexOf(' '+iso+' ')!==-1)return k;}return 'Elsewhere';}
+function pcFlag_(iso){if(!iso||!/^[A-Z]{2}$/.test(iso)||iso==='XK')return '';return String.fromCodePoint(0x1F1E6+iso.charCodeAt(0)-65,0x1F1E6+iso.charCodeAt(1)-65);}
+function pcIso_(name){try{return countryToIso(name)||'';}catch(e){return '';}}
+function pcGroup_(text,picks){var t=String(text||'').toLowerCase();if(!t.trim())return '';for(var i=0;i<(picks||[]).length;i++){var p=String(picks[i]).toLowerCase(),st=p.replace(/s$/,'');if(t.indexOf(p)!==-1||(st.length>=4&&t.indexOf(st)!==-1))return picks[i];}return 'Other';}
+function pcWho_(v,who){if(who==='Both of us')return true;var t=String(v.Traveller||'Both');return t==='Both'||t===who;}
+// Pure: the model the three views draw from, after the who and occasion filters.
+function pcModel_(d,who,occ){var picks=d.picks||[];
+  var visits=(d.visits||[]).filter(function(v){return v.Country&&pcWho_(v,who)&&(!occ||pcGroup_(v.Occasion,picks)===occ);});
+  var countries={},cities={};visits.forEach(function(v){var c=v.Country;var e=countries[c]||(countries[c]={name:c,iso:pcIso_(c),years:{},cities:[],trips:{},occasions:{},ids:[]});
+    if(v.Year)e.years[v.Year]=1;if(v.City&&e.cities.indexOf(v.City)===-1)e.cities.push(v.City);if(v.City)cities[c+'|'+v.City]=1;
+    if(v['Trip Key'])e.trips[v['Trip Key']]=1;if(v.Occasion)e.occasions[v.Occasion]=1;e.ids.push({id:v.ID,city:v.City||c,year:v.Year});});
+  var beenSet={};Object.keys(countries).forEach(function(c){beenSet[c.toLowerCase()]=1;});
+  var planned=occ?[]:(d.planned||[]);var plannedBy={};planned.forEach(function(p){(plannedBy[p.country]=plannedBy[p.country]||[]).push(p);});
+  var bucketBy={};(d.bucket||[]).forEach(function(b){if(b.Country&&!b.visited&&!bucketBy[b.Country])bucketBy[b.Country]=b;});
+  // the map: every country seen, in any state; been wins over planned, planned over bucket
+  var tiles={};var put=function(name,state){var iso=pcIso_(name);var k=name.toLowerCase();var rank={been:3,planned:2,bucket:1};if(tiles[k]&&rank[tiles[k].state]>=rank[state])return;tiles[k]={name:name,iso:iso,state:state,cont:pcContinent_(iso)};};
+  Object.keys(countries).forEach(function(c){put(c,'been');});Object.keys(plannedBy).forEach(function(c){put(c,'planned');});if(!occ)Object.keys(bucketBy).forEach(function(c){put(c,'bucket');});
+  var conts={};Object.keys(tiles).forEach(function(k){var t=tiles[k];(conts[t.cont]=conts[t.cont]||[]).push(t);});
+  var contList=Object.keys(conts).map(function(n){var l=conts[n].sort(function(a,b){var r={been:0,planned:1,bucket:2};return r[a.state]-r[b.state]||a.name.localeCompare(b.name);});
+    return {name:n,tiles:l,been:l.filter(function(t){return t.state==='been';}).length,planned:l.filter(function(t){return t.state==='planned';}).length,toGo:l.filter(function(t){return t.state==='bucket';}).length};})
+    .sort(function(a,b){return b.been-a.been||a.name.localeCompare(b.name);});
+  // trips: one per trip key, or one per country and year when a visit has none
+  var trips={};visits.forEach(function(v){var k=v['Trip Key']||('|'+v.Country+'|'+v.Year);var t=trips[k]||(trips[k]={key:k,label:v['Trip Key']?String(v['Trip Key']).split('|').slice(1).join('|'):v.Country,year:String(v.Year||String(v['Trip Key']||'').slice(0,4)),
+    month:v['Trip Key']?String(v['Trip Key']).slice(5,7):'',countries:[],cities:[],occasion:''});if(t.countries.indexOf(v.Country)===-1)t.countries.push(v.Country);if(v.City&&t.cities.indexOf(v.City)===-1)t.cities.push(v.City);if(v.Occasion&&!t.occasion)t.occasion=v.Occasion;});
+  var firstYear={};visits.forEach(function(v){var y=Number(v.Year)||9999;if(!firstYear[v.Country]||y<firstYear[v.Country])firstYear[v.Country]=y;});
+  var years={};Object.keys(trips).forEach(function(k){var t=trips[k];t.isNew=t.countries.some(function(c){return String(firstYear[c])===t.year;});(years[t.year]=years[t.year]||[]).push(t);});
+  var plannedTrips={};planned.forEach(function(p){var t=plannedTrips[p.tripKey]||(plannedTrips[p.tripKey]={key:p.tripKey,label:p.label,year:String(p.startDate).slice(0,4),month:String(p.startDate).slice(5,7),countries:[],cities:[],planned:true});
+    if(t.countries.indexOf(p.country)===-1)t.countries.push(p.country);t.isNew=t.countries.some(function(c){return !beenSet[c.toLowerCase()];});});
+  Object.keys(plannedTrips).forEach(function(k){var t=plannedTrips[k];(years[t.year]=years[t.year]||[]).push(t);});
+  var yearList=Object.keys(years).sort(function(a,b){return b.localeCompare(a);}).map(function(y){var ts=years[y].sort(function(a,b){return (b.month||'').localeCompare(a.month||'');});
+    var cs={};ts.forEach(function(t){t.countries.forEach(function(c){cs[c]=1;});});var nw=ts.filter(function(t){return t.isNew&&!t.planned;}).reduce(function(a,t){return a.concat(t.countries.filter(function(c){return String(firstYear[c])===y;}));},[]);
+    return {year:y,trips:ts,countries:Object.keys(cs).length,planned:ts.every(function(t){return t.planned;}),newOnes:nw.filter(function(c,i,a){return a.indexOf(c)===i;})};});
+  var byOcc={};Object.keys(trips).forEach(function(k){var g=pcGroup_(trips[k].occasion,picks);if(g)byOcc[g]=(byOcc[g]||0)+1;});
+  var occList=Object.keys(byOcc).map(function(k){return {label:k,n:byOcc[k]};}).sort(function(a,b){return b.n-a.n||a.label.localeCompare(b.label);});
+  var list=Object.keys(plannedBy).filter(function(c){return !countries[c];}).sort().map(function(c){return {name:c,iso:pcIso_(c),planned:plannedBy[c]};})
+    .concat(Object.keys(countries).sort().map(function(c){var e=countries[c];return Object.assign({},e,{years:Object.keys(e.years).sort().reverse(),trips:Object.keys(e.trips),occasions:Object.keys(e.occasions),planned:plannedBy[c]||null,notes:(d.notes||{})[c]||null});}));
+  return {stats:{countries:Object.keys(countries).length,continents:contList.filter(function(c){return c.been;}).length,cities:Object.keys(cities).length,planned:Object.keys(plannedBy).filter(function(c){return !countries[c];}).length},
+    continents:contList,years:yearList,occasions:occList,list:list};}
+function PlacesCountries(props){var h=React.createElement;var apiUrl=props.apiUrl,apiToken=props.apiToken;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _v=React.useState(function(){try{return localStorage.getItem('vera_countries_view')||'map';}catch(e){return 'map';}}),view=_v[0],setView=_v[1];
+  var _w=React.useState('Both of us'),who=_w[0],setWho=_w[1];var _o=React.useState(''),occ=_o[0],setOcc=_o[1];var _a=React.useState(false),adding=_a[0],setAdding=_a[1];
+  function load(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'places'}).then(function(r){if(r&&r.ok)setD(r);else setErr((r&&r.error)||'Could not load places.');}).catch(function(e){setErr(e.message||'Could not load places.');});}
+  React.useEffect(load,[apiUrl,apiToken]);
+  function pickView(v){setView(v);try{localStorage.setItem('vera_countries_view',v);}catch(e){}}
+  var seg=function(on){return {flex:1,minHeight:40,borderRadius:9,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:on?'#1d1a0c':'transparent',color:on?PC_C.goldT:'#aab6d6',boxShadow:on?'inset 0 0 0 1px '+PC_C.gold:'none'};};
+  var chip=function(on){return {minHeight:40,padding:'8px 14px',borderRadius:999,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,background:on?'#1a3060':PC_C.deep,border:'1px solid '+(on?'#3a5aa0':'#1c2a48'),color:on?PC_C.text:'#aab6d6'};};
+  var card={background:PC_C.card,border:'1px solid '+PC_C.line,borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:10};
+  var tag=function(t,k){return h('span',{key:k,className:'pc-occ',style:{fontSize:11,padding:'3px 8px',borderRadius:999,background:'#2a1a24',color:PC_C.pink}},t);};
+  var tileStyle=function(s){return s==='been'?{background:PC_C.gold,color:'#14120a',border:'1.5px solid '+PC_C.gold}:s==='planned'?{background:PC_C.plan,color:'#ffffff',border:'1.5px solid '+PC_C.plan}:{background:'transparent',color:PC_C.blue,border:'1.5px dashed '+PC_C.blue};};
+  var head=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700}},'Countries'),
+    h('button',{type:'button',className:'pc-add',onClick:function(){setAdding(true);},style:{minHeight:40,padding:'0 14px',borderRadius:10,background:PC_C.gold,border:'none',color:'#14120a',fontSize:13,fontWeight:700,cursor:'pointer'}},'+ Add a visit'));
+  var modal=adding?h(AddCountryModal,{upcomingTravel:props.upcomingTravel||[],existingCountries:(d&&d.visits)||[],busy:props.busy,onClose:function(){setAdding(false);},
+    onSave:function(f){Promise.resolve(props.onAdd&&props.onAdd(f)).then(function(){setAdding(false);load();});}}):null;
+  if(err&&!d)return h('div',{className:'pc-panel',style:{display:'flex',flexDirection:'column',gap:12}},head,h('div',{style:{color:'#f87171',fontSize:13}},err),modal);
+  if(!d)return h('div',{className:'pc-panel',style:{display:'flex',flexDirection:'column',gap:12}},head,h('div',{className:'loading-text'},'Loading places…'),modal);
+  var m=pcModel_(d,who,occ);var occChoices=['All occasions'].concat(d.picks||[]).filter(function(p,i){return i===0||(d.visits||[]).some(function(v){return pcGroup_(v.Occasion,d.picks)===p;});});
+  var body;
+  if(view==='year'){body=m.years.length===0?h('div',{style:{color:PC_C.mute,fontSize:13}},'No trips match.'):h('div',{className:'pc-years',style:{display:'flex',flexDirection:'column'}},m.years.map(function(y){
+    return h('div',{key:y.year,className:'pc-year','data-year':y.year,style:{display:'grid',gridTemplateColumns:'56px minmax(0, 1fr)',gap:12}},
+      h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:6}},h('span',{style:{fontSize:15,fontWeight:700,color:PC_C.goldT}},y.year),h('span',{style:{flex:1,width:2,background:PC_C.line,minHeight:40}})),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:8,paddingBottom:18,minWidth:0}},
+        h('span',{style:{fontSize:12,color:PC_C.mute}},(y.planned?'Planned · ':'')+y.trips.length+' trip'+(y.trips.length===1?'':'s')+' · '+y.countries+' countr'+(y.countries===1?'y':'ies')+(y.newOnes.length?' · new: '+y.newOnes.join(', '):'')),
+        y.trips.map(function(t){var iso=pcIso_(t.countries[0]);return h('div',{key:t.key,className:'pc-trip'+(t.planned?' planned':''),style:{background:PC_C.card,border:'1px solid '+(t.planned?PC_C.plan:PC_C.line),borderRadius:12,padding:'10px 12px',display:'flex',flexDirection:'column',gap:4}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',gap:8}},h('span',{style:{fontSize:14,fontWeight:700}},t.label),h('span',{style:{fontSize:12,color:PC_C.mute,flexShrink:0}},t.month?['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(t.month)-1]:'')),
+          h('span',{style:{fontSize:12,color:'#c4cde4',display:'flex',alignItems:'center',gap:6}},h('span',{'aria-hidden':'true',style:{fontSize:16,lineHeight:1}},pcFlag_(iso)),(t.cities.length?t.cities:t.countries).join(' · ')),
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},t.occasion?tag(t.occasion):null,
+            t.planned?h('span',{style:{fontSize:11,color:PC_C.blue}},'Planned'+(t.isNew?' · new country':'')):t.isNew?h('span',{style:{fontSize:11,color:PC_C.blue}},'New country'):null));}))); }));}
+  else if(view==='list'){body=h('section',{className:'pc-list',style:card},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},'Planned first, then A–Z'),
+    m.list.length===0?h('div',{style:{color:PC_C.mute,fontSize:13}},'No countries match.'):m.list.map(function(c){return h('div',{key:c.name,className:'pc-country','data-country':c.name,style:{display:'flex',flexDirection:'column',gap:5,padding:'10px 0',borderTop:'1px solid #16213a'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:14,fontWeight:700,display:'flex',alignItems:'center',gap:8}},h('span',{'aria-hidden':'true',style:{fontSize:20,lineHeight:1}},pcFlag_(c.iso)),c.name),
+        h('span',{style:{fontSize:12,color:c.years?PC_C.mute:PC_C.blue}},c.years?c.years.join(' · '):'Planned · '+c.planned[0].label)),
+      c.cities&&c.cities.length?h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},c.ids.map(function(x){return h('span',{key:x.id,style:{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,color:'#c4cde4',background:PC_C.deep,borderRadius:8,padding:'2px 4px 2px 8px'}},x.city+(x.year?' '+x.year:''),
+        h('button',{type:'button',className:'pc-del','aria-label':'Remove '+x.city+' '+x.year,onClick:function(){if(!window.confirm('Remove this visit?'))return;apiGet(apiUrl,apiToken,{action:'delete_country',id:x.id}).then(load);},style:{background:'none',border:'none',color:PC_C.mute,cursor:'pointer',minWidth:28,minHeight:28,fontSize:14}},'×'));})):null,
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},(c.occasions||[]).map(tag),c.trips&&c.trips.length?h('span',{style:{fontSize:12,color:PC_C.blue}},c.trips.map(function(k){return k.split('|').slice(1).join('|')+' · '+k.slice(0,4);}).join(' · ')):null,
+        c.planned&&c.years?h('span',{style:{fontSize:12,color:PC_C.blue}},'Planned again · '+c.planned[0].label):null),
+      c.notes?h('div',{className:'pc-notes',style:{display:'flex',flexDirection:'column',gap:4,marginTop:2,padding:'8px 10px',borderRadius:8,background:PC_C.deep}},
+        c.notes.loved.length?h('span',{style:{fontSize:12,lineHeight:1.45}},h('b',{style:{color:PC_C.green,fontWeight:600}},'Loved '),c.notes.loved.join('; ')):null,
+        c.notes.next.length?h('span',{style:{fontSize:12,lineHeight:1.45}},h('b',{style:{color:PC_C.goldT,fontWeight:600}},'Next time '),c.notes.next.join('; ')):null):null);}));}
+  else{body=h('div',{className:'pc-map',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4, minmax(0, 1fr))',gap:8}},[['countries','countries'],['continents','continents'],['cities','cities'],['planned','planned']].map(function(s){
+      return h('div',{key:s[0],className:'pc-stat','data-stat':s[0],style:{background:PC_C.card,border:'1px solid '+PC_C.line,borderRadius:12,padding:'10px 8px',display:'flex',flexDirection:'column',gap:2}},
+        h('span',{style:{fontSize:22,fontWeight:700,color:PC_C.goldT}},String(m.stats[s[0]])),h('span',{style:{fontSize:11,color:PC_C.mute}},s[1]));})),
+    m.occasions.length?h('section',{className:'pc-occstats',style:Object.assign({},card,{gap:8})},h('h3',{style:{margin:0,fontSize:13,fontWeight:700,color:'#c4cde4'}},'Trips by occasion'),
+      m.occasions.map(function(o){var max=m.occasions[0].n;return h('div',{key:o.label,style:{display:'grid',gridTemplateColumns:'96px minmax(0, 1fr) 24px',gap:8,alignItems:'center',fontSize:12}},
+        h('span',{style:{color:'#c4cde4'}},o.label),h('span',{style:{height:8,borderRadius:4,background:'#14203a',overflow:'hidden'}},h('span',{style:{display:'block',height:'100%',width:Math.round(o.n/max*100)+'%',background:PC_C.pink}})),
+        h('span',{style:{textAlign:'right'}},String(o.n)));})):null,
+    h('section',{'aria-label':'Map of countries',style:card},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},'The map'),
+        h('div',{style:{display:'flex',gap:10,fontSize:11,color:PC_C.mute,flexWrap:'wrap'}},[['been','Been'],['planned','Planned'],['bucket','Bucket list']].map(function(x){return h('span',{key:x[0],style:{display:'flex',alignItems:'center',gap:5}},
+          h('span',{style:Object.assign({width:10,height:10,borderRadius:3,boxSizing:'border-box'},tileStyle(x[0]))}),x[1]);}))),
+      m.continents.length===0?h('div',{style:{color:PC_C.mute,fontSize:13}},'No countries yet. Add a visit to start the map.'):
+      m.continents.map(function(c){return h('div',{key:c.name,className:'pc-cont','data-cont':c.name,style:{display:'flex',flexDirection:'column',gap:6}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12}},h('span',{style:{color:'#c4cde4',fontWeight:600}},c.name),
+          h('span',{style:{color:'#8a9bc4'}},[c.been+' been',c.planned?c.planned+' planned':'',c.toGo?c.toGo+' to go':''].filter(Boolean).join(' · '))),
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:4}},c.tiles.map(function(t){return h('span',{key:t.name,className:'pc-tile','data-state':t.state,title:t.name,
+          style:Object.assign({minWidth:50,height:30,padding:'0 6px',boxSizing:'border-box',borderRadius:7,fontSize:10,fontWeight:700,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:4},tileStyle(t.state))},
+          h('span',{'aria-hidden':'true',style:{fontSize:15,lineHeight:1}},pcFlag_(t.iso)),t.iso||t.name.slice(0,3).toUpperCase());})));})));}
+  return h('div',{className:'pc-panel',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:720}},head,
+    h('div',{role:'tablist','aria-label':'Countries view',style:{display:'flex',gap:4,background:PC_C.deep,border:'1px solid #1c2a48',borderRadius:12,padding:4}},
+      [['map','Map & stats'],['year','By year'],['list','List']].map(function(v){var on=view===v[0];return h('button',{key:v[0],type:'button',role:'tab','aria-selected':on,className:'pc-view'+(on?' on':''),'data-view':v[0],onClick:function(){pickView(v[0]);},style:seg(on)},v[1]);})),
+    h('div',{role:'group','aria-label':'Who',style:{display:'flex',gap:6,flexWrap:'wrap'}},['Both of us','Ahmed','Victoria'].map(function(w){var on=who===w;return h('button',{key:w,type:'button','aria-pressed':on,className:'pc-who'+(on?' on':''),onClick:function(){setWho(w);},style:chip(on)},w);})),
+    occChoices.length>1?h('div',{role:'group','aria-label':'Occasion',style:{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}},occChoices.map(function(o,i){var val=i===0?'':o;var on=occ===val;return h('button',{key:o,type:'button','aria-pressed':on,className:'pc-occf'+(on?' on':''),onClick:function(){setOcc(val);},style:chip(on)},o);})):null,
+    body,modal);}
+// ---- /PlacesCountries ----
+// ---- PlacesBucket (Travel › Bucket List, issue #228) ----
+// The places we want to go: each card shows its flag, stars, target year and who, a Dream trip badge,
+// its occasion, its things to do (add, tick, remove) and, once planned, the Trip Idea it's in.
+// Filters: Not yet visited, Dream trips, For an occasion, 4★ and up, All. Edit sets the occasion
+// (quick picks, your own words, or one used before), the notes, the year and who.
+var PB_FILTERS=[['open','Not yet visited'],['dream','Dream trips'],['occasion','For an occasion'],['weekend','Long weekend'],['stars','4★ and up'],['all','All']];
+// Release 2: best months, direct flights (Place Facts), points for dream trips, long weekends.
+var PB_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function pbMonths_(v){var out={};String(v==null?'':v).split(/[,;/]+/).forEach(function(p){var r=p.split(/\s*[–—-]\s*/);var n=function(x){x=String(x||'').trim().toLowerCase();if(/^\d{1,2}$/.test(x)){var k=+x;return k>=1&&k<=12?k:0;}var i=PB_MON.map(function(m){return m.toLowerCase();}).indexOf(x.slice(0,3));return i===-1?0:i+1;};
+  var a=n(r[0]),b=r.length>1?n(r[1]):a;if(!a||!b)return;for(var m=a,k=0;k<12;k++){out[m]=1;if(m===b)break;m=m%12+1;}});return Object.keys(out).map(Number).sort(function(x,y){return x-y;});}
+function pbMonthsText_(ms){ms=(ms||[]).slice().sort(function(a,b){return a-b;});var out=[],i=0;while(i<ms.length){var j=i;while(j+1<ms.length&&ms[j+1]===ms[j]+1)j++;out.push(j-i>=2?PB_MON[ms[i]-1]+'–'+PB_MON[ms[j]-1]:ms.slice(i,j+1).map(function(m){return PB_MON[m-1];}).join(', '));i=j+1;}return out.join(', ');}
+function pbDur_(m){var hh=Math.floor(m/60),mm=m%60;return hh+' h'+(mm?' '+mm+' m':'');}
+function pbWeekend_(d,b){var f=d&&d.facts&&d.facts[b.ID];var max=(d&&d.longWeekendMinutes)||420;return ((f&&f.flights)||[]).filter(function(x){return x.minutes<max;}).sort(function(x,y){return x.minutes-y.minutes;})[0]||null;}
+function pbPoints_(d,b){var reg=pcContinent_(pcIso_(b.Country)).toLowerCase().replace(/ /g,'_');var t=((d&&d.awards)||{})[reg];if(!t)return null;var cab=(d&&d.awardCabin)||'business';var a=t[cab]||t.business||t.economy;if(!a)return null;
+  var prog=String(a[0]),need=Number(a[1])*4,by=((d.points||{}).by)||{},own=0;Object.keys(by).forEach(function(k){if(k.toLowerCase().indexOf(prog.toLowerCase())!==-1)own+=Number(by[k])||0;});
+  var tr=Number((d.points||{}).transferable)||0,have=own+tr;return {program:prog,cabin:cab,need:need,own:own,transferable:tr,have:have,pct:need?Math.min(100,Math.round(have/need*100)):0};}
+function pbAriaText_(b,p,homes){return ['=== VERA award request v1 ===','Find award space for two, round trip, '+p.cabin+'.','To: '+pbPlace_(b),'From: '+(homes||[]).join(', '),
+  'When: '+(pbMonthsText_(pbMonths_(b['Best Months']))||'flexible')+(b['Target Year']?' '+b['Target Year']:''),'Programme to start with: '+p.program+' (about '+p.need.toLocaleString()+' points for both of us)','Points held: about '+p.have.toLocaleString()+(p.transferable?' (including '+p.transferable.toLocaleString()+' transferable)':'')].join('\n');}
+function pbView_(items,f,d){return (items||[]).filter(function(b){if(f==='all')return true;if(f==='open')return !b.visited;if(b.visited)return false;
+  if(f==='weekend')return !!pbWeekend_(d,b);if(f==='dream')return !!String(b['Dream Trip']||'').trim();if(f==='occasion')return !!String(b.Occasion||'').trim();if(f==='stars')return Number(b.Stars)>=4;return true;});}
+function pbStars_(n){n=Math.max(0,Math.min(5,Number(n)||0));var s='';for(var i=0;i<5;i++)s+=i<n?'★':'☆';return s;}
+function pbPlace_(b){return (b.City?b.City+', ':'')+b.Country;}
+function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,apiToken=props.apiToken;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _f=React.useState('open'),filter=_f[0],setFilter=_f[1];var _ed=React.useState(null),edit=_ed[0],setEdit=_ed[1];
+  var _a=React.useState(false),adding=_a[0],setAdding=_a[1];var _n=React.useState({}),newAct=_n[0],setNewAct=_n[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _s=React.useState({}),sel=_s[0],setSel=_s[1];var _pl=React.useState(null),plan=_pl[0],setPlan=_pl[1];var _ar=React.useState(null),ariaFor=_ar[0],setAriaFor=_ar[1];var _fx=React.useState({}),asking=_fx[0],setAsking=_fx[1];
+  function load(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'places'}).then(function(r){if(r&&r.ok)setD(r);else setErr((r&&r.error)||'Could not load the bucket list.');}).catch(function(e){setErr(e.message||'Could not load the bucket list.');});}
+  React.useEffect(load,[apiUrl,apiToken]);
+  function call(p){setBusy(true);return apiGet(apiUrl,apiToken,p).then(function(r){if(r&&r.ok===false)setErr(r.error||'That didn’t save.');return r;}).catch(function(e){setErr(e.message||'That didn’t save.');}).then(function(r){setBusy(false);load();return r;});}
+  var C=PC_C,card={background:C.card,border:'1px solid '+C.line,borderRadius:14,padding:12,display:'flex',flexDirection:'column',gap:8};
+  var chip=function(on){return {minHeight:40,padding:'8px 14px',borderRadius:999,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,background:on?'#1a3060':C.deep,border:'1px solid '+(on?'#3a5aa0':'#1c2a48'),color:on?C.text:'#aab6d6'};};
+  var small={minHeight:36,padding:'0 12px',borderRadius:9,background:'transparent',border:'1px solid #2a3f6f',color:C.blue,fontSize:12,cursor:'pointer'};
+  var inp={minHeight:44,borderRadius:10,background:C.deep,border:'1px solid #2a3f6f',color:C.text,padding:'0 12px',fontSize:14,width:'100%',boxSizing:'border-box'};
+  var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute,minWidth:0};
+  var head=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700}},'Bucket List'),
+    h('button',{type:'button',className:'pb-add',onClick:function(){setAdding(true);},style:{minHeight:40,padding:'0 14px',borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontSize:13,fontWeight:700,cursor:'pointer'}},'+ Add a place'));
+  var modal=adding?h(AddBucketItemModal,{entries:(d&&d.bucket)||[],busy:props.busy,onClose:function(){setAdding(false);},onSave:function(f){Promise.resolve(props.onAdd&&props.onAdd(f)).then(function(){setAdding(false);load();});}}):null;
+  if(!d)return h('div',{className:'pb-panel',style:{display:'flex',flexDirection:'column',gap:12}},head,err?h('div',{style:{color:'#f87171',fontSize:13}},err):h('div',{className:'loading-text'},'Loading the bucket list…'),modal);
+  var shown=pbView_(d.bucket,filter,d);var picks=d.occasions||d.picks||[];
+  var nSel=Object.keys(sel).filter(function(k){return sel[k]&&(d.bucket||[]).some(function(b){return b.ID===k&&!b.visited;});});
+  function openPlan(){setPlan({loading:true});setErr('');apiPost(apiUrl,apiToken,{action:'places_plan_preview',bucketIds:nSel}).then(function(r){
+    if(r&&r.ok)setPlan({brief:r.brief,places:r.places,title:r.brief.title,where:r.brief.where,travelers:r.brief.travelers,mustHaves:r.brief.mustHaves,months:r.months||null,sample:r.sample||null,people:r.people||[]});else{setPlan(null);setErr((r&&r.error)||'Could not build the brief.');}})
+    .catch(function(e){setPlan(null);setErr(e.message||'Could not build the brief.');});}
+  function savePlan(){setBusy(true);apiPost(apiUrl,apiToken,{action:'places_plan_idea',bucketIds:nSel,edits:{title:plan.title,where:plan.where,travelers:plan.travelers,mustHaves:plan.mustHaves}}).then(function(r){
+    setBusy(false);if(r&&r.ok){setPlan(null);setSel({});load();if(props.onGoIdeas)props.onGoIdeas(r.idea.id);}else setErr((r&&r.error)||'The idea didn’t save.');}).catch(function(e){setBusy(false);setErr(e.message||'The idea didn’t save.');});}
+  function askFacts(b){setAsking(function(o){var n=Object.assign({},o);n[b.ID]=1;return n;});apiGet(apiUrl,apiToken,{action:'bucket_facts',id:b.ID}).then(function(r){if(r&&r.ok===false)setErr(r.error||'Couldn’t look that up.');}).catch(function(e){setErr(e.message||'Couldn’t look that up.');})
+    .then(function(){setAsking(function(o){var n=Object.assign({},o);delete n[b.ID];return n;});load();});}
+  function saveEdit(){var b=edit;var fl=b.flights||null;call({action:'update_bucket_item',id:b.ID,occasion:b.occasion,notes:b.notes,bestMonths:pbMonthsText_(b.bestMonths||[]),targetYear:b.targetYear,traveller:b.traveller}).then(function(r){
+    if(fl&&b.flightsChanged)return apiPost(apiUrl,apiToken,{action:'bucket_facts_set',id:b.ID,flights:Object.keys(fl).filter(function(k){return Number(fl[k])>0;}).map(function(k){return {from:k,minutes:Math.round(Number(fl[k])*60)};})}).then(function(){load();return r;});return r;}).then(function(r){if(!r||r.ok!==false)setEdit(null);});}
+  var cards=shown.map(function(b){var iso=pcIso_(b.Country);var on=!!sel[b.ID];var dream=String(b['Dream Trip']||'').trim();var acts=b.activities||[];var isEdit=edit&&edit.ID===b.ID;
+    var meta=[b['Target Year']?String(b['Target Year']):'Any year',b.Traveller||'Both'].concat(b.visited?['Visited '+(String(b.Visited).match(/\d{4}/)||[''])[0]]:[]).filter(Boolean).join(' · ');
+    return h('div',{key:b.ID,className:'pb-card'+(b.visited?' visited':''),'data-id':b.ID,style:Object.assign({},card,{border:'1px solid '+(on?C.gold:C.line),opacity:b.visited?0.7:1})},
+      h('div',{style:{display:'flex',gap:12,alignItems:'flex-start'}},
+        b.visited?null:h('button',{type:'button',className:'pb-pick','aria-pressed':on,'aria-label':'Choose '+pbPlace_(b),onClick:function(){setSel(function(s){var n=Object.assign({},s);n[b.ID]=!n[b.ID];return n;});},
+          style:{width:44,height:44,flexShrink:0,borderRadius:10,cursor:'pointer',background:on?C.gold:'transparent',border:on?'1px solid '+C.gold:'1.5px solid #2a3f6f',color:'#14120a',fontSize:18,fontWeight:700}},on?'✓':''),
+        h('div',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:6}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'baseline'}},
+            h('span',{style:{fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}},h('span',{'aria-hidden':'true',style:{fontSize:20,lineHeight:1}},pcFlag_(iso)),pbPlace_(b)),
+            h('span',{'aria-label':(Number(b.Stars)||0)+' of 5 stars',style:{fontSize:13,color:C.goldT,letterSpacing:1,flexShrink:0}},pbStars_(b.Stars))),
+          h('span',{style:{fontSize:12,color:C.mute}},meta),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},
+            b.Occasion?h('span',{className:'pb-occ',style:{fontSize:11,padding:'3px 8px',borderRadius:999,background:'#2a1a24',color:C.pink}},b.Occasion):null,
+            dream?h('span',{className:'pb-dream',style:{fontSize:11,padding:'3px 8px',borderRadius:6,background:'#2a1f3a',color:'#c9b0f0'}},'Dream trip'+(dream.toLowerCase()==='yes'?'':': '+dream)):null,
+            b['Trip Idea']?h('button',{type:'button',className:'pb-idea',onClick:function(){props.onGoIdeas&&props.onGoIdeas(b['Trip Idea']);},style:{fontSize:11,padding:'3px 8px',borderRadius:6,background:'#14203a',color:C.blue,border:'none',cursor:'pointer',minHeight:24}},'In a trip idea →'):null),
+          b.Notes?h('span',{style:{fontSize:12,color:'#aab6d6'}},b.Notes):null,
+          (function(){var bm=pbMonths_(b['Best Months']),f=(d.facts||{})[b.ID],wk=pbWeekend_(d,b),best=f&&(f.flights||[]).slice().sort(function(x,y){return x.minutes-y.minutes;})[0];
+            return h('div',{className:'pb-facts-line',style:{display:'flex',flexWrap:'wrap',gap:'4px 10px',alignItems:'center',fontSize:12,color:'#c4cde4'}},
+              bm.length?h('span',{className:'pb-best'},'Best: '+pbMonthsText_(bm)):null,
+              best?h('span',{className:'pb-direct','data-weekend':wk?'yes':'no',style:{color:wk?C.green:'#c4cde4'}},'Direct · '+pbDur_(best.minutes)+' from '+best.from+(best.seasonal?' · seasonal':'')):f?h('span',{className:'pb-direct','data-weekend':'no',style:{color:C.mute}},'No direct flight from '+(d.homeAirports||[]).join(', ')):null,
+              !b.visited&&(!f||!bm.length)?h('button',{type:'button',className:'pb-facts',disabled:!!asking[b.ID],onClick:function(){askFacts(b);},style:Object.assign({},small,{minHeight:32})},asking[b.ID]?'Looking up…':'Suggest best months & flights'):null);})(),
+          dream&&!b.visited?(function(){var p=pbPoints_(d,b);if(!p)return null;
+            return h('div',{className:'pb-points',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:10,background:'#17122a',border:'1px solid #3a2a5a'}},
+              h('span',{style:{fontSize:12,color:'#c9b0f0'}},'About '+p.need.toLocaleString()+' '+p.program+' points for two seats, round trip, in '+p.cabin),
+              h('div',{role:'progressbar','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':p.pct,'aria-label':'Points held',style:{height:8,borderRadius:4,background:'#0b0a18',overflow:'hidden'}},h('div',{className:'pb-points-bar',style:{width:p.pct+'%',height:'100%',background:p.pct>=100?C.green:'#9b7be0'}})),
+              h('span',{className:'pb-points-held',style:{fontSize:12,color:C.mute}},'You hold about '+p.have.toLocaleString()+(p.transferable?' (including '+p.transferable.toLocaleString()+' transferable)':'')+' · '+p.pct+'%'),
+              ariaFor===b.ID?h(TiCopyOut,{title:'Ask ARIA to find award space',to:'ARIA',hint:'VERA doesn’t write to ARIA. Copy this and hand it over.',text:pbAriaText_(b,p,d.homeAirports),onClose:function(){setAriaFor(null);}})
+                :h('button',{type:'button',className:'pb-aria',onClick:function(){setAriaFor(b.ID);},style:Object.assign({},small,{alignSelf:'flex-start'})},'Ask ARIA to find award space'));})():null)),
+      h('div',{className:'pb-acts',style:{display:'flex',flexDirection:'column',gap:4,paddingLeft:b.visited?0:56}},
+        acts.map(function(a){return h('div',{key:a.id,className:'pb-act',style:{display:'flex',alignItems:'center',gap:8,fontSize:13}},
+          h('input',{type:'checkbox',checked:a.done,'aria-label':a.activity,onChange:function(){call({action:'toggle_bucket_activity',id:a.id,done:a.done?'':'yes'});},style:{width:18,height:18,accentColor:C.green}}),
+          h('span',{style:{flex:1,color:a.done?C.mute:C.text,textDecoration:a.done?'line-through':'none'}},a.activity),
+          h('button',{type:'button','aria-label':'Remove '+a.activity,onClick:function(){call({action:'delete_bucket_activity',id:a.id});},style:{background:'none',border:'none',color:C.mute,cursor:'pointer',minWidth:32,minHeight:32}},'×'));}),
+        b.visited?null:h('form',{onSubmit:function(e){e.preventDefault();var t=(newAct[b.ID]||'').trim();if(!t)return;setNewAct(function(x){var n=Object.assign({},x);n[b.ID]='';return n;});call({action:'add_bucket_activity',bucketId:b.ID,activity:t});},style:{display:'flex',gap:6}},
+          h('input',{className:'pb-act-in','aria-label':'Add a thing to do in '+pbPlace_(b),value:newAct[b.ID]||'',placeholder:'+ A thing to do there',onChange:function(e){var v=e.target.value;setNewAct(function(x){var n=Object.assign({},x);n[b.ID]=v;return n;});},style:Object.assign({},inp,{minHeight:36,fontSize:13})}))),
+      isEdit?h('div',{className:'pb-edit',style:{display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid #16213a',paddingTop:10}},
+        h('span',{style:{fontSize:12,color:C.mute}},'Occasion'),
+        h('div',{role:'group','aria-label':'Occasion',style:{display:'flex',flexWrap:'wrap',gap:6}},picks.map(function(p){var o=edit.occasion===p;return h('button',{key:p,type:'button','aria-pressed':o,className:'pb-occpick'+(o?' on':''),onClick:function(){setEdit(Object.assign({},edit,{occasion:o?'':p}));},
+          style:{minHeight:36,padding:'6px 12px',borderRadius:999,fontSize:12,cursor:'pointer',background:o?'#2a1a24':C.deep,border:'1px solid '+(o?C.pink:'#1c2a48'),color:o?C.pink:'#aab6d6'}},p);})),
+        h('label',{style:lab},'Or your own words',h('input',{className:'pb-occ-in',value:edit.occasion,placeholder:'e.g. 10th anniversary',onChange:function(e){setEdit(Object.assign({},edit,{occasion:e.target.value}));},style:inp})),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+          h('label',{style:lab},'Target year',h('input',{className:'pb-year-in',inputMode:'numeric',value:edit.targetYear,onChange:function(e){setEdit(Object.assign({},edit,{targetYear:e.target.value}));},style:inp})),
+          h('label',{style:lab},'Who',h('select',{className:'pb-who-in',value:edit.traveller,onChange:function(e){setEdit(Object.assign({},edit,{traveller:e.target.value}));},style:inp},['Both','Ahmed','Victoria'].map(function(w){return h('option',{key:w,value:w},w);})))),
+        h('span',{style:{fontSize:12,color:C.mute}},'Best months'),
+        h('div',{role:'group','aria-label':'Best months',style:{display:'grid',gridTemplateColumns:'repeat(6, minmax(0, 1fr))',gap:6}},PB_MON.map(function(m,i){var on=(edit.bestMonths||[]).indexOf(i+1)!==-1;
+          return h('button',{key:m,type:'button','aria-pressed':on,className:'pb-month'+(on?' on':''),'data-m':i+1,onClick:function(){var s=(edit.bestMonths||[]).filter(function(x){return x!==i+1;});if(!on)s.push(i+1);setEdit(Object.assign({},edit,{bestMonths:s.sort(function(a,b){return a-b;})}));},
+            style:{minHeight:36,borderRadius:8,fontSize:12,cursor:'pointer',background:on?'#14301f':C.deep,border:'1px solid '+(on?C.green:'#1c2a48'),color:on?C.green:'#aab6d6'}},m);})),
+        (d.homeAirports||[]).length?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))',gap:8}},(d.homeAirports||[]).map(function(a){return h('label',{key:a,style:lab},'Direct from '+a+' (hours)',
+          h('input',{className:'pb-fl-in','data-from':a,inputMode:'decimal',value:(edit.flights||{})[a]==null?'':edit.flights[a],placeholder:'none',onChange:function(e){var fl=Object.assign({},edit.flights||{});fl[a]=e.target.value;setEdit(Object.assign({},edit,{flights:fl,flightsChanged:true}));},style:inp}));})):null,
+        h('label',{style:lab},'Notes',h('input',{className:'pb-notes-in',value:edit.notes,onChange:function(e){setEdit(Object.assign({},edit,{notes:e.target.value}));},style:inp})),
+        h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',onClick:function(){setEdit(null);},style:Object.assign({},small,{flex:1,minHeight:44,color:'#aab6d6'})},'Cancel'),
+          h('button',{type:'button',className:'pb-save',disabled:busy,onClick:saveEdit,style:{flex:1,minHeight:44,borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontWeight:700,cursor:'pointer'}},'Save')))
+      :h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',paddingLeft:b.visited?0:56}},
+        h('button',{type:'button',className:'pb-edit-btn',onClick:function(){var f=(d.facts||{})[b.ID],fl={};((f&&f.flights)||[]).forEach(function(x){fl[x.from]=String(Math.round(x.minutes/6)/10);});
+          setEdit({ID:b.ID,occasion:String(b.Occasion||''),notes:String(b.Notes||''),targetYear:String(b['Target Year']||''),traveller:String(b.Traveller||'Both'),bestMonths:pbMonths_(b['Best Months']),flights:fl});},style:small},'Edit'),
+        b.visited?null:h('button',{type:'button',className:'pb-visited',disabled:busy,onClick:function(){call({action:'update_bucket_item',id:b.ID,visited:String(new Date().getFullYear())});},style:small},'Mark visited'),
+        h('button',{type:'button',className:'pb-remove',disabled:busy,onClick:function(){if(!window.confirm('Remove '+pbPlace_(b)+' from the bucket list?'))return;call({action:'delete_bucket_item',id:b.ID});},style:Object.assign({},small,{color:'#f87171',border:'1px solid #6b2a2a'})},'Remove')));});
+  return h('div',{className:'pb-panel',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:720,paddingBottom:nSel.length?80:0}},head,
+    h('div',{role:'group','aria-label':'Filter',style:{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}},PB_FILTERS.map(function(f){var on=filter===f[0];return h('button',{key:f[0],type:'button','aria-pressed':on,className:'pb-filter'+(on?' on':''),'data-f':f[0],onClick:function(){setFilter(f[0]);},style:chip(on)},f[1]);})),
+    err?h('div',{role:'alert',style:{color:'#f87171',fontSize:13}},err):null,
+    shown.length?h('span',{style:{fontSize:12,color:C.mute}},'Tick places that would make one trip, then plan them together.'):h('div',{style:{color:C.mute,fontSize:13}},(d.bucket||[]).length?'Nothing matches this filter.':'No places yet. Add one to start the list.'),
+    cards,
+    nSel.length&&!plan?h('div',{className:'pb-bar',style:{position:'sticky',bottom:12,zIndex:5,background:'#1d1a0c',border:'1px solid '+C.gold,borderRadius:14,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}},
+      h('span',{style:{flex:1,fontSize:13,color:'#f0d78a'}},nSel.length+' place'+(nSel.length===1?'':'s')+' chosen'),
+      h('button',{type:'button',className:'pb-plan',onClick:openPlan,style:{minHeight:44,padding:'0 16px',borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},nSel.length>1?'Plan as one trip':'Plan a trip')):null,
+    plan?h('div',{className:'pb-plansheet',role:'dialog','aria-label':'Plan as one trip',style:Object.assign({},card,{border:'1px solid '+C.gold,gap:12,padding:14})},
+      h('h3',{style:{margin:0,fontSize:16,fontWeight:700}},nSel.length>1?'Plan as one trip':'Plan a trip'),
+      plan.loading?h('div',{className:'loading-text'},'Building the brief…'):[
+      h('div',{key:'pl',style:{display:'flex',flexWrap:'wrap',gap:6}},plan.places.map(function(p){return h('span',{key:p,className:'pb-plan-place',style:{fontSize:12,padding:'6px 10px',borderRadius:999,background:'#1d1a0c',border:'1px solid #6b5a10',color:C.goldT}},p);})),
+      h('label',{key:'t',style:lab},'Title',h('input',{className:'pb-plan-title',value:plan.title,onChange:function(e){setPlan(Object.assign({},plan,{title:e.target.value}));},style:inp})),
+      h('label',{key:'w',style:lab},'Where',h('input',{className:'pb-plan-where',value:plan.where,onChange:function(e){setPlan(Object.assign({},plan,{where:e.target.value}));},style:inp})),
+      h('div',{key:'ww',style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('div',{style:lab},'When',h('span',{className:'pb-plan-when',style:Object.assign({},inp,{display:'flex',alignItems:'center',color:'#c4cde4'})},tiMonthsText_(plan.brief.months))),
+        h('label',{style:lab},'Who',h('input',{className:'pb-plan-who',value:plan.travelers,onChange:function(e){setPlan(Object.assign({},plan,{travelers:e.target.value}));},style:inp}))),
+      plan.months?h('div',{key:'ms',className:'pb-mstrip',style:{display:'flex',flexDirection:'column',gap:6}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(12, minmax(0, 1fr))',gap:3}},PB_MON.map(function(m,i){var fit=plan.months.all.indexOf(i+1)!==-1?'all':plan.months.some.indexOf(i+1)!==-1?'some':'none';
+          return h('div',{key:m,className:'pb-mstrip-m','data-m':i+1,'data-fit':fit,title:m,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:3,fontSize:10,color:C.mute}},
+            h('span',{style:{width:'100%',height:22,borderRadius:5,background:fit==='all'?C.green:fit==='some'?'#24502f':C.deep,border:'1px solid '+(fit==='none'?'#1c2a48':C.green)}}),m.slice(0,1));})),
+        h('span',{className:'pb-mstrip-say',style:{fontSize:12,color:'#c4cde4'}},!plan.months.known?'Add best months to the places to see when they all work.':plan.months.all.length?'Good for '+(plan.months.known>1?'all '+plan.months.known+' places':'it')+': '+pbMonthsText_(plan.months.all):'No month suits every place; the lighter months suit some.')):null,
+      plan.sample&&(plan.people||[]).length?h('div',{key:'pto',className:'pb-ptos',style:{display:'flex',flexDirection:'column',gap:4,padding:10,borderRadius:10,background:C.deep,border:'1px solid #1c2a48'}},
+        h('span',{style:{fontSize:12,color:C.mute}},'Vacation days for a '+plan.sample.nights+'-night trip from Sat '+plan.sample.monthName+' '+Number(plan.sample.start.slice(8))+' (a sample in a good month)'),
+        plan.people.map(function(p){return h('span',{key:p.name,className:'pb-pto','data-name':p.name,style:{fontSize:13,color:p.after!=null&&p.after<0?'#f87171':'#c4cde4'}},
+          !p.found?p.name+': no work calendar to read':p.left==null?p.name+': uses '+p.uses+' day'+(p.uses===1?'':'s'):p.name+': '+p.left+' left in '+p.year+' · uses '+p.uses+' → '+p.after+' left'+(p.bridged&&p.bridged.length?' (bridges '+p.bridged.join(', ')+')':''));})):null,
+      plan.brief.occasion?h('div',{key:'o',style:{fontSize:12,color:C.mute,display:'flex',gap:8,alignItems:'center'}},'Occasion',h('span',{className:'pb-plan-occ',style:{fontSize:12,padding:'3px 9px',borderRadius:999,background:'#2a1a24',color:C.pink}},plan.brief.occasion)):null,
+      h('label',{key:'m',style:lab},'Must haves',h('textarea',{className:'pb-plan-must',rows:3,value:plan.mustHaves,onChange:function(e){setPlan(Object.assign({},plan,{mustHaves:e.target.value}));},style:Object.assign({},inp,{padding:'10px 12px',lineHeight:1.45,resize:'vertical'})})),
+      plan.brief.pieces.length?h('div',{key:'p',style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:C.mute}},'Wishes, from the things to do (Ask VERA fits these in)'),
+        plan.brief.pieces.map(function(x,i){return h('div',{key:i,className:'pb-plan-wish',style:{display:'flex',justifyContent:'space-between',gap:8,padding:'8px 10px',borderRadius:10,background:C.deep,border:'1px solid #1c2a48',fontSize:13}},h('span',null,x.name),h('span',{style:{fontSize:11,color:C.blue,flexShrink:0}},x.detail));})):null,
+      h('span',{key:'n',style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Nights, budget, pace and travel modes stay for you to set in Trip Ideas. The places stay on the Bucket List, linked to the idea.'),
+      h('div',{key:'b',style:{display:'flex',gap:10}},h('button',{type:'button',className:'pb-plan-cancel',onClick:function(){setPlan(null);},style:Object.assign({},small,{flex:1,minHeight:48,color:'#aab6d6'})},'Cancel'),
+        h('button',{type:'button',className:'pb-plan-save',disabled:busy||!String(plan.title||'').trim(),onClick:savePlan,style:{flex:2,minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},'Add to Trip Ideas'))]):null,
+    modal);}
+// ---- /PlacesBucket ----
 // ---- TravelerProfilesPanel (Travel › Travelers › Profiles, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // One person, many items: documents, trusted traveller, memberships, preferences, health, and
 // (after a birth) children. Numbers are kept as their last 4 only; the server enforces it.
@@ -11438,10 +11695,10 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   function handleAddBucketItem(fields) {
     if (!apiUrl || !apiToken) return;
     setBusy(true);
-    apiGet(apiUrl, apiToken, {
+    return apiGet(apiUrl, apiToken, {
       action: 'add_bucket_item', country: fields.country, city: fields.city || '',
       targetYear: fields.targetYear ? String(fields.targetYear) : '', traveller: fields.traveller || 'Both',
-      stars: fields.stars ? String(fields.stars) : '', dreamTrip: fields.dreamTrip || '', notes: fields.notes || '',
+      stars: fields.stars ? String(fields.stars) : '', dreamTrip: fields.dreamTrip || '', notes: fields.notes || '', occasion: fields.occasion || '',
     })
       .then(data => { if (data.ok) setBucketList(prev => Array.isArray(prev) ? [...prev, { ...data.entry, activities: [] }] : [{ ...data.entry, activities: [] }]); else setError(data.error || 'Could not add bucket list item.'); })
       .catch(err => setError('Could not add bucket list item: ' + err.message))
@@ -11550,21 +11807,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
         />
       )}
 
-      {travSub === 'bucketlist' && (
-        <BucketListPanel
-          entries={bucketList}
-          busy={busy}
-          apiUrl={apiUrl}
-          apiToken={apiToken}
-          onLoad={loadBucketList}
-          onAdd={handleAddBucketItem}
-          onMarkVisited={handleMarkBucketVisited}
-          onDelete={handleDeleteBucketItem}
-          onAddActivity={handleAddBucketActivity}
-          onToggleActivity={handleToggleBucketActivity}
-          onDeleteActivity={handleDeleteBucketActivity}
-        />
-      )}
+      {travSub === 'bucketlist' && <PlacesBucket apiUrl={apiUrl} apiToken={apiToken} busy={busy} onAdd={handleAddBucketItem} onGoIdeas={() => setTravSub('ideas')} />}
 
 
       {travSub === 'gifts' && (
@@ -12869,7 +13112,7 @@ const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 
   wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
 const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '💳 Card cheat sheet' }, { id: 'coupons', label: '🎟️ Coupons' }];
 const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
-const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'gifts', label: '🎁 Gifts' }];
+const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'bucketlist', label: '🪣 Bucket List' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'gifts', label: '🎁 Gifts' }];
 // Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
 const HF_GROUPS_LITE = [
   { id: 'kitchen', label: 'Kitchen', icon: '🍽️', items: ['meal_plan', 'recipes', 'pantry', 'takeouts'] },

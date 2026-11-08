@@ -21,7 +21,7 @@ const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a ==
 console.log('\nthe source');
 check('both dashboards carry it, word for word', block(APP).length > 5000 && block(APP) === block(LITE));
 check('the full dashboard shows it at Travel › Travelers › Profiles', /sub==='profiles'&&\/\*#__PURE__\*\/React\.createElement\(TravelerProfilesPanel,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-check('lite has a Profiles tab and shows it there', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE)
+check('lite has a Profiles tab and shows it there', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE)
   && /\{travSub === 'profiles' && <TravelerProfilesPanel apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>\}/.test(LITE));
 
 const HEAD = (CODE.match(/const TRAVELER_ITEM_HEADERS\s*=\s*(\[[^\]]*\])/) || [])[1];

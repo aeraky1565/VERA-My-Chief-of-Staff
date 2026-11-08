@@ -4825,16 +4825,28 @@ function PlacesCountries(props){var h=React.createElement;var apiUrl=props.apiUr
 // its occasion, its things to do (add, tick, remove) and, once planned, the Trip Idea it's in.
 // Filters: Not yet visited, Dream trips, For an occasion, 4★ and up, All. Edit sets the occasion
 // (quick picks, your own words, or one used before), the notes, the year and who.
-var PB_FILTERS=[['open','Not yet visited'],['dream','Dream trips'],['occasion','For an occasion'],['stars','4★ and up'],['all','All']];
-function pbView_(items,f){return (items||[]).filter(function(b){if(f==='all')return true;if(f==='open')return !b.visited;if(b.visited)return false;
-  if(f==='dream')return !!String(b['Dream Trip']||'').trim();if(f==='occasion')return !!String(b.Occasion||'').trim();if(f==='stars')return Number(b.Stars)>=4;return true;});}
+var PB_FILTERS=[['open','Not yet visited'],['dream','Dream trips'],['occasion','For an occasion'],['weekend','Long weekend'],['stars','4★ and up'],['all','All']];
+// Release 2: best months, direct flights (Place Facts), points for dream trips, long weekends.
+var PB_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function pbMonths_(v){var out={};String(v==null?'':v).split(/[,;/]+/).forEach(function(p){var r=p.split(/\s*[–—-]\s*/);var n=function(x){x=String(x||'').trim().toLowerCase();if(/^\d{1,2}$/.test(x)){var k=+x;return k>=1&&k<=12?k:0;}var i=PB_MON.map(function(m){return m.toLowerCase();}).indexOf(x.slice(0,3));return i===-1?0:i+1;};
+  var a=n(r[0]),b=r.length>1?n(r[1]):a;if(!a||!b)return;for(var m=a,k=0;k<12;k++){out[m]=1;if(m===b)break;m=m%12+1;}});return Object.keys(out).map(Number).sort(function(x,y){return x-y;});}
+function pbMonthsText_(ms){ms=(ms||[]).slice().sort(function(a,b){return a-b;});var out=[],i=0;while(i<ms.length){var j=i;while(j+1<ms.length&&ms[j+1]===ms[j]+1)j++;out.push(j-i>=2?PB_MON[ms[i]-1]+'–'+PB_MON[ms[j]-1]:ms.slice(i,j+1).map(function(m){return PB_MON[m-1];}).join(', '));i=j+1;}return out.join(', ');}
+function pbDur_(m){var hh=Math.floor(m/60),mm=m%60;return hh+' h'+(mm?' '+mm+' m':'');}
+function pbWeekend_(d,b){var f=d&&d.facts&&d.facts[b.ID];var max=(d&&d.longWeekendMinutes)||420;return ((f&&f.flights)||[]).filter(function(x){return x.minutes<max;}).sort(function(x,y){return x.minutes-y.minutes;})[0]||null;}
+function pbPoints_(d,b){var reg=pcContinent_(pcIso_(b.Country)).toLowerCase().replace(/ /g,'_');var t=((d&&d.awards)||{})[reg];if(!t)return null;var cab=(d&&d.awardCabin)||'business';var a=t[cab]||t.business||t.economy;if(!a)return null;
+  var prog=String(a[0]),need=Number(a[1])*4,by=((d.points||{}).by)||{},own=0;Object.keys(by).forEach(function(k){if(k.toLowerCase().indexOf(prog.toLowerCase())!==-1)own+=Number(by[k])||0;});
+  var tr=Number((d.points||{}).transferable)||0,have=own+tr;return {program:prog,cabin:cab,need:need,own:own,transferable:tr,have:have,pct:need?Math.min(100,Math.round(have/need*100)):0};}
+function pbAriaText_(b,p,homes){return ['=== VERA award request v1 ===','Find award space for two, round trip, '+p.cabin+'.','To: '+pbPlace_(b),'From: '+(homes||[]).join(', '),
+  'When: '+(pbMonthsText_(pbMonths_(b['Best Months']))||'flexible')+(b['Target Year']?' '+b['Target Year']:''),'Programme to start with: '+p.program+' (about '+p.need.toLocaleString()+' points for both of us)','Points held: about '+p.have.toLocaleString()+(p.transferable?' (including '+p.transferable.toLocaleString()+' transferable)':'')].join('\n');}
+function pbView_(items,f,d){return (items||[]).filter(function(b){if(f==='all')return true;if(f==='open')return !b.visited;if(b.visited)return false;
+  if(f==='weekend')return !!pbWeekend_(d,b);if(f==='dream')return !!String(b['Dream Trip']||'').trim();if(f==='occasion')return !!String(b.Occasion||'').trim();if(f==='stars')return Number(b.Stars)>=4;return true;});}
 function pbStars_(n){n=Math.max(0,Math.min(5,Number(n)||0));var s='';for(var i=0;i<5;i++)s+=i<n?'★':'☆';return s;}
 function pbPlace_(b){return (b.City?b.City+', ':'')+b.Country;}
 function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,apiToken=props.apiToken;
   var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
   var _f=React.useState('open'),filter=_f[0],setFilter=_f[1];var _ed=React.useState(null),edit=_ed[0],setEdit=_ed[1];
   var _a=React.useState(false),adding=_a[0],setAdding=_a[1];var _n=React.useState({}),newAct=_n[0],setNewAct=_n[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
-  var _s=React.useState({}),sel=_s[0],setSel=_s[1];var _pl=React.useState(null),plan=_pl[0],setPlan=_pl[1];
+  var _s=React.useState({}),sel=_s[0],setSel=_s[1];var _pl=React.useState(null),plan=_pl[0],setPlan=_pl[1];var _ar=React.useState(null),ariaFor=_ar[0],setAriaFor=_ar[1];var _fx=React.useState({}),asking=_fx[0],setAsking=_fx[1];
   function load(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'places'}).then(function(r){if(r&&r.ok)setD(r);else setErr((r&&r.error)||'Could not load the bucket list.');}).catch(function(e){setErr(e.message||'Could not load the bucket list.');});}
   React.useEffect(load,[apiUrl,apiToken]);
   function call(p){setBusy(true);return apiGet(apiUrl,apiToken,p).then(function(r){if(r&&r.ok===false)setErr(r.error||'That didn’t save.');return r;}).catch(function(e){setErr(e.message||'That didn’t save.');}).then(function(r){setBusy(false);load();return r;});}
@@ -4847,14 +4859,17 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
     h('button',{type:'button',className:'pb-add',onClick:function(){setAdding(true);},style:{minHeight:40,padding:'0 14px',borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontSize:13,fontWeight:700,cursor:'pointer'}},'+ Add a place'));
   var modal=adding?h(AddBucketItemModal,{entries:(d&&d.bucket)||[],busy:props.busy,onClose:function(){setAdding(false);},onSave:function(f){Promise.resolve(props.onAdd&&props.onAdd(f)).then(function(){setAdding(false);load();});}}):null;
   if(!d)return h('div',{className:'pb-panel',style:{display:'flex',flexDirection:'column',gap:12}},head,err?h('div',{style:{color:'#f87171',fontSize:13}},err):h('div',{className:'loading-text'},'Loading the bucket list…'),modal);
-  var shown=pbView_(d.bucket,filter);var picks=d.occasions||d.picks||[];
+  var shown=pbView_(d.bucket,filter,d);var picks=d.occasions||d.picks||[];
   var nSel=Object.keys(sel).filter(function(k){return sel[k]&&(d.bucket||[]).some(function(b){return b.ID===k&&!b.visited;});});
   function openPlan(){setPlan({loading:true});setErr('');apiPost(apiUrl,apiToken,{action:'places_plan_preview',bucketIds:nSel}).then(function(r){
-    if(r&&r.ok)setPlan({brief:r.brief,places:r.places,title:r.brief.title,where:r.brief.where,travelers:r.brief.travelers,mustHaves:r.brief.mustHaves});else{setPlan(null);setErr((r&&r.error)||'Could not build the brief.');}})
+    if(r&&r.ok)setPlan({brief:r.brief,places:r.places,title:r.brief.title,where:r.brief.where,travelers:r.brief.travelers,mustHaves:r.brief.mustHaves,months:r.months||null,sample:r.sample||null,people:r.people||[]});else{setPlan(null);setErr((r&&r.error)||'Could not build the brief.');}})
     .catch(function(e){setPlan(null);setErr(e.message||'Could not build the brief.');});}
   function savePlan(){setBusy(true);apiPost(apiUrl,apiToken,{action:'places_plan_idea',bucketIds:nSel,edits:{title:plan.title,where:plan.where,travelers:plan.travelers,mustHaves:plan.mustHaves}}).then(function(r){
     setBusy(false);if(r&&r.ok){setPlan(null);setSel({});load();if(props.onGoIdeas)props.onGoIdeas(r.idea.id);}else setErr((r&&r.error)||'The idea didn’t save.');}).catch(function(e){setBusy(false);setErr(e.message||'The idea didn’t save.');});}
-  function saveEdit(){var b=edit;call({action:'update_bucket_item',id:b.ID,occasion:b.occasion,notes:b.notes,targetYear:b.targetYear,traveller:b.traveller}).then(function(r){if(!r||r.ok!==false)setEdit(null);});}
+  function askFacts(b){setAsking(function(o){var n=Object.assign({},o);n[b.ID]=1;return n;});apiGet(apiUrl,apiToken,{action:'bucket_facts',id:b.ID}).then(function(r){if(r&&r.ok===false)setErr(r.error||'Couldn’t look that up.');}).catch(function(e){setErr(e.message||'Couldn’t look that up.');})
+    .then(function(){setAsking(function(o){var n=Object.assign({},o);delete n[b.ID];return n;});load();});}
+  function saveEdit(){var b=edit;var fl=b.flights||null;call({action:'update_bucket_item',id:b.ID,occasion:b.occasion,notes:b.notes,bestMonths:pbMonthsText_(b.bestMonths||[]),targetYear:b.targetYear,traveller:b.traveller}).then(function(r){
+    if(fl&&b.flightsChanged)return apiPost(apiUrl,apiToken,{action:'bucket_facts_set',id:b.ID,flights:Object.keys(fl).filter(function(k){return Number(fl[k])>0;}).map(function(k){return {from:k,minutes:Math.round(Number(fl[k])*60)};})}).then(function(){load();return r;});return r;}).then(function(r){if(!r||r.ok!==false)setEdit(null);});}
   var cards=shown.map(function(b){var iso=pcIso_(b.Country);var on=!!sel[b.ID];var dream=String(b['Dream Trip']||'').trim();var acts=b.activities||[];var isEdit=edit&&edit.ID===b.ID;
     var meta=[b['Target Year']?String(b['Target Year']):'Any year',b.Traveller||'Both'].concat(b.visited?['Visited '+(String(b.Visited).match(/\d{4}/)||[''])[0]]:[]).filter(Boolean).join(' · ');
     return h('div',{key:b.ID,className:'pb-card'+(b.visited?' visited':''),'data-id':b.ID,style:Object.assign({},card,{border:'1px solid '+(on?C.gold:C.line),opacity:b.visited?0.7:1})},
@@ -4870,7 +4885,19 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
             b.Occasion?h('span',{className:'pb-occ',style:{fontSize:11,padding:'3px 8px',borderRadius:999,background:'#2a1a24',color:C.pink}},b.Occasion):null,
             dream?h('span',{className:'pb-dream',style:{fontSize:11,padding:'3px 8px',borderRadius:6,background:'#2a1f3a',color:'#c9b0f0'}},'Dream trip'+(dream.toLowerCase()==='yes'?'':': '+dream)):null,
             b['Trip Idea']?h('button',{type:'button',className:'pb-idea',onClick:function(){props.onGoIdeas&&props.onGoIdeas(b['Trip Idea']);},style:{fontSize:11,padding:'3px 8px',borderRadius:6,background:'#14203a',color:C.blue,border:'none',cursor:'pointer',minHeight:24}},'In a trip idea →'):null),
-          b.Notes?h('span',{style:{fontSize:12,color:'#aab6d6'}},b.Notes):null)),
+          b.Notes?h('span',{style:{fontSize:12,color:'#aab6d6'}},b.Notes):null,
+          (function(){var bm=pbMonths_(b['Best Months']),f=(d.facts||{})[b.ID],wk=pbWeekend_(d,b),best=f&&(f.flights||[]).slice().sort(function(x,y){return x.minutes-y.minutes;})[0];
+            return h('div',{className:'pb-facts-line',style:{display:'flex',flexWrap:'wrap',gap:'4px 10px',alignItems:'center',fontSize:12,color:'#c4cde4'}},
+              bm.length?h('span',{className:'pb-best'},'Best: '+pbMonthsText_(bm)):null,
+              best?h('span',{className:'pb-direct','data-weekend':wk?'yes':'no',style:{color:wk?C.green:'#c4cde4'}},'Direct · '+pbDur_(best.minutes)+' from '+best.from+(best.seasonal?' · seasonal':'')):f?h('span',{className:'pb-direct','data-weekend':'no',style:{color:C.mute}},'No direct flight from '+(d.homeAirports||[]).join(', ')):null,
+              !b.visited&&(!f||!bm.length)?h('button',{type:'button',className:'pb-facts',disabled:!!asking[b.ID],onClick:function(){askFacts(b);},style:Object.assign({},small,{minHeight:32})},asking[b.ID]?'Looking up…':'Suggest best months & flights'):null);})(),
+          dream&&!b.visited?(function(){var p=pbPoints_(d,b);if(!p)return null;
+            return h('div',{className:'pb-points',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:10,background:'#17122a',border:'1px solid #3a2a5a'}},
+              h('span',{style:{fontSize:12,color:'#c9b0f0'}},'About '+p.need.toLocaleString()+' '+p.program+' points for two seats, round trip, in '+p.cabin),
+              h('div',{role:'progressbar','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':p.pct,'aria-label':'Points held',style:{height:8,borderRadius:4,background:'#0b0a18',overflow:'hidden'}},h('div',{className:'pb-points-bar',style:{width:p.pct+'%',height:'100%',background:p.pct>=100?C.green:'#9b7be0'}})),
+              h('span',{className:'pb-points-held',style:{fontSize:12,color:C.mute}},'You hold about '+p.have.toLocaleString()+(p.transferable?' (including '+p.transferable.toLocaleString()+' transferable)':'')+' · '+p.pct+'%'),
+              ariaFor===b.ID?h(TiCopyOut,{title:'Ask ARIA to find award space',to:'ARIA',hint:'VERA doesn’t write to ARIA. Copy this and hand it over.',text:pbAriaText_(b,p,d.homeAirports),onClose:function(){setAriaFor(null);}})
+                :h('button',{type:'button',className:'pb-aria',onClick:function(){setAriaFor(b.ID);},style:Object.assign({},small,{alignSelf:'flex-start'})},'Ask ARIA to find award space'));})():null)),
       h('div',{className:'pb-acts',style:{display:'flex',flexDirection:'column',gap:4,paddingLeft:b.visited?0:56}},
         acts.map(function(a){return h('div',{key:a.id,className:'pb-act',style:{display:'flex',alignItems:'center',gap:8,fontSize:13}},
           h('input',{type:'checkbox',checked:a.done,'aria-label':a.activity,onChange:function(){call({action:'toggle_bucket_activity',id:a.id,done:a.done?'':'yes'});},style:{width:18,height:18,accentColor:C.green}}),
@@ -4886,11 +4913,18 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
           h('label',{style:lab},'Target year',h('input',{className:'pb-year-in',inputMode:'numeric',value:edit.targetYear,onChange:function(e){setEdit(Object.assign({},edit,{targetYear:e.target.value}));},style:inp})),
           h('label',{style:lab},'Who',h('select',{className:'pb-who-in',value:edit.traveller,onChange:function(e){setEdit(Object.assign({},edit,{traveller:e.target.value}));},style:inp},['Both','Ahmed','Victoria'].map(function(w){return h('option',{key:w,value:w},w);})))),
+        h('span',{style:{fontSize:12,color:C.mute}},'Best months'),
+        h('div',{role:'group','aria-label':'Best months',style:{display:'grid',gridTemplateColumns:'repeat(6, minmax(0, 1fr))',gap:6}},PB_MON.map(function(m,i){var on=(edit.bestMonths||[]).indexOf(i+1)!==-1;
+          return h('button',{key:m,type:'button','aria-pressed':on,className:'pb-month'+(on?' on':''),'data-m':i+1,onClick:function(){var s=(edit.bestMonths||[]).filter(function(x){return x!==i+1;});if(!on)s.push(i+1);setEdit(Object.assign({},edit,{bestMonths:s.sort(function(a,b){return a-b;})}));},
+            style:{minHeight:36,borderRadius:8,fontSize:12,cursor:'pointer',background:on?'#14301f':C.deep,border:'1px solid '+(on?C.green:'#1c2a48'),color:on?C.green:'#aab6d6'}},m);})),
+        (d.homeAirports||[]).length?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))',gap:8}},(d.homeAirports||[]).map(function(a){return h('label',{key:a,style:lab},'Direct from '+a+' (hours)',
+          h('input',{className:'pb-fl-in','data-from':a,inputMode:'decimal',value:(edit.flights||{})[a]==null?'':edit.flights[a],placeholder:'none',onChange:function(e){var fl=Object.assign({},edit.flights||{});fl[a]=e.target.value;setEdit(Object.assign({},edit,{flights:fl,flightsChanged:true}));},style:inp}));})):null,
         h('label',{style:lab},'Notes',h('input',{className:'pb-notes-in',value:edit.notes,onChange:function(e){setEdit(Object.assign({},edit,{notes:e.target.value}));},style:inp})),
         h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',onClick:function(){setEdit(null);},style:Object.assign({},small,{flex:1,minHeight:44,color:'#aab6d6'})},'Cancel'),
           h('button',{type:'button',className:'pb-save',disabled:busy,onClick:saveEdit,style:{flex:1,minHeight:44,borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontWeight:700,cursor:'pointer'}},'Save')))
       :h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',paddingLeft:b.visited?0:56}},
-        h('button',{type:'button',className:'pb-edit-btn',onClick:function(){setEdit({ID:b.ID,occasion:String(b.Occasion||''),notes:String(b.Notes||''),targetYear:String(b['Target Year']||''),traveller:String(b.Traveller||'Both')});},style:small},'Edit'),
+        h('button',{type:'button',className:'pb-edit-btn',onClick:function(){var f=(d.facts||{})[b.ID],fl={};((f&&f.flights)||[]).forEach(function(x){fl[x.from]=String(Math.round(x.minutes/6)/10);});
+          setEdit({ID:b.ID,occasion:String(b.Occasion||''),notes:String(b.Notes||''),targetYear:String(b['Target Year']||''),traveller:String(b.Traveller||'Both'),bestMonths:pbMonths_(b['Best Months']),flights:fl});},style:small},'Edit'),
         b.visited?null:h('button',{type:'button',className:'pb-visited',disabled:busy,onClick:function(){call({action:'update_bucket_item',id:b.ID,visited:String(new Date().getFullYear())});},style:small},'Mark visited'),
         h('button',{type:'button',className:'pb-remove',disabled:busy,onClick:function(){if(!window.confirm('Remove '+pbPlace_(b)+' from the bucket list?'))return;call({action:'delete_bucket_item',id:b.ID});},style:Object.assign({},small,{color:'#f87171',border:'1px solid #6b2a2a'})},'Remove')));});
   return h('div',{className:'pb-panel',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:720,paddingBottom:nSel.length?80:0}},head,
@@ -4910,6 +4944,15 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
       h('div',{key:'ww',style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
         h('div',{style:lab},'When',h('span',{className:'pb-plan-when',style:Object.assign({},inp,{display:'flex',alignItems:'center',color:'#c4cde4'})},tiMonthsText_(plan.brief.months))),
         h('label',{style:lab},'Who',h('input',{className:'pb-plan-who',value:plan.travelers,onChange:function(e){setPlan(Object.assign({},plan,{travelers:e.target.value}));},style:inp}))),
+      plan.months?h('div',{key:'ms',className:'pb-mstrip',style:{display:'flex',flexDirection:'column',gap:6}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(12, minmax(0, 1fr))',gap:3}},PB_MON.map(function(m,i){var fit=plan.months.all.indexOf(i+1)!==-1?'all':plan.months.some.indexOf(i+1)!==-1?'some':'none';
+          return h('div',{key:m,className:'pb-mstrip-m','data-m':i+1,'data-fit':fit,title:m,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:3,fontSize:10,color:C.mute}},
+            h('span',{style:{width:'100%',height:22,borderRadius:5,background:fit==='all'?C.green:fit==='some'?'#24502f':C.deep,border:'1px solid '+(fit==='none'?'#1c2a48':C.green)}}),m.slice(0,1));})),
+        h('span',{className:'pb-mstrip-say',style:{fontSize:12,color:'#c4cde4'}},!plan.months.known?'Add best months to the places to see when they all work.':plan.months.all.length?'Good for '+(plan.months.known>1?'all '+plan.months.known+' places':'it')+': '+pbMonthsText_(plan.months.all):'No month suits every place; the lighter months suit some.')):null,
+      plan.sample&&(plan.people||[]).length?h('div',{key:'pto',className:'pb-ptos',style:{display:'flex',flexDirection:'column',gap:4,padding:10,borderRadius:10,background:C.deep,border:'1px solid #1c2a48'}},
+        h('span',{style:{fontSize:12,color:C.mute}},'Vacation days for a '+plan.sample.nights+'-night trip from Sat '+plan.sample.monthName+' '+Number(plan.sample.start.slice(8))+' (a sample in a good month)'),
+        plan.people.map(function(p){return h('span',{key:p.name,className:'pb-pto','data-name':p.name,style:{fontSize:13,color:p.after!=null&&p.after<0?'#f87171':'#c4cde4'}},
+          !p.found?p.name+': no work calendar to read':p.left==null?p.name+': uses '+p.uses+' day'+(p.uses===1?'':'s'):p.name+': '+p.left+' left in '+p.year+' · uses '+p.uses+' → '+p.after+' left'+(p.bridged&&p.bridged.length?' (bridges '+p.bridged.join(', ')+')':''));})):null,
       plan.brief.occasion?h('div',{key:'o',style:{fontSize:12,color:C.mute,display:'flex',gap:8,alignItems:'center'}},'Occasion',h('span',{className:'pb-plan-occ',style:{fontSize:12,padding:'3px 9px',borderRadius:999,background:'#2a1a24',color:C.pink}},plan.brief.occasion)):null,
       h('label',{key:'m',style:lab},'Must haves',h('textarea',{className:'pb-plan-must',rows:3,value:plan.mustHaves,onChange:function(e){setPlan(Object.assign({},plan,{mustHaves:e.target.value}));},style:Object.assign({},inp,{padding:'10px 12px',lineHeight:1.45,resize:'vertical'})})),
       plan.brief.pieces.length?h('div',{key:'p',style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:C.mute}},'Wishes, from the things to do (Ask VERA fits these in)'),

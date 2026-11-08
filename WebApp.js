@@ -424,6 +424,7 @@ function doGet(e) {
       case 'fp_get':                return jsonOut_(webFpGet_(e.parameter));
       case 'cycle_get':             return jsonOut_(webCycleGet_());
       case 'tp_get':                return jsonOut_(webTpGet_());
+      case 'bucket_facts':          return jsonOut_(webBucketFacts_(e.parameter));
       case 'trip_readiness':        return jsonOut_(webTripReadiness_(e.parameter));
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
       case 'grocery_month':         return jsonOut_(webGroceryMonth_(e.parameter));
@@ -669,6 +670,7 @@ function doPost(e) {
       case 'cycle_log':                  return jsonOut_(webCycleLog_(body));
       case 'tp_save':                    return jsonOut_(webTpSave_(body));
       case 'tp_delete':                  return jsonOut_(webTpDelete_(body));
+      case 'bucket_facts_set':           return jsonOut_(webBucketFactsSet_(body));
       case 'trip_readiness_pack':        return jsonOut_(webTripReadinessPack_(body));
       case 'cycle_edit':                 return jsonOut_(webCycleEdit_(body));
       case 'cycle_end':                  return jsonOut_(webCycleEnd_(body));
@@ -7046,7 +7048,8 @@ function webAddBucketItem_(e) {
   if (!country) throw new Error('Country is required.');
   var sheet = plBucketSheet_();   // Places.js: adds Occasion and Trip Idea to an older tab
   var id = 'b_' + Date.now();
-  sheet.appendRow([id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, '']);
+  var bestMonths = typeof bpMonthsText_ === 'function' ? bpMonthsText_(bpMonths_(p.bestMonths || '')) : '';
+  sheet.appendRow([id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, '', bestMonths]);
   return { ok: true, entry: { ID: id, Country: country, City: city,
     'Target Year': targetYear, Traveller: traveller, Stars: stars,
     'Dream Trip': dreamTrip, Notes: notes, Visited: '', Occasion: occasion, 'Trip Idea': '' } };
@@ -7073,10 +7076,10 @@ function webUpdateBucketItem_(e) {
         if (starsCol >= 0) sheet.getRange(i + 1, starsCol + 1).setValue(parseInt(p.stars, 10) || '');
       }
       // #228: the rest of a place, by header, only the fields sent
-      [['occasion', 'Occasion'], ['notes', 'Notes'], ['city', 'City'], ['traveller', 'Traveller'], ['dreamTrip', 'Dream Trip'], ['targetYear', 'Target Year']].forEach(function(f) {
+      [['occasion', 'Occasion'], ['notes', 'Notes'], ['city', 'City'], ['traveller', 'Traveller'], ['dreamTrip', 'Dream Trip'], ['targetYear', 'Target Year'], ['bestMonths', 'Best Months']].forEach(function(f) {
         if (p[f[0]] === undefined) return;
         var col = headers.indexOf(f[1]);
-        if (col >= 0) sheet.getRange(i + 1, col + 1).setValue(f[0] === 'targetYear' ? (parseInt(p.targetYear, 10) || '') : String(p[f[0]]).trim());
+        if (col >= 0) sheet.getRange(i + 1, col + 1).setValue(f[0] === 'targetYear' ? (parseInt(p.targetYear, 10) || '') : f[0] === 'bestMonths' ? bpMonthsText_(bpMonths_(p.bestMonths)) : String(p[f[0]]).trim());
       });
       return { ok: true, id: id };
     }

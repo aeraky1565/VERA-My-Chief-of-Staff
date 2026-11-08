@@ -513,7 +513,7 @@ check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch',
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));
 check('full: ARIA is a Travel tab, and renders the view', /\{id:'aria',label:'🧭 ARIA'/.test(APP) && /sub==='aria'&&\/\*#__PURE__\*\/React\.createElement\(AriaView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-check('lite: ARIA is Ahmed’s, so Victoria’s Travel shows My Trips, Profiles and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE) && !/\['aria','🧭 ARIA'\]/.test(LITE));
+check('lite: ARIA is Ahmed’s, so Victoria’s Travel shows My Trips, Bucket List, Profiles and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE) && !/\['aria','🧭 ARIA'\]/.test(LITE));
 check('index.html carries the block, not a stale build', fs.readFileSync(path.join(ROOT, 'docs/index.html'), 'utf8').indexOf('function AriaView(') !== -1);
 check('the dashboard opens a fare link safely', /rel:'noopener noreferrer'/.test(A));
 

@@ -24,7 +24,7 @@ const CONTROLS = [
   ['activities aren’t joined to their place', srv("b.activities = actBy[String(b.ID)] || [];", "b.activities = [];"), SRV],
   ['"FALSE" counts as done', srv("done: !!done && done !== 'no' && done !== 'false'", "done: !!done"), SRV],
   ['filters keep visited places', srv("if (filter !== 'open' && b.visited) return false;", ""), SRV],
-  ['add_bucket_item drops the occasion', b => ({ 'WebApp.js': swap(b['WebApp.js'], "stars, dreamTrip, notes, '', occasion, '']);", "stars, dreamTrip, notes, '', '', '']);") }), SRV],
+  ['add_bucket_item drops the occasion', b => ({ 'WebApp.js': swap(b['WebApp.js'], "stars, dreamTrip, notes, '', occasion, '', bestMonths]);", "stars, dreamTrip, notes, '', '', '', bestMonths]);") }), SRV],
   ['update_bucket_item ignores the occasion', b => ({ 'WebApp.js': swap(b['WebApp.js'], "[['occasion', 'Occasion'], ['notes', 'Notes'],", "[['notes', 'Notes'],") }), SRV],
   ['the screen opens on All', full("var _f=React.useState('open'),filter=_f[0]", "var _f=React.useState('all'),filter=_f[0]")],
   ['dream trips include visited ones', full("if(f==='open')return !b.visited;if(b.visited)return false;", "if(f==='open')return !b.visited;")],

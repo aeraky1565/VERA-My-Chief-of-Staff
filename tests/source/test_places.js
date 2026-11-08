@@ -146,9 +146,9 @@ console.log('\nthe endpoint');
 
 console.log('\nthe Bucket List');
 {
-  check('Bucket List gains Occasion and Trip Idea at the end', BHEAD.slice(9).join() === 'Occasion,Trip Idea' && BHEAD.slice(0, 9).join() === 'ID,Country,City,Target Year,Traveller,Stars,Dream Trip,Notes,Visited');
-  check('add_bucket_item writes the occasion, Trip Idea blank', /sheet\.appendRow\(\[id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, ''\]\);/.test(WEB) && /var occasion   = \(p\.occasion   \|\| ''\)\.trim\(\);/.test(WEB));
-  check('update_bucket_item edits the rest by header', /\[\['occasion', 'Occasion'\], \['notes', 'Notes'\], \['city', 'City'\], \['traveller', 'Traveller'\], \['dreamTrip', 'Dream Trip'\], \['targetYear', 'Target Year'\]\]/.test(WEB));
+  check('Bucket List gains Occasion, Trip Idea and Best Months at the end', BHEAD.slice(9).join() === 'Occasion,Trip Idea,Best Months' && BHEAD.slice(0, 9).join() === 'ID,Country,City,Target Year,Traveller,Stars,Dream Trip,Notes,Visited');
+  check('add_bucket_item writes the occasion and best months, Trip Idea blank', /sheet\.appendRow\(\[id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, '', bestMonths\]\);/.test(WEB) && /var occasion   = \(p\.occasion   \|\| ''\)\.trim\(\);/.test(WEB));
+  check('update_bucket_item edits the rest by header', /\[\['occasion', 'Occasion'\], \['notes', 'Notes'\], \['city', 'City'\], \['traveller', 'Traveller'\], \['dreamTrip', 'Dream Trip'\], \['targetYear', 'Target Year'\], \['bestMonths', 'Best Months'\]\]/.test(WEB));
   check('the add form sends the occasion', APP.indexOf("dreamTrip:fields.dreamTrip||'',notes:fields.notes||'',occasion:fields.occasion||''}") !== -1 && APP.indexOf("notes:notes.trim(),occasion:occasion.trim()});}") !== -1);
   const c = ctx({ oldBucket: true, bucket: [['b1', 'Portugal', 'Lisbon', 2027, 'Both', 4, '', 'stay in Alfama', ''], ['b2', 'Norway', '', 2028, 'Both', 5, 'Fjords by train', '', ''], ['b3', 'Japan', 'Kyoto', '', 'Both', 3, '', '', '2024']],
     acts: [['a1', 'b1', 'Tram 28', '', ''], ['a2', 'b1', 'Pastéis in Belém', 'yes', ''], ['a3', 'b9', 'orphan', '', ''], ['a4', 'b2', 'Flåm railway', 'FALSE', '']] });
