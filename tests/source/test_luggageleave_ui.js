@@ -26,8 +26,9 @@ const H = n => (CODE.match(new RegExp('const ' + n + '\\s*=\\s*(\\[[^\\]]*\\])')
 
 console.log('\nthe source');
 check('both dashboards carry the block, word for word', block(APP).length > 20000 && block(APP) === block(LITE));
-check('full: the card sits above the trip’s packing list', /React\.createElement\(LuggageCard,\{apiUrl:apiUrl,apiToken:apiToken,tripKey:luKey,startDate:t\.startDate,endDate:t\.endDate,who:'Ahmed',refreshKey:[^}]*\}\),React\.createElement\(PackingPanel,\{trips:\[t\],/.test(APP));
-check('lite: the card sits above the packing list too', /<><LuggageCard apiUrl=\{apiUrl\} apiToken=\{apiToken\} tripKey=\{tripKey\} startDate=\{t\.startDate\} endDate=\{t\.endDate\} who="Victoria"[\s\S]{0,200}<PackingLitePanel/.test(LITE));
+check('full: the card sits above the trip’s packing list (in the Packing tab, #234)', /React\.createElement\(PackTab,\{apiUrl:apiUrl,apiToken:apiToken,tripKey:luKey,startDate:t\.startDate,endDate:t\.endDate,who:'Ahmed'\}\)/.test(APP)
+  && /h\(LuggageCard,\{apiUrl:props\.apiUrl,apiToken:props\.apiToken,tripKey:props\.tripKey,startDate:props\.startDate,endDate:props\.endDate,who:props\.who,refreshKey:ver\}\),\n    h\(PackPlusPanel,/.test(APP));
+check('lite: the same packing tab', /<PackTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} tripKey=\{tripKey\} startDate=\{t\.startDate\} endDate=\{t\.endDate\} who="Victoria" \/>/.test(LITE));
 check('Our bags at Travel › Travelers, on both', /sub==='bags'&&\/\*#__PURE__\*\/React\.createElement\(OurBagsPanel,\{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'\}\)/.test(APP) && /\{id:'bags',label:'🧳 Our bags'\}/.test(APP)
   && /\{travSub === 'bags' && <OurBagsPanel apiUrl=\{apiUrl\} apiToken=\{apiToken\} who="Victoria" \/>\}/.test(LITE));
 check('Leaving home at Home Front › House, on both', /sub==='leaving_home'&&\/\*#__PURE__\*\/React\.createElement\(LeaveHomePanel,\{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'\}\)/.test(APP)
@@ -54,6 +55,7 @@ var TE_OWNER_ = 'Ahmed', TE_PARTNER_ = 'Victoria';
 var LockService = { getScriptLock: function() { return { waitLock: function() {}, releaseLock: function() {} }; } };
 var Session = { getScriptTimeZone: function() { return 'UTC'; } }, Logger = { log: function() {} };
 var Utilities = { formatDate: function(d, tz, f) { return f === 'yyyy-MM-dd HH:mm' ? NOW.replace('T', ' ') : f === 'yyyy-MM-dd' ? NOW.slice(0, 10) : NOW; } };
+function tripKeyMatches_(a, b) { var v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); }
 function getSpreadsheet() { return { getSheetByName: function(n) { return SHEETS[n] || null; } }; }
 function ensureSheet(ss, n) { return SHEETS[n] || (SHEETS[n] = mk(n)); }
 var META = ${JSON.stringify(o.meta || {})};

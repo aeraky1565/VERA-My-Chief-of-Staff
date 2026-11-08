@@ -430,6 +430,12 @@ function doGet(e) {
       case 'lu_bags':               return jsonOut_(webLuBags_());
       case 'lh_get':                return jsonOut_(webLhGet_());
       case 'lh_trip':               return jsonOut_(webLhTrip_(e.parameter));
+      case 'pk_staples':            return jsonOut_(webPkStaples_());
+      case 'pk_similar':            return jsonOut_(webPkSimilar_(e.parameter));
+      case 'pk_outfits':            return jsonOut_(webPkOutfits_(e.parameter));
+      case 'pk_buy':                return jsonOut_(webPkBuy_(e.parameter));
+      case 'pk_checkout':           return jsonOut_(webPkCheckout_(e.parameter));
+      case 'pk_review':             return jsonOut_(webPkReview_(e.parameter));
       case 'bucket_facts':          return jsonOut_(webBucketFacts_(e.parameter));
       case 'trip_readiness':        return jsonOut_(webTripReadiness_(e.parameter));
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
@@ -687,6 +693,15 @@ function doPost(e) {
       case 'lh_run_set':                 return jsonOut_(webLhRunSet_(body));
       case 'lh_away':                    return jsonOut_(webLhAway_(body));
       case 'lh_away_delete':             return jsonOut_(webLhAwayDelete_(body));
+      case 'pk_status':                  return jsonOut_(webPkStatus_(body));
+      case 'pk_qty':                     return jsonOut_(webPkQty_(body));
+      case 'pk_add':                     return jsonOut_(webPkAdd_(body));
+      case 'pk_staple_accept':           return jsonOut_(webPkStapleAccept_(body));
+      case 'pk_copy':                    return jsonOut_(webPkCopy_(body));
+      case 'pk_outfits_make':            return jsonOut_(webPkOutfitsMake_(body));
+      case 'pk_outfits_add':             return jsonOut_(webPkOutfitsAdd_(body));
+      case 'pk_checkout_tick':           return jsonOut_(webPkCheckoutTick_(body));
+      case 'pk_review_save':             return jsonOut_(webPkReviewSave_(body));
       case 'te_legacy':                  return jsonOut_(webTeLegacy_(body));
       case 'bucket_facts_set':           return jsonOut_(webBucketFactsSet_(body));
       case 'trip_readiness_pack':        return jsonOut_(webTripReadinessPack_(body));
@@ -5276,6 +5291,12 @@ function webGetPacking_(e) {
         checked:   String(row[5]).toUpperCase() === 'TRUE',
         source:    String(row[6]).trim() || 'manual',
         addedDate: String(row[7]).trim(),
+        // #234: three-step ticks, quantities and their reasons, who ticked.
+        status:    typeof pkStatusOf_ === 'function' ? pkStatusOf_(row[8], row[5]) : (String(row[5]).toUpperCase() === 'TRUE' ? 'bag' : 'ready'),
+        qty:       Number(row[9]) > 0 ? Number(row[9]) : '',
+        why:       String(row[10] || '').trim(),
+        by:        String(row[11] || '').trim(),
+        at:        String(row[12] || '').trim(),
       });
     });
   }
@@ -5351,7 +5372,7 @@ function webAddPackingItem_(e) {
   sheet.getRange(newRow, 6).setNumberFormat('@');
   sheet.getRange(newRow, 8).setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, PACKING_ITEM_HEADERS.length).setValues([[
-    id, tripKey, person, category, item, 'FALSE', 'manual', addedDate,
+    id, tripKey, person, category, item, 'FALSE', 'manual', addedDate, 'ready', '', '', '', '',
   ]]);
 
   return { ok: true, id };
@@ -5371,6 +5392,8 @@ function webUpdatePackingItem_(e) {
     const cell  = found.sheet.getRange(found.rowNum, 6);
     cell.setNumberFormat('@');
     cell.setValue(val);
+    // #234: the three-step Status follows the old tick (in the bag, or back to ready).
+    found.sheet.getRange(found.rowNum, 9).setValue(val === 'TRUE' ? 'bag' : 'ready');
   }
   if (p.item     != null) found.sheet.getRange(found.rowNum, 5).setValue(p.item.trim());
   if (p.category != null) found.sheet.getRange(found.rowNum, 4).setValue(p.category.trim());
@@ -6037,6 +6060,7 @@ function webGeneratePacking_(e) {
       'FALSE',
       'ai',
       addedDate,
+      'ready', '', '', '', '',   // Status, Qty, Why, By, At (#234)
     ];
   });
 
@@ -6070,6 +6094,9 @@ function webGeneratePacking_(e) {
     lessons:       packingLessons,
     lessonsError:  packingLessonsError,
   }), { weatherMode: weather.mode, kept: regen.keptDropped });
+
+  // #234: staples from the profiles, and counts for the clothes. Never fails the list.
+  if (typeof pkAfterGenerate_ === 'function') pkAfterGenerate_(tripKey, startDate, endDate, pkTempsFrom_(weatherSummary));
 
   var packResult = webGetPacking_(e);
   packResult.characteristics        = traits;

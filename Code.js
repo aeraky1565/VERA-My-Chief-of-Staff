@@ -120,6 +120,8 @@ const TABS = {
   CYCLE_LOG:          'Cycle Log',           // Family Planning › Trying › Cycle (period tracker)
   BAGS:               'Bags',                // Travel › Travelers › Our bags: name, type, size, empty weight (lb), whose (issue #230)
   LEAVE_HOME:         'Leaving Home',        // Home Front › House › Leaving home: one checklist template per home (issue #231)
+  TRIP_OUTFITS:       'Trip Outfits',        // Packing › Outfits by day: one plan per trip (issue #234)
+  PACKING_REVIEWS:    'Packing Reviews',     // after the trip: didn't use / forgot / bought there (issue #234)
   LEAVE_RUNS:         'Leaving Home Runs',   // each trip's or time away's leaving-home list: ticks, one-offs, leave time (issue #231)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
   GIFT_PLACE_IDEAS:   'Gift Place Ideas',    // Gift ideas per place, asked once (#227)
@@ -237,7 +239,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
  * the field lie. Kept short on purpose — a long dropdown is one nobody reads.
  */
 const TRIP_CHARACTERISTICS      = ['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'];
-const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
+const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date', 'Status', 'Qty', 'Why', 'By', 'At']; // Status..At: #234 (PackPlus.js)
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes', 'Occasion']; // Occasion: #228
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited', 'Occasion', 'Trip Idea', 'Best Months']; // Occasion, Trip Idea, Best Months: #228
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
@@ -245,6 +247,8 @@ const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amoun
 const CYCLE_LOG_HEADERS        = ['ID', 'Start', 'End', 'Logged By', 'Logged At', 'Notes']; // Cycle.js
 const BAG_HEADERS              = ['ID', 'Name', 'Type', 'Size', 'Empty Weight (lb)', 'Whose', 'Notes', 'Updated']; // Luggage.js (#230)
 const LEAVE_HOME_HEADERS       = ['ID', 'Home', 'Group', 'Item', 'Order', 'Updated', 'By']; // LeavingHome.js (#231)
+const TRIP_OUTFIT_HEADERS      = ['Trip Key', 'Plan JSON', 'Updated']; // PackPlus.js (#234)
+const PACKING_REVIEW_HEADERS   = ['Trip Key', 'Unused JSON', 'Forgot JSON', 'Bought JSON', 'By', 'Updated', 'Lessons Logged']; // PackPlus.js (#234)
 const LEAVE_RUN_HEADERS        = ['ID', 'Kind', 'Trip Key', 'Home', 'Leave At', 'Nights', 'Leaving', 'Ticks JSON', 'One-offs JSON', 'Sent', 'Updated']; // LeavingHome.js (#231)
 const GIFT_PLACE_IDEAS_HEADERS  = ['Place', 'Ideas', 'Updated']; // #227: gift ideas per place, one Claude call each
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];

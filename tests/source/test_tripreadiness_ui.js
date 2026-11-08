@@ -17,7 +17,7 @@ const TS = s => { const a = s.indexOf('// ---- TripSummaryView (itinerary redesi
 
 console.log('\nthe source');
 check('the Readiness pieces sit inside the shared trip summary, word for word in both', cut(APP).length > 3000 && cut(APP) === cut(LITE) && TS(APP).indexOf(cut(APP)) !== -1 && TS(APP) === TS(LITE));
-check('the summary shows it just before Documents and Before you go', /h\(TsReadinessSection,\{trip:trip,apiUrl:props\.apiUrl,apiToken:props\.apiToken,readiness:props\.readiness,card:card,label:label\}\),\n    h\(TsLeaveHome,[^\n]*\n    \/\/ Before you go\n    documents&&/.test(TS(APP)));
+check('the summary shows it just before Documents and Before you go', /h\(TsReadinessSection,\{trip:trip,apiUrl:props\.apiUrl,apiToken:props\.apiToken,readiness:props\.readiness,card:card,label:label\}\),\n    h\(TsLeaveHome,[^\n]*\n(    h\(Ts(Checkout|PackReview),[^\n]*\n)*    \/\/ Before you go\n    documents&&/.test(TS(APP)));
 
 const DATA = { ok: true, people: [
   { person: 'Sam', state: 'todo', rows: [

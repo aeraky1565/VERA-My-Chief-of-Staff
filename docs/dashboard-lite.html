@@ -8478,6 +8478,8 @@ function TripSummaryView(props){
     h(TsTripPeople,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,card:card,label:label}),
     h(TsReadinessSection,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,readiness:props.readiness,card:card,label:label}),
     h(TsLeaveHome,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),
+    h(TsCheckout,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),
+    h(TsPackReview,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),
     // Before you go
     documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking||abroad)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
@@ -11268,7 +11270,7 @@ var TP_ALLIANCES=['Star Alliance','oneworld','SkyTeam','None'];
 var TP_FIELDS={document:['country','last4','issued','expiry','notes'],trusted:['last4','expiry','notes'],membership:['label','last4','tier','value','notes'],
   preference:['value','notes'],contact:['value','notes'],health:['label','value','issued','expiry','notes'],child:['label','country','last4','expiry','notes']};
 var TP_FIELD_LABEL={country:'Country',last4:'Number (last 4 only)',issued:'Issued / date',expiry:'Expires',notes:'Notes',label:'Name',tier:'Status tier',value:'Detail'};
-var TP_HINTS={home_airports:'e.g. IAD, DCA',seat:'window, aisle or front',cabin:'economy, premium, business',max_layover_h:'e.g. 4',red_eyes:'yes or no',hotel_bed:'king, two queens',hotel_room:'high floor, quiet',diet:'e.g. vegetarian',allergy:'e.g. peanuts',vaccine:'e.g. Yellow fever'};
+var TP_HINTS={home_airports:'e.g. IAD, DCA',seat:'window, aisle or front',cabin:'economy, premium, business',max_layover_h:'e.g. 4',red_eyes:'yes or no',hotel_bed:'king, two queens',hotel_room:'high floor, quiet',always_pack:'comma separated: contacts, retainer',diet:'e.g. vegetarian',allergy:'e.g. peanuts',vaccine:'e.g. Yellow fever'};
 function tpDaysTo_(ymd,today){if(!ymd||!today)return null;var p=function(s){var x=s.split('-').map(Number);return Date.UTC(x[0],x[1]-1,x[2]);};return Math.round((p(ymd)-p(today))/864e5);}
 function tpExpTone_(ymd,today){var d=tpDaysTo_(ymd,today);if(d==null)return null;if(d<0)return ['bad','Expired '+ymd];if(d<180)return ['bad','Expires '+ymd];if(d<365)return ['warn','Expires '+ymd];return ['ok','Valid to '+ymd];}
 function tpKindName_(sections,sec,kind){var s=(sections||[]).filter(function(x){return x.id===sec;})[0];var k=s&&(s.kinds||[]).filter(function(x){return x[0]===kind;})[0];return k?k[1]:kind;}
@@ -11574,6 +11576,214 @@ function LeaveHomePanel(props){var h=React.createElement,C=LU_C;
         h('button',{type:'button',className:'lh-away-del',onClick:function(){removeAway(v);},style:Object.assign({},LU_BTN,{minHeight:36,padding:'0 10px',background:'transparent',border:'1px solid #4a2020',color:C.red})},'Remove')),
       h(LhChecklist,{view:v,who:props.who,apiUrl:props.apiUrl,apiToken:props.apiToken,target:{run:v.run.id},onView:function(nv){setD(Object.assign({},d,{away:(d.away||[]).map(function(x){return x.run.id===nv.run.id?nv:x;})}));}}));}));}
 // ---- /LuggageLeave ----
+// ---- PackPlus (Packing, enriched, issue #234) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// A trip's Packing tab: the luggage card, then the list with three-step ticks (to buy → ready →
+// in the bag, shared, with who), counts and why, bag chips; views for outfits by day, buy before
+// you go, pack a bag (with over-the-limit fixes) and starting a list (past trips, staples).
+// Leave nothing behind and the after-trip review sit in the trip summary. Uses LuggageLeave's LU_C.
+var PK_STEP={buy:['To buy','Buy','#241c06','#d9a520','#fcd34d','ready'],ready:['Ready','Ready','#0f1a2e','#5b8de0','#8ab4f8','bag'],bag:['In the bag','✓','#0c2418','#3fae6a','#86efac','buy']};
+function pkCap_(s){s=String(s||'');return s.charAt(0).toUpperCase()+s.slice(1);}
+function pkWho_(p,who){return /^shared$/i.test(p)?'Shared':luName_(pkCap_(p),who);}
+function pkTodayC_(){try{if(window.VERA_TODAY)return window.VERA_TODAY;}catch(e){}var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function pkAddDays_(ymd,n){var m=String(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return '';return new Date(Date.UTC(+m[1],+m[2]-1,+m[3])+n*86400000).toISOString().slice(0,10);}
+var PK_LINK={minHeight:44,display:'inline-flex',alignItems:'center',padding:'0 14px',borderRadius:10,fontSize:13,cursor:'pointer'};
+
+function PackTab(props){var h=React.createElement;var _v=React.useState(0),ver=_v[0],setVer=_v[1];
+  var bump=function(){setVer(function(x){return x+1;});};
+  return h('div',{className:'pk-tab',style:{display:'flex',flexDirection:'column'}},
+    h(LuggageCard,{apiUrl:props.apiUrl,apiToken:props.apiToken,tripKey:props.tripKey,startDate:props.startDate,endDate:props.endDate,who:props.who,refreshKey:ver}),
+    h(PackPlusPanel,{apiUrl:props.apiUrl,apiToken:props.apiToken,tripKey:props.tripKey,startDate:props.startDate,endDate:props.endDate,who:props.who,ver:ver,onChanged:bump}));}
+
+function PackPlusPanel(props){var h=React.createElement,C=LU_C;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _l=React.useState(null),lug=_l[0],setLug=_l[1];var _w=React.useState('list'),view=_w[0],setView=_w[1];
+  var _p=React.useState('all'),person=_p[0],setPerson=_p[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _q=React.useState(null),qty=_q[0],setQty=_q[1];var _a=React.useState({item:'',person:'',buy:false}),add=_a[0],setAdd=_a[1];
+  var base={tripKey:props.tripKey,startDate:props.startDate||'',endDate:props.endDate||''};
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'get_packing',tripKey:props.tripKey,startDate:props.startDate||'',endDate:props.endDate||''}).then(setD).catch(function(e){setD({ok:false,error:e.message});});
+    apiGet(props.apiUrl,props.apiToken,Object.assign({action:'luggage'},base)).then(setLug).catch(function(){setLug(null);});};
+  React.useEffect(load,[props.apiUrl,props.apiToken,props.tripKey]);
+  var changed=function(){load();if(props.onChanged)props.onChanged();};
+  var post=function(body){setMsg('');return apiPost(props.apiUrl,props.apiToken,body).then(function(r){changed();return r;}).catch(function(e){setMsg(e.message);});};
+  if(!d)return h('div',{className:'pk-panel',style:{color:C.mute,fontSize:13,padding:12}},'Loading the packing list…');
+  if(d.ok===false)return h('div',{className:'pk-panel',style:{color:C.red,fontSize:13,padding:12}},'Couldn’t load the packing list: '+d.error);
+  var items=d.items||[];var bagOf={},bags=[];
+  ((lug&&lug.people)||[]).forEach(function(p){(p.wearing||[]).forEach(function(w){bagOf[w.key]='Wear';});p.bags.forEach(function(b){bags.push({person:p,bag:b});b.items.forEach(function(i){bagOf[i.key]=pkCap_(b.name.replace(/^A /,''));});});});
+  var count=function(s){return items.filter(function(i){return i.status===s;}).length;};
+  var people=[];items.forEach(function(i){if(people.indexOf(i.person)===-1)people.push(i.person);});
+  var shown=person==='all'?items:items.filter(function(i){return i.person===person;});
+  var generate=function(){setBusy(true);setMsg('');apiGet(props.apiUrl,props.apiToken,Object.assign({action:'generate_packing'},base)).then(function(){setBusy(false);setView('list');changed();}).catch(function(e){setBusy(false);setMsg(e.message);});};
+  var tile=function(s,n,bg,line,fg,lab,go){return h(go?'button':'div',{type:go?'button':undefined,className:'pk-tile','data-s':s,onClick:go,style:{background:bg,border:'1px solid '+line,borderRadius:10,padding:10,display:'flex',flexDirection:'column',gap:2,textAlign:'left',cursor:go?'pointer':'default',minHeight:56}},h('span',{style:{fontSize:20,fontWeight:700,color:fg}},n),h('span',{style:{fontSize:11,color:'#c4d4f4'}},lab));};
+  var back=h('button',{key:'back',type:'button',className:'pk-back',onClick:function(){setView('list');},style:Object.assign({},LU_BTN,{alignSelf:'flex-start',background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'‹ The list');
+  var wrap=function(kids){return h('section',{className:'pk-panel','data-view':view,'aria-label':'Packing',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760}},msg?h('span',{role:'status',className:'pk-msg',style:{fontSize:13,color:C.red}},msg):null,kids);};
+  if(view==='outfits')return wrap([back,h(PkOutfits,{key:'o',apiUrl:props.apiUrl,apiToken:props.apiToken,base:base,who:props.who,onChanged:changed})]);
+  if(view==='buy')return wrap([back,h(PkBuy,{key:'b',apiUrl:props.apiUrl,apiToken:props.apiToken,base:base,who:props.who,onChanged:changed})]);
+  if(view==='bag')return wrap([back,h(PkPackBag,{key:'p',bags:bags,who:props.who,post:post,tripKey:props.tripKey,by:props.who||''})]);
+  if(view==='start'||!items.length)return wrap([items.length?back:null,h(PkStart,{key:'s',apiUrl:props.apiUrl,apiToken:props.apiToken,base:base,who:props.who,busy:busy,onGenerate:generate,onChanged:function(){setView('list');changed();},hasList:items.length>0})]);
+  var cats={},order=[];shown.forEach(function(i){var c=i.source==='staple'?'Staples':(i.category||'General');if(!cats[c]){cats[c]=[];order.push(c);}cats[c].push(i);});
+  order.sort(function(a,b){return (a==='Staples'?-1:0)-(b==='Staples'?-1:0);});
+  var row=function(i){var st=PK_STEP[i.status]||PK_STEP.ready;var isQ=qty&&qty.id===i.id;
+    return h('div',{key:i.id,className:'pk-item','data-id':i.id,'data-status':i.status,style:{display:'flex',alignItems:'center',gap:10,minHeight:52,borderTop:'1px solid #16213a',padding:'4px 0'}},
+      h('button',{type:'button',className:'pk-step','aria-label':st[0]+': '+i.item+'. Move to '+PK_STEP[st[5]][0],onClick:function(){post({action:'pk_status',id:i.id,status:st[5],by:props.who||''});},style:{width:44,height:44,flexShrink:0,borderRadius:999,background:st[2],border:'2px solid '+st[3],color:st[4],fontSize:10,fontWeight:700,cursor:'pointer'}},st[1]),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}},
+        h('span',{style:{fontSize:14,color:i.status==='bag'?C.faint:C.text,overflowWrap:'anywhere'}},i.item,' ',isQ||/\d/.test(i.item)?null:h('button',{type:'button',className:'pk-qty','aria-label':'How many '+i.item,onClick:function(){setQty({id:i.id,v:String(i.qty||'')});},style:{background:'none',border:'none',padding:'0 4px',minHeight:36,verticalAlign:'middle',color:i.qty?C.goldT:C.faint,fontWeight:i.qty?700:400,fontSize:i.qty?14:12,cursor:'pointer'}},'× '+(i.qty||1))),
+        isQ?h('span',{style:{display:'flex',gap:6,alignItems:'center'}},h('input',{className:'pk-qty-input','aria-label':'How many',inputMode:'numeric',value:qty.v,onChange:function(e){setQty({id:i.id,v:e.target.value.replace(/[^0-9]/g,'')});},style:Object.assign({},LU_INPUT,{width:70,minHeight:36})}),
+          h('button',{type:'button',className:'pk-qty-save',onClick:function(){post({action:'pk_qty',id:i.id,qty:qty.v}).then(function(){setQty(null);});},style:Object.assign({},LU_BTN,{minHeight:36,background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Save')):null,
+        h('span',{className:'pk-why',style:{fontSize:11,color:C.mute}},[i.source==='staple'&&!/^Staple/.test(i.why)?'Staple':'',i.why,i.status!=='ready'&&i.by?(i.status==='bag'?'packed':'marked to buy')+' by '+luName_(i.by,props.who)+(i.at?' · '+i.at:''):'',/^shared$/i.test(i.person)&&person==='all'?'shared':''].filter(Boolean).join(' · '))),
+      bagOf['p:'+i.id]?h('span',{className:'pk-bag',style:{fontSize:11,padding:'3px 8px',borderRadius:999,background:'#13203a',color:'#c4d4f4',flexShrink:0,maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},bagOf['p:'+i.id]):null,
+      h('button',{type:'button',className:'pk-del','aria-label':'Remove '+i.item,onClick:function(){apiGet(props.apiUrl,props.apiToken,{action:'delete_packing_item',id:i.id}).then(changed).catch(function(e){setMsg(e.message);});},style:{minWidth:36,minHeight:36,background:'transparent',border:'none',color:C.faint,fontSize:16,cursor:'pointer',flexShrink:0}},'×'));};
+  var near=bags.filter(function(x){return x.bag.state!=='ok';}).length;
+  return wrap([
+    h('div',{key:'tiles',style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}},
+      tile('buy',count('buy'),'#241c06','#6b5410','#fcd34d','to buy',function(){setView('buy');}),tile('ready',count('ready'),'#0f1a2e','#24386a','#8ab4f8','ready'),tile('bag',count('bag'),'#0c2418','#1f5a3a','#86efac','in the bag')),
+    h('span',{key:'hint',style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Tap the circle to move an item along: to buy → ready → in the bag. Shared by both dashboards.'+(near?' '+near+' bag'+(near===1?' is':'s are')+' near or over the limit: see Pack a bag.':'')),
+    typeof GenInputsBanner==='function'?h(GenInputsBanner,{key:'gen',kind:'packing',tripKey:props.tripKey,watch:d,hasList:items.some(function(i){return i.source==='ai';}),apiUrl:props.apiUrl,apiToken:props.apiToken}):null,
+    people.length>1?h('div',{key:'who',role:'group','aria-label':'Whose list',style:{display:'flex',gap:6,flexWrap:'wrap'}},['all'].concat(people).map(function(p){return h(LuChip,{key:p,className:'pk-person',v:p,on:person===p,onClick:function(){setPerson(p);}},p==='all'?'Everyone':pkWho_(p,props.who));})):null,
+    order.map(function(c){return h('section',{key:'c'+c,className:'pk-cat','data-cat':c,style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column'}},
+      h('h3',{style:{margin:'0 0 4px',fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.mute,fontWeight:700}},c==='Staples'?'Always with you (staples)':c),cats[c].map(row));}),
+    h('section',{key:'add',className:'pk-add','aria-label':'Add an item',style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8}},
+      h('div',{style:{display:'flex',gap:8}},h('input',{className:'pk-add-item','aria-label':'Item',placeholder:'Add an item',value:add.item,onChange:function(e){setAdd(Object.assign({},add,{item:e.target.value}));},style:Object.assign({},LU_INPUT,{flex:1,width:'auto'})}),
+        h('select',{className:'pk-add-person','aria-label':'Whose',value:add.person||String(props.who||'shared').toLowerCase(),onChange:function(e){setAdd(Object.assign({},add,{person:e.target.value}));},style:Object.assign({},LU_INPUT,{width:120,flexShrink:0})},['ahmed','victoria','shared'].map(function(p){return h('option',{key:p,value:p},pkWho_(p,props.who));}))),
+      h('div',{style:{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}},h('label',{style:{display:'flex',alignItems:'center',gap:8,fontSize:13,color:C.mute,minHeight:40}},h('input',{type:'checkbox',className:'pk-add-buy',checked:add.buy,onChange:function(e){setAdd(Object.assign({},add,{buy:e.target.checked}));},style:{width:20,height:20,accentColor:C.gold}}),'Need to buy it'),
+        h('button',{type:'button',className:'pk-add-btn',disabled:!add.item.trim(),onClick:function(){post({action:'pk_add',tripKey:props.tripKey,person:add.person||String(props.who||'shared').toLowerCase(),item:add.item,status:add.buy?'buy':'ready'}).then(function(r){if(r)setAdd({item:'',person:add.person,buy:false});});},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,opacity:add.item.trim()?1:0.6})},'Add'))),
+    h('div',{key:'go',style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'pk-go-bag',onClick:function(){setView('bag');},style:Object.assign({},PK_LINK,{background:C.gold,border:'none',color:'#14120a',fontWeight:700})},'Pack a bag'),
+      h('button',{type:'button',className:'pk-go-outfits',onClick:function(){setView('outfits');},style:Object.assign({},PK_LINK,{background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Outfits by day'),
+      h('button',{type:'button',className:'pk-go-buy',onClick:function(){setView('buy');},style:Object.assign({},PK_LINK,{background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Buy before you go ('+count('buy')+')'),
+      h('button',{type:'button',className:'pk-go-start',onClick:function(){setView('start');},style:Object.assign({},PK_LINK,{background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Remake or copy a list'))]);}
+
+function PkStart(props){var h=React.createElement,C=LU_C;var b=props.base;
+  var _s=React.useState(null),sim=_s[0],setSim=_s[1];var _t=React.useState(null),st=_t[0],setSt=_t[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  React.useEffect(function(){apiGet(props.apiUrl,props.apiToken,Object.assign({action:'pk_similar'},b)).then(setSim).catch(function(){setSim({trips:[]});});
+    apiGet(props.apiUrl,props.apiToken,{action:'pk_staples'}).then(setSt).catch(function(){setSt({people:[]});});},[b.tripKey]);
+  var copy=function(t){setMsg('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'pk_copy',from:t.tripKey},b)).then(function(r){setMsg('Copied '+r.added+' from '+t.label+(r.skipped.length?', left out what you didn’t use: '+r.skipped.join(', '):'')+'.');props.onChanged();}).catch(function(e){setMsg(e.message);});};
+  var accept=function(p,x){apiPost(props.apiUrl,props.apiToken,{action:'pk_staple_accept',person:p,item:x}).then(function(){apiGet(props.apiUrl,props.apiToken,{action:'pk_staples'}).then(setSt);}).catch(function(e){setMsg(e.message);});};
+  var card={background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8};
+  return h('div',{className:'pk-start',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},props.hasList?'Remake or copy the list':'Make the packing list'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},'VERA builds it as before: from the destination, dates, weather, trip type, briefing, itinerary, dress codes, who’s going and past lessons. Then it adds each traveller’s staples and counts the clothes. Remaking keeps what you’ve already packed.')),
+    msg?h('span',{role:'status',className:'pk-start-msg',style:{fontSize:13,color:C.green}},msg):null,
+    h('button',{type:'button',className:'pk-generate',disabled:props.busy,onClick:props.onGenerate,style:Object.assign({},LU_BTN,{minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontWeight:700,fontSize:14,opacity:props.busy?0.6:1})},props.busy?'VERA is building the list…':props.hasList?'Remake the list':'Make the list'),
+    h('section',{style:card,'aria-label':'Similar past trips'},h('h3',{style:{margin:0,fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.mute,fontWeight:700}},'Start from a past trip'),
+      sim===null?h('span',{style:{fontSize:12,color:C.mute}},'Looking…'):(sim.trips||[]).length?null:h('span',{style:{fontSize:12,color:C.faint}},'No earlier trips with a packing list yet.'),
+      ((sim&&sim.trips)||[]).map(function(t){return h('div',{key:t.tripKey,className:'pk-sim','data-key':t.tripKey,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,borderTop:'1px solid #16213a',paddingTop:8}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,fontWeight:700,color:C.text}},t.label+' · '+t.start.slice(0,7)),h('span',{style:{fontSize:12,color:C.mute}},(t.why||'')+' · '+t.items+' items')),
+        h('button',{type:'button',className:'pk-copy',onClick:function(){copy(t);},style:Object.assign({},LU_BTN,{flexShrink:0,background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Copy'));})),
+    h('section',{style:card,'aria-label':'Staples'},h('h3',{style:{margin:0,fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.mute,fontWeight:700}},'Staples: on every list'),
+      ((st&&st.people)||[]).map(function(p){return h('div',{key:p.name,className:'pk-staple','data-name':p.name,style:{display:'flex',flexDirection:'column',gap:6,borderTop:'1px solid #16213a',paddingTop:8}},
+        h('span',{style:{fontSize:13,color:C.text}},h('b',null,luName_(p.name,props.who)+': '),p.profile.length?p.profile.join(', '):'none yet'),
+        p.suggested.length?h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},h('span',{style:{fontSize:12,color:C.mute}},'On every list you’ve packed:'),p.suggested.map(function(x){return h('button',{key:x,type:'button',className:'pk-staple-add','data-item':x,onClick:function(){accept(p.name,x);},style:{minHeight:36,padding:'0 10px',borderRadius:999,background:'transparent',border:'1px dashed '+C.edge,color:C.blue,fontSize:12,cursor:'pointer'}},'+ '+x);})):null);}),
+      h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'Edit them in Travel › Travelers › Profiles › Travel preferences › Always pack.')));}
+
+function PkOutfits(props){var h=React.createElement,C=LU_C;var b=props.base;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _p=React.useState(null),person=_p[0],setPerson=_p[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  React.useEffect(function(){apiGet(props.apiUrl,props.apiToken,{action:'pk_outfits',tripKey:b.tripKey}).then(setD).catch(function(e){setD({ok:false,error:e.message});});},[b.tripKey]);
+  var make=function(){setBusy(true);setMsg('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'pk_outfits_make'},b)).then(function(r){setBusy(false);setD(r);}).catch(function(e){setBusy(false);setMsg(e.message);});};
+  if(!d)return h('span',{style:{fontSize:13,color:C.mute}},'Loading the outfits…');
+  var ppl=d.people||[];var cur=ppl.filter(function(p){return p.name===person;})[0]||ppl.filter(function(p){return luName_(p.name,props.who)==='You';})[0]||ppl[0];
+  var addAll=function(){setMsg('');apiPost(props.apiUrl,props.apiToken,{action:'pk_outfits_add',tripKey:b.tripKey,person:cur.name}).then(function(r){setMsg('Added '+r.added+(r.updated?', raised the count on '+r.updated:'')+'.');props.onChanged();}).catch(function(e){setMsg(e.message);});};
+  return h('div',{className:'pk-outfits',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Outfits by day'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},'From the itinerary and the forecast, re-wearing where it makes sense. Add the pieces to the list and the counts follow.')),
+    msg?h('span',{role:'status',className:'pk-outfits-msg',style:{fontSize:13,color:/^Added/.test(msg)?C.green:C.red}},msg):null,
+    !d.has?h('span',{className:'pk-outfits-none',style:{fontSize:13,color:C.mute}},'No outfit plan for this trip yet.'):null,
+    ppl.length>1?h('div',{role:'group','aria-label':'Whose outfits',style:{display:'flex',gap:6}},ppl.map(function(p){return h(LuChip,{key:p.name,className:'pk-outfit-person',v:p.name,on:p===cur,onClick:function(){setPerson(p.name);}},luName_(p.name,props.who));})):null,
+    cur?cur.days.map(function(day,i){return h('section',{key:i,className:'pk-day',style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700,color:C.text}},(day.date?day.date.slice(5)+' · ':'')+day.label),day.weather?h('span',{style:{fontSize:12,color:C.mute}},day.weather):null),
+      day.looks.map(function(l,j){return h('div',{key:j,style:{display:'flex',flexDirection:'column',gap:3,padding:'8px 10px',borderRadius:10,background:C.deep,border:'1px solid #16213a'}},
+        h('span',{style:{fontSize:12,color:C.goldT,fontWeight:700}},l.when),h('span',{style:{fontSize:13,color:C.text,lineHeight:1.5}},l.pieces.join(', ')),l.note?h('span',{style:{fontSize:11,color:C.mute}},l.note):null);}));}):null,
+    cur?h('section',{className:'pk-pieces',style:{background:'#0f1a2e',border:'1px solid #24386a',borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:6}},
+      h('span',{style:{fontSize:13,fontWeight:700,color:C.text}},'What these add up to'),
+      h('span',{style:{fontSize:12,color:'#c4d4f4',lineHeight:1.6}},cur.pieces.map(function(p){return p.item+(p.qty>1?' × '+p.qty:'');}).join(' · ')),
+      h('button',{type:'button',className:'pk-outfits-add',onClick:addAll,style:Object.assign({},LU_BTN,{alignSelf:'flex-start',background:C.gold,border:'none',color:'#14120a',fontWeight:700})},'Add these to '+(luName_(cur.name,props.who)==='You'?'my':cur.name+'’s')+' list')):null,
+    h('button',{type:'button',className:'pk-outfits-make',disabled:busy,onClick:make,style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,opacity:busy?0.6:1})},busy?'Planning the outfits…':d.has?'Suggest the outfits again':'Plan the outfits'));}
+
+function PkBuy(props){var h=React.createElement,C=LU_C;var b=props.base;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _t=React.useState(''),text=_t[0],setText=_t[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'pk_buy',tripKey:b.tripKey}).then(setD).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(load,[b.tripKey]);
+  if(!d)return h('span',{style:{fontSize:13,color:C.mute}},'Loading…');
+  if(d.ok===false)return h('span',{style:{fontSize:13,color:C.red}},'Couldn’t load: '+d.error);
+  var post=function(body){setMsg('');return apiPost(props.apiUrl,props.apiToken,body).then(function(r){load();props.onChanged();return r;}).catch(function(e){setMsg(e.message);});};
+  return h('div',{className:'pk-buy',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Buy before you go'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},d.shopping?'On Shopping › '+d.list+(d.needBy?', need by '+d.needBy:'')+'. Tick it bought there or here.':'No Shopping list is set up, so these stay here. Tick them when bought.')),
+    msg?h('span',{role:'status',style:{fontSize:13,color:C.red}},msg):null,
+    (d.bought||[]).length?h('span',{className:'pk-bought',style:{fontSize:12,color:C.green}},'Bought in Shopping, now ready: '+d.bought.join(', ')):null,
+    d.items.length?null:h('span',{className:'pk-buy-none',style:{fontSize:13,color:C.mute}},'Nothing to buy.'),
+    d.items.map(function(i){return h('label',{key:i.id,className:'pk-buy-item','data-id':i.id,style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',alignItems:'center',gap:10,minHeight:52,cursor:'pointer'}},
+      h('input',{type:'checkbox',className:'pk-bought-box','aria-label':'Bought '+i.item,onChange:function(){post({action:'pk_status',id:i.id,status:'ready',by:props.who||''});},style:{width:22,height:22,accentColor:C.gold,flexShrink:0}}),
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}},h('span',{style:{fontSize:14,color:C.text}},i.item+(i.qty?' × '+i.qty:'')),h('span',{style:{fontSize:11,color:C.mute}},pkWho_(i.person,props.who)+(i.rx?' · medicine: refill through Prescriptions, not Shopping':''))));}),
+    h('div',{style:{display:'flex',gap:8}},h('input',{className:'pk-buy-input','aria-label':'Something to buy',placeholder:'Add something to buy',value:text,onChange:function(e){setText(e.target.value);},style:Object.assign({},LU_INPUT,{flex:1,width:'auto'})}),
+      h('button',{type:'button',className:'pk-buy-add',disabled:!text.trim(),onClick:function(){post({action:'pk_add',tripKey:b.tripKey,person:String(props.who||'shared').toLowerCase(),item:text,status:'buy'}).then(function(r){if(r)setText('');});},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,flexShrink:0})},'Add')));}
+
+function PkPackBag(props){var h=React.createElement,C=LU_C;
+  var _s=React.useState(0),sel=_s[0],setSel=_s[1];var unit=luUnitGet_();
+  var bags=props.bags||[];if(!bags.length)return h('span',{className:'pk-bag-none',style:{fontSize:13,color:C.mute}},'Working out the bags…');
+  var x=bags[Math.min(sel,bags.length-1)],b=x.bag;var items=b.items.slice().sort(function(a,c){return (a.status==='bag')-(c.status==='bag')||c.lb-a.lb;});
+  var lim=b.limitLb,soFar=b.packedLb,tone=lim&&b.weightLb>lim?C.red:lim&&b.weightLb>=lim*0.8?C.amber:C.green;
+  var tick=function(i,on){if(!/^p:/.test(i.key))return;props.post({action:'pk_status',id:i.key.slice(2),status:on?'bag':'ready',by:props.by});};
+  var fix=function(f){if(f.kind==='wear')props.post({action:'lu_move',tripKey:props.tripKey,item:f.key,bag:'wear'});else if(f.kind==='move')props.post({action:'lu_move',tripKey:props.tripKey,item:f.key,bag:f.to});else props.post({action:'pk_qty',id:f.key.slice(2),qty:f.qty-1});};
+  var title=function(f){return f.kind==='wear'?'Wear the '+f.item.replace(/ × \d+$/,'')+' on the plane':f.kind==='move'?'Move the '+f.item+' to the '+f.toName:'Take one fewer: '+f.item+' × '+(f.qty-1);};
+  return h('div',{className:'pk-packbag',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('div',{role:'group','aria-label':'Which bag',style:{display:'flex',gap:6,flexWrap:'wrap'}},bags.map(function(y,k){return h(LuChip,{key:k,className:'pk-bag-pick',v:y.bag.id,on:y===x,onClick:function(){setSel(k);}},(bags.some(function(z){return z.person!==y.person;})?luName_(y.person.name,props.who)+': ':'')+y.bag.name);})),
+    h('section',{className:'pk-bag-card','aria-label':b.name,style:{background:C.card,border:'1px solid '+C.gold,borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:10}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Pack the '+b.name.replace(/^A /,'')),h('span',{className:'pk-bag-count',style:{fontSize:13,color:C.goldT,fontWeight:700}},b.packed+' of '+b.items.length+' in')),
+      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:C.mute,gap:8}},h('span',null,luName_(x.person.name,props.who)+' · '+(LU_KIND[b.type]||['','',b.type])[2].toLowerCase()),h('span',{className:'pk-bag-weight',style:{color:tone}},'about '+Math.round(luW_(soFar,unit))+(lim?' of '+Math.round(luW_(lim,unit)):'')+' '+unit+' so far')),
+      h('div',{role:'img','aria-label':'about '+Math.round(luW_(soFar,unit))+' '+unit+' packed',style:{height:8,borderRadius:4,background:'#16213a',overflow:'hidden'}},h('div',{style:{width:Math.min(100,Math.round(soFar/(lim||Math.max(soFar,b.weightLb,1))*100))+'%',height:'100%',background:tone}})),
+      h('span',{style:{fontSize:11,color:C.mute}},'All in: about '+Math.round(luW_(b.weightLb,unit))+' '+unit+'. Heaviest first, at the wheels; shoes along the sides; liquids sealed in the middle.'),
+      items.map(function(i){var g=!/^p:/.test(i.key);return h('label',{key:i.key,className:'pk-bag-item','data-key':i.key,style:{minHeight:52,display:'flex',alignItems:'center',gap:12,borderTop:'1px solid #16213a',padding:'4px 0',cursor:g?'default':'pointer'}},
+        g?h('span',{style:{width:26,flexShrink:0,textAlign:'center',color:C.mute}},'🎁'):h('input',{type:'checkbox',className:'pk-bag-box',checked:i.status==='bag',onChange:function(e){tick(i,e.target.checked);},style:{width:26,height:26,accentColor:C.gold,flexShrink:0}}),
+        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}},h('span',{style:{fontSize:15,color:i.status==='bag'?C.faint:C.text,overflowWrap:'anywhere'}},i.item),i.why||g?h('span',{style:{fontSize:11,color:C.mute}},[i.why,g?'gift: tick it in Gifts':''].filter(Boolean).join(' · ')):null),
+        h('span',{style:{fontSize:12,color:C.mute,flexShrink:0}},luW_(i.lb,unit)+' '+unit));})),
+    (b.fixes||[]).length?h('section',{className:'pk-over','aria-label':'Over the limit',style:{background:'#2a1010',border:'1px solid #7a2a2a',borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:10}},
+      h('h3',{style:{margin:0,fontSize:16,fontWeight:700,color:'#fecaca'}},'About '+Math.round(luW_(b.weightLb-lim,unit))+' '+unit+' over: ways to get under'),
+      b.fixes.map(function(f,k){return h('div',{key:k,className:'pk-fix','data-kind':f.kind,style:{background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:C.text}},title(f)),h('span',{style:{fontSize:12,color:'#86efac'}},'saves about '+luW_(f.saves,unit)+' '+unit)),
+        h('button',{type:'button',className:'pk-fix-do',onClick:function(){fix(f);},style:Object.assign({},LU_BTN,{flexShrink:0,minHeight:40,background:'transparent',border:'1px solid '+C.edge,color:C.blue})},'Do it'));}),
+      h('span',{style:{fontSize:12,color:'#fecaca',lineHeight:1.5}},'Overweight bags often cost about $75–100 each way. Weights are rough: weigh the bag if it’s close. Passports, meds and batteries never go in the hold; liquids over 100 ml never go in the cabin.')):null);}
+
+// Leave nothing behind, in the trip summary: from the evening before the last checkout to the day after.
+function TsCheckout(props){var h=React.createElement,C=LU_C;var trip=props.trip||{};var tk=trip.tripKey||(trip.startDate+'|'+trip.label);var end=trip.endDate||trip.startDate;
+  var today=pkTodayC_(),on=end&&today>=pkAddDays_(end,-1)&&today<=pkAddDays_(end,1);
+  var _v=React.useState(null),v=_v[0],setV=_v[1];var q={tripKey:tk,startDate:trip.startDate,endDate:end};
+  React.useEffect(function(){if(!on||!props.apiUrl)return;apiGet(props.apiUrl,props.apiToken,Object.assign({action:'pk_checkout'},q)).then(setV).catch(function(){});},[props.apiUrl,tk,on]);
+  if(!on||!v||!v.items)return null;
+  var tick=function(i,d){apiPost(props.apiUrl,props.apiToken,Object.assign({action:'pk_checkout_tick',key:i.key,done:d,by:props.who||''},q)).then(setV).catch(function(){});};
+  return h('section',{className:'ts-checkout','aria-label':'Leave nothing behind',style:Object.assign({},props.card,{background:'#0d1b3e',border:'1px solid #1e3060'})},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:props.label},'Leave nothing behind'),h('span',{className:'pk-co-progress',style:{fontSize:13,color:C.goldT,fontWeight:700}},v.done+' of '+v.total)),
+    h('span',{style:{fontSize:12,color:'#9aa9cc',lineHeight:1.5}},'Checkout '+v.checkout+(v.stays.length?' from '+v.stays[v.stays.length-1]:'')+'. Built from where you stayed and what you packed. Shared by both dashboards.'),
+    v.items.map(function(i){return h('label',{key:i.key,className:'pk-co-item','data-key':i.key,style:{minHeight:48,display:'flex',alignItems:'center',gap:12,borderTop:'1px solid #16213a',padding:'4px 0',cursor:'pointer'}},
+      h('input',{type:'checkbox',className:'pk-co-box',checked:i.done,onChange:function(e){tick(i,e.target.checked);},style:{width:22,height:22,accentColor:C.gold,flexShrink:0}}),
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:i.done?C.faint:C.text}},i.text),
+        h('span',{className:'pk-co-meta',style:{fontSize:11,color:C.mute}},[i.meta,i.done&&i.by?'ticked by '+luName_(i.by,props.who):''].filter(Boolean).join(' · '))));}),
+    v.gifts?h('div',{className:'pk-co-gifts',style:{display:'flex',flexDirection:'column',gap:4,paddingTop:6}},h('span',{style:{fontSize:13,fontWeight:700,color:C.text}},'Coming home: '+v.gifts.count+' gift'+(v.gifts.count===1?'':'s')),
+      v.gifts.rules.map(function(r,k){return h('span',{key:k,style:{fontSize:12,color:'#c4d4f4',lineHeight:1.5}},r.title+': '+r.text);}),
+      v.gifts.declare?h('span',{style:{fontSize:12,color:C.mute}},'Duty-free: about $'+v.gifts.declare.total+' of $'+v.gifts.declare.allowance):null):null);}
+
+// After the trip: didn't use, forgot, bought there. Saved as packing lessons for next time.
+function TsPackReview(props){var h=React.createElement,C=LU_C;var trip=props.trip||{};var tk=trip.tripKey||(trip.startDate+'|'+trip.label);var end=trip.endDate||trip.startDate;
+  var today=pkTodayC_(),on=end&&today>end&&today<=pkAddDays_(end,60);
+  var _v=React.useState(null),v=_v[0],setV=_v[1];var _s=React.useState(null),sel=_s[0],setSel=_s[1];var _t=React.useState({forgot:'',bought:''}),txt=_t[0],setTxt=_t[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  React.useEffect(function(){if(!on||!props.apiUrl)return;apiGet(props.apiUrl,props.apiToken,{action:'pk_review',tripKey:tk}).then(function(r){setV(r);setSel({unused:r.unused.slice(),forgot:r.forgot.slice(),bought:r.bought.slice()});}).catch(function(){});},[props.apiUrl,tk,on]);
+  if(!on||!v||!v.ok||!sel||!(v.packed||[]).length)return null;
+  var flip=function(k,x){var n=Object.assign({},sel);n[k]=sel[k].indexOf(x)===-1?sel[k].concat([x]):sel[k].filter(function(y){return y!==x;});setSel(n);};
+  var addTo=function(k){var x=txt[k].trim();if(!x)return;var n=Object.assign({},sel);if(n[k].indexOf(x)===-1)n[k]=n[k].concat([x]);setSel(n);var t=Object.assign({},txt);t[k]='';setTxt(t);};
+  var save=function(){setMsg('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'pk_review_save',tripKey:tk,by:props.who||''},sel)).then(function(r){setMsg(r.lessons.length?'Saved. Next time: '+r.lessons.join('; ')+'.':'Saved.');}).catch(function(e){setMsg(e.message);});};
+  var chip=function(k,x,label){var on2=sel[k].indexOf(x)!==-1;return h(LuChip,{key:k+x,className:'pk-rv-chip',v:k+':'+x,on:on2,small:true,onClick:function(){flip(k,x);}},label||x);};
+  var group=function(k,title,hint,opts){return h('div',{className:'pk-rv-group','data-k':k,style:{display:'flex',flexDirection:'column',gap:6,borderTop:'1px solid #16213a',paddingTop:8}},
+    h('span',{style:{fontSize:14,fontWeight:700,color:C.text}},title),h('span',{style:{fontSize:12,color:C.mute}},hint),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},opts),
+    k==='unused'?null:h('div',{style:{display:'flex',gap:8}},h('input',{className:'pk-rv-input','data-k':k,'aria-label':title+': add',placeholder:'Type and add',value:txt[k],onChange:function(e){var t=Object.assign({},txt);t[k]=e.target.value;setTxt(t);},style:Object.assign({},LU_INPUT,{flex:1,width:'auto'})}),
+      h('button',{type:'button',className:'pk-rv-add','data-k':k,onClick:function(){addTo(k);},style:Object.assign({},LU_BTN,{background:'transparent',border:'1px solid '+C.edge,color:C.blue,flexShrink:0})},'Add')));};
+  return h('section',{className:'ts-packreview','aria-label':'How did the packing go',style:props.card},
+    h('span',{style:props.label},'How did the packing go?'),
+    h('span',{style:{fontSize:12,color:'#9aa9cc',lineHeight:1.5}},'Two minutes. VERA saves these as packing lessons and packs smarter for trips like this.'),
+    group('unused','Didn’t use','From your list: tap what came home untouched.',v.packed.map(function(p){return chip('unused',p.name,p.item);})),
+    group('forgot','Forgot','Things you wished you had.',sel.forgot.map(function(x){return chip('forgot',x);})),
+    group('bought','Bought there','Bought because you didn’t pack it.',sel.bought.map(function(x){return chip('bought',x);})),
+    msg?h('span',{role:'status',className:'pk-rv-msg',style:{fontSize:12,color:C.green,lineHeight:1.5}},msg):null,
+    h('button',{type:'button',className:'pk-rv-save',onClick:save,style:Object.assign({},LU_BTN,{alignSelf:'flex-start',minHeight:48,background:C.gold,border:'none',color:'#14120a',fontWeight:700})},v.saved?'Save changes':'Save'));}
+// ---- /PackPlus ----
 // ---- TripGiftsPanel (Travel › Gifts, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // A trip's gifts in three groups (for our hosts: bought before going; souvenirs; for us), each moving
 // To buy → Bought → Packed with one tap; the trip's gift budget; ideas for the place; a warning when the
@@ -12251,15 +12461,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                   ) : activeTab === 'budget' ? (
                     <TripBudgetPanel trips={[t]} focusTripKey={tripKey} apiUrl={apiUrl} apiToken={apiToken} />
                   ) : activeTab === 'packing' ? (
-                    <><LuggageCard apiUrl={apiUrl} apiToken={apiToken} tripKey={tripKey} startDate={t.startDate} endDate={t.endDate} who="Victoria"
-                      refreshKey={((packingData[tripKey] && packingData[tripKey].items) || []).length} />
-                    <PackingLitePanel
-                      tripKey={tripKey}
-                      endDate={t.endDate}
-                      packingData={packingData[tripKey]}
-                      apiUrl={apiUrl} apiToken={apiToken}
-                      onReload={()=>loadPacking(tripKey)}
-                    /></>
+                    <PackTab apiUrl={apiUrl} apiToken={apiToken} tripKey={tripKey} startDate={t.startDate} endDate={t.endDate} who="Victoria" />
                   ) : isItinLoading ? (
                     <div style={{padding:'24px 0',textAlign:'center',color:'#6b7fa8',fontSize:13}}>
                       Loading itinerary…

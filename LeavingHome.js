@@ -44,6 +44,7 @@ var LH_SEED_ = [
 ];
 var LH_WINDOW_MIN_ = 180;   // the morning message goes in the 3 hours after the time set
 
+// Kind: trip, away, or checkout (PackPlus.js, #234: leave nothing behind).
 // ---- pure ---------------------------------------------------------------------
 
 function lhStr_(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max || 200); }
@@ -150,7 +151,7 @@ function lhTemplateRows_(rows) {
 function lhRunRows_(rows) {
   return (rows || []).map(function(r, i) { return [r, i]; }).filter(function(x) { return String(x[0][0] || '').trim(); }).map(function(x) {
     var r = x[0], i = x[1];
-    return { id: String(r[0]).trim(), kind: String(r[1] || '') === 'away' ? 'away' : 'trip', tripKey: String(r[2] || '').trim(), home: lhStr_(r[3], 60) || LH_HOME_DEFAULT_,
+    return { id: String(r[0]).trim(), kind: String(r[1] || '') === 'away' ? 'away' : String(r[1] || '') === 'checkout' ? 'checkout' : 'trip', tripKey: String(r[2] || '').trim(), home: lhStr_(r[3], 60) || LH_HOME_DEFAULT_,
       leaveAt: lhAt_(r[4] instanceof Date ? Utilities.formatDate(r[4], Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm") : r[4]),
       nights: Math.max(0, Number(r[5]) || 0), leaving: String(r[6] || '').split(/\s*,\s*/).filter(String), ticks: lhJson_(r[7], {}) || {}, oneOffs: lhJson_(r[8], []) || [],
       sent: String(r[9] || ''), updated: String(r[10] || ''), _row: i + 2 };
@@ -163,7 +164,7 @@ function lhTz_() { return Session.getScriptTimeZone(); }
 function lhNow_() { return Utilities.formatDate(new Date(), lhTz_(), "yyyy-MM-dd'T'HH:mm"); }
 function lhStamp_() { return Utilities.formatDate(new Date(), lhTz_(), 'yyyy-MM-dd HH:mm'); }
 function lhLocked_(fn) { var l = LockService.getScriptLock(); l.waitLock(20000); try { return fn(); } finally { l.releaseLock(); } }
-function lhKeyMatch_(cell, tripKey) { return typeof tripKeyMatches_ === 'function' ? tripKeyMatches_(cell, tripKey) : String(cell || '').trim() === tripKey; }
+function lhKeyMatch_(cell, tripKey) { return tripKeyMatches_(cell, tripKey); }   // Trips.js: the trip's current key or any it had
 function lhHousehold_() {
   return [typeof TE_OWNER_ !== 'undefined' ? TE_OWNER_ : 'Ahmed', typeof TE_PARTNER_ !== 'undefined' ? TE_PARTNER_ : 'Victoria'];
 }
@@ -237,7 +238,7 @@ function lhView_(run, template) {
 /** Writes a run (appending it the first time). */
 function lhSaveRun_(run) {
   var sh = lhRunSheet_(), stamp = lhStamp_();
-  var row = [run.id || lhId_(run.kind === 'away' ? 'AWAY-' : 'TRIP-'), run.kind, run.tripKey || '', run.home, run.leaveAt, run.nights, (run.leaving || []).join(', '), JSON.stringify(run.ticks || {}), JSON.stringify(run.oneOffs || []), run.sent || '', stamp];
+  var row = [run.id || lhId_(run.kind === 'away' ? 'AWAY-' : run.kind === 'checkout' ? 'OUT-' : 'TRIP-'), run.kind, run.tripKey || '', run.home, run.leaveAt, run.nights, (run.leaving || []).join(', '), JSON.stringify(run.ticks || {}), JSON.stringify(run.oneOffs || []), run.sent || '', stamp];
   if (run._row) sh.getRange(run._row, 1, 1, LEAVE_RUN_HEADERS.length).setValues([row]);
   else { sh.appendRow(row); run._row = sh.getLastRow(); }
   run.id = row[0];

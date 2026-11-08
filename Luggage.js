@@ -186,7 +186,8 @@ function luAdvise_(o) {
     var k = String(it.person || '').toLowerCase(), p = byKey[k] || (/^shared$|^$/.test(k) ? own[0] : null);
     if (!p) return;
     var pl = luPlace_(it.item, null);
-    p.items.push({ key: 'p:' + it.id, item: luStr_(it.item, 120), lb: luItemWeight_(it.item), place: pl.place, why: pl.why + (k === 'shared' && own.length > 1 ? (pl.why ? ' · ' : '') + 'shared' : ''), gift: false });
+    var qty = Number(it.qty) > 0 && luQty_(it.item) === 1 ? Number(it.qty) : 1;   // #234: the list's count
+    p.items.push({ key: 'p:' + it.id, item: luStr_(it.item, 120) + (qty > 1 ? ' × ' + qty : ''), lb: luRound_(luItemWeight_(it.item) * qty), qty: qty, status: it.status || 'ready', place: pl.place, why: pl.why + (k === 'shared' && own.length > 1 ? (pl.why ? ' · ' : '') + 'shared' : ''), gift: false });
   });
   var hostGifts = (o.gifts || []).filter(function(g) { return g.kind === 'host'; });
   var homeGifts = (o.gifts || []).filter(function(g) { return g.kind !== 'host'; });
@@ -194,7 +195,7 @@ function luAdvise_(o) {
     var holder = own.filter(function(p) { return bags.some(function(b) { return b.type === 'checked' && luSame_(b.whose, p.name); }); })[0] || own[0];
     hostGifts.forEach(function(g) {
       var pl = luPlace_(g.item, luGiftPacks_(g));
-      holder.items.push({ key: 'g:' + g.id, item: luStr_(g.item, 120) + ' (gift)', lb: Math.max(1, luItemWeight_(g.item)), place: pl.place === 'any' ? 'any' : pl.place, why: pl.why, gift: true });
+      holder.items.push({ key: 'g:' + g.id, item: luStr_(g.item, 120) + ' (gift)', lb: Math.max(1, luItemWeight_(g.item)), qty: 1, status: g.status === 'Packed' ? 'bag' : 'ready', place: pl.place === 'any' ? 'any' : pl.place, why: pl.why, gift: true });
       holder.gifts++;
     });
   }
@@ -224,8 +225,11 @@ function luAdvise_(o) {
     var of = function(type) { return chosen.filter(function(b) { return b.type === type; })[0] || null; };
     var personal = of('personal'), carry = of('carry-on'), checked = of('checked');
     chosen.forEach(function(b) { b.items = []; });
+    p.wearing = [];
     p.items.forEach(function(i) {
       var to = null, why = i.why;
+      // #234: "wear it on the plane" takes it out of every bag.
+      if (moves[i.key] === 'wear') { p.wearing.push({ key: i.key, item: i.item, lb: i.lb, status: i.status }); return; }
       var moved = moves[i.key] && chosen.filter(function(b) { return b.id === moves[i.key]; })[0];
       if (moved) { to = moved; }
       else if (i.place === 'personal') to = personal;
@@ -237,7 +241,7 @@ function luAdvise_(o) {
       var tone = /liquid|fragile|100 ml/.test(why) ? 'warn' : why ? 'info' : '';
       if (moved && i.place === 'checked' && moved.type !== 'checked') { why = (why ? why + ' · ' : '') + 'moved: check the rules'; tone = 'warn'; }
       if (moved && (i.place === 'personal' || i.place === 'carry') && moved.type === 'checked') { why = (why ? why + ' · ' : '') + 'moved: better with you'; tone = 'warn'; }
-      to.items.push({ key: i.key, item: i.item, why: why, tone: tone, gift: i.gift, lb: i.lb });
+      to.items.push({ key: i.key, item: i.item, why: why, tone: tone, gift: i.gift, lb: i.lb, qty: i.qty, status: i.status, place: i.place });
     });
     var carryLimit = airline && !airline.none ? airline.carryLimitLb : null;
     chosen.forEach(function(b) {
@@ -245,9 +249,13 @@ function luAdvise_(o) {
       b.weightLb = luRound_(w);
       b.limitLb = road ? null : b.type === 'checked' ? LU_CHECKED_LIMIT_LB_ : b.type === 'carry-on' ? carryLimit : null;
       b.state = !b.limitLb ? 'ok' : w > b.limitLb ? 'over' : w >= b.limitLb * 0.8 ? 'near' : 'ok';
-      b.items.forEach(function(i) { delete i.lb; });
+      // #234: packing day. What's in the bag so far, by the list's ticks.
+      var inBag = b.items.filter(function(i) { return i.status === 'bag'; });
+      b.packed = inBag.length;
+      b.packedLb = luRound_(b.emptyLb + inBag.reduce(function(s, i) { return s + i.lb; }, 0));
       delete b.emptyLb;
     });
+    chosen.forEach(function(b) { b.fixes = b.state === 'over' ? luFixes_(b, chosen) : []; });
     var why;
     if (need.checked) why = 'A checked bag: ' + reasons.join('; ') + '.';
     else {
@@ -256,6 +264,7 @@ function luAdvise_(o) {
       bits.push('about ' + Math.round(lb) + ' lb of things');
       why = (basic ? 'Personal item only (Basic Economy): ' : 'Carry-on only: ') + bits.join(', ') + '.';
     }
+    if (p.wearing.length) why += ' Wearing on the plane: ' + p.wearing.map(function(w) { return w.item; }).join(', ') + '.';
     p.bags = chosen; p.why = why; p.count = p.items.length; p.needChecked = need.checked;
     delete p.items;
   });
@@ -265,6 +274,36 @@ function luAdvise_(o) {
     home.why += ' ' + homeGifts.length + ' gift' + (homeGifts.length === 1 ? '' : 's') + ' coming home, about ' + Math.round(homeLb) + ' lb: leave room.';
   }
   return { people: own, airline: airline, road: road, nights: nights, laundry: !!o.laundry };
+}
+
+var LU_WEARABLE_RE_ = /\b(boots?|shoes|sneakers|trainers|heels|loafers|jackets?|coats?|parka|sweaters?|hoodies?|fleece|jeans|blazer)\b/i;
+/**
+ * Ways to get an over-limit bag under (#234), biggest saving first, at most 4:
+ * wear the heaviest wearable on the plane; move the heaviest item that may go to another
+ * of the person's bags with room (never a liquid or fragile gift into the cabin, never
+ * documents, meds or batteries into the hold); take one fewer of something counted.
+ * → [{kind: wear | move | fewer, key, item, to?, toName?, saves}]
+ */
+function luFixes_(b, bags) {
+  var out = [], items = b.items.filter(function(i) { return !i.gift || i.place !== 'checked'; });
+  var each = function(i) { return i.lb / (i.qty > 1 ? i.qty : 1); };
+  var wear = b.items.filter(function(i) { return LU_WEARABLE_RE_.test(i.item) && i.lb > 0; }).sort(function(x, y) { return each(y) - each(x); })[0];
+  if (wear) out.push({ kind: 'wear', key: wear.key, item: wear.item, saves: luRound_(wear.qty > 1 ? wear.lb / wear.qty : wear.lb) });
+  bags.forEach(function(o) {
+    if (o === b) return;
+    var room = o.limitLb ? o.limitLb - o.weightLb : (o.type === 'personal' ? LU_PERSONAL_ROOM_LB_ : LU_CARRY_ROOM_LB_) - (o.weightLb || 0);
+    var cabin = o.type !== 'checked';
+    var ok = b.items.filter(function(i) {
+      if (i === wear || i.lb <= 0.4 || i.lb > room) return false;
+      if (cabin && (i.place === 'checked' || i.place === 'checked-soft')) return false;
+      if (!cabin && (i.place === 'personal' || i.place === 'carry')) return false;
+      return true;
+    }).sort(function(x, y) { return y.lb - x.lb; })[0];
+    if (ok && !out.some(function(f) { return f.key === ok.key; })) out.push({ kind: 'move', key: ok.key, item: ok.item, to: o.id, toName: o.name, saves: ok.lb });
+  });
+  var many = items.filter(function(i) { return i.qty > 1 && /^p:/.test(i.key) && !out.some(function(f) { return f.key === i.key; }); }).sort(function(x, y) { return each(y) - each(x); })[0];
+  if (many) out.push({ kind: 'fewer', key: many.key, item: many.item.replace(/ × \d+$/, ''), qty: many.qty, saves: luRound_(many.lb / many.qty) });
+  return out.sort(function(x, y) { return y.saves - x.saves; }).slice(0, 4);
 }
 
 /** Bag rows (as stored) → bags. */
@@ -294,7 +333,7 @@ function luNights_(a, b) {
   var x = Date.parse(String(a || '') + 'T00:00:00Z'), y = Date.parse(String(b || '') + 'T00:00:00Z');
   return isFinite(x) && isFinite(y) && y > x ? Math.round((y - x) / 86400000) : 0;
 }
-function luKeyMatch_(cell, tripKey) { return typeof tripKeyMatches_ === 'function' ? tripKeyMatches_(cell, tripKey) : String(cell || '').trim() === tripKey; }
+function luKeyMatch_(cell, tripKey) { return tripKeyMatches_(cell, tripKey); }   // Trips.js: the trip's current key or any it had
 
 /** The TripMeta row (1-based) for a trip, or 0. */
 function luMetaRow_(sheet, tripKey) {
@@ -314,7 +353,8 @@ function luPacking_(tripKey) {
   if (!sh || sh.getLastRow() < 2) return out;
   sh.getRange(2, 1, sh.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues().forEach(function(r) {
     if (!String(r[4] || '').trim() || !luKeyMatch_(r[1], tripKey)) return;
-    out.push({ id: String(r[0]).trim(), person: String(r[2] || '').trim(), category: String(r[3] || '').trim(), item: String(r[4]).trim() });
+    out.push({ id: String(r[0]).trim(), person: String(r[2] || '').trim(), category: String(r[3] || '').trim(), item: String(r[4]).trim(),
+      status: typeof pkStatusOf_ === 'function' ? pkStatusOf_(r[8], r[5]) : (String(r[5]).toUpperCase() === 'TRUE' ? 'bag' : 'ready'), qty: Number(r[9]) > 0 ? Number(r[9]) : '' });
   });
   return out;
 }
@@ -416,7 +456,7 @@ function webLuBagDelete_(body) {
 function webLuMove_(body) {
   body = body || {};
   var tripKey = luStr_(body.tripKey, 200), item = luStr_(body.item, 60), bag = luStr_(body.bag, 60);
-  if (!tripKey || !/^[pg]:/.test(item)) return { ok: false, error: 'tripKey and item required' };
+  if (!tripKey || !/^[pg]:/.test(item)) return { ok: false, error: 'tripKey and item required' };   // bag 'wear': on you on the plane (#234)
   return luLocked_(function() {
     var sh = getSpreadsheet().getSheetByName(TABS.TRIP_META), r = luMetaRow_(sh, tripKey);
     if (!r) { webSetTripMeta_({ parameter: { tripKey: tripKey } }); sh = getSpreadsheet().getSheetByName(TABS.TRIP_META); r = luMetaRow_(sh, tripKey); }

@@ -46,6 +46,7 @@ function ctx(o) {
     BAG_HEADERS, TRIP_META_HEADERS, PACKING_ITEM_HEADERS,
     Session: { getScriptTimeZone: () => 'UTC' }, Utilities: { formatDate: () => '2027-03-01' }, Logger: { log: () => {} },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
+    tripKeyMatches_: (a, b) => { const v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); },
     getSpreadsheet: () => ({ getSheetByName: n => sheets[n] || null }),
     ensureSheet: (ss, n) => sheets[n],
     webSetTripMeta_: e => { sheets.TripMeta.appendRow([e.parameter.tripKey, '', '', '', '', '', 2, '', '', '', '']); return { ok: true }; },

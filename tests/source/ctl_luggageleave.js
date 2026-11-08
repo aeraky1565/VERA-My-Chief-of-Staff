@@ -69,7 +69,7 @@ const CONTROLS = [
   ['Heading out counts every item', both('lhAppliesC_(t.group,month,Number(a.nights)||0,empty)', 'true')],
   ['who’s leaving can’t be changed', both("post('lh_run_set',{leaving:next});", "post('lh_run_set',{});")],
   ['the trip summary has no checklist', both('    h(TsLeaveHome,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who,card:card,label:label}),\n', '')],
-  ['lite packing has no card', b => ({ [L]: swap(b[L], '<><LuggageCard apiUrl=', '<><LuggageCardX apiUrl=') })],
+  ['lite packing has no card', b => ({ [L]: swap(b[L], '<PackTab apiUrl={apiUrl} apiToken={apiToken} tripKey={tripKey}', '<PackTabX apiUrl={apiUrl} apiToken={apiToken} tripKey={tripKey}') })],
   ['Victoria can’t reach Our bags', both("{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags']}", "{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles']}"), NAV],
   ['Victoria can’t reach the Bucket List', both("{id:'bucketlist',label:'Bucket List',icon:'🪣',items:['bucketlist']},", ''), NAV],
 ];

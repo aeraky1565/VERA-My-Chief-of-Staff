@@ -676,7 +676,8 @@ console.log('\nwiring');
 
   // THE LITE BUG, fixed at the source.
   check('dashboard-lite now sends the end date', /action:'generate_packing',tripKey,startDate,endDate\}/.test(LITE));
-  check('…which the panel is given', /function PackingLitePanel\(\{ tripKey, endDate,/.test(LITE) && /tripKey=\{tripKey\}\s+endDate=\{t\.endDate\}/.test(LITE));
+  check('…which the packing tab is given, and sends (#234)', /<PackTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} tripKey=\{tripKey\} startDate=\{t\.startDate\} endDate=\{t\.endDate\}/.test(LITE)
+    && /apiGet\(props\.apiUrl,props\.apiToken,Object\.assign\(\{action:'generate_packing'\},base\)\)/.test(LITE) && /var base=\{tripKey:props\.tripKey,startDate:props\.startDate\|\|'',endDate:props\.endDate\|\|''\};/.test(LITE));
   check('…and a failed generation is no longer swallowed', !/\} catch\(e\) \{\} finally \{ setGenerating\(false\); \}/.test(LITE));
 }
 
