@@ -177,7 +177,7 @@ function runSend(items, opts, o) {
     buildTravelDayEmailHtml_: (label, date, sections) => { out.sections = sections; out.dateLabel = date; return '<p/>'; },
     buildTravelDayPlainText_: stub,
     getTravelDayRecipients_: () => ['me@example.test', 'partner@example.test'],
-    sendVeraEmail_: (to, subject) => { out.emails.push({ to, subject }); },
+    sendVeraEmail_: (to, subject, body, opts) => { out.emails.push({ to, subject, bcc: (opts && opts.bcc) || '' }); },
     sendSlack_: (ch, text) => { out.slack.push(ch); },
   };
   vm.createContext(ctx);
@@ -237,7 +237,7 @@ console.log('\na test send');
   check('…with the item count', me.ret.count === 1, JSON.stringify(me.ret));
 
   const all = runSend(ITEMS, { date: '2026-10-28', test: true, to: 'all' });
-  check('"everyone" sends to the real list', all.emails[0].to === 'me@example.test,partner@example.test', all.emails[0].to);
+  check('a test goes to you even when asked for everyone (#233)', all.emails[0].to === 'me@example.test', all.emails[0].to);
 
   const slack = runSend(ITEMS, { date: '2026-10-28', test: true }, { channel: 'travel' });
   check('a test is an email even when the briefing goes to Slack',
@@ -252,7 +252,8 @@ console.log('\na test send');
 
   const real = runSend(ITEMS, { date: '2026-10-28' });
   check('the real one has no TEST', !/TEST/.test(real.emails[0].subject), real.emails[0].subject);
-  check('…and still goes to everyone', real.emails[0].to === 'me@example.test,partner@example.test');
+  check('…and still goes to everyone: you in To, the rest in Bcc (#233)', real.emails[0].to === 'me@example.test' && real.emails[0].bcc === 'partner@example.test', JSON.stringify(real.emails[0]));
+  check('a test has no Bcc', !me.emails[0].bcc);
   check('the send itself writes no latch', !Object.keys(me.props).some(k => /^TDB_SENT_/.test(k)),
         JSON.stringify(me.props));
 }
@@ -361,17 +362,17 @@ console.log('\nsending a test');
         JSON.stringify(w.out.fetches[0]) === '["2026-10-21|Lake Trip","2026-10-21","2026-10-29","2026-10-28"]',
         JSON.stringify(w.out.fetches));
   const o = w.out.sends[0].opts;
-  check('…as a test, for that day, to you', o.test === true && o.date === '2026-10-28' && o.to === 'me' &&
+  check('…as a test, for that day, to you', o.test === true && o.date === '2026-10-28' && o.to === undefined &&
         o.lastDay === '2026-10-29', JSON.stringify(o));
   check('…and never writes the latch', !Object.keys(w.out.props).length, JSON.stringify(w.out.props));
   check('…and reports who and what', JSON.stringify(r.to) === '["me@example.test"]' && r.subject === 'TEST · x');
 
   const all = webCtx();
   all.run('webTestTravelSend_(__e)', { tripKey: '2026-10-21|Lake Trip', date: '2026-10-28', to: 'all' });
-  check('"everyone" is passed through', all.out.sends[0].opts.to === 'all');
+  check('"everyone" is no longer passed through: tests are yours (#233)', all.out.sends[0].opts.to === undefined);
   const odd = webCtx();
   odd.run('webTestTravelSend_(__e)', { tripKey: '2026-10-21|Lake Trip', date: '2026-10-28', to: 'bob@x' });
-  check('anything else means you', odd.out.sends[0].opts.to === 'me');
+  check('anything else means you', odd.out.sends[0].opts.to === undefined);
 
   const out = webCtx().run('webTestTravelSend_(__e)', { tripKey: '2026-10-21|Lake Trip', date: '2026-11-03' });
   check('a day outside the trip is refused', out.ok === false && /outside/.test(out.error), JSON.stringify(out));

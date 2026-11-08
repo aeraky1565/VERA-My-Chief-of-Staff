@@ -135,11 +135,7 @@ const calls = page => page.evaluate(() => window.__calls);
     check('…with the subject', /TEST · ✈️ Travel Day — Lake Trip/.test(res || ''), res);
     check('…and how many items', /built from 1 item\./.test(res || ''), res);
 
-    await page.click('.test-to-all'); await settle(page);
-    await page.click('.test-send'); await settle(page);
-    const sends2 = (await calls(page)).filter(c => c.action === 'test_travel_send');
-    check('"Everyone on the trip" sends to=all', sends2.length === 2 && sends2[1].to === 'all', JSON.stringify(sends2));
-    await page.evaluate(() => window.__release()); await settle(page);
+    check('a test goes to you only: there is no "everyone" choice (#233)', !(await page.$('.test-to-all')) && /A test goes to you only/.test((await text(page, '.test-to-me')) || ''));
 
     await page.click('.test-trip:nth-child(2)'); await settle(page, 400);
     const d2 = await all(page, '.test-day');

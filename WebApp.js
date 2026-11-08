@@ -424,6 +424,8 @@ function doGet(e) {
       case 'fp_get':                return jsonOut_(webFpGet_(e.parameter));
       case 'cycle_get':             return jsonOut_(webCycleGet_());
       case 'tp_get':                return jsonOut_(webTpGet_());
+      case 'te_get':                return jsonOut_(webTeGet_());
+      case 'te_trip':               return jsonOut_(webTeTrip_(e.parameter));
       case 'bucket_facts':          return jsonOut_(webBucketFacts_(e.parameter));
       case 'trip_readiness':        return jsonOut_(webTripReadiness_(e.parameter));
       case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
@@ -670,6 +672,8 @@ function doPost(e) {
       case 'cycle_log':                  return jsonOut_(webCycleLog_(body));
       case 'tp_save':                    return jsonOut_(webTpSave_(body));
       case 'tp_delete':                  return jsonOut_(webTpDelete_(body));
+      case 'te_set':                     return jsonOut_(webTeSet_(body));
+      case 'te_legacy':                  return jsonOut_(webTeLegacy_(body));
       case 'bucket_facts_set':           return jsonOut_(webBucketFactsSet_(body));
       case 'trip_readiness_pack':        return jsonOut_(webTripReadinessPack_(body));
       case 'cycle_edit':                 return jsonOut_(webCycleEdit_(body));
@@ -10465,6 +10469,10 @@ function webGetTripDocuments_(params) {
   if (!tripKey) return { ok: false, error: 'tripKey required' };
   var items = tripItemsFor_(tripKey, String(params.startDate || ''), endDate, 'trip_documents');
   var profiles = webGetProfiles_().profiles.filter(function(p) { return p.passportCountry; });
+  // #233: only the people travelling on this trip, when its travellers are set.
+  var going = [];
+  try { going = typeof teTravellersForKey_ === 'function' ? teTravellersForKey_(tripKey) : []; } catch (e) { going = []; }
+  if (going.length) profiles = profiles.filter(function(p) { return going.some(function(g) { return String(g).toLowerCase() === String(p.name).toLowerCase(); }); });
   // Visas and travel authorisations already held (Traveler Items) cover a country.
   var held = null;
   try { held = typeof tpHeld_ === 'function' && typeof tpItems_ === 'function' ? tpHeld_(tpItems_()) : null; } catch (e) { held = null; }

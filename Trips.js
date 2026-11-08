@@ -169,6 +169,7 @@ function readTripRegistry_() {
       created:   String(r[6] || '').trim(),
       lastSeen:  String(r[7] || '').trim(),
       status:    String(r[8] || 'active').trim() || 'active',
+      recipients: String(r[9] || '').trim(),   // #233: the Travel Day email's switched-on travellers and added addresses
       _row:      i + 2,
     };
     out.byId[id] = rec;

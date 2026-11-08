@@ -349,7 +349,7 @@ function checkAndSendTravelDayBriefings_(opts) {
  *   lastDay the trip's last day, when the caller knows it (travelDayRanges_).
  *   test    the dashboard's Test tab: "TEST · " on the subject, always by
  *           email, and sent even when the briefing is switched off.
- *   to      with test: 'me' (default) or 'all' (everyone the real one goes to).
+ *           A test goes to you only (#233).
  * @returns {Object|null} { to, subject, count }, or null when switched off
  */
 function sendTravelDayBriefing_(tripKey, todayItems, opts) {
@@ -357,6 +357,11 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   var isTest = !!opts.test;
   if (!isTest && !isNotifEnabled_('travel_day_briefing')) {
     Logger.log('sendTravelDayBriefing_: skipped — travel_day_briefing disabled');
+    return null;
+  }
+  // #233: a trip you aren't travelling on (Victoria's solo trip) sends no Travel Day email.
+  if (!isTest && !getTravelDayRecipients_(tripKey).length) {
+    Logger.log('sendTravelDayBriefing_: skipped — nobody to send to for ' + tripKey + ' (a trip you are not on)');
     return null;
   }
   var tz        = Session.getScriptTimeZone();
@@ -488,9 +493,7 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   ];
 
   // A test goes to you unless you asked for everyone.
-  var recipients = (isTest && opts.to !== 'all')
-    ? [CONFIG.MORNING_NUDGE_EMAIL]
-    : getTravelDayRecipients_(tripKey);
+  var recipients = isTest ? [CONFIG.MORNING_NUDGE_EMAIL] : getTravelDayRecipients_(tripKey);
   var subject    = (isTest ? 'TEST \u00B7 ' : '') +
                    '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
@@ -499,7 +502,11 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   // A test is always an email: it is what you are checking.
   var travelCh = isTest ? 'email' : getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
-    sendVeraEmail_(recipients.join(','), subject, plainText, { name: 'Travel Briefing', htmlBody: htmlBody }, 'travel_day_briefing');
+    // #233: you in To, everyone else in Bcc, so nobody sees anyone else's address.
+    var mailTo = recipients[0] || CONFIG.MORNING_NUDGE_EMAIL, mailBcc = recipients.slice(1);
+    var mailOpts = { name: 'Travel Briefing', htmlBody: htmlBody };
+    if (mailBcc.length) mailOpts.bcc = mailBcc.join(',');
+    sendVeraEmail_(mailTo, subject, plainText, mailOpts, 'travel_day_briefing');
     Logger.log('TravelDayBriefing: sent email for "' + tripLabel + '" to ' + recipients.join(', '));
   } else {
     sendSlack_(travelCh, '✈️ *' + subject + '*\n\n' + plainText);
@@ -1099,29 +1106,18 @@ function hasAnyDetails_(details) {
  * getTravelDayRecipients_(tripKey)
  *
  * Returns the list of email addresses for the briefing.
- * Always includes CONFIG.MORNING_NUDGE_EMAIL (Ahmed).
- * Also reads 'travel_companions' from Config tab (comma-separated).
+ * Per trip (TripEmails.js, #233): [] when you aren't travelling on the trip.
  *
- * Future: can read per-trip companions from TripMeta Traveler column via tripKey.
- *
- * @param {string} tripKey — for future per-trip companion lookup
- * @returns {string[]} deduped, non-empty array of email addresses
+ * @param {string} tripKey
+ * @returns {string[]} deduped array of email addresses
  */
 function getTravelDayRecipients_(tripKey) {
-  var cfg        = getConfigValues();
-  var companions = String(cfg['travel_companions'] || '');
-  var emails     = [CONFIG.MORNING_NUDGE_EMAIL];
-
-  companions.split(',').forEach(function(addr) {
-    addr = addr.trim();
-    if (addr && emails.indexOf(addr) === -1) emails.push(addr);
-  });
-
-  // Future: read per-trip companions from TripMeta Traveler column
-  // var metaRow = getTripMetaRow_(tripKey);
-  // if (metaRow && metaRow.traveler) { ... }
-
-  return emails.filter(Boolean);
+  // #233: per trip. You on trips you travel on; Victoria and other travellers only when
+  // switched on for that trip; anyone added to it. Config travel_companions is retired.
+  if (typeof teRecipientsFor_ === 'function') {
+    try { return teRecipientsFor_(tripKey); } catch (e) { Logger.log('getTravelDayRecipients_: ' + e.message + ' — sending to you only'); }
+  }
+  return [CONFIG.MORNING_NUDGE_EMAIL].filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -1400,7 +1396,7 @@ function webTestTravelSend_(e) {
   var p       = (e && e.parameter) || {};
   var tripKey = String(p.tripKey || '').trim();
   var date    = String(p.date || '').trim();
-  var to      = p.to === 'all' ? 'all' : 'me';
+  var to      = 'me';   // #233: a test goes to you only
   if (!tripKey) return { ok: false, error: 'Pick a trip first.' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Pick a day of the trip.' };
   var r = travelTestRanges_()[tripKey];
@@ -1409,7 +1405,7 @@ function webTestTravelSend_(e) {
 
   var _t0 = Date.now();
   var rows = fetchTripDayItems_(tripKey, r.min, r.max, date) || [];
-  var sent = sendTravelDayBriefing_(tripKey, rows, { date: date, lastDay: r.max, test: true, to: to });
+  var sent = sendTravelDayBriefing_(tripKey, rows, { date: date, lastDay: r.max, test: true });
   veraLog_('webTestTravelSend', 'Travel', 'Success',
     'Test travel-day email for ' + tripKey + ' on ' + date + ' (' + to + ')', Date.now() - _t0);
   return { ok: true, to: sent.to, subject: sent.subject, count: sent.count };

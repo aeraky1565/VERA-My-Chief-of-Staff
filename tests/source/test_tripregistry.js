@@ -492,7 +492,7 @@ console.log('\nthe wiring in PTO.js');
 console.log('\n…and the registry tab is declared');
 {
   check('TABS.TRIPS exists', /TRIPS:\s*'Trips'/.test(COD));
-  check('TRIPS_HEADERS has all nine columns', HDR.length === 9, HDR.join('|'));
+  check('TRIPS_HEADERS has all ten columns, Email Recipients last (#233)', HDR.length === 10 && HDR[9] === 'Email Recipients', HDR.join('|'));
   check('Trip ID is column A', HDR[0] === 'Trip ID');
   check('…and the event ids are a set, named plurally', HDR[4] === 'Calendar Event IDs');
   check('createSheetTabs makes it', /ensureSheet\(ss, TABS\.TRIPS,\s*TRIPS_HEADERS\)/.test(COD));

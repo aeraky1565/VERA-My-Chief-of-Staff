@@ -263,7 +263,7 @@ const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', '
 // iCalUID. Aliases holds every legacy key this trip has answered to, so a lagging
 // client or an un-migrated row still resolves. Status carries 'merged:<TRIP-...>'
 // forwarding, so anything still holding a losing id resolves instead of vanishing.
-const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
+const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status', 'Email Recipients']; // Email Recipients: #233
 // Trip Ideas (TripIdeas.js). Months is a JSON list of 'yyyy-MM'; empty means any time.
 // Pieces (anchors, either/or, wishes) and Also Possible are JSON lists.
 const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible', 'Settle', 'Pulled In', 'Exact Start', 'Exact End', 'Not Same'];

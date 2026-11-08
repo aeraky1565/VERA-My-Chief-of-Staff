@@ -261,6 +261,10 @@ function webTripReadiness_(params) {
   var tripKey = trdStr_(params.tripKey, 200), startDate = tpYmd_(params.startDate), endDate = tpYmd_(params.endDate) || startDate;
   if (!tripKey) return { ok: false, error: 'tripKey required' };
   var items = tpItems_();
+  // #233: only the people travelling on this trip, when its travellers are set.
+  var going = [];
+  try { going = typeof teTravellersForKey_ === 'function' ? teTravellersForKey_(tripKey) : []; } catch (e) { going = []; }
+  if (going.length) items = items.filter(function(i) { return going.some(function(g) { return String(g).toLowerCase() === String(i.person).toLowerCase(); }); });
   if (!items.length) return { ok: true, people: [], cards: [], health: [], empty: true };
   var itinerary = [], documents = null, lounges = [];
   try { itinerary = tripItemsFor_(tripKey, startDate, endDate, 'trip_readiness'); } catch (e) { Logger.log('trip_readiness itinerary: ' + e.message); }

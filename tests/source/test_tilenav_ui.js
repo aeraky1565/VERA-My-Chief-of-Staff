@@ -27,7 +27,7 @@ const T = list => list.map(id => ({ id, label: id }));
 check('Career: five groups, Brand and Market together as Search, Network on its own',
   ids('career', T(['market', 'network', 'brand', 'northstar', 'readiness', 'evidence', 'credentials', 'pipeline', 'exchange'])) === 'direction:northstar+readiness proof:evidence+credentials search:brand+market agents:pipeline+exchange network:network');
 check('System: Reference, Checks, Settings',
-  ids('system', T(['assistants', 'test', 'notifications', 'config', 'api_health', 'flags', 'documents'])) === 'reference:assistants+documents checks:test+api_health settings:notifications+config+flags');
+  ids('system', T(['assistants', 'test', 'notifications', 'trip_emails', 'config', 'api_health', 'flags', 'documents'])) === 'reference:assistants+documents checks:test+api_health settings:notifications+trip_emails+config+flags');
 check('Life: four groups of three',
   ids('life', T(['now', 'goals', 'habits', 'learning', 'trials', 'review', 'places', 'lessons', 'things', 'ideas', 'giving', 'notes'])) === 'grow:now+goals+habits learn:learning+trials+review explore:places+lessons+things keep:ideas+giving+notes');
 check('Travel 4, Health 3, People 4',

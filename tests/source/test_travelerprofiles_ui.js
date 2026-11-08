@@ -72,7 +72,7 @@ const ROWS = [
     const L = '@' + width;
     let { page, errs } = await open(width, { rows: ROWS });
     check(L + ': a chip per person, the first one shown', (await page.$$eval('.tp-person', ns => ns.map(n => n.dataset.p).join())) === 'Sam,Lee' && (await page.$eval('.tp-person[aria-pressed="true"]', n => n.dataset.p)) === 'Sam');
-    check(L + ': five sections, each saying what it’s used for; no Children before a birth', (await page.$$eval('.tp-sec', ns => ns.map(n => n.dataset.sec).join())) === 'document,trusted,membership,preference,health'
+    check(L + ': six sections (Contact too), each saying what it’s used for; no Children before a birth', (await page.$$eval('.tp-sec', ns => ns.map(n => n.dataset.sec).join())) === 'document,trusted,membership,preference,health,contact'
       && (await page.$$eval('.tp-used', ns => ns.every(n => n.innerText.length > 20))));
     const docs = await text(page, '.tp-sec[data-sec="document"]');
     check(L + ': documents: the passport with its expiry chip and note, and the ETA', /Passport[\s\S]*Canada[\s\S]*Expires 2027-06-30[\s\S]*blue cover/.test(docs) && /ETA[\s\S]*United Kingdom[\s\S]*Valid to 2029-01-01/.test(docs), docs);

@@ -8221,6 +8221,105 @@ function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var
     (needFlights||openNights>0)&&h('section',{className:'ts-still',style:props.card,'aria-label':'Still to book'},h('span',{style:props.label},'Still to book'),
       needFlights&&h(TsAriaFlights,{data:data,ends:props.ends,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}}),
       openNights>0&&h('span',{className:'ts-still-stays',style:{fontSize:13,color:'#f6d27a'}},'🏨 '+openNights+' night'+(openNights===1?'':'s')+' with no place to sleep · not watched (ARIA watches flights for now)')));}
+// Who's travelling and who gets the Travel Day email (TripEmails.js, issue #233). One editor, used
+// on each trip's summary and on System › Trip emails. You're always on it for your trips; Victoria
+// and other travellers only when switched on; anyone can be added from the Address Book or typed.
+var TE_C={card:'#0d1526',deep:'#0a1220',line:'#1e2a44',text:'#dde1f0',mute:'#9aa8c8',faint:'#7f8db0',gold:'#c9a84c',goldT:'#e3c46a',blue:'#8ab4f8',green:'#4ade80',red:'#f87171'};
+function teEmailOk_c(s){return /^[^\s@,;<>"]+@[^\s@,;<>".]+(\.[^\s@,;<>".]+)*\.[A-Za-z]{2,}$/.test(String(s||'').trim());}
+function teSame_c(a,b){return String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase();}
+function teSummary_(t){if(!t)return '';if(t.solo)return 'You’re not on this trip, so no Travel Day email goes.';
+  var on=(t.list||[]).filter(function(x){return x.on&&x.source!=='always';}).map(function(x){return x.name;});return on.length?'You and '+on.join(', '):'Only you';}
+function TeEditor(props){var h=React.createElement;var t=props.trip;var C=TE_C;
+  var _tr=React.useState(t.travellers||[]),trav=_tr[0],setTrav=_tr[1];
+  var _on=React.useState(function(){var o={};(t.list||[]).forEach(function(x){if(x.source==='traveller'&&x.on)o[x.name.toLowerCase()]=true;});return o;}),on=_on[0],setOn=_on[1];
+  var _ad=React.useState((t.tokens||[]).filter(teEmailOk_c)),added=_ad[0],setAdded=_ad[1];
+  var _ty=React.useState(''),typed=_ty[0],setTyped=_ty[1];var _q=React.useState(''),q=_q[0],setQ=_q[1];
+  var _bk=React.useState(null),book=_bk[0],setBook=_bk[1];var _er=React.useState(''),err=_er[0],setErr=_er[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var people=props.people||[];var known=function(n){return people.filter(function(p){return teSame_c(p.name,n);})[0]||{name:n};};
+  var you=people.filter(function(p){return p.you;})[0];var youName=you?you.name:'';
+  var youTravel=!trav.length||trav.some(function(n){return teSame_c(n,youName);});
+  var others=trav.filter(function(n){return !teSame_c(n,youName);});
+  var loadBook=function(){if(book)return;setBook({loading:true});apiGet(props.apiUrl,props.apiToken,{action:'address_book'}).then(function(r){setBook({people:(r&&r.people)||[]});}).catch(function(){setBook({people:[]});});};
+  var add=function(email){email=String(email||'').trim();if(!teEmailOk_c(email)){setErr('That doesn’t look like a full email address. Check the part after the @.');return false;}
+    if(added.some(function(a){return teSame_c(a,email);})){setErr('Already on the list.');return false;}setErr('');setAdded(added.concat([email]));return true;};
+  var save=function(){setBusy(true);setErr('');var tokens=others.filter(function(n){return on[n.toLowerCase()];}).concat(added);
+    apiPost(props.apiUrl,props.apiToken,{action:'te_set',tripKey:t.tripKey,travellers:trav,tokens:tokens}).then(function(r){setBusy(false);if(props.onSaved)props.onSaved(r.trip);})
+      .catch(function(e){setBusy(false);setErr(e.message||'That didn’t save.');});};
+  var btn={minHeight:44,padding:'0 14px',borderRadius:10,background:'transparent',border:'1px solid #2a3f6f',color:C.blue,fontSize:13,cursor:'pointer'};
+  var inp={minHeight:44,borderRadius:10,background:C.deep,border:'1px solid #2a3f6f',color:C.text,padding:'0 12px',fontSize:14,width:'100%',boxSizing:'border-box'};
+  var row={display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,padding:'8px 0',borderBottom:'1px solid #16213a'};
+  var hits=book&&book.people&&q.trim()?book.people.filter(function(p){return String(p.name||'').toLowerCase().indexOf(q.trim().toLowerCase())!==-1;}).slice(0,6):[];
+  return h('div',{className:'te-editor',style:{display:'flex',flexDirection:'column',gap:12}},
+    h('fieldset',{style:{border:'1px solid '+C.line,borderRadius:12,padding:12,margin:0,display:'flex',flexDirection:'column',gap:4,minWidth:0}},
+      h('legend',{style:{fontSize:13,fontWeight:700,color:C.text,padding:'0 4px'}},'Who’s travelling'),
+      h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'From Travel › Travelers › Profiles. Readiness and the passport and visa checks cover only the people ticked.'),
+      people.map(function(p){var ck=trav.some(function(n){return teSame_c(n,p.name);});
+        return h('label',{key:p.name,style:{minHeight:44,display:'flex',alignItems:'center',gap:10,fontSize:14,color:C.text}},
+          h('input',{type:'checkbox',className:'te-trav','data-name':p.name,checked:ck,onChange:function(){setTrav(ck?trav.filter(function(n){return !teSame_c(n,p.name);}):trav.concat([p.name]));},style:{width:20,height:20,accentColor:C.gold}}),p.you?p.name+' (you)':p.name);})),
+    h('section',{'aria-label':'Who gets the Travel Day email',style:{border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:6}},
+      h('h4',{style:{margin:0,fontSize:13,fontWeight:700,color:C.text}},'Who gets the Travel Day email'),
+      !youTravel?h('span',{className:'te-solo',style:{fontSize:13,color:C.mute,lineHeight:1.5}},'You’re not on this trip, so no Travel Day email goes.'):[
+      h('div',{key:'you',style:row},h('span',{style:{fontSize:14}},'You'),h('span',{style:{fontSize:11,color:C.goldT,padding:'3px 8px',borderRadius:999,background:'#2a2410'}},'Always')),
+      others.map(function(n){var k=known(n),has=!!k.hasEmail,isOn=!!on[n.toLowerCase()]&&has;
+        return h('div',{key:n,style:row},h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14}},n),
+            h('span',{style:{fontSize:12,color:C.mute}},has?'Travelling':'Travelling · no email to send to yet')),
+          h('button',{type:'button',role:'switch','aria-checked':isOn,'aria-label':n+' gets the Travel Day email',className:'te-switch','data-name':n,disabled:!has,onClick:function(){var o=Object.assign({},on);o[n.toLowerCase()]=!on[n.toLowerCase()];setOn(o);},
+            style:{minWidth:64,minHeight:44,borderRadius:22,fontSize:13,fontWeight:700,cursor:has?'pointer':'not-allowed',background:isOn?'#14301f':'#161b2a',border:'1px solid '+(isOn?C.green:'#3a4560'),color:isOn?C.green:C.mute}},isOn?'On':'Off'));}),
+      added.map(function(a){return h('div',{key:a,style:row},h('span',{style:{fontSize:14,overflowWrap:'anywhere',minWidth:0}},a),
+        h('button',{type:'button',className:'te-del','data-email':a,'aria-label':'Remove '+a,onClick:function(){setAdded(added.filter(function(x){return x!==a;}));},style:{minWidth:44,minHeight:44,borderRadius:10,background:'transparent',border:'1px solid #6b2a2a',color:C.red,fontSize:16,cursor:'pointer'}},'×'));}),
+      h('label',{key:'ab',style:{display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute,marginTop:6}},'Add from the Address Book',
+        h('input',{className:'te-ab',value:q,placeholder:'Type a name',onFocus:loadBook,onChange:function(e){loadBook();setQ(e.target.value);},style:inp})),
+      hits.length?h('div',{key:'hits',style:{display:'flex',flexDirection:'column',border:'1px solid #2a3f6f',borderRadius:10,overflow:'hidden'}},hits.map(function(p){var ok=teEmailOk_c(p.email);
+        return h('button',{key:p.id||p.name,type:'button',className:'te-ab-pick',disabled:!ok,onClick:function(){if(add(p.email))setQ('');},style:{minHeight:52,padding:'8px 12px',background:ok?'#13203a':C.deep,border:'none',borderBottom:'1px solid '+C.line,color:ok?C.text:C.faint,textAlign:'left',cursor:ok?'pointer':'not-allowed',display:'flex',flexDirection:'column',gap:2}},
+          h('span',{style:{fontSize:14}},p.name),h('span',{style:{fontSize:12,color:C.mute}},ok?p.email:'No email in the Address Book'));})):null,
+      h('label',{key:'ty',style:{display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute}},'Or type an email',
+        h('div',{style:{display:'flex',gap:8}},h('input',{className:'te-email',type:'email',value:typed,onChange:function(e){setTyped(e.target.value);},style:inp}),
+          h('button',{type:'button',className:'te-add',onClick:function(){if(add(typed))setTyped('');},style:Object.assign({},btn,{flexShrink:0})},'Add')))]),
+    err?h('span',{role:'alert',className:'te-err',style:{fontSize:12,color:C.red}},err):null,
+    h('div',{style:{display:'flex',gap:10}},props.onCancel?h('button',{type:'button',className:'te-cancel',onClick:props.onCancel,style:Object.assign({},btn,{flex:1,color:'#aab6d6'})},'Cancel'):null,
+      h('button',{type:'button',className:'te-save',disabled:busy,onClick:save,style:{flex:2,minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},busy?'Saving…':'Save')));}
+function teChips_(h,t){var C=TE_C;if(t.solo)return h('span',{className:'te-chips',style:{fontSize:12,color:C.faint}},'No Travel Day email (you’re not on this trip)');
+  var chips=[h('span',{key:'you',style:{fontSize:12,padding:'4px 10px',borderRadius:999,background:'#2a2410',color:C.goldT}},'You')];
+  (t.list||[]).forEach(function(x){if(x.source==='always')return;chips.push(h('span',{key:x.name,className:'te-chip','data-on':x.on?'yes':'no',style:{fontSize:12,padding:'4px 10px',borderRadius:999,background:x.on?'#13203a':'#161b2a',color:x.on?'#c4d4f4':C.faint}},x.name+(x.on?'':' · off')));});
+  return h('div',{className:'te-chips',style:{display:'flex',flexWrap:'wrap',gap:6}},chips);}
+function TsTripPeople(props){var h=React.createElement;var trip=props.trip||{};var C=TE_C;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(false),edit=_e[0],setEdit=_e[1];
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken||!trip.tripKey)return;var dead=false;
+    apiGet(props.apiUrl,props.apiToken,{action:'te_trip',tripKey:trip.tripKey}).then(function(r){if(!dead)setD(r&&r.ok&&r.found&&r.trip?r:null);}).catch(function(){if(!dead)setD(null);});
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
+  if(!d)return null;var t=d.trip;
+  return h('section',{style:props.card,'aria-label':'Who’s travelling and the Travel Day email',className:'te-trip-box'},h('span',{style:props.label},'Who’s travelling · Travel Day email'),
+    edit?h(TeEditor,{trip:t,people:d.people,apiUrl:props.apiUrl,apiToken:props.apiToken,onCancel:function(){setEdit(false);},onSaved:function(nt){setD(Object.assign({},d,{trip:nt}));setEdit(false);}})
+      :h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+        h('span',{className:'te-who',style:{fontSize:13,color:'#c8d2ea'}},'Travelling: '+((t.travellers||[]).length?t.travellers.join(', '):'not set yet')),
+        teChips_(h,t),
+        h('button',{type:'button',className:'te-change',onClick:function(){setEdit(true);},style:{alignSelf:'flex-start',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:C.blue,fontWeight:600,fontSize:13,cursor:'pointer'}},'Change')));}
+function TripEmailsPanel(props){var h=React.createElement;var C=TE_C;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(null),edit=_e[0],setEdit=_e[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var load=function(){apiGet(props.apiUrl,props.apiToken,{action:'te_get'}).then(function(r){setD(r);}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(load,[props.apiUrl,props.apiToken]);
+  if(!d)return h('div',{className:'te-panel',style:{color:C.mute,fontSize:13,padding:12}},'Loading trip emails…');
+  if(d.ok===false)return h('div',{className:'te-panel',style:{color:C.red,fontSize:13,padding:12}},'Couldn’t load trip emails: '+d.error);
+  var legacy=function(mode){apiPost(props.apiUrl,props.apiToken,{action:'te_legacy',mode:mode}).then(function(r){setMsg(mode==='add'?'Added to '+r.trips+' trip'+(r.trips===1?'':'s')+'.':'Dismissed.');load();}).catch(function(e){setMsg(e.message);});};
+  var card={background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:8};
+  return h('div',{className:'te-panel',style:{display:'flex',flexDirection:'column',gap:14,maxWidth:720}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Trip emails'),
+      h('span',{style:{fontSize:13,color:C.mute,lineHeight:1.5}},'Who gets each trip’s Travel Day email, the one sent on the morning you travel. You’re on it for every trip you’re travelling on. Victoria and other travellers are off unless you switch them on for that trip. Trips you’re not on send none. The 48-hour, night-before and after-trip emails stay yours.')),
+    (d.legacy||[]).length?h('section',{className:'te-legacy','aria-label':'The old shared list',style:Object.assign({},card,{background:'#1d1a0c',border:'1px solid #6b5a10'})},
+      h('span',{style:{fontSize:13,fontWeight:700,color:'#f0d78a'}},'The shared list is retired'),
+      h('span',{style:{fontSize:12,color:'#d8c88f',lineHeight:1.5}},'Until now, this went on every trip: '+d.legacy.join(', ')+'. From now on, people are added per trip.'),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'te-legacy-add',onClick:function(){legacy('add');},style:{minHeight:44,padding:'0 14px',borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontSize:13,fontWeight:700,cursor:'pointer'}},'Add to all upcoming trips'),
+        h('button',{type:'button',className:'te-legacy-dismiss',onClick:function(){legacy('dismiss');},style:{minHeight:44,padding:'0 14px',borderRadius:10,background:'transparent',border:'1px solid #6b5a10',color:'#f0d78a',fontSize:13,cursor:'pointer'}},'Dismiss'))):null,
+    msg?h('span',{role:'status',className:'te-msg',style:{fontSize:13,color:C.green}},msg):null,
+    !d.partnerSet?h('span',{className:'te-nopartner',style:{fontSize:12,color:'#fbbf24'}},'Victoria has no address yet: add Config victoria_email to email her.'):null,
+    (d.trips||[]).length?null:h('span',{style:{fontSize:13,color:C.mute}},'No upcoming trips on the Trips tab yet.'),
+    (d.trips||[]).map(function(t){var isEdit=edit===t.tripKey;
+      return h('div',{key:t.tripKey,className:'te-trip','data-key':t.tripKey,style:card},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:15,fontWeight:700,color:C.text}},t.label),h('span',{style:{fontSize:12,color:C.mute,flexShrink:0}},t.startDate+(t.endDate&&t.endDate!==t.startDate?' – '+t.endDate:''))),
+        isEdit?h(TeEditor,{trip:t,people:d.people,apiUrl:props.apiUrl,apiToken:props.apiToken,onCancel:function(){setEdit(null);},onSaved:function(){setEdit(null);setMsg('Saved.');load();}})
+          :h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{className:'te-who',style:{fontSize:12,color:C.mute}},'Travelling: '+((t.travellers||[]).length?t.travellers.join(', '):'not set yet')),teChips_(h,t),
+            h('button',{type:'button',className:'te-edit',onClick:function(){setMsg('');setEdit(t.tripKey);},style:{alignSelf:'flex-end',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #2a3f6f',background:'transparent',color:C.blue,fontSize:13,cursor:'pointer'}},'Edit')));}),
+    h('span',{style:{fontSize:12,color:C.faint,lineHeight:1.5}},'Saved on the Trips tab (Email Recipients). A test from System › Test goes to you only.'));}
 // Readiness per traveller (TripReadiness.js, issue #227): blocks first, then to do, then ready.
 var TS_RD_TONE={blocks:['#2a0a0a','#f87171','Blocks the trip'],todo:['#2a2200','#fbbf24','To do'],ready:['#0a2a1a','#4ade80','Ready']};
 function tsReadinessHas_(d){return !!(d&&!d.error&&!d.empty&&!d.loading&&((d.people||[]).length||(d.cards||[]).length||(d.health||[]).length));}
@@ -8371,6 +8470,7 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Departure'),h('span',null,[fs.dep_scheduled&&'Sched '+fs.dep_scheduled,fs.dep_estimated&&fs.dep_estimated!==fs.dep_scheduled&&'Est '+fs.dep_estimated+(fs.delay_min>0?' (+'+fs.delay_min+'min)':''),fs.dep_actual&&'Actual '+fs.dep_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
+    h(TsTripPeople,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,card:card,label:label}),
     h(TsReadinessSection,{trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,readiness:props.readiness,card:card,label:label}),
     // Before you go
     documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
@@ -11160,7 +11260,7 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
 // (after a birth) children. Numbers are kept as their last 4 only; the server enforces it.
 var TP_ALLIANCES=['Star Alliance','oneworld','SkyTeam','None'];
 var TP_FIELDS={document:['country','last4','issued','expiry','notes'],trusted:['last4','expiry','notes'],membership:['label','last4','tier','value','notes'],
-  preference:['value','notes'],health:['label','value','issued','expiry','notes'],child:['label','country','last4','expiry','notes']};
+  preference:['value','notes'],contact:['value','notes'],health:['label','value','issued','expiry','notes'],child:['label','country','last4','expiry','notes']};
 var TP_FIELD_LABEL={country:'Country',last4:'Number (last 4 only)',issued:'Issued / date',expiry:'Expires',notes:'Notes',label:'Name',tier:'Status tier',value:'Detail'};
 var TP_HINTS={home_airports:'e.g. IAD, DCA',seat:'window, aisle or front',cabin:'economy, premium, business',max_layover_h:'e.g. 4',red_eyes:'yes or no',hotel_bed:'king, two queens',hotel_room:'high floor, quiet',diet:'e.g. vegetarian',allergy:'e.g. peanuts',vaccine:'e.g. Yellow fever'};
 function tpDaysTo_(ymd,today){if(!ymd||!today)return null;var p=function(s){var x=s.split('-').map(Number);return Date.UTC(x[0],x[1]-1,x[2]);};return Math.round((p(ymd)-p(today))/864e5);}
@@ -11194,6 +11294,7 @@ function TravelerProfilesPanel(props){
     if(f==='label'&&form.section==='health')lab=form.kind==='medication'?'Medication':'What';
     if(f==='label'&&form.section==='child')lab='For (first name)';
     if(f==='value'&&form.section==='membership')lab='Alliance';
+    if(f==='value'&&form.section==='contact')lab='Email address';
     if(f==='value'&&form.section==='health'&&form.kind==='medication')lab='Linked prescription';
     if(f==='value'&&form.section==='health'&&form.kind!=='medication')return null;
     if((f==='issued'||f==='expiry')&&form.section==='health'&&form.kind!=='vaccine')return null;
@@ -13060,7 +13161,7 @@ var VN_GROUPS={
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
   system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health']},
-    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','config','flags']}],
+    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags']}],
   life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
   // dashboard-lite (Victoria): only what she uses, one tap down

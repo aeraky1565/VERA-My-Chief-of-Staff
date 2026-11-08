@@ -141,7 +141,7 @@ console.log('\nthe routes');
 {
   const c = ctx({ old: [['prof_9', 'Sam', 'Canada', '2031-01-01', '', '']], fp: { phase: 'back' }, rx: [{ id: 'RX-1', person: 'Sam', medication: 'Inhaler', refillDate: '2027-03-20' }] });
   const g = c.webTpGet_();
-  check('get: copies the old passports first, lists people, sections with what they’re used for', g.ok && g.items.length === 1 && J(g.people) === J(['Sam']) && g.sections.length === 6 && g.sections.every(s => s.usedFor) && g.hasChild === true && g.prescriptions[0].medication === 'Inhaler');
+  check('get: copies the old passports first, lists people, sections with what they’re used for', g.ok && g.items.length === 1 && J(g.people) === J(['Sam']) && g.sections.length === 7 && g.sections.some(s => s.id === 'contact') && g.sections.every(s => s.usedFor) && g.hasChild === true && g.prescriptions[0].medication === 'Inhaler');
   const s = c.webTpSave_({ person: 'Lee', section: 'membership', kind: 'airline', label: 'United', last4: '00112233', tier: 'Gold', value: 'Star Alliance' });
   check('save adds, cutting the number', s.ok && s.trimmed && s.note === 'Kept the last 4 only.' && c.__items[2][6] === '2233' && c.__items[2][9] === 'Gold');
   const u = c.webTpSave_({ id: s.id, person: 'Lee', section: 'membership', kind: 'airline', label: 'United', last4: '2233', tier: 'Platinum' });

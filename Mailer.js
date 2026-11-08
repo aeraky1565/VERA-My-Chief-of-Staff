@@ -45,7 +45,8 @@ var MAIL_QUOTA_WARN_THRESHOLD_ = 10;
  */
 function sendVeraEmail_(to, subject, body, options, kind) {
   var label      = kind || 'unlabelled';
-  var recipients = String(to || '').split(',').filter(function(r) { return r.trim(); }).length;
+  var recipients = String(to || '').split(',').concat(String((options && options.bcc) || '').split(',')).concat(String((options && options.cc) || '').split(','))
+    .filter(function(r) { return r.trim(); }).length;   // Bcc and Cc count against the quota too
 
   // ---- Quota check ---------------------------------------------------------
   // Checked before sending so the warning arrives while there is still quota

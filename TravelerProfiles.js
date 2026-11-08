@@ -52,6 +52,8 @@ var TP_SECTIONS_ = [
     kinds: [['home_airports', 'Home airports'], ['seat', 'Seat'], ['cabin', 'Cabin'], ['max_layover_h', 'Longest layover (hours)'], ['red_eyes', 'Red-eyes'], ['hotel_bed', 'Hotel bed'], ['hotel_room', 'Hotel room']] },
   { id: 'health', label: 'Health & needs', usedFor: 'Used for refills before a trip, and the pre-trip briefing’s vaccines and allergy phrase.',
     kinds: [['diet', 'Diet'], ['allergy', 'Allergy'], ['medication', 'Regular medication'], ['vaccine', 'Vaccine']] },
+  { id: 'contact', label: 'Contact', usedFor: 'Used for a trip’s Travel Day email, only on the trips where you switch this person on.',
+    kinds: [['email', 'Email']] },
   { id: 'child', label: 'Children', usedFor: 'Shown once Family Planning is past the birth. A child’s passport lasts 5 years.',
     kinds: [['child_passport', 'Child passport'], ['consent_letter', 'Consent letter'], ['car_seat', 'Car seat']] },
 ];
@@ -113,12 +115,13 @@ function tpClean_(b) {
   var trimmed = raw.replace(/[^A-Za-z0-9]/g, '').length > 4;
   var fields = ['label', 'value', 'notes'], out = {};
   fields.forEach(function(f) {
-    var v = tpStr_(b[f], f === 'notes' ? 500 : 200), sc = tpScrub_(v);
+    var v = tpStr_(b[f], f === 'notes' ? 500 : 200), sc = (kind === 'email' && f === 'value') ? v : tpScrub_(v);
     if (sc !== v) trimmed = true;
     out[f] = sc;
   });
   var issued = tpYmd_(b.issued), expiry = tpYmd_(b.expiry);
   if (issued && expiry && expiry < issued) return { error: 'It can’t expire before it was issued.' };
+  if (kind === 'email' && !/^[^\s@,;]+@[^\s@,;]+\.[A-Za-z]{2,}$/.test(out.value)) return { error: 'Enter the full email address.' };
   var country = tpStr_(b.country, 60);
   if (kind === 'esta' && !country) country = 'United States';
   if (TP_HELD_KINDS_[kind] && !country) return { error: 'Which country is it for?' };
