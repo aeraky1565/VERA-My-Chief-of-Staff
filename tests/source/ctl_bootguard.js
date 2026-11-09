@@ -29,9 +29,15 @@ const controls = [
   ['lite: React unpinned again', {BG_SOURCE_ONLY:'1'}, f => { f.lite = sub(f.lite, 'react@18.3.1/umd/', 'react@18/umd/'); }],
 ];
 
+function hasBrowser() {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true;
+  try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; }
+}
+const HAS_BROWSER = hasBrowser();
 let bit = 0, missed = 0;
 for (const [name, envx, mutate] of controls) {
   const only = process.env.CTL_ONLY; if (only && !name.includes(only)) continue;
+  if (!HAS_BROWSER && envx.BG_SOURCE_ONLY !== '1') { console.log('\n=== CONTROL: ' + name + '  (skipped: no browser here)'); continue; }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ctl-bootguard-'));
   fs.mkdirSync(path.join(dir, 'docs'));
   for (const n of ['react.min.js', 'react-dom.min.js']) fs.copyFileSync(path.join(REPO, 'docs', n), path.join(dir, 'docs', n));
@@ -45,8 +51,10 @@ for (const [name, envx, mutate] of controls) {
   fs.writeFileSync(path.join(dir, 'docs/index.html'), f.index);
   const r = spawnSync(process.execPath, [TEST], { env: Object.assign({}, process.env, envx, { VERA_ROOT: dir, NODE_PATH: path.join(REPO, 'node_modules') }), encoding: 'utf8', timeout: 170000, cwd: REPO });
   const failed = r.status !== 0 && /FAIL/.test(r.stdout || '');
-  if (failed) { bit++; console.log('  bit   ' + name); } else { missed++; console.log('  MISSED ' + name + '  (status ' + r.status + ')' + (r.stderr ? ' ' + r.stderr.slice(0, 200) : '')); }
+  console.log('\n=== CONTROL: ' + name);
+  if (failed) { bit++; console.log('  bit: ' + ((r.stdout || '').match(/^  FAIL (.*)$/m) || ['', ''])[1].split('  — ')[0]); }
+  else { missed++; console.log('  !! NOTHING BIT (status ' + r.status + ')' + (r.stderr ? ' ' + r.stderr.slice(0, 200) : '')); }
   fs.rmSync(dir, { recursive: true, force: true });
 }
-console.log(missed ? `\n${missed} control(s) did not bite` : `\nALL CONTROLS BIT (${bit})`);
+console.log('\n' + (missed ? 'SOME CONTROLS DID NOT BITE' : 'ALL CONTROLS BIT'));
 process.exit(missed ? 1 : 0);

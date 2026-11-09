@@ -3,7 +3,6 @@
 // script that doesn't load, a compile error) is explained by the head guard.
 // Both dashboards, at 390 px (phone) and 1280 px.
 
-const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const ROOT = process.env.VERA_ROOT || path.join(__dirname, '..', '..');
@@ -37,11 +36,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 check('lite’s Babel is the version the tests use', /@babel\/standalone@([\d.]+)\//.exec(LITE) && /@babel\/standalone@([\d.]+)\//.exec(LITE)[1] === String((pkg.devDependencies || {})['@babel/standalone'] || (pkg.dependencies || {})['@babel/standalone']).replace(/^[\^~]/, ''));
 
 // ---- Browser checks ---------------------------------------------------------
-const vendor = {
-  'react.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react.min.js'), 'utf8'),
-  'react-dom.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react-dom.min.js'), 'utf8'),
-  'babel.min.js': fs.readFileSync(require.resolve('@babel/standalone/babel.min.js'), 'utf8'),
-};
+let vendor = null; // loaded after the source-only exit, so CI without Playwright still runs the source checks
 
 async function open(browser, which, width, opts) {
   opts = opts || {};
@@ -73,6 +68,12 @@ const WIDTHS = (ENV.BG_WIDTHS || '390,1280').split(',').map(Number);
 const GUARD = ENV.BG_GUARD !== '0';
 
 (async () => {
+  const { chromium } = require('playwright');
+  vendor = {
+  'react.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react.min.js'), 'utf8'),
+  'react-dom.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react-dom.min.js'), 'utf8'),
+  'babel.min.js': fs.readFileSync(require.resolve('@babel/standalone/babel.min.js'), 'utf8'),
+};
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   try {
     for (const which of PAGES.filter(p => p === 'full' || p === 'lite')) for (const width of WIDTHS) {
