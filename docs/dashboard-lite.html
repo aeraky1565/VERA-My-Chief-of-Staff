@@ -4,9 +4,28 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VERA — Shopping</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>/* VERA boot guard: if the page is still empty after a while, say why instead of showing white. */
+  (function(){var errs=[],box=null,t0=Date.now();
+    function add(m){if(errs.length<6)errs.push(String(m).slice(0,300));}
+    window.addEventListener('error',function(e){var s=e&&e.target&&e.target.src;
+      add(s?'Couldn’t load '+s:(e.message||'Script error')+(e.filename?' ('+String(e.filename).split('/').pop()+':'+e.lineno+')':''));},true);
+    window.addEventListener('unhandledrejection',function(e){var r=e&&e.reason;add('Unhandled: '+(r&&r.message?r.message:String(r)));});
+    function empty(){var r=document.getElementById('root');return !r||!r.children.length;}
+    function show(){if(!empty()){if(box){box.remove();box=null;}return;}
+      if(!box){box=document.createElement('div');box.id='vera-boot';box.setAttribute('role','alert');
+        box.style.cssText='position:fixed;left:16px;right:16px;top:16px;max-width:640px;margin:0 auto;padding:16px;border-radius:12px;background:#1c1012;border:1px solid #7a2d33;color:#f3d6d8;font:14px/1.5 -apple-system,Segoe UI,Arial,sans-serif;z-index:99999;overflow-wrap:anywhere';
+        document.body.appendChild(box);}
+      var s=Math.round((Date.now()-t0)/1000);
+      box.innerHTML='<strong style="font-size:17px;color:#ffb4b9">'+(errs.length?'VERA couldn’t start':'VERA is still loading…')+'</strong>'
+        +'<div style="margin-top:6px">'+(errs.length?'Something stopped the page from starting. Send these details to Ahmed:':'Nothing has shown after '+s+' seconds. A slow connection can do this. If it stays like this, reload.')+'</div>'
+        +(errs.length?'<pre id="vera-boot-errs" style="margin:10px 0 0;padding:10px;border-radius:8px;background:#120a0b;color:#d9b8bb;font-size:11px;white-space:pre-wrap"></pre>':'')
+        +'<button type="button" style="margin-top:10px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid #3a4a6e;background:#1a2747;color:#dde1f0;font-size:14px;font-weight:600" onclick="location.reload()">Reload</button>';
+      var pre=document.getElementById('vera-boot-errs');if(pre)pre.textContent=errs.join('\n')+'\n'+navigator.userAgent;}
+    setTimeout(show,8000);setInterval(function(){if(box||(Date.now()-t0>8000&&empty()))show();},2000);
+    window.VERA_BOOT_GUARD=true;})();</script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@8.0.5/babel.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -7798,6 +7817,34 @@ function UsefulToKnowCard({ insights, trip, apiUrl, apiToken }) {
   return <TsUsefulToKnow ins={insights} collapsible={true} trip={trip} apiUrl={apiUrl} apiToken={apiToken} />;
 }
 
+// ---- VeraBoundary (crash screen instead of a white page) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Without this, one component throwing while it renders unmounts the whole app
+// and leaves a blank white page. The boundary catches it and shows what broke,
+// so it can be reported. where='app' wraps the whole page; where='section' wraps
+// a tab's content, so the header and the other tabs keep working.
+var VB_BUILD='2026-11-09';
+function vbDetails_(err,info,where){var msg=err&&err.message?err.message:String(err);
+  var stack=String(info&&info.componentStack||'').split('\n').map(function(l){return l.trim();}).filter(Boolean).slice(0,6).join('\n');
+  return 'VERA '+(where||'app')+' error · build '+VB_BUILD+'\n'+msg+(stack?'\n'+stack:'')+'\n'+(typeof navigator!=='undefined'?navigator.userAgent:'');}
+class VeraBoundary extends React.Component{
+  constructor(props){super(props);this.state={err:null,info:null,copied:false};}
+  static getDerivedStateFromError(err){return {err:err};}
+  componentDidCatch(err,info){this.setState({info:info});try{console.error('VeraBoundary',err,info&&info.componentStack);}catch(e){}}
+  render(){var self=this,h=React.createElement,st=this.state;if(!st.err)return this.props.children;
+    var app=this.props.where!=='section';var details=vbDetails_(st.err,st.info,this.props.where);
+    var btn={minHeight:44,padding:'0 16px',borderRadius:10,border:'1px solid #3a4a6e',background:'#1a2747',color:'#dde1f0',fontSize:14,fontWeight:600,cursor:'pointer'};
+    function copy(){var done=function(){self.setState({copied:true});};
+      try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(details).then(done,function(){});return;}}catch(e){}
+      try{var t=document.createElement('textarea');t.value=details;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);done();}catch(e){}}
+    return h('div',{className:'vb-crash vb-'+(app?'app':'section'),role:'alert',style:{maxWidth:640,margin:app?'40px auto':'8px 0',padding:16,borderRadius:12,background:'#1c1012',border:'1px solid #7a2d33',color:'#f3d6d8',display:'flex',flexDirection:'column',gap:10,boxSizing:'border-box',minWidth:0}},
+      h('strong',{style:{fontSize:17,color:'#ffb4b9'}},app?'VERA couldn’t start':'This section hit an error'),
+      h('span',{className:'vb-msg',style:{fontSize:14,lineHeight:1.5,overflowWrap:'anywhere'}},st.err&&st.err.message?st.err.message:String(st.err)),
+      h('span',{style:{fontSize:12,color:'#c9a0a4',lineHeight:1.5}},app?'Copy the details and send them to Ahmed, then reload.':'The rest of the dashboard still works. Copy the details to report it.'),
+      h('pre',{className:'vb-details',style:{margin:0,padding:10,borderRadius:8,background:'#120a0b',color:'#d9b8bb',fontSize:11,whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:180,overflow:'auto'}},details),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        app?null:h('button',{type:'button',className:'vb-retry',style:btn,onClick:function(){self.setState({err:null,info:null,copied:false});}},'Try again'),
+        h('button',{type:'button',className:'vb-copy',style:btn,onClick:copy},st.copied?'Copied':'Copy details'),
+        h('button',{type:'button',className:'vb-reload',style:btn,onClick:function(){try{location.reload();}catch(e){}}},'Reload')));}}
 // ---- TripSummaryView (itinerary redesign) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // The trip at a glance: a pill per day (red = a night with nowhere to sleep,
 // amber = a missing or tight transfer or an open decision), what is booked,
@@ -14953,6 +15000,7 @@ function App() {
             <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
           </div>
         )}
+        <VeraBoundary key={activeTab} where="section">
 
         {activeTab === 'overview' && (
           <OverviewLiteTab
@@ -15031,6 +15079,7 @@ function App() {
             {activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl={apiUrl} apiToken={apiToken} part="cards" />}
           </div>
         )}
+        </VeraBoundary>
       </div>
 
       {/* Settings modal */}
@@ -15068,7 +15117,7 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<VeraBoundary where="app"><App /></VeraBoundary>);
 </script>
 </body>
 </html>
