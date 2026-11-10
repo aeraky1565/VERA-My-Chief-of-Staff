@@ -73,6 +73,8 @@ console.log('\nwho gets the Travel Day email');
   check('…even when a traveller’s profile email is your own', J(r9.to) === J(['me@example.test']), J(r9.to));
   const r8 = c.teResolve_(Object.assign({ travellers: ['Ahmed', 'Sam'], tokens: ['Sam'] }, base));
   check('a traveller with no email is listed as missing one and gets nothing', r8.list[1].missing === true && J(r8.to) === J(['me@example.test']));
+  const r10 = c.teResolve_(Object.assign({ travellers: ['Ahmed', 'Victoria'], tokens: ['Partner@Example.test'] }, base));
+  check('her address typed in switches her on, not a second row', J(r10.to) === J(['me@example.test', 'partner@example.test']) && r10.list[1].on === true && !r10.list.some(x => x.source === 'added'), J(r10));
   check('Victoria with no address in Config gets nothing', J(c.teResolve_({ travellers: ['Ahmed', 'Victoria'], tokens: ['Victoria'], ownerEmail: 'me@example.test', partnerEmail: '' }).to) === J(['me@example.test']));
 }
 

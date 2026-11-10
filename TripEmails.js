@@ -82,7 +82,9 @@ function teResolve_(o) {
   });
   tokens.forEach(function(t) {
     if (!teEmailOk_(t)) return;
-    if (list.some(function(x) { return teSame_(x.email, t); })) return;
+    // An address that is already a traveller's (Victoria's, from Config) switches that traveller on.
+    var hit = list.filter(function(x) { return teSame_(x.email, t); })[0];
+    if (hit) { hit.on = true; return; }
     list.push({ name: t, email: t, source: 'added', on: true });
   });
   if (!youTravel) return { solo: true, list: list, to: [] };

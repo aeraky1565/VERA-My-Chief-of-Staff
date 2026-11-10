@@ -24,6 +24,7 @@ const CONTROLS = [
   ['travellers are emailed without a switch', srv("var on = tokens.some(function(x) { return teSame_(x, t); });", 'var on = true;'), SRV],
   ['Victoria’s solo trip still emails', srv("if (!youTravel) return { solo: true, list: list, to: [] };", ''), SRV],
   ['her address isn’t from Config', srv("var email = teSame_(t, TE_PARTNER_) ? (o.partnerEmail || '') :", "var email = teSame_(t, TE_PARTNER_) ? '' :"), SRV],
+  ['her typed address doesn’t switch her on', srv("if (hit) { hit.on = true; return; }", "if (hit) return;"), SRV],
   ['added addresses are dropped', srv("    list.push({ name: t, email: t, source: 'added', on: true });\n", ''), SRV],
   ['an address goes twice', srv("&& !to.some(function(e) { return teSame_(e, x.email); })) to.push", ") to.push"), SRV],
   ['a bad address is kept', srv("if (teEmailOk_(t)) { if (!out.some(function(x) { return teSame_(x, t); })) out.push(t); } else bad.push(t); return;", 'out.push(t); return;'), SRV],
