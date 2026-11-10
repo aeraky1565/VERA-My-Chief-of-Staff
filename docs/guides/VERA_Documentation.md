@@ -897,8 +897,8 @@ VERA is one of six assistants. Each runs on its own and keeps its own data; this
 | **PIES** (Personal Intelligence & Execution System) | Work signal turned into prioritised actions; the work Done-Log | The work machine, in Claude Code | By hand only, through Career › Exchange |
 | **VERA** (Virtual Executive & Reminder Assistant) | Chief of staff | Apps Script, the VERA sheet, the two dashboards | — |
 | **WILLA** (Work-optional Income & Lifestyle Longevity Analyzer) | The work-optional retirement planner | Its own Google Sheet | VERA reads it; trip budgets go back and forth by paste |
-| **TESS** (Tailored Employment Search Scout), "the job agent" in the code | LinkedIn job alerts, scoring, tailored materials | A Claude scheduled task, weekdays 6:36 AM ET, with its Job Agent Settings sheet | Automatic, both ways, through named cells only |
-| **HAILEY** (Home Alerts, Inventory & Listings Evaluator, Yours) | Zillow search against the buy box; new listings and price drops | Outside VERA | None yet: a roster link only |
+| **TESS** (Tailored Employment Search Scout), "the job agent" in the code | LinkedIn job alerts, scoring, tailored materials | A Claude scheduled task, weekdays 6:36 AM ET, with its Job Agent Settings sheet; a calibration review on the 1st and 15th | Automatic, both ways, through named cells only |
+| **HAILEY** (Home Alerts, Inventory & Listings Evaluator, Yours) | Zillow search against the buy box; new listings and price drops | Two Claude scheduled tasks with the HAILEY Home Search Tracker sheet | None: standalone, a roster link only |
 | **ARIA** (Arrangements, Reservations & Itinerary Assistant) | Travel agent: watches and scouts fares, says when to book | A Claude scheduled task, daily at 06:52 ET, with the ARIA Travel Tracker sheet | Automatic: VERA reads ARIA's sheet; ARIA reads VERA's "ARIA Requests" tab |
 
 **Rules that hold for every link**
@@ -906,13 +906,14 @@ VERA is one of six assistants. Each runs on its own and keeps its own data; this
 - VERA never writes another assistant's data, except the named cells listed below for TESS. It never writes ARIA's sheet or WILLA's planner.
 - Every read goes by header or label, never by cell position, because the other side may add or move columns. A label VERA can't find makes that piece unavailable rather than wrong.
 - Sheet IDs and links live only in Config (or Script Properties), never in the repository.
+- Each assistant's own instructions live in its Claude scheduled task, not in this repository. They are the other half of every contract below: a change on either side is checked against the other.
 - Each assistant keeps working if VERA is down. VERA flags a link that has gone quiet instead of failing silently.
 
 ### 21.1 ARIA (travel)
 
 | From → To | What | When | How | Lands in |
 |---|---|---|---|---|
-| VERA's calendar trips → ARIA | Every calendar trip | ARIA's daily run | ARIA's side | ARIA's Watchlist as a **Draft** row |
+| VERA → ARIA | Future trips (not driven), their budget, travellers and luggage, the itinerary, traveller preferences | ARIA's daily run | ARIA reads VERA's *Trips*, *TripMeta*, *Trip Budget*, *Itinerary* and *Traveler Items* tabs, read only | A **Draft** Watchlist row per trip; a blank ceiling is seeded from the flights budget per traveller |
 | VERA → ARIA | **Watch** request for a trip's flights (home airports from Config, travellers from TripMeta, ceiling from the Trip Budget flights line) | When you tap *Ask ARIA* on a trip's Summary | VERA writes its own *ARIA Requests* tab | ARIA reads it on its morning run; it fills only blank Watchlist cells |
 | VERA → ARIA | **Scout** request for a starred option of a shortlisted trip idea (at most 3 at once) | When you tap *Scout* | *ARIA Requests* | ARIA prices the idea's months and logs the cheapest date pairs under the option |
 | VERA → ARIA | Scout becomes Watch when the idea settles; new dates when a trip moves | Hourly | *ARIA Requests* | ARIA moves its row to the Trip ID and keeps the fares |
@@ -923,6 +924,10 @@ VERA is one of six assistants. Each runs on its own and keeps its own data; this
 | ARIA → VERA → you | Book now | Once per Book now | Slack post plus ARIA's own email | #vera-notifications |
 
 Code: `Aria.js`. The sync is `maybeSyncAriaFlags_` on `hourlyCheck` (reads cached 10 minutes); settled ideas and moved trips are `tiLinkSettled_` and `ariaFollowTrip_`; Booked is `ariaMarkBooked_`. Flags are keyed `ARIA|<id>|<type>` by ARIA's Action Key. The Slack post is notification `aria_book_now` (on by default). The airline rule comes from Config `aria_airline_pref` and `aria_airline_premium`.
+
+**What ARIA does on its run (from its instructions).** Requests first, then new Drafts. It prices Watching rows when their Next Check is due and Scouting rows weekly, at most 20 searches a run, soonest departure first. How often a trip is checked depends on how far away it is: more than 180 days, not yet; 90–180 days, weekly; 42–90, every 3 days; under 42, daily. It applies the airline rule, the traveller preferences (longest layover, red-eyes) and drops basic economy. **Book now** means under the ceiling and within 5% of the lowest fare it has logged for that trip (or the forecast says prices will rise), and never on a price it couldn't fully check (bags not loaded, fare type unknown). It never books, never contacts anyone but you, and never writes VERA's sheet.
+
+**What ARIA leaves to you.** The yellow (YOU) cells in its Watchlist are yours; ARIA fills one only when it is blank and never overwrites it. ARIA never creates or stops SlickTrip price watches: *Needs watch setup* means create a SlickTrip watch for the trip and paste its Watch ID into the row (until then ARIA prices by search); *Stop SlickTrip watch* means the trip is booked, so stop the watch in SlickTrip.
 
 **Health.** `ARIA|RUN_HEALTH` is raised when no run is logged in 26 hours or the last run failed; "VERA can't read ARIA" (High) when the tracker won't open; `ARIA|EMAIL_FAILED|<run>` when a Book now email didn't send. On a failed read only the health flag changes: nothing ARIA raised is closed. The gaps view lists future trips ARIA has no row for (trips you drive to are skipped), Watching rows with no airports or ceiling, no fare in 7 days, and requests not picked up in 2 days.
 
@@ -951,13 +956,17 @@ Career is the only place these two meet VERA, and they never meet each other. Th
 
 Code: `Career.js` (VERA's own Settings cells are `CAR_AGENT_OWNED_LABELS_`), `CareerCredentials.js`; the dashboard's crossings list is `CAR_CROSSINGS` in `docs/app.js`.
 
+**What TESS does on its run (from its instructions).** It reads the LinkedIn alert emails and the careers pages on its Companies tab, filters by your settings (levels, seniority ceiling, location and pay floors, deal-breakers, CPA-required and accounting roles), verifies each posting on the employer's site, scores it out of 100 on four parts, makes a tailored resume, cover letter and fit note from the master resume, the Wins bank and *Credentials held* only, appends Tracker rows, and emails the digest. It never applies or contacts anyone, and the only thing it writes in its sheet is new Tracker rows.
+
+**How TESS learns.** It reads the Status and *Pass reason* you set on the last 60 days of Tracker rows: Saved, Applied and Interviewing count for a kind of role, Passed (with a reason other than Other) against it, three alike before it counts. Twice a month the TESS calibration review emails proposed changes; nothing changes until you approve. **Gap:** VERA's Pipeline statuses (New, Passed, Handoff, Applied, Ignored, Not offered, Offer, Hired, Declined) don't include Saved or Interviewing, and VERA never writes Pass reason, so a role passed in VERA teaches TESS nothing until the reason is added in the Tracker.
+
 **Health.** TESS: a Medium flag when the Tracker has had no new row for `career_agent_stale_weekdays` (default 2) weekdays. PIES has no automatic check: the monthly brief is a reminder, not a feed.
 
 **Set-up.** Config `career_alert_sheet_id` (Job Agent Settings) and `career_wins_bank_doc_id`. The manual copy from the work machine is the compliance gate: no shared files and no sync between PIES and VERA. The agent never sees your package, only your floors, and internal postings are PIES's job, so your current employer is always excluded.
 
 ### 21.4 HAILEY (home search)
 
-No data link yet. HAILEY reports to you on its own; VERA shows it on the roster through `roster_link_hailey`. A future link would follow the same rules: VERA reads HAILEY's sheet by header and raises flags, and never writes it.
+Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:38 AM Central) searches Zillow per market, keeps its own tracker and emails only when a listing crosses an alert line; a weekly digest goes out on Fridays at 6 PM Central. VERA only links to it from the roster (`roster_link_hailey`). If a link is ever added, it follows the same rules: VERA reads HAILEY's sheet by header, raises flags, and never writes it.
 
 ### 21.5 Config rows for the assistants
 
