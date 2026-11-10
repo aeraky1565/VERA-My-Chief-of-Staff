@@ -909,6 +909,27 @@ VERA is one of six assistants. Each runs on its own and keeps its own data; this
 - Each assistant's own instructions live in its Claude scheduled task, not in this repository. They are the other half of every contract below: a change on either side is checked against the other.
 - Each assistant keeps working if VERA is down. VERA flags a link that has gone quiet instead of failing silently.
 
+### 21.0 Everything that runs on a schedule
+
+Times are Eastern. VERA's jobs are Apps Script triggers (`veraTriggerSpecs_` in `Code.js`; `setupTriggers` installs them and the watchdog recreates a missing one). The other assistants are Claude scheduled tasks on the same account, listed by their names there; each holds that assistant's full instructions. A Claude scheduled task can be skipped when the account's usage limit is reached; the run is simply missed, and the health checks below notice when that matters.
+
+| Assistant | Task | When | What it does | Results go to |
+|---|---|---|---|---|
+| TESS | **TESS** | Weekdays 6:36 AM | Reads LinkedIn alerts and the Companies careers pages, filters, scores, writes tailored resume, cover letter and fit note | New Tracker rows; Docs in the Applications folder; the digest email |
+| ARIA | **ARIA daily travel check** | Daily 6:52 AM | Reads VERA's trips and requests, prices flights, judges Book now | ARIA Travel Tracker (Watchlist, Fare Log, Run Log); a Book now email |
+| VERA | `morningNudge` | Daily 7:00 AM | The morning briefing, sent only when something needs you | Email |
+| HAILEY | **HAILEY daily sweep** | Weekdays 7:38 AM (6:38 Central) | Searches Zillow per market, updates listings, prices and estimated monthly cost | HAILEY's tracker; an alert email only when a home crosses an alert line |
+| VERA | `hourlyCheck` | Every hour | Reminders (Anticipator rules); ARIA sync from 7:30 AM, every 3 hours until 10 PM; links settled trip ideas; the watchdog; Weekend Planner on Wednesdays and the goal check-in on Mondays at `weekend_planner_hour` (8 AM) | Slack, Flags, the ARIA Requests tab |
+| VERA | `checkFlightStatuses_` | Every 15 minutes | Flight status for flights within 24 hours | Slack |
+| VERA | `runEmailScan_` | Every 30 minutes (when `email_parser_enabled`) | Reads booking confirmation emails | Itinerary |
+| VERA | `scanUSPSMail_` | Daily 10:00 AM | Informed Delivery mail and packages | Flags, Slack |
+| VERA | `scanHoaWebsite_` | Mondays 9:00 AM | The HOA website | Flags |
+| VERA | `nightlyRun`, `nightlyRunTail` | Daily 11 PM and midnight | Calendars, trips, money, the planner (WILLA), the job agent's health (TESS), patterns, new flags; the Monthly Life Review on the 1st | The VERA sheet, Flags, email |
+| HAILEY | **HAILEY weekly digest** | Fridays 7:00 PM (6 PM Central) | The week's homes: available, under ceiling, new, price cuts, gone | Weekly Digest tab; the digest email |
+| TESS | **TESS calibration review** | The 1st and 15th, 7:43 PM | Compares what TESS sent with what you did; read only | One email with up to 5 proposed changes; nothing changes until you approve |
+| PIES | (on the work machine) | Its own schedule, not on this account | Work signal and the monthly PIES-BRIEF | The work machine only |
+| WILLA | none | — | A planner sheet with no schedule of its own; VERA reads it each night | — |
+
 ### 21.1 ARIA (travel)
 
 | From → To | What | When | How | Lands in |
