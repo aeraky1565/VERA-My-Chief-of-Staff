@@ -882,7 +882,6 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 - **Two dashboards:** `docs/index.html` (built from `docs/app.js` by `docs/build.js`, React inlined) and `docs/dashboard-lite.html` (Victoria's, compiled in the browser). Shared blocks are copied byte-for-byte between them and tests enforce it.
 - **Tile navigation:** each area groups its sub-tabs into tiles (`VN_GROUPS`, `FIN_GROUPS`, `HF_GROUPS`, `LF_GROUPS`, `SYS_SUBS`). The lite dashboard has eight tabs: Today, Chat, Shopping, Home, Travel, Money, Family, Projects.
-- **Crash screen (planned release):** a `VeraBoundary` error boundary around the app and each tab, and a head boot guard that explains an empty page, replace the old blank white screen; lite pins its React and Babel versions.
 - **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel` and `notif_<key>_enabled` override it, and System › Notifications edits them.
 
 
