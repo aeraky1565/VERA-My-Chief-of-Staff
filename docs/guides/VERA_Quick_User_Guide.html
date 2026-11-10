@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>VERA User Guide</title>
+<meta name="description" content="How to use every part of the VERA dashboard.">
+<style>
+  /* VERA guide style: shared verbatim by VERA_Quick_User_Guide.html, VERA_Lite_Guide.html and VERA_Quick_Reference.html */
+  :root {
+    --bg: #080f1e; --card: #0d1b3e; --card2: #12224a; --line: #1e3060;
+    --text: #dde1f0; --mute: #8a9abf; --gold: #c9a84c; --goldT: #f0d78a;
+    --today: #c9a84c; --travel: #3d7be0; --money: #2e9d5b; --home: #e07b39;
+    --health: #d9548f; --career: #7b5cd6; --life: #1f9e9e; --system: #8a94a6;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+  a { color: var(--goldT); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; flex-direction: column; gap: 6px; padding: 28px 0 20px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  header.top .brand { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  header.top h1 { margin: 0; font-size: clamp(26px, 6vw, 38px); line-height: 1.15; text-wrap: balance; }
+  header.top p { margin: 0; color: var(--mute); max-width: 62ch; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+  nav.toc a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+    border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 600; }
+  nav.toc a .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--gold)); }
+  section.grp { margin: 0 0 36px; scroll-margin-top: 12px; }
+  section.grp > h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 22px; }
+  section.grp > h2 .chip { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--c) 22%, transparent); border: 1px solid var(--c); font-size: 16px; }
+  section.grp > p.lead { margin: 0 0 14px; color: var(--mute); max-width: 68ch; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--gold)); border-radius: 12px;
+    padding: 14px 14px 12px; min-width: 0; break-inside: avoid; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.3; }
+  .card p { margin: 0 0 8px; font-size: 14px; color: #c3c9de; }
+  .card ul, .card ol { margin: 0 0 8px; padding-left: 18px; font-size: 14px; color: #c3c9de; }
+  .card li { margin: 2px 0; }
+  .new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: #2a2410; color: var(--goldT); border: 1px solid #6b5410; vertical-align: middle; }
+  .path { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; padding: 3px 9px; border-radius: 8px;
+    background: var(--card2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--goldT); }
+  .path b { color: var(--mute); font-weight: 400; }
+  .note { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #0f1a33; border: 1px dashed var(--line); font-size: 13.5px; color: var(--mute); }
+  table.ref { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  table.ref th, table.ref td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  table.ref tr:last-child td { border-bottom: 0; }
+  code { font: 12.5px/1.4 'SFMono-Regular', Menlo, Consolas, monospace; background: #0a1430; border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; color: #cfe0ff; }
+  .tag { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 6px; vertical-align: -1px; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px; }
+  @media print {
+    :root { --bg: #fff; --card: #fff; --card2: #f4f6fb; --line: #d5dbe8; --text: #14182a; --mute: #4b5670; --goldT: #7a5a00; }
+    body { background: #fff; font-size: 11.5px; }
+    .card p, .card ul, .card ol { color: #2a3046; }
+    code { background: #f4f6fb; color: #14182a; }
+    nav.toc { display: none; }
+    .wrap { padding: 0; max-width: none; }
+    .page + .page { break-before: page; }
+    footer { display: none; }
+    .note { background: #f7f8fb; }
+    header.top { padding: 0 0 6px; margin-bottom: 8px; }
+    header.top h1 { font-size: 18px; }
+    header.top p { font-size: 10px; }
+    section.grp { margin: 0 0 10px; }
+    section.grp > h2 { font-size: 13px; margin-bottom: 4px; }
+    section.grp > h2 .chip { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+    table.ref { font-size: 9.5px; }
+    table.ref th, table.ref td { padding: 3px 6px; }
+    table.ref th { font-size: 8.5px; }
+    .tablewrap { overflow: visible; }
+    code { font-size: 9px; padding: 0 3px; }
+    .note { font-size: 9.5px; padding: 5px 8px; margin-top: 6px; }
+    footer { margin-top: 8px; padding-top: 6px; font-size: 9px; }
+    .cards { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .card { padding: 6px 8px; }
+    .card h3 { font-size: 11.5px; }
+    .card p, .card ul, .card ol { font-size: 9.5px; }
+  }
+  @page { margin: 0.45in; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <span class="brand">VERA · Chief of Staff</span>
+  <h1>The VERA user guide</h1>
+  <p>Everything on the full dashboard, grouped the way the tiles are. Each card says what a feature is for, where to find it, and how to use it. Tap paths read left to right: <span class="path">Travel <b>›</b> Trips <b>›</b> Packing</span>. Cards marked <span class="new" style="margin:0">New</span> arrived in November 2026.</p>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <a href="#today" style="--c:var(--today)"><span class="dot"></span>Today &amp; planning</a>
+  <a href="#travel" style="--c:var(--travel)"><span class="dot"></span>Travel</a>
+  <a href="#money" style="--c:var(--money)"><span class="dot"></span>Finances</a>
+  <a href="#home" style="--c:var(--home)"><span class="dot"></span>Home &amp; food</a>
+  <a href="#health" style="--c:var(--health)"><span class="dot"></span>Health, family &amp; people</a>
+  <a href="#career" style="--c:var(--career)"><span class="dot"></span>Career</a>
+  <a href="#life" style="--c:var(--life)"><span class="dot"></span>Life</a>
+  <a href="#system" style="--c:var(--system)"><span class="dot"></span>System &amp; the sheet</a>
+</nav>
+
+<section class="grp" id="today" style="--c:var(--today)">
+  <h2><span class="chip">🏠</span>Today &amp; planning</h2>
+  <p class="lead">What needs you today. VERA runs every night: it reads your calendars, tasks, email and sheets, raises flags, and sends the morning briefing.</p>
+  <div class="cards">
+    <div class="card"><h3>Home</h3><span class="path">🏠 Home</span>
+      <p>The day at a glance: the ARIA banner when a fare is worth booking, the travel card when a trip is close, flag and task counts, shopping, PTO and the <b>Home slot card</b>, which shows whichever area needs you most right now.</p>
+      <ul><li><b>Log a grocery run</b> tile: snap a receipt from anywhere (see Finances › Groceries).</li></ul></div>
+    <div class="card"><h3>Flags</h3><span class="path">🚩 Flags</span>
+      <p>What VERA thinks needs attention, with urgency High, Medium or Low. Acknowledge, snooze or resolve each one. Resolved flags leave the list; snoozed ones come back on their date.</p>
+      <ul><li>Easy mode: when there's too much at once, VERA defers non-critical flags for a few days and says so on Home.</li></ul></div>
+    <div class="card"><h3>Tasks</h3><span class="path">✅ Tasks</span>
+      <p>VERA tasks and Google Tasks together. Add, complete, edit due dates and recurrence. Tasks untouched for a week get a gentle flag.</p></div>
+    <div class="card"><h3>Projects</h3><span class="path">🏗️ Projects</span>
+      <p>Multi-step projects. Describe what it's for and VERA drafts the checklist (asking a few questions first if needed). Shown only while a project has open tasks.</p></div>
+    <div class="card"><h3>Chat</h3><span class="path">💬 Chat</span>
+      <p>Ask anything or tell VERA to do something: complete a task, add a bill, plan meals, add an itinerary item, log a purchase. The same chat answers in Slack #vera-chat. See the cheat sheet for examples.</p></div>
+    <div class="card"><h3>PTO Planner</h3><span class="path">🌴 PTO Planner</span>
+      <p>Vacation and personal-time balances for both of you, pace against the year, and suggested clear windows. Balances come from Config › PTO.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="travel" style="--c:var(--travel)">
+  <h2><span class="chip">✈️</span>Travel</h2>
+  <p class="lead">Four groups of tiles: <b>Plan</b> (Trip Ideas, ARIA), <b>Trips</b> (My Trips, Itinerary), <b>Places</b> (Countries, Bucket List) and <b>Travelers</b> (Profiles, Our bags, Gifts). Every trip has a permanent ID, so moving its dates on the calendar never loses its itinerary, packing or emails.</p>
+  <div class="cards">
+    <div class="card"><h3>My Trips <span class="new">New</span></h3><span class="path">Travel <b>›</b> Trips <b>›</b> My Trips</span>
+      <p>Every trip from your calendars on a 15-month strip, pencilled-in trips, and past trips. Tap a trip for its summary: a pill per day (red = a night with nowhere to sleep, amber = a tight transfer or open decision), what's booked, and what's left.</p>
+      <ul><li><b>Readiness</b> per traveller: documents, member numbers on bookings, seats, lounge access, prescriptions to refill.</li><li><b>Who's travelling</b>: pick people from Profiles.</li></ul></div>
+    <div class="card"><h3>Itinerary</h3><span class="path">Travel <b>›</b> Trips <b>›</b> My Itinerary</span>
+      <p>Flights, stays, transfers and plans per day, with live flight status on travel days. Open options (two dinners for one night) show as decisions to make.</p>
+      <ul><li>Staying with family? Add an <b>arranged stay</b> so those nights count as covered.</li></ul></div>
+    <div class="card"><h3>Trip emails <span class="new">New</span></h3><span class="path">Trip summary · System <b>›</b> Trip emails</span>
+      <p>Who gets each trip's Travel Day email. You always do. Victoria and other travellers only when switched on for that trip; you can also add any address. Victoria's solo trips send none.</p></div>
+    <div class="card"><h3>Packing <span class="new">New</span></h3><span class="path">Trip summary <b>›</b> Packing</span>
+      <ol><li><b>Start</b>: VERA builds the list from weather, trip type, nights, laundry and your profile; add staples you always pack, or copy from a similar past trip.</li>
+        <li><b>Pack</b>: tap an item to move it <b>To buy → Ready → In the bag</b>, with quantities and who brings it; outfits per day; <b>Pack a bag</b> sorts items into carry-on / checked, with the luggage advice at the top.</li>
+        <li><b>Before you go</b>: a Buy list for what's missing, a checkout tick-off at the hotel, and a short review afterwards that teaches next time.</li></ol></div>
+    <div class="card"><h3>Luggage &amp; Our bags <span class="new">New</span></h3><span class="path">Travel <b>›</b> Travelers <b>›</b> Our bags</span>
+      <p>List your bags once (size, carry-on or checked, empty weight). Each trip then suggests which bags to take per person, about-weights against the airline limit, what's free on your fare and which status or card waives the checked bag. Liquids and fragile gifts go checked; meds and chargers go carry-on.</p></div>
+    <div class="card"><h3>Before you leave home <span class="new">New</span></h3><span class="path">Home Front <b>›</b> House <b>›</b> Leaving home</span>
+      <p>A checklist per home that adapts to season, length and who's leaving (AC and plants in summer, pipes in winter, mail on long trips). It appears in the trip summary; either of you can tick. Reminders come in the night-before email and on the morning you leave. Use <b>Heading out</b> for time away that isn't a trip.</p></div>
+    <div class="card"><h3>Traveller profiles <span class="new">New</span></h3><span class="path">Travel <b>›</b> Travelers <b>›</b> Profiles</span>
+      <p>Documents (passports, visas, ETAs), Global Entry / PreCheck, airline and hotel memberships, seat and hotel preferences, diet and allergies, medications. Only the last 4 digits of any number are kept. VERA reminds you before a passport or Global Entry runs out ahead of a trip.</p></div>
+    <div class="card"><h3>Gifts <span class="new">New</span></h3><span class="path">Travel <b>›</b> Travelers <b>›</b> Gifts</span>
+      <p>Gifts per trip: who for, kind, budget, status (to buy → bought → packed), what you gave them before, ideas for the destination, and customs notes for getting it home.</p></div>
+    <div class="card"><h3>Countries &amp; Bucket List <span class="new">New</span></h3><span class="path">Travel <b>›</b> Places</span>
+      <p>Countries as a map, list or timeline, with occasions and trip notes. The Bucket List holds dream places with things to do, best months, vacation days a trip would take, points needed for two seats, and a long-weekend filter (direct flights under 7 h). Plan several places as one Trip Idea.</p></div>
+    <div class="card"><h3>Trip Ideas &amp; ARIA</h3><span class="path">Travel <b>›</b> Plan</span>
+      <p><b>Trip Ideas</b>: trips with no dates yet, a loose brief and the shapes the trip could take. <b>ARIA</b>: your travel agent's fare watch, verdicts and what needs a look. Ask ARIA to watch a trip from its card.</p></div>
+  </div>
+  <p class="note">Emails per trip: 48 hours before (pre-trip briefing), the night before (with the leaving-home list), each travel day, and after you're home (what to remember).</p>
+</section>
+
+<section class="grp" id="money" style="--c:var(--money)">
+  <h2><span class="chip">💰</span>Finances</h2>
+  <p class="lead">Four groups: <b>Overview</b> (Summary), <b>Day to day</b> (Budget, Bills &amp; cashflow, Groceries, Phone plan), <b>Long term</b> (Net worth, Goals, Planned Purchases, FSA &amp; HSA) and <b>Paperwork</b> (Accounts, Cards, Contracts, Tax).</p>
+  <div class="cards">
+    <div class="card"><h3>Summary &amp; check-in <span class="new">New</span></h3><span class="path">Finances <b>›</b> Overview <b>›</b> Summary</span>
+      <p>The quick glance: net worth, cash, goals set aside, plan status. Before each quarter, the money check-in lists what to discuss and the decisions coming due; record decisions and owners there.</p></div>
+    <div class="card"><h3>Budget &amp; What-if <span class="new">New</span></h3><span class="path">Finances <b>›</b> Day to day <b>›</b> Budget</span>
+      <p>VERA works out the month: plan vs actual by category from your transactions. <b>What if</b> tries a change (a new bill, a raise) and shows the effect before you commit.</p></div>
+    <div class="card"><h3>Bills &amp; cashflow <span class="new">New</span></h3><span class="path">Finances <b>›</b> Day to day <b>›</b> Bills &amp; cashflow</span>
+      <p>Every bill with its due day, account, autopay and card, plus the joint account timeline: what lands when, and whether the balance stays above the floor.</p></div>
+    <div class="card"><h3>Groceries &amp; Log a grocery run <span class="new">New</span></h3><span class="path">Finances <b>›</b> Day to day <b>›</b> Groceries</span>
+      <ol><li>Tap <b>Log a grocery run</b> (also on Home and in Life › Quick capture) and snap the receipt.</li>
+        <li>VERA reads the store, date, every line and the total. Choose what goes to the pantry; items on any shopping list are ticked off.</li>
+        <li>Save: the pantry, the shopping lists and the month's grocery spend update together.</li></ol></div>
+    <div class="card"><h3>Phone plan</h3><span class="path">Finances <b>›</b> Day to day <b>›</b> Phone plan</span>
+      <p>Who pays what on the family plan, paybacks received, and the monthly total.</p></div>
+    <div class="card"><h3>Goals, Net worth, Planned Purchases</h3><span class="path">Finances <b>›</b> Long term</span>
+      <p><b>Goals</b> and <b>Net worth</b> are read live from your planner sheet. <b>Planned Purchases</b> take a big buy from first idea to bought: must-haves, options compared, money from a savings goal, and what happens to the old item.</p></div>
+    <div class="card"><h3>Cards, perks &amp; paperwork</h3><span class="path">Finances <b>›</b> Paperwork</span>
+      <p>Card rewards and perks (with expiry flags), loyalty points, accounts, contracts with notice periods, and the tax document checklist.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="home" style="--c:var(--home)">
+  <h2><span class="chip">🏡</span>Home &amp; food</h2>
+  <p class="lead">Shopping lists, and Home Front's five groups: <b>House</b>, <b>Chores</b>, <b>Kitchen</b>, <b>Hosting</b> and <b>Savings</b>.</p>
+  <div class="cards">
+    <div class="card"><h3>Shopping</h3><span class="path">🛒 Shopping</span>
+      <p>One list per store. <b>Done shopping</b> at the store logs the trip; with a receipt VERA fills the pantry too.</p></div>
+    <div class="card"><h3>House</h3><span class="path">Home Front <b>›</b> House</span>
+      <p>Household info, home items with warranties and service dates, vehicles (oil, registration, insurance), neighbourhood and HOA notices, and the leaving-home checklists.</p></div>
+    <div class="card"><h3>Chores</h3><span class="path">Home Front <b>›</b> Chores</span>
+      <p>Chores by cadence, reset automatically, and chores for others with rewards.</p></div>
+    <div class="card"><h3>Kitchen</h3><span class="path">Home Front <b>›</b> Kitchen</span>
+      <p>Meal plan for the week (VERA can suggest one), recipes, the pantry (what's on hand, what to use soon, restock predictions) and takeout favourites.</p></div>
+    <div class="card"><h3>Hosting &amp; Savings</h3><span class="path">Home Front <b>›</b> Hosting / Savings</span>
+      <p>House guests, gatherings (guests, menu, to-dos, budget) and the home guide; coupons and the resell list.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="health" style="--c:var(--health)">
+  <h2><span class="chip">🩺</span>Health, family &amp; people</h2>
+  <div class="cards">
+    <div class="card"><h3>Body &amp; care</h3><span class="path">Health <b>›</b> Body / Care</span>
+      <p>Fitness and the gym check-in after each scheduled workout, the morning routine, prescriptions with refill dates, and appointments.</p></div>
+    <div class="card"><h3>Family Planning</h3><span class="path">Health <b>›</b> Family <b>›</b> Family Planning</span>
+      <p>One shared plan for leave, money, health, childcare and paperwork, by phase. Victoria sees the same plan on her dashboard.</p></div>
+    <div class="card"><h3>Cycle tracker <span class="new">New</span></h3><span class="path">Family Planning <b>›</b> Cycle</span>
+      <p>Tap <b>Period started</b> (today or another date) and <b>Period ended</b>. The card shows the day of the cycle, how that day usually feels, the next period, and lateness. In the Trying phase it also shows the fertile window and peak days. Reminders go to a private channel you choose in System › Notifications.</p></div>
+    <div class="card"><h3>People</h3><span class="path">👥 People</span>
+      <p>The address book, important dates with lead times, gift ideas per person and wish lists.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="career" style="--c:var(--career)">
+  <h2><span class="chip">💼</span>Career</h2>
+  <p class="lead">Five groups: <b>Direction</b> (North Star, Readiness), <b>Proof</b> (Evidence, Credentials), <b>Search</b> (Brand, Market), <b>Agents</b> (Pipeline, Exchange) and <b>Network</b>.</p>
+  <div class="cards">
+    <div class="card"><h3>Credentials <span class="new">New</span></h3><span class="path">Career <b>›</b> Proof <b>›</b> Credentials</span>
+      <p>Certifications and degrees with expiry, renewal credits needed and earned. Reminders at 90, 30 and 7 days, and when credits fall behind pace. Shared with the job agent.</p></div>
+    <div class="card"><h3>Direction, proof &amp; search</h3><span class="path">Career</span>
+      <p>The career ladder and readiness per track, evidence tagged to criteria, the job agent's matches, your network with warmth and last touch, and the market view of your package.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="life" style="--c:var(--life)">
+  <h2><span class="chip">🌿</span>Life <span class="new">New</span></h2>
+  <div class="cards">
+    <div class="card"><h3>Quick capture</h3><span class="path">Life <b>›</b> Quick capture</span>
+      <p>Type it once and VERA files it: "Did 30 min of Spanish", "that ramen place", "gave $50 to…". Undo if it guessed wrong. The <b>Receipt</b> chip logs a grocery run.</p></div>
+    <div class="card"><h3>Coming up</h3><span class="path">Life <b>›</b> Coming up</span>
+      <p>The next 60 days of weddings, shows, parties and dinners, with what to do before each (gift, outfit, RSVP) and a leave-by time.</p></div>
+    <div class="card"><h3>Growth</h3><span class="path">Life <b>›</b> Growth</span>
+      <p>Now, Goals, Habits, Learning (books and courses), Trials (small experiments) and Review. A weekly nudge when a Now goal has had no practice.</p></div>
+    <div class="card"><h3>Explore</h3><span class="path">Life <b>›</b> Explore</span>
+      <p>Places, trip lessons, things we love, ideas, giving and notes.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="system" style="--c:var(--system)">
+  <h2><span class="chip">🛠</span>System &amp; the sheet</h2>
+  <div class="cards">
+    <div class="card"><h3>System tab</h3><span class="path">🛠 System</span>
+      <p><b>Reference</b> (assistants, documents), <b>Checks</b> (test sends, API health) and <b>Settings</b> (notifications, trip emails, config, feature flags).</p></div>
+    <div class="card"><h3>Notifications</h3><span class="path">System <b>›</b> Settings <b>›</b> Notifications</span>
+      <p>Turn each message on or off and choose where it goes: email, #vera-notifications, #vera-chat or #vera-logs.</p></div>
+    <div class="card"><h3>The Config tab <span class="new">New</span></h3><span class="path">VERA sheet <b>›</b> CONFIG</span>
+      <p>Every setting, grouped: system-wide first (general, notifications, calendars, linked files, assistants), then one section per feature. Column B is the value VERA reads; C says what it does; D links to the tab it affects. Collapse sections with the − / + on the left. Grey italic rows show VERA's defaults: change the value to override.</p></div>
+    <div class="card"><h3>Colour-coded sheet tabs <span class="new">New</span></h3><span class="path">VERA sheet</span>
+      <p>Tabs sit together by area and share the dashboard colours: <span class="tag" style="--c:var(--today)"></span>Today <span class="tag" style="--c:var(--travel)"></span>Travel <span class="tag" style="--c:var(--money)"></span>Finances <span class="tag" style="--c:var(--home)"></span>Home <span class="tag" style="--c:var(--health)"></span>Health &amp; family <span class="tag" style="--c:var(--career)"></span>Career <span class="tag" style="--c:var(--life)"></span>Life <span class="tag" style="--c:var(--system)"></span>VERA internal (last). Never move columns in a data tab: VERA reads them by position.</p></div>
+  </div>
+</section>
+
+<footer>VERA user guide · updated November 2026 · <a href="VERA_Quick_Reference.html">Cheat sheet</a> · <a href="VERA_Lite_Guide.html">Victoria's guide</a></footer>
+</div>
+</body>
+</html>

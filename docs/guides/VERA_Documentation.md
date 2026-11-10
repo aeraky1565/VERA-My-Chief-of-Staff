@@ -3,7 +3,7 @@
 
 > This document explains HOW VERA thinks — the mechanics behind every intelligence feature,
 > data flows between systems, and the reasoning behind key design decisions.
-> For setup and configuration, see README.md.
+> For setup and configuration, see README.md. For how to use the dashboards, see the user guide, the cheat sheet and Victoria's lite guide in this folder.
 
 ---
 
@@ -23,6 +23,13 @@
 12. [Summaries Architecture](#12-summaries-architecture)
 13. [Monthly Life Review](#13-monthly-life-review)
 14. [Configuration Architecture](#14-configuration-architecture)
+15. [Trip Identity, Emails & Readiness](#15-trip-identity-emails--readiness)
+16. [Packing, Luggage & Leaving Home](#16-packing-luggage--leaving-home)
+17. [Finances (November 2026)](#17-finances-november-2026)
+18. [Places, Gifts, Life & Career](#18-places-gifts-life--career)
+19. [Family Planning & the Cycle Tracker](#19-family-planning--the-cycle-tracker)
+20. [Dashboards, Navigation & Notifications](#20-dashboards-navigation--notifications)
+21. [Appendix: Developer Reference](#21-appendix-developer-reference)
 
 ---
 
@@ -689,7 +696,7 @@ summary_sheet:Fitness            | 1xYz...AbC|Log|D4|gym_sessions_this_week
 
 `writeSummaries_()` reads all Config rows with keys starting with `summary_sheet:`. For each, it opens the external sheet via `SpreadsheetApp.openById(sheetId)`, reads the specified cell, and writes an `[AUTO]` row to the Summaries tab: `source = '[AUTO] SourceName'`, `metric = metric_name`, `value = cellValue`, `asOf = today`.
 
-The external sheet must be shared (at minimum viewer access) with the Google account running the script (`aaeleraky@gmail.com`).
+The external sheet must be shared (at minimum viewer access) with the Google account running the script.
 
 ### `getSummaries()`
 
@@ -803,3 +810,446 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 - **Value the user might want to tune** (thresholds, labels, calendar names, feature flags) → Config tab with a sensible default fallback in code.
 - **Value that changes system behaviour** (feature on/off switches, interval days, target counts) → Config tab with a sensible default fallback. The fallback ensures the system works without any Config row being present for that key.
 - **Value that is computed at runtime and needs to survive between executions** (pacing mode active/inactive, vacation mode, AviationStack backoff window) → Script Properties as ephemeral state. These are not secrets but they need to persist across the 6-minute execution boundary.
+
+### The Config tab's layout (November 2026)
+
+`getConfigValues()` reads columns A and B only, keyed by the name in column A. Rows whose column A is blank are skipped, and a section title row is just a key with an empty value. So the tab can be laid out for people without the code noticing:
+
+- **Columns:** A *Setting* · B *Value* (the only column VERA reads) · C *What it does* · D *Where it's used* (a `=HYPERLINK("#gid=…")` to the related tab).
+- **Order:** a Contents block of links (rows with an empty column A), then system-wide sections (General, Notifications, Calendars, Linked files, Assistants), then one section per feature. Each section is a title row plus a collapsible row group.
+- **Defaults made visible:** settings the code reads with an inline fallback (`cfg['x'] || 'default'`) are listed with that same value and "(default)" in column C, so changing them is a matter of editing B. A row whose value equals the code default behaves exactly like a missing row.
+- **Writers** (`Groceries.js`, `PTO.js`, the notification channel route in `WebApp.js`, `ComingUp.js`) all find their row by key and write column B, or append; none depend on row positions.
+- **Data tabs are different:** they are read by position (`getRange(2, 1, n, HEADERS.length)`), so columns there are never moved or inserted. Formatting (colours, banding, frozen rows, number formats on numeric cells, tab order and tab colours) is safe; issue #235 turns the sheet styling into a re-runnable script.
+
+---
+
+## 15. Trip Identity, Emails & Readiness
+
+**Trip registry (`Trips.js`).** Every trip gets an immutable `TRIP-…` ID in the *Trips* tab. Label and dates track the calendar; earlier keys (`startDate|label`) are kept in *Aliases*. Resolution is layered: calendar event ID, then alias, then label + date proximity (14 days), never a guess when two candidates tie. Every read of a trip-keyed row goes through `tripKeyMatches_` / `tripKeysFor_`, so rows written under an old key still belong to the trip after a date change. Daily latches (Travel Day email, pre-trip briefing) key on the Trip ID, so a moved trip never emails twice.
+
+**Who's travelling and Travel Day recipients (`TripEmails.js`).** TripMeta's *Traveler* column holds names from the traveller profiles (old one-word values such as `Both` still read). The Trips tab's *Email Recipients* holds the switched-on travellers' names and any added addresses, separated by `;`. `teResolve_` builds the To list: the owner always on trips he travels on; Victoria only when switched on, with her address from Config `victoria_email`; others from their profile email; added addresses as given. Victoria's solo trips send no Travel Day email. Config `travel_companions` is retired.
+
+**Traveller profiles (`TravelerProfiles.js`).** The *Traveler Items* tab holds one row per document, membership, preference or health item per person. The server keeps only the last 4 digits of any number. Held visas and ETAs mark a destination as covered in the documents check; a nightly pass reminds about passports, ETAs and trusted-traveller expiries ahead of trips (notification `travel_docs`).
+
+**Readiness (`TripReadiness.js`).** `trdReadiness_` turns a trip, its itinerary metadata, documents, packing and prescriptions into rows per traveller: ready / to do / blocks (documents, member number on bookings, seat preference, lounge access by status or card, refills due before the trip ends).
+
+## 16. Packing, Luggage & Leaving Home
+
+- **`Luggage.js` (#230):** "Our bags" (size, carry-on/checked, empty weight), per-person bag advice from nights, weather, trip type and the list, about-weights against the fare's allowance, and which status or card waives the checked bag. Road trips get bag advice only.
+- **`LeavingHome.js` (#231):** checklist templates per home, filtered by season, length and who stays; runs per trip or for ad-hoc "Heading out" time away. Ticks are shared and record who ticked. The night-before email carries the list; a morning check sends `leave_home` if items remain.
+- **`PackPlus.js` (#234):** status per item (`To buy → Ready → In the bag`), quantities, who brings it, staples (`always_pack` profile items, offered after generating), copy from a similar past trip, outfits per day, a Shopping "Trip: …" buy list, a checkout tick-off, and a post-trip review that feeds the next list.
+
+## 17. Finances (November 2026)
+
+- **Budget (`Budget.js`):** reads the budget tracker's Tracker tab live and by label; works out plan vs actual and a What-if overlay without writing the tracker.
+- **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
+- **Summary & check-in (`FinSummary.js`):** quarterly snapshots (*Finance Snapshots*), decisions with owners (*Check-in Decisions*), notes, and the `quarterly_checkin` reminder.
+- **Groceries and receipt runs (`Groceries.js`, `GroceryRun.js`):** a receipt photo is read by Claude vision (store, date, lines, total); picked lines go to Purchase History (On Hand syncs from it), matching shopping-list items are ticked across stores, and the run is logged to *Grocery Runs* with its date.
+- **Phone plan, Planned Purchases, planner Goals and Net worth** read their own sheets; the planner is read live and never written.
+
+## 18. Places, Gifts, Life & Career
+
+- **Places (`Places.js`, `BucketPlus.js`):** Countries (map/list/timeline, occasions) and the Bucket List with things to do, best months (cached per place in *Place Facts*), vacation-day cost, award points from Config `award_*` rows, and a long-weekend filter by direct flight time from `home_airports`.
+- **Gifts (`TripGifts.js`):** kind, status, budget, history per person, ideas per destination (cached in *Gift Place Ideas*) and customs notes.
+- **Life (`Life.js`, `LifeGrowth.js`, `Growth.js`, `ComingUp.js`, `QuickCapture.js`):** Explore, Growth (Now, Goals, Habits, Learning, Trials, Review), Coming up (calendar events by type with lead days from `coming_up_type:*`), and Quick capture, which classifies one line of text and files it with an Undo.
+- **Career Credentials (`CareerCredentials.js`):** certifications and degrees with expiry and renewal credits; reminders at 90/30/7 days and behind-pace (`career_cert_expiry`); shared with the job agent.
+
+## 19. Family Planning & the Cycle Tracker
+
+`FamilyPlanning.js` holds one shared plan (items, leave blocks, policy) by phase. `Cycle.js` adds a *Cycle Log* (start, end, who logged). Pure functions compute stats (average of the last six gaps, outliers ignored), today's view (cycle day, mood note from `cycle_mood_days`, next period, fertile window and peak days) and due notices. Notices are sent only while the phase is Trying for the fertile window, once per key, through `cycle_reminders` to a channel chosen in System › Notifications. Nothing goes on the shared flag list.
+
+## 20. Dashboards, Navigation & Notifications
+
+- **Two dashboards:** `docs/index.html` (built from `docs/app.js` by `docs/build.js`, React inlined) and `docs/dashboard-lite.html` (Victoria's, compiled in the browser). Shared blocks are copied byte-for-byte between them and tests enforce it.
+- **Tile navigation:** each area groups its sub-tabs into tiles (`VN_GROUPS`, `FIN_GROUPS`, `HF_GROUPS`, `LF_GROUPS`, `SYS_SUBS`). The lite dashboard has eight tabs: Today, Chat, Shopping, Home, Travel, Money, Family, Projects.
+- **Crash screen (planned release):** a `VeraBoundary` error boundary around the app and each tab, and a head boot guard that explains an empty page, replace the old blank white screen; lite pins its React and Babel versions.
+- **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel` and `notif_<key>_enabled` override it, and System › Notifications edits them.
+
+
+---
+
+## 21. Appendix: Developer Reference
+
+> Carried over from the old developer cheat sheet (last updated November 1, 2026). Modules added since are covered in sections 15–20.
+
+
+### Triggers setupTriggers() in Code.js
+
+| Function | Schedule | Purpose |
+|---|---|---|
+| `nightlyRun` | Daily 11 PM | Main intelligence pipeline — summaries, PTO, patterns, Claude flags, Slack log |
+| `morningNudge` | Daily 7 AM | Morning email digest with active flags, tasks, calendar preview |
+| `hourlyCheck` | Every 1 hour | Anticipator reminder rules (ergonomic, hydration, bills, packing) + Weekend Planner on Monday |
+| `checkFlightStatuses_` | Every 15 min | Flight status monitoring via AviationStack — only active when trips are within 24h of departure |
+| `runEmailScan_` | Every 30 min | Travel email parser — gated: `email_parser_enabled=true`. ⚠ Up to 144 Claude API calls/day when enabled |
+
+
+### Nightly Pipeline Steps nightlyRun() in Code.js
+
+| Step | Function | Description |
+|---|---|---|
+| -1 | `escalateAgedFlags_` | Escalate unacknowledged flags aged 3d → "3d", 7d → "7d" in Escalated column |
+| 0 | `writeSummarySnapshot` | Auto-populate Metrics + Summaries tabs from live data (Phase 5) |
+| 0a | `syncCalendarBirthdaysToImportantDates_` | Sync upcoming birthdays from Joint Chaos calendar → Important Dates tab |
+| 0a-ii | `resetChoresByCadence_` | Reset household chores checkboxes based on cadence (daily/weekly/monthly/etc.) |
+| 0b | `writePTOSnapshot_` | Write PTO tab snapshot + compute VERA calendar recommendations |
+| 0c | `runExplorer_` | Daily AI discovery bulletin — sends to Slack/email based on `explorer_interests` |
+| 0d | `getSuppressedKeyPatterns_` | Signal Learning — load noise-suppressed patterns to filter from Claude's output |
+| 0e | `recordExpiredFlags_` | Signal Learning — record flags open 30+ days without action as "expired" |
+| 0f | `checkPreTripBriefings_` | 48-hour pre-trip auto-briefing flags (weather, packing status, flight info) |
+| 0g | `checkPostTripCapture_` | Post-trip debrief prompt — fires N days after trip end |
+| 0h | (inline) | Reset Morning Routine checkboxes (Checked=false, Checked At=blank) |
+| 0i | `checkGymSessions_` | Gym session check-in — scans for ended EXERCISE-tagged calendar events |
+| 0j | `checkFitnessConsistency_` / `checkFitnessTravelGap_` | Weekly gym consistency check + travel gap gap detection |
+| 0k | `autoRestockItems_` / `generatePantryFlags_` | Pantry: auto-restock prediction + trip-overlap flags (gated: `pantry_enabled=true`) |
+| 0l | `inferCapacityMode_` | Score tomorrow's calendar load → infer busy/normal/light mode |
+| 0m | `checkContracts_` | Contract expiry flags — upcoming renewals/expirations in Contracts tab |
+| 0n | `checkHealthAppointments_` | Health appointment due-date checks — reads DR:-prefixed calendar events |
+| 0o | `checkMonthlyReview_` | Monthly Life Review — fires on 1st of month (gated: `monthly_review_enabled=true`) |
+| 0p | `resetWeekMealPlan_` | Saturday only: archive current meal week, seed next week |
+| 0q | `checkCrossPatternFlags_` | Cross-domain pattern recognition — compound signals across all domains (PatternRecognition.js) |
+| 1 | `getUpcomingEvents / getOpenTasks / getSummaries / getSharedInterestLedger_` | Collect live data for Claude prompt |
+| 1b | `suggestDueDates` | AI-suggest due dates for undated tasks — writes back to Tasks tab |
+| 2–3 | `generateFlags` | Build Claude prompt → call claude-sonnet-4-6 → parse flags JSON |
+| 4 | `writeFlags` | Append flag rows to Flags tab with dedup (exact + fuzzy key matching) |
+| 4b | `recordFlagsGenerated_` | Signal Learning — record generated flag keys as "seen" |
+| end | `sendSlackLog_` | Post nightly summary to #vera-logs (flag counts, step warnings, elapsed time) |
+
+
+### Flag Sources source: values written by writeFlags()
+
+| Source Value | Module / Step | What it generates |
+|---|---|---|
+| `Calendar` / `Tasks` / `Summaries` | Claude.js | Primary nightly Claude output — cross-domain analysis |
+| `Health Tracker` | HealthTracker.js | Overdue / upcoming health appointments (DR: prefix events) |
+| `Fitness Tracker` | Fitness.js | Weekly gym consistency and travel gap flags |
+| `Gym Tracker` | GymTracker.js | Post-session check-in prompts |
+| `Pattern Recognition` | PatternRecognition.js | Cross-domain compound pattern flags (all 7 patterns) |
+| `Pre-Trip Briefing` | PreTripBriefing.js | 48h pre-departure briefing |
+| `Post-Trip Capture` | PostTripCapture.js | Post-return memory capture prompt |
+| `Email Parser` | EmailParser.js | Parsed travel confirmations from inbox |
+| `Monthly Review` | MonthlyReview.js | Monthly life review flag (1st of month) |
+| `Important Dates` | ImportantDates.js | Upcoming birthdays, anniversaries (30-day lead) |
+| `Contracts` | Code.js (checkContracts_) | Contract renewal / expiry alerts |
+| `Pantry Tracker` | Pantry.js | Purchase-history restock flags (gated) |
+| `Finance` | FinancialGoals.js | Financial goal milestone / savings rate alerts |
+
+| Urgency | Visual | Sheet Background | Meaning |
+|---|---|---|---|
+| High | 🔴 | `#fee2e2` (red tint) | Needs attention soon — @mention in Slack |
+| Medium | 🟡 | `#fef9c3` (yellow tint) | Review this week |
+| Low | 🟢 | `#dcfce7` (green tint) | Good to know, no urgency |
+
+
+### Calendar Event Prefixes Special title prefixes parsed by VERA
+
+| Prefix | Example Title | Detected By | Effect |
+|---|---|---|---|
+| `DR:` | `DR: Ahmed - Annual Physical` DR: [Person] - [Type] - [Dr. Name (opt)] | HealthTracker.js | Tracks last-visit date per person+type, computes next-due, generates flag when overdue/approaching |
+| `EXERCISE` (in description) | Any title with `EXERCISE` in the event description | GymTracker.js | Logs attended gym session to Gym Log tab; generates check-in flag |
+| `TRIP:` (convention) | `TRIP: Paris - CDG → ORD` | FlightStatus.js, PreTripBriefing.js | Trip tracking — pre-trip briefing, packing, itinerary, post-trip capture. Any multi-day event works. |
+| `calendar_label:*` | Config row, not an event prefix | Calendar.js | Maps calendar name to a display label for Claude prompt context |
+
+
+### Config Tab Keys All cfg['...'] lookups — Setting column in Config sheet
+
+| Key | Default | Module | What it controls |
+|---|---|---|---|
+| calendar_days_ahead | 7 | Calendar.js | Days of calendar events to fetch for nightly analysis |
+| task_age_threshold_days | 7 | Tasks.js / Code.js | Days before an open task is considered "neglected" |
+| max_flags_per_night | 8 | Claude.js | Maximum Claude-generated flags per nightly run |
+| morning_nudge_time | 7 | Code.js | Hour (24h) for morning nudge trigger |
+| snooze_default_days | 2 | WebApp.js | Default snooze duration in days |
+| finance_review_day | 1 | Code.js | Day of month for finance review |
+| active_sources | Calendar,Tasks,Summaries | Code.js | Comma-separated data sources included in Claude prompt |
+| skip_calendars | Holidays in United States | Calendar.js, HealthTracker.js, GymTracker.js | Comma-separated calendar names to ignore entirely |
+| victoria_calendars | blank | Calendar.js, WebApp.js | Comma-separated calendar names belonging to Victoria |
+| calendar_label:* | none | Calendar.js | Maps calendar name to display label (e.g. `calendar_label:Ahmed = personal`) |
+| pto_vacation_days | 20 | PTO.js | Annual vacation allocation in days |
+| pto_rollover_days | 0 | PTO.js | Days carried over from prior year |
+| pto_personal_hours | 48 | PTO.js | Annual personal time in hours |
+| pto_buffer_days | 3 | PTO.js | Reserve days held back from planning calculations |
+| email_parser_enabled | false | EmailParser.js | Enable 30-min inbox scan for travel confirmations. ⚠ Up to 144 Claude calls/day |
+| email_admin_enabled | false | EmailAdmin.js | Enable weekly inbox triage + follow-up tracking |
+| email_admin_frequency | weekly | EmailAdmin.js | `weekly` or `3days` |
+| pretrip_briefing_enabled | true | PreTripBriefing.js | Generate 48h pre-departure briefing flags |
+| pretrip_briefing_hours | 48 | PreTripBriefing.js | Hours before departure to generate briefing |
+| posttrip_capture_enabled | true | PostTripCapture.js | Enable post-trip memory capture prompt |
+| posttrip_capture_delay_days | 1 | PostTripCapture.js | Days after trip end to fire capture flag |
+| gym_tracker_enabled | true | GymTracker.js | Enable gym session tracking from calendar EXERCISE tags |
+| gym_tracker_lookback_hours | 24 | GymTracker.js | Hours to look back for ended EXERCISE calendar events |
+| gym_sessions_per_week | 3 | PatternRecognition.js | Target gym sessions per week for pattern detection |
+| fitness_enabled | false | Fitness.js | Enable weekly gym consistency check flags |
+| fitness_weekly_target | 4 | Fitness.js | Target gym sessions per week for consistency flags |
+| fitness_low_flag_day | 4 | Fitness.js | Day of week to fire Low flag if behind (1=Sun … 7=Sat; 4=Wed) |
+| fitness_travel_block_time | 07:00 | Fitness.js | Start time for auto-created trip gym session blocks |
+| fitness_travel_block_duration | 60 | Fitness.js | Duration (minutes) for auto-created trip gym session blocks |
+| pacing_enabled | true | Pacing.js | Enable automatic pacing mode detection and suggestions |
+| pacing_flag_threshold | 3 | Pacing.js | Minimum High flags to trigger pacing mode offer |
+| pacing_mode_days | 7 | Pacing.js | Duration (days) for pacing mode when activated |
+| reminders_enabled | true | Reminders.js | Master switch for Anticipator reminder rules |
+| explorer_enabled | true | Reminders.js | Master switch for Explorer daily AI discovery |
+| explorer_interests | (built-in default) | Reminders.js | Interest topics injected into Explorer AI prompt |
+| ergonomic_interval_min | 60 | Reminders.js | Ergonomic break target interval in minutes |
+| hydration_interval_min | 120 | Reminders.js | Hydration reminder interval in minutes |
+| mobility_reminder_hour | 20 | Reminders.js | 24h hour for evening mobility nudge |
+| weekend_planner_enabled | true | WeekendPlanner.js | Enable Monday morning Weekend Planner Slack message |
+| weekend_planner_hour | 8 | Reminders.js, WeekendPlanner.js | Hour to fire Weekend Planner (fires from hourlyCheck on Monday) |
+| weekend_planner_lookahead_days | 21 | WeekendPlanner.js | Days ahead to look for upcoming trips/events |
+| monthly_review_enabled | true | MonthlyReview.js | Generate monthly life review on 1st of each month |
+| pantry_enabled | false | Pantry.js | Enable purchase history + auto-restock tracking |
+| pantry_restock_days_ahead | 7 | Pantry.js | Days ahead to predict and flag restock items |
+| pantry_ema_alpha | 0.3 | Pantry.js | EMA learning rate for pantry consumption model (higher = adapts faster) |
+| google_tasks_enabled | true | WebApp.js | Fetch Google Tasks in dashboard and chat |
+| morning_routine_enabled | true | WebApp.js (status) | Show Morning Routine tab in dashboard |
+| takeouts_enabled | true | WebApp.js (status) | Show Takeouts tab in dashboard |
+| experiments_enabled | true | WebApp.js (status) | Show Experiments tab in dashboard |
+| wish_list_enabled | true | WebApp.js (status) | Show Wish List tab in dashboard |
+| wishlists_enabled | true | WebApp.js (status) | Show Christmas Wish Lists (People tab) |
+| dates_default_lead_time | 30 | ImportantDates.js | Default lead days for important date flags |
+| dates_high_urgency_days | 1 | ImportantDates.js | Days-until threshold for High urgency important date flag |
+| dates_medium_urgency_days | 7 | ImportantDates.js | Days-until threshold for Medium urgency important date flag |
+| memory_log_enabled | true | Memory.js | Enable VERA memory/reflection log |
+| memory_snapshot_day | 0 | Memory.js | Day of week for memory snapshot (0=Sun) |
+| memory_log_retention_months | 12 | Memory.js | Months of memory log to retain before pruning |
+| monthly_disposable_income | 5000 | FinancialGoals.js | Monthly disposable income for financial goal scenario simulation |
+| pattern_max_flags | 2 | PatternRecognition.js | Max new pattern flags per nightly run |
+| pattern_dedup_days | 7 | PatternRecognition.js | Days to suppress same pattern key after it fires |
+| weather_location | blank | Weather.js | City name for weather ticker (e.g. `Austin, TX`) |
+| travel_day_briefing_enabled | true | TravelDayBriefing.js | Enable travel day briefing messages |
+| travel_companions | blank | TravelDayBriefing.js | Default travel companions string |
+| summary_sheet:* | none | Summaries.js | External sheet hook: value = `SheetID\|TabName\|CellRef\|metric_name` |
+
+
+### Script Properties Project Settings → Script Properties in Apps Script editor
+
+| Property Key | Required? | Used By | Description |
+|---|---|---|---|
+| CLAUDE_API_KEY | Required | Claude.js | Anthropic API key for claude-sonnet-4-6 |
+| VERA_SHEET_ID | Required | Code.js (CONFIG) | Google Sheet ID of the Life OS sheet |
+| MORNING_NUDGE_EMAIL | Required | Code.js (CONFIG) | Email address for morning nudge and error alerts |
+| VERA_WEB_TOKEN | Required | WebApp.js | Auth token for all WebApp GET/POST requests (`?token=...`) |
+| VERA_LOGO_FILE_ID | Optional | Code.js, MonthlyReview.js | Google Drive file ID for VERA logo in emails |
+| VERA_DASHBOARD_URL | Optional | Code.js, MonthlyReview.js | Netlify/dashboard URL — shown as button in emails |
+| SLACK_BOT_TOKEN | Optional | Slack.js | Slack bot OAuth token (xoxb-...) |
+| SLACK_CHAT_CHANNEL_ID | Optional | Slack.js | #vera-chat channel ID (bidirectional conversation) |
+| SLACK_NOTIFICATIONS_CHANNEL_ID | Optional | Slack.js | #vera-notifications channel ID (flags with Block Kit buttons) |
+| SLACK_LOGS_CHANNEL_ID | Optional | Slack.js | #vera-logs channel ID (nightly run summaries, errors) |
+| SLACK_AHMED_USER_ID | Optional | Slack.js | Ahmed's Slack member ID for @mentions on High flags |
+| SLACK_VICTORIA_USER_ID | Optional | Slack.js | Victoria's Slack member ID |
+| SLACK_ALLOWED_USER_IDS | Optional | Slack.js | Comma-separated Slack member IDs authorized to chat with VERA |
+| TRANSACTIONS_SHEET_ID | Optional | Finance.js, WebApp.js | Separate Google Sheet ID for transaction history (Empower CSV format) |
+| SAT_SHEET_ID | Optional | Finance.js, WebApp.js | Simple Ass Tracker Google Sheet ID (household budget) |
+| AVIATIONSTACK_KEY | Optional | FlightStatus.js | AviationStack API key for flight status monitoring |
+| WEATHER_API_KEY | Optional | Weather.js, WebApp.js | OpenWeather API key for weather ticker and destination forecasts |
+| VERA_SEARCH_API_KEY | Optional | Chat.js | Serper.dev or Tavily API key for web search tool in chat |
+| VERA_SEARCH_ENGINE | Optional | Chat.js | `serper` (default) or `tavily` |
+| PACING_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when pacing mode is active (written by VERA) |
+| PACING_MODE_ENDS | Runtime | Pacing.js | ISO date string when pacing mode expires |
+| VACATION_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when vacation mode is active |
+| VACATION_MODE_ENDS | Runtime | Pacing.js | ISO date string when vacation mode expires |
+| VACATION_TRIP_NAME | Runtime | Pacing.js | Trip name stored when vacation mode activates |
+| PACING_FIRST_DETECTED | Runtime | Pacing.js | Epoch ms timestamp when overload was first detected |
+| PACING_OFFER_FLAG_KEY | Runtime | Pacing.js | Flag key for the pacing offer flag (dedup guard) |
+| FLIGHT_STATUS_CACHE | Runtime | FlightStatus.js | JSON cache of last known flight statuses |
+| LAST_NIGHTLY_RUN | Runtime | Slack.js (App Home) | Timestamp of last successful nightly run |
+| SHOPPING_LIST_DOC_ID | Optional | Shopping.js | Google Doc ID for shared shopping list |
+| LIFE_PLAN_DOC_ID | Optional | FinancialGoals.js | Google Doc ID for Life Plan document |
+| SLACK_PINNED_MORNING_TS | Runtime | Slack.js | Slack message timestamp of pinned morning summary |
+
+
+### Sheet Tabs TABS constant in Code.js — all 80+ tabs
+
+| Constant | Tab Name | Purpose | Auto-managed? |
+|---|---|---|---|
+| `TABS.FLAGS` | Flags | All VERA-generated flags with urgency, status, escalation | Auto |
+| `TABS.TASKS` | Tasks | Open tasks with due dates, recurring, flagged status | Manual |
+| `TABS.METRICS` | Metrics | VERA self-monitoring counts (tasks, flags, calendar); wiped nightly | Auto |
+| `TABS.SUMMARIES` | Summaries | External life intelligence feed — [AUTO] rows wiped/rewritten nightly | Hybrid |
+| `TABS.CONFIG` | Config | Key/Value config rows driving all VERA behaviour | Manual |
+| `TABS.PROJECTS` | Projects | Multi-step projects with Claude-generated subtasks | Manual |
+| `TABS.GOALS` | Goals | Yearly goals Kanban (To Do / Doing / Done / Paused) | Manual |
+| `TABS.PTO` | PTO | PTO planner snapshot — written nightly by writePTOSnapshot_ | Auto |
+| `TABS.PTO_MEMORY` | PTO Memory | Stateful PTO suggestion history; declined windows blacklist | Auto |
+| `TABS.REMINDERS_MEMORY` | Reminders Memory | Reminder cooldown log — prevents duplicate nudges | Auto |
+| `TABS.INTEREST_LEDGER` | Shared Interests | Shared interest ledger for Ahmed + Victoria | Manual |
+| `TABS.BILLS` | Bills | Recurring bill tracker with paid status | Manual |
+| `TABS.RECIPES` | Recipes | Recipe list with ingredients and tags | Manual |
+| `TABS.MEAL_PLAN` | Meal Plan | Weekly dinner planner — Saturday reset auto-archives + seeds next week | Hybrid |
+| `TABS.TAKEOUT_RESTAURANTS` | Takeout Restaurants | Favorite takeout restaurant list | Manual |
+| `TABS.TAKEOUT_ITEMS` | Takeout Items | Takeout menu items linked to restaurants | Manual |
+| `TABS.HOME_ITEMS` | Home Items | Warranties + service log for home items | Manual |
+| `TABS.IDEAS` | Ideas | Braindump repo — raw thoughts + structured ideas | Manual |
+| `TABS.ITINERARY` | Itinerary | Trip itinerary items (flights, hotels, activities) | Manual |
+| `TABS.TRIP_META` | TripMeta | Trip context and sentiment notes per trip key | Manual |
+| `TABS.PACKING_ITEMS` | PackingItems | Per-trip packing list items by person and category | Manual |
+| `TABS.COUNTRIES` | Countries | Countries visited tracker | Manual |
+| `TABS.BUCKET_LIST` | Bucket List | Travel bucket list with priority stars | Manual |
+| `TABS.TRIP_RECOMMENDATIONS` | TripRecommendations | AI-generated trip activity and dining suggestions | Auto |
+| `TABS.PROCESSED_EMAILS` | Processed Emails | Email parser dedup + outcome log | Auto |
+| `TABS.MORNING_ROUTINE` | Morning Routine | Daily routine checklist — nightly checkbox reset | Hybrid |
+| `TABS.GYM_LOG` | Gym Log | Gym session attendance log | Auto |
+| `TABS.PURCHASE_HISTORY` | Purchase History | Pantry purchase history + consumption intelligence | Manual |
+| `TABS.CAREER_POSITION` | Career Position | Current role snapshot | Manual |
+| `TABS.CAREER_GOALS` | Career Goals | Long-horizon career targets | Manual |
+| `TABS.CAREER_PROGRESSION` | Career Progression | Career timeline / roles held | Manual |
+| `TABS.CAREER_DEVELOPMENT` | Career Development | Skills, courses, focus areas | Manual |
+| `TABS.CAREER_WINS` | Career Wins | Professional achievement log | Manual |
+| `TABS.CAREER_NETWORK` | Career Network | Professional relationships tracker | Manual |
+| `TABS.PRESCRIPTIONS` | Prescriptions | Medication tracker for Ahmed + Victoria | Manual |
+| `TABS.CREDIT_CARDS` | Credit Cards | Card metadata + ownership (11 cards) | Manual |
+| `TABS.CARD_REWARDS` | Card Rewards | Per-card category reward rates | Manual |
+| `TABS.CARD_PERKS` | Card Perks | Monthly/annual perk tracker with last-used date | Manual |
+| `TABS.LOYALTY_PROGRAMS` | Loyalty Programs | Points/miles balances per program | Manual |
+| `TABS.REWARDS_GOALS` | Rewards Goals | Redemption goal tracking | Manual |
+| `TABS.GIFT_PEOPLE` | Gift People | People list for gift ideas (Ahmed + Victoria seeded) | Manual |
+| `TABS.GIFT_IDEAS` | Gift Ideas | Individual gift ideas linked to people | Manual |
+| `TABS.IMPORTANT_DATES` | Important Dates | Birthdays, anniversaries, meaningful dates — synced from calendar | Hybrid |
+| `TABS.CHORES` | Chores | Household chore checklist — cadence-based nightly reset | Hybrid |
+| `TABS.TRAVELER_PROFILES` | Traveler Profiles | Passport + traveler profiles for visa checking | Manual |
+| `TABS.CONTRACTS` | Contracts | Active contract + agreement tracker | Manual |
+| `TABS.VEHICLES` | Vehicles | Vehicle tracker — oil, service, registration, tires | Manual |
+| `TABS.FINANCIAL_GOALS` | Financial Goals | Financial goals + what-if scenario planning | Manual |
+| `TABS.FINANCIAL_SCENARIOS` | Financial Scenarios | Saved what-if scenarios per goal | Manual |
+| `TABS.EMAIL_FOLLOW_UPS` | Email Follow-ups | Email Admin follow-up tracking | Auto |
+| `TABS.BOOKS` | Books | Reading list per person | Manual |
+| `TABS.COURSES` | Courses | Courses and learning content tracker | Manual |
+| `TABS.SKILLS` | Skills | Skill building + practice log | Manual |
+| `TABS.EXPERIMENTS` | Experiments | Personal experiment tracker with hypothesis + outcomes | Manual |
+| `TABS.EXPERIMENT_CHECKINS` | Experiment Checkins | Per-experiment check-in log | Manual |
+| `TABS.RESOURCES` | Resources | Reference links + docs (Explore tab) | Manual |
+| `TABS.BUCKET_ACTIVITIES` | BucketActivities | Per-destination activity list linked to bucket list | Manual |
+| `TABS.WISH_LIST` | Wish List | Aspirational purchase tracker per person | Manual |
+
+
+### Slack Channels Slack.js — getSlackChannelId_ channel map
+
+| Channel | Property Key | Direction | What posts there |
+|---|---|---|---|
+| `#vera-chat` | `SLACK_CHAT_CHANNEL_ID` | Bidirectional | Ahmed + Victoria conversational chat. Messages processed async via CacheService queue. @mentions resolve to names via SLACK_AHMED_USER_ID / SLACK_VICTORIA_USER_ID. |
+| `#vera-notifications` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Outbound only | Flag alerts with Block Kit Acknowledge + Snooze buttons. High-urgency flags @mention Ahmed via SLACK_AHMED_USER_ID. Morning nudge summary. Weekend Planner. |
+| `#vera-logs` | `SLACK_LOGS_CHANNEL_ID` | Outbound only | Nightly run summaries (flag counts, step warnings, elapsed time). WebApp errors. Flight status updates. Feature fire confirmations. |
+
+
+### WebApp GET Actions doGet() in WebApp.js — all require ?token=VERA_WEB_TOKEN
+
+| action param | Additional params | Description |
+|---|---|---|
+| `status` | — | Flag counts (total, active, high/med/low), last run date, feature flags for dashboard tab visibility, travelConfig |
+| `flags` | `filter=active` (opt) | All flags, or unacknowledged+unresolved only when filter=active |
+| `tasks` | — | Open tasks from Tasks tab |
+| `get_google_tasks` | — | Tasks from Google Tasks API (gated: google_tasks_enabled) |
+| `complete_google_task` | `id` | Mark a Google Task as complete |
+| `summaries` | — | Summaries tab data |
+| `acknowledge` | `id` | Acknowledge a flag by ID |
+| `snooze` | `id`, `days` | Snooze a flag for N days |
+| `resolve` | `id` | Resolve a flag by ID |
+| `complete_task` | `id` | Mark a task as Done |
+| `add_task` | `task`, `dueDate`, `recurring` | Add a new task |
+| `update_task` | `id`, `field`, `value` | Update a task field |
+| `delete_task` | `id` | Delete a task by ID |
+| `shopping` | — | Shopping list by store |
+| `shopping_toggle` | store, item | Toggle shopping item purchased state |
+| `shopping_add` | store, item | Add item to shopping list |
+| `shopping_delete` | store, item | Delete shopping item |
+| `shopping_update` | params | Update shopping item text |
+| `projects` | — | All projects with subtasks |
+| `complete_project_task` | `row` | Complete a project subtask |
+| `add_project_task` | project, task, priority, dueDate | Add subtask to project |
+| `update_project_task` | params | Update project subtask |
+| `delete_project_task` | params | Delete project subtask |
+| `goals` | — | Yearly goals |
+| `add_goal / update_goal / delete_goal` | params | Goal CRUD |
+| `interests` | — | Shared Interest Ledger |
+| `pto` | — | PTO snapshot + stats |
+| `budget` | — | SAT budget data |
+| `bills` | — | Bills list |
+| `bills_toggle` | row | Toggle bill paid status |
+| `calendar_bills` | — | Calendar-derived bill events |
+| `tx_list` | — | Transaction list from Transactions sheet |
+| `recent_transactions` | — | Recent transactions summary |
+| `cashflow` | month, year | Monthly cashflow projection |
+| `recipes` | — | Recipe list |
+| `meal_plan` | week | Meal plan for a given week |
+| `set_meal / update_meal_status / suggest_meals` | params | Meal plan management |
+| `takeouts` | — | Takeout restaurants + items |
+| `homesteward` | — | Home items + warranties + service log |
+| `ideas` | — | Idea braindump + thought inbox |
+| `itinerary` | tripKey | Trip itinerary items |
+| `get_trip_meta / set_trip_meta` | tripKey | Trip context/sentiment notes |
+| `get_packing` | tripKey | Packing list for a trip |
+| `generate_packing` | tripKey, start, end | AI-generate full packing list |
+| `countries` | — | Countries visited |
+| `get_bucket_list` | — | Travel bucket list |
+| `flight_statuses` | tripKey | Current flight statuses for a trip |
+| `force_flight_statuses` | tripKey | Force-refresh flight statuses via AviationStack |
+| `recommendations` | tripKey | AI trip activity/dining recommendations |
+| `chat` | message, session | VERA conversational AI (Phase 4) |
+| `morning_routine` | — | Morning routine checklist |
+| `gym_log` | — | Gym session log |
+| `career` | — | Career data (position, goals, progression, wins, network) |
+| `prescriptions` | — | Medication tracker |
+| `cards` | — | Credit card hub (cards, rewards, perks, loyalty, goals) |
+| `get_gift_data` | — | Gift people + gift ideas |
+| `get_important_dates` | — | Important dates list |
+| `get_chores` | — | Household chores with cadence + status |
+| `financial_goals` | — | Financial goals + scenarios |
+| `get_vehicles` | — | Vehicle tracker data |
+| `get_contracts` | — | Active contracts |
+| `health_appointments` | — | Health appointments derived from DR: calendar events |
+| `get_growth` | — | Books, courses, skills (Growth / Explore tab) |
+| `get_experiments` | — | Personal experiments + check-ins |
+| `get_resources` | — | Reference links and docs |
+| `get_wish_list` | — | Aspirational wish list |
+| `get_pacing_status` | — | Current pacing + vacation mode status |
+| `get_visa_requirements` | origin, destination | Visa requirements for a traveler profile |
+| `dest_weather` | location | Weather forecast for destination |
+| `tx_aliases / set_tx_alias` | params | Transaction merchant alias management |
+
+
+### WebApp POST Actions doPost() in WebApp.js — JSON body required
+
+| action | Body params | What it does |
+|---|---|---|
+| `chat` | `message`, `session` | Process a chat message (same as GET chat) |
+| `acknowledge` | `id` | Acknowledge a flag by ID |
+| `snooze` | `id`, `days` | Snooze a flag for N days |
+| `resolve` | `id` | Resolve a flag by ID |
+| `add_takeout_restaurant` | name, cuisine, phone, website, rating, notes | Add a takeout restaurant |
+| `delete_takeout_restaurant` | name | Delete a takeout restaurant |
+| `add_takeout_item` | restaurant, item, description, rating, notes | Add a menu item to a restaurant |
+| `delete_takeout_item` | restaurant, item | Delete a takeout menu item |
+| `log_purchase_run` | items array | Log a grocery/shopping run to Purchase History |
+| Note: Slack Events API POSTs (type: event_callback) and Slack form payloads (Block Kit interactions) are handled automatically without auth token — detected by body.type or e.parameter.payload. |  |  |
+
+
+### Cross-Domain Patterns PatternRecognition.js — all 7 patterns
+
+| Pattern Key | Trigger Conditions | Urgency |
+|---|---|---|
+| `cross_high_stress_compound` | overdueTasks ≥ 3 AND activeHighFlags ≥ 2 AND gymSessionsThisWeek = 0 | High |
+| `cross_goal_behaviour_drift` | activeGoals ≥ 2 AND gymSessionsThisWeek < (gymTarget × 0.5) AND overdueTaskCount ≥ 2 | Medium |
+| `cross_social_calendar_gap` | calendarEventsThisWeek ≤ 1 AND pacingMode = false AND vacationMode = false | Low |
+| `cross_overload_no_pacing` | intensityLevel = 'high' AND pacingMode = false AND activeHighFlags ≥ 2 AND overdueTaskCount ≥ 3 | Medium |
+| `cross_meal_chaos` | takeoutRatio ≥ 0.70 (≥70% of meals are takeout/eating out) AND overdueTaskCount ≥ 2 | Low |
+| `cross_backlog_accumulation` | neglectedTaskCount (age ≥ 14 days) ≥ 5 AND calendarEventsThisWeek ≥ 3 | Medium |
+| `cross_health_neglect` | overdueHealthAppts ≥ 2 AND gymSessionsThisWeek = 0 | Medium |
+
+
+### Health Appointment Default Intervals HEALTH_APPT_INTERVAL_DEFAULTS_ in HealthTracker.js
+
+| Type (exact match keys) | Interval (months) |
+|---|---|
+| `physical` / `annual physical` | 12 |
+| `dental` / `dentist` / `dental cleaning` / `teeth cleaning` | 6 |
+| `eye exam` / `optometrist` / `ophthalmologist` | 12 |
+| `dermatology` / `dermatologist` | 12 |
+| `gynecology` / `obgyn` / `gynaecology` | 12 |
+| `therapy` / `therapist` | 1 |
+| `cardiology` / `cardiologist` | 12 |
+| `endocrinology` / `endocrinologist` | 12 |
+| `allergist` / `allergy` | 12 |
+| `chiropractor` / `chiropractic` | 1 |
+| `urgent care` | 0 — never flagged (episodic) |
+| Any other type | 12 (fallback) |
+

@@ -82,63 +82,33 @@ VERA runs silently in the background of your life. Every night at 11 PM it reads
 
 ## Dashboard Tabs
 
-The React dashboard groups functionality into tabs and sub-tabs. All data is fetched from the Apps Script Web App endpoint.
+Two dashboards share one backend: the full dashboard (`docs/index.html`, built from `docs/app.js`) and Victoria's lite dashboard (`docs/dashboard-lite.html`). Each area groups its sub-tabs into icon tiles.
 
-| Tab | Sub-tab / Section | What it does |
-|-----|-------------------|--------------|
-| **Overview** | Flags | Active/snoozed/resolved flags with urgency colour-coding; acknowledge/snooze/resolve buttons |
-| **Overview** | Status bar | Flag counts (High/Med/Low), last run date, weather ticker, pacing mode indicator |
-| **Tasks** | VERA Tasks | Create, complete, delete, update open tasks; recurring task support |
-| **Tasks** | Google Tasks | Read Google Tasks via Advanced Tasks API; complete individual tasks |
-| **Tasks** | Projects | Multi-step projects. Describe what a project is **for** and VERA drafts the whole checklist — asking 2–4 clarifying questions first when the context is thin, then returning a phased plan you edit before anything is saved. Plus a health verdict per project (on track / at risk / stalled / blocked / overdue), a "next up" task, phase sections, drag-to-reorder, per-task status (Pending / In Progress / Blocked / Done), and an owner toggle with filter |
-| **Chat** | Chat (Ahmed) | Full conversational interface — all 40+ actions available; web search tool |
-| **Chat** | Chat Lite (Victoria) | Simplified read-friendly view; same backend |
-| **Chat** | Slack (#vera-chat) | Bidirectional Slack chat routed through the same chat backend |
-| **Calendar** | Upcoming Events | 7-day calendar view with event colours and RSVP status |
-| **Calendar** | PTO Planner | PTO balance, burn-down pace, suggested windows, Victoria PTO |
-| **Travel** | Trips | Itinerary items by trip; flight status (live via AviationStack) |
-| **Travel** | Packing | Per-trip packing lists; AI-generated packing from itinerary + weather |
-| **Travel** | Countries | Countries visited tracker (Ahmed + Victoria) |
-| **Travel** | Bucket List | Dream destinations with star ratings and activity sublists |
-| **Travel** | Traveler Profiles | Passport details + visa-check tool |
-| **Finance** | Overview | 4-card bento: net income, spend vs budget, top categories, cashflow |
-| **Finance** | Bills | Recurring bill tracker with paid/unpaid toggle |
-| **Finance** | Transactions | Spending history from Empower CSV (separate Transactions sheet) |
-| **Finance** | Credit Cards | Card rewards, perks tracker, inactivity alerts |
-| **Finance** | Loyalty Programs | Points/miles balances, best-use guide, expiry alerts |
-| **Finance** | Financial Goals | Goal progress, what-if scenario simulator |
-| **Health** | Appointments | DR: calendar-based appointment tracker with next-due dates |
-| **Health** | Prescriptions | Medication tracker for Ahmed + Victoria with refill dates |
-| **Health** | Gym Log | Attendance log from calendar EXERCISE events |
-| **Health** | Morning Routine | Daily checklist reset each night |
-| **Home** | Steward | Warranties, service log, next-service reminders |
-| **Home** | Chores | Cadence-based chore checklist (Daily/Weekly/Bi-weekly/Monthly/Quarterly) |
-| **Home** | Shopping | Per-store shopping lists; recipe-to-shopping integration |
-| **Home** | Meal Plan | Weekly dinner planner with takeout/home-cooked/leftovers modes |
-| **Home** | Takeouts | Favourite restaurant list with rated menu items |
-| **Home** | Pantry | Purchase history + auto-restock predictions (EMA model) |
-| **Home** | Vehicles | Oil changes, tyre rotations, registration, inspection expiry tracking |
-| **Home** | Guests | House guest arrival/departure tracking |
-| **People** | Important Dates | Birthdays, anniversaries, meaningful dates with lead-time flagging |
-| **People** | Gift Ideas | Per-person gift idea lists |
-| **People** | Interests | Shared Interest Ledger (Ahmed + Victoria preferences) |
-| **Career** | North Star | A career ladder with tracks (FP&A, PMO): role history, current role, next steps; comp floors, deal-breakers, 3–5 intents |
-| **Career** | Readiness | 13 evidence-backed criteria (shared core + per track), a verdict per track, a role check against a pasted JD |
-| **Career** | Evidence | What can be proved, tagged to criteria; new items go to a dated Wins bank tab monthly |
-| **Career** | Pipeline | The job agent's matches, read live from its Tracker; triage writes the Status cell |
-| **Career** | Network | Contacts with a role (sponsor, mentor …), tracks, warmth, last touch; no-sponsor gap per track |
-| **Career** | Market | The current package and estimated total; each match against it; median ranges by level and track |
-| **Career** | Brand | Positioning per track, LinkedIn versions, resume links, the static profile |
-| **Career** | Exchange | The only PIES ↔ VERA bridge: paste PIES-BRIEF / ROLE-MATCH in, copy VERA-INTENTS / MATCHER-CONTEXT out |
-| **Explore** | Goals | Yearly goals Kanban (To Do / In Progress / Done) |
-| **Explore** | Ideas | Braindump repo with Thought Inbox and Shelve-to-idea pipeline |
-| **Explore** | Experiments | Personal experiment tracker with check-in log |
-| **Explore** | Growth | Books, courses, skill practice log |
-| **Explore** | Resources | Reference links and docs library |
-| **Explore** | Wish List | Aspirational purchase tracker |
-| **Explore** | Recipes | Recipe library with ingredient lists |
-| **Settings** | Config | Config tab editor (key/value pairs) |
-| **Settings** | Contracts | Active contract tracker with expiry and notice-period flagging |
+**Full dashboard**
+
+| Area | Tiles › sub-tabs |
+|------|------------------|
+| **Home** | Today at a glance, Home slot card, ARIA banner, travel card, Log a grocery run |
+| **Chat · Flags · Tasks · Projects** | Conversational chat (also Slack #vera-chat); flags with urgency; VERA + Google Tasks; projects VERA drafts (shown only while active) |
+| **PTO Planner** | Ahmed / Victoria balances, pace and clear windows |
+| **Travel** | Plan (Trip Ideas, ARIA) · Trips (My Trips with summary, readiness, packing, luggage, leaving home, emails; Itinerary) · Places (Countries, Bucket List) · Travelers (Profiles, Our bags, Gifts) |
+| **Finances** | Overview (Summary + quarterly check-in) · Day to day (Budget + What-if, Bills & cashflow, Groceries + receipt runs, Phone plan) · Long term (Net worth, Goals, Planned Purchases, FSA & HSA) · Paperwork (Accounts, Cards, Contracts, Tax) |
+| **Shopping · Home Front** | Store lists with Done shopping · House (household, steward, vehicles, neighbourhood, leaving home), Chores, Kitchen (meal plan, recipes, pantry, takeouts), Hosting, Savings |
+| **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
+| **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
+| **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health) · Settings (Notifications, Trip emails, Config, Feature flags) |
+
+**Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, Card cheat sheet, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
+
+**Guides** (in `docs/guides/`, served by GitHub Pages):
+
+| Guide | For |
+|-------|-----|
+| [User guide](docs/guides/VERA_Quick_User_Guide.html) | Every feature of the full dashboard: what it's for, where, how |
+| [Cheat sheet](docs/guides/VERA_Quick_Reference.html) | Two printable pages: where things are, common taps, chat examples, key settings |
+| [Victoria's lite guide](docs/guides/VERA_Lite_Guide.html) | The lite dashboard, tab by tab |
+| [System documentation](docs/guides/VERA_Documentation.md) ([PDF](docs/guides/VERA_Documentation.pdf)) | How VERA works inside, with a developer reference appendix. Rebuild the PDF with `python docs/guides/pdf/convert_to_pdf.py` (needs `reportlab`) |
 
 ---
 
@@ -2498,10 +2468,24 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Experiments.js` | Experiment tracker + check-in log CRUD |
 | `Contracts.js` | Contract CRUD + expiry flagging (`checkContracts_()`) |
 | `TestBench.js` | **The index of manual test entry points.** One `tb*` callout per user-facing feature, grouped into four sections, with knobs at the top because the Run menu cannot pass arguments. Clears the relevant dedup guard before anything that would otherwise silently no-op |
+| `MyTrips.js` | Travel › My Trips: calendar trips, pencilled-in trips, a 15-month strip and past trips (#220) |
+| `TripEmails.js` | Who's travelling, and per-trip Travel Day email recipients (`teResolve_`) (#233) |
+| `TravelerProfiles.js` · `TripReadiness.js` | Traveller documents, trusted traveller, memberships, preferences, health (last 4 digits only); per-traveller trip readiness (`trdReadiness_`) (#227) |
+| `Luggage.js` · `LeavingHome.js` · `PackPlus.js` | Bag advice and Our bags (#230); leaving-home checklists and Heading out (#231); enriched packing: statuses, staples, outfits, buy list, checkout, review (#234) |
+| `TripGifts.js` · `Places.js` · `BucketPlus.js` | Gifts per trip; Countries and the Bucket List with best months, points and long weekends (#227, #228) |
+| `GroceryRun.js` · `Groceries.js` | Log a grocery run from a receipt; grocery runs and spend (#229) |
+| `Budget.js` · `BillSchedule.js` · `FinSummary.js` · `PhonePlan.js` · `PlannedPurchases.js` · `PlannerGoals.js` · `NetWorth.js` | Finances: budget + What-if, bills & cashflow, summary + quarterly check-in, phone plan, big buys, planner goals and net worth (#224–#226) |
+| `FamilyPlanning.js` · `Cycle.js` | One shared family plan; the cycle tracker under Trying |
+| `CareerCredentials.js` | Certifications and degrees, renewal reminders, shared with the job agent (#223) |
+| `Life.js` · `LifeGrowth.js` · `ComingUp.js` · `QuickCapture.js` | Life: Explore, Growth, Coming up and Quick capture (#222) |
+| `System.js` | The System tab's data |
 | `appsscript.json` | OAuth scopes: Sheets, Calendar, UrlFetch, Mail, Drive, Tasks, Triggers, External requests |
 | `docs/app.js` | **The dashboard source — edit this.** React app in `React.createElement` form (no JSX) |
 | `docs/index.html` | Self-contained page GitHub Pages serves: CSS + inlined React bundle + a copy of `app.js`. **Generated — do not hand-edit** |
 | `docs/build.js` | Regenerates `index.html` from `app.js`. `--check` verifies they match |
+| `docs/dashboard-lite.html` | Victoria's lite dashboard (compiled in the browser) |
+| `docs/guides/` | The user guide, cheat sheet, lite guide and System Documentation (+ PDF); `docs/guides/pdf/` holds the PDF builder |
+| `docs/trip-handoffs.md` | Copy-out / paste-back formats for the travel agents |
 | `docs/.nojekyll` | Tells GitHub Pages to serve all files, including ones starting with `_` |
 | `babel.config.json` | **Legacy, unused.** The dashboard no longer uses Babel or JSX |
 | `push.ps1` | One-command deploy: builds dashboard → pushes to Apps Script → redeploys web app → commits to GitHub |

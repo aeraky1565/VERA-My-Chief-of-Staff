@@ -17,15 +17,15 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus.flowables import KeepTogether
 
 # ── Colour palette ────────────────────────────────────────────────────────────
-VERA_PURPLE   = colors.HexColor('#6c63ff')
-VERA_DARK_BG  = colors.HexColor('#1e1e2e')
-VERA_DARK2    = colors.HexColor('#2d2d3f')
-VERA_LIGHT_BG = colors.HexColor('#f5f4ff')
-VERA_BORDER   = colors.HexColor('#e0deff')
-CODE_BG       = colors.HexColor('#1e1e2e')
+VERA_PURPLE   = colors.HexColor('#c9a84c')  # VERA gold accent (name kept)
+VERA_DARK_BG  = colors.HexColor('#0d1b3e')
+VERA_DARK2    = colors.HexColor('#1e3060')
+VERA_LIGHT_BG = colors.HexColor('#f3f6fb')
+VERA_BORDER   = colors.HexColor('#d5dbe8')
+CODE_BG       = colors.HexColor('#0d1b3e')
 CODE_FG       = colors.HexColor('#cdd6f4')
-TABLE_HEADER  = colors.HexColor('#6c63ff')
-TABLE_ALT     = colors.HexColor('#f5f4ff')
+TABLE_HEADER  = colors.HexColor('#1a1a2e')
+TABLE_ALT     = colors.HexColor('#f3f6fb')
 TEXT_DARK     = colors.HexColor('#1a1a2e')
 TEXT_MID      = colors.HexColor('#4a4a6a')
 WHITE         = colors.white
@@ -363,7 +363,7 @@ def convert(md_path, pdf_path):
 
 
 if __name__ == '__main__':
-    base = os.path.dirname(os.path.abspath(__file__))
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # docs/guides
     convert(
         os.path.join(base, 'VERA_Documentation.md'),
         os.path.join(base, 'VERA_Documentation.pdf'),

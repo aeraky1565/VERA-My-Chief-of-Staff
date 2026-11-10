@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>VERA Lite Guide</title>
+<meta name="description" content="Victoria's guide to the VERA lite dashboard.">
+<style>
+  /* VERA guide style: shared verbatim by VERA_Quick_User_Guide.html, VERA_Lite_Guide.html and VERA_Quick_Reference.html */
+  :root {
+    --bg: #080f1e; --card: #0d1b3e; --card2: #12224a; --line: #1e3060;
+    --text: #dde1f0; --mute: #8a9abf; --gold: #c9a84c; --goldT: #f0d78a;
+    --today: #c9a84c; --travel: #3d7be0; --money: #2e9d5b; --home: #e07b39;
+    --health: #d9548f; --career: #7b5cd6; --life: #1f9e9e; --system: #8a94a6;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+  a { color: var(--goldT); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; flex-direction: column; gap: 6px; padding: 28px 0 20px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  header.top .brand { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  header.top h1 { margin: 0; font-size: clamp(26px, 6vw, 38px); line-height: 1.15; text-wrap: balance; }
+  header.top p { margin: 0; color: var(--mute); max-width: 62ch; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+  nav.toc a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+    border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 600; }
+  nav.toc a .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--gold)); }
+  section.grp { margin: 0 0 36px; scroll-margin-top: 12px; }
+  section.grp > h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 22px; }
+  section.grp > h2 .chip { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--c) 22%, transparent); border: 1px solid var(--c); font-size: 16px; }
+  section.grp > p.lead { margin: 0 0 14px; color: var(--mute); max-width: 68ch; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--gold)); border-radius: 12px;
+    padding: 14px 14px 12px; min-width: 0; break-inside: avoid; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.3; }
+  .card p { margin: 0 0 8px; font-size: 14px; color: #c3c9de; }
+  .card ul, .card ol { margin: 0 0 8px; padding-left: 18px; font-size: 14px; color: #c3c9de; }
+  .card li { margin: 2px 0; }
+  .new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: #2a2410; color: var(--goldT); border: 1px solid #6b5410; vertical-align: middle; }
+  .path { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; padding: 3px 9px; border-radius: 8px;
+    background: var(--card2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--goldT); }
+  .path b { color: var(--mute); font-weight: 400; }
+  .note { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #0f1a33; border: 1px dashed var(--line); font-size: 13.5px; color: var(--mute); }
+  table.ref { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  table.ref th, table.ref td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  table.ref tr:last-child td { border-bottom: 0; }
+  code { font: 12.5px/1.4 'SFMono-Regular', Menlo, Consolas, monospace; background: #0a1430; border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; color: #cfe0ff; }
+  .tag { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 6px; vertical-align: -1px; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px; }
+  @media print {
+    :root { --bg: #fff; --card: #fff; --card2: #f4f6fb; --line: #d5dbe8; --text: #14182a; --mute: #4b5670; --goldT: #7a5a00; }
+    body { background: #fff; font-size: 11.5px; }
+    .card p, .card ul, .card ol { color: #2a3046; }
+    code { background: #f4f6fb; color: #14182a; }
+    nav.toc { display: none; }
+    .wrap { padding: 0; max-width: none; }
+    .page + .page { break-before: page; }
+    footer { display: none; }
+    .note { background: #f7f8fb; }
+    header.top { padding: 0 0 6px; margin-bottom: 8px; }
+    header.top h1 { font-size: 18px; }
+    header.top p { font-size: 10px; }
+    section.grp { margin: 0 0 10px; }
+    section.grp > h2 { font-size: 13px; margin-bottom: 4px; }
+    section.grp > h2 .chip { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+    table.ref { font-size: 9.5px; }
+    table.ref th, table.ref td { padding: 3px 6px; }
+    table.ref th { font-size: 8.5px; }
+    .tablewrap { overflow: visible; }
+    code { font-size: 9px; padding: 0 3px; }
+    .note { font-size: 9.5px; padding: 5px 8px; margin-top: 6px; }
+    footer { margin-top: 8px; padding-top: 6px; font-size: 9px; }
+    .cards { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .card { padding: 6px 8px; }
+    .card h3 { font-size: 11.5px; }
+    .card p, .card ul, .card ol { font-size: 9.5px; }
+  }
+  @page { margin: 0.45in; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <span class="brand">VERA · for Victoria</span>
+  <h1>Your VERA dashboard</h1>
+  <p>A short guide to the lite dashboard: what's on each tab and the few taps that matter. Anything you tick or add here shows up on Ahmed's dashboard too, and the other way round.</p>
+</header>
+
+<nav class="toc" aria-label="Tabs">
+  <a href="#today" style="--c:var(--today)"><span class="dot"></span>🌅 Today</a>
+  <a href="#chat" style="--c:var(--today)"><span class="dot"></span>💬 Chat</a>
+  <a href="#shopping" style="--c:var(--home)"><span class="dot"></span>🛒 Shopping</a>
+  <a href="#home" style="--c:var(--home)"><span class="dot"></span>🏡 Home</a>
+  <a href="#travel" style="--c:var(--travel)"><span class="dot"></span>✈️ Travel</a>
+  <a href="#money" style="--c:var(--money)"><span class="dot"></span>💰 Money</a>
+  <a href="#family" style="--c:var(--health)"><span class="dot"></span>👪 Family</a>
+  <a href="#projects" style="--c:var(--today)"><span class="dot"></span>🏗️ Projects</a>
+  <a href="#emails" style="--c:var(--system)"><span class="dot"></span>What VERA sends you</a>
+</nav>
+
+<section class="grp" id="today" style="--c:var(--today)">
+  <h2><span class="chip">🌅</span>Today</h2>
+  <div class="cards">
+    <div class="card"><h3>Your day</h3><p>What's coming up, shopping to get, chores, bills due and anything VERA wants both of you to know.</p></div>
+    <div class="card"><h3>Log a grocery run</h3><p>Bought groceries without the list? Tap <b>Log a grocery run</b>, snap the receipt, and choose what goes to the pantry. Anything on a shopping list gets ticked off, and the total counts toward this month's groceries.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="chat" style="--c:var(--today)">
+  <h2><span class="chip">💬</span>Chat</h2>
+  <div class="cards">
+    <div class="card"><h3>Ask VERA</h3><p>Ask a question or ask for something to be done: "What's on this weekend?", "Add milk to Costco", "When is Ahmed's next trip?", "Mark the water bill paid".</p></div>
+  </div>
+</section>
+
+<section class="grp" id="shopping" style="--c:var(--home)">
+  <h2><span class="chip">🛒</span>Shopping</h2>
+  <div class="cards">
+    <div class="card"><h3>Lists</h3><span class="path">Shopping <b>›</b> Lists</span><p>One list per store. Add items, tick them in the store, then tap <b>Done shopping</b>; add the receipt and the pantry fills itself.</p></div>
+    <div class="card"><h3>Card cheat sheet &amp; Coupons</h3><span class="path">Shopping <b>›</b> Card cheat sheet / Coupons</span><p>Which card earns the most where, and the coupons that are still good.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="home" style="--c:var(--home)">
+  <h2><span class="chip">🏡</span>Home</h2>
+  <div class="cards">
+    <div class="card"><h3>House, chores &amp; kitchen</h3><p>Household info, chores (they reset on their own), the meal plan, recipes and what's in the pantry.</p></div>
+    <div class="card"><h3>Leaving home</h3><span class="path">Home <b>›</b> House <b>›</b> Leaving home</span><p>The checklist before you go away: it changes with the season and the length of the trip. Tick items as you do them; Ahmed sees your ticks. Use <b>Heading out</b> for a weekend away that isn't a trip.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="travel" style="--c:var(--travel)">
+  <h2><span class="chip">✈️</span>Travel</h2>
+  <div class="cards">
+    <div class="card"><h3>My Trips</h3><span class="path">Travel <b>›</b> My Trips</span><p>Your trips, with each day's plan, packing and the leaving-home list. Packing items go <b>To buy → Ready → In the bag</b> with a tap.</p></div>
+    <div class="card"><h3>Your profile</h3><span class="path">Travel <b>›</b> Profiles</span><p>Passport and visa expiry, Global Entry / PreCheck, memberships and preferences (seat, room, diet). Only the last 4 digits of any number are kept. VERA warns before something runs out ahead of a trip.</p></div>
+    <div class="card"><h3>Bucket List</h3><span class="path">Travel <b>›</b> Bucket List</span><p>Places you'd love to go, things to do there and the best months to visit.</p></div>
+    <div class="card"><h3>Our bags &amp; Gifts</h3><span class="path">Travel <b>›</b> Our bags / Gifts</span><p>Your bags (so VERA can suggest which to take) and gifts to bring for people on a trip.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="money" style="--c:var(--money)">
+  <h2><span class="chip">💰</span>Money</h2>
+  <div class="cards">
+    <div class="card"><h3>At a glance</h3><p>The summary, this month's budget, bills and the joint account timeline, groceries, the phone plan, and long-term goals and net worth.</p></div>
+    <div class="card"><h3>Paperwork</h3><p>Accounts, cards, contracts, tax documents and FSA / HSA balances.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="family" style="--c:var(--health)">
+  <h2><span class="chip">👪</span>Family</h2>
+  <div class="cards">
+    <div class="card"><h3>Family Planning</h3><span class="path">Family <b>›</b> Family Planning</span><p>The shared plan: leave, money, health, childcare and paperwork. The <b>Cycle</b> card is at the top: tap <b>Period started</b> or <b>Period ended</b>. It shows the cycle day, the next period and, while trying, the fertile window. Only the two of you see it.</p></div>
+    <div class="card"><h3>Prescriptions</h3><span class="path">Family <b>›</b> Prescriptions</span><p>Medications for both of you with refill dates.</p></div>
+    <div class="card"><h3>Wish Lists &amp; Address Book</h3><span class="path">Family <b>›</b> Wish Lists / Address Book</span><p>Everyone's wish lists, and addresses and birthdays.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="projects" style="--c:var(--today)">
+  <h2><span class="chip">🏗️</span>Projects</h2>
+  <div class="cards">
+    <div class="card"><h3>Shared projects</h3><p>Projects that are shared or yours, with the next step for each. Tick tasks as you finish them; adding and editing happen on Ahmed's dashboard.</p></div>
+  </div>
+</section>
+
+<section class="grp" id="emails" style="--c:var(--system)">
+  <h2><span class="chip">✉️</span>What VERA sends you</h2>
+  <div class="cards">
+    <div class="card"><h3>Travel Day email</h3><p>On each travel day of a trip you're on, when Ahmed switches you on for that trip: flights, times, where you're staying and what's next.</p></div>
+    <div class="card"><h3>If something looks wrong</h3><p>If a page shows a message instead of your dashboard, tap <b>Copy details</b> and send it to Ahmed.</p></div>
+  </div>
+</section>
+
+<footer>VERA lite guide · updated November 2026</footer>
+</div>
+</body>
+</html>
