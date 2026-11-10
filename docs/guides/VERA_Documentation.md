@@ -968,7 +968,7 @@ Career is the only place these two meet VERA, and they never meet each other. Th
 | VERA → TESS | North Star constraints, current-employer exclusion, credentials held, the VERA Inbox link | On save | Automatic: VERA's own Settings cells only | Job Agent Settings › Settings |
 | VERA → TESS | New Evidence | Monthly | Automatic | Wins bank doc, a new "YYYY-MM update" tab |
 | TESS → VERA | Matches with track, scores, salary ranges, suggested people, links | Weekdays 6:36 AM | Automatic read of the Tracker | Career › Pipeline, Market, quarterly criteria suggestions |
-| VERA → TESS | Status | When you set it | Automatic: the Tracker's Status column, nothing else | Tracker |
+| VERA → TESS | Status and Pass reason | When you set it | Automatic: the Tracker's Status and Pass reason columns, nothing else | Tracker |
 | TESS → you | Daily digest with a "Triage in VERA" link | Weekdays 6:36 AM | Email | Your inbox → Career › Pipeline |
 | PIES → VERA | PIES-BRIEF v1 | Monthly | Paste into Exchange (previewed, names and figures marked) | Evidence, readiness notes, Pipeline calibration |
 | VERA → PIES | VERA-INTENTS v1 | Quarterly | Copy from Exchange | The PIES Goals doc, "Career Intents" |
@@ -978,7 +978,7 @@ Code: `Career.js` (VERA's own Settings cells are `CAR_AGENT_OWNED_LABELS_`), `Ca
 
 **What TESS does on its run (from its instructions).** It reads the LinkedIn alert emails and the careers pages on its Companies tab, filters by your settings (levels, seniority ceiling, location and pay floors, deal-breakers, CPA-required and accounting roles), verifies each posting on the employer's site, scores it out of 100 on four parts, makes a tailored resume, cover letter and fit note from the master resume, the Wins bank and *Credentials held* only, appends Tracker rows, and emails the digest. It never applies or contacts anyone, and the only thing it writes in its sheet is new Tracker rows.
 
-**How TESS learns.** It reads the Status and *Pass reason* you set on the last 60 days of Tracker rows: Saved, Applied and Interviewing count for a kind of role, Passed (with a reason other than Other) against it, three alike before it counts. Twice a month the TESS calibration review emails proposed changes; nothing changes until you approve. **Gap:** VERA's Pipeline statuses (New, Passed, Handoff, Applied, Ignored, Not offered, Offer, Hired, Declined) don't include Saved or Interviewing, and VERA never writes Pass reason, so a role passed in VERA teaches TESS nothing until the reason is added in the Tracker.
+**How TESS learns.** It reads the Status and *Pass reason* you set on the last 60 days of Tracker rows: Saved, Applied and Interviewing count for a kind of role, Passed (with a reason other than Other) against it, three alike before it counts. Twice a month the TESS calibration review emails proposed changes; nothing changes until you approve. VERA's Pipeline uses the same words (Saved, Applied, Interviewing, Passed and the rest; an old "Handoff" reads as Saved) and asks for one of TESS's reasons when you pass, so triaging in VERA teaches TESS directly.
 
 **Health.** TESS: a Medium flag when the Tracker has had no new row for `career_agent_stale_weekdays` (default 2) weekdays. PIES has no automatic check: the monthly brief is a reminder, not a feed.
 

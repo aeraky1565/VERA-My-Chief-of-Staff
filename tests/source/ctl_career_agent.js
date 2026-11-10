@@ -18,7 +18,10 @@ const TEST = 'test_career_agent.js';
 
 const CONTROLS = [
   // ---- the Tracker: Status cell only ----------------------------------------------
-  ['the status writer rewrites the whole row', b => ({ [C]: swap(b[C], '    sheet.getRange(hit.row, statusCol).setValue(status);', '    sheet.getRange(hit.row, 1, 1, grid[0].length).setValues([grid[0].map(function() { return status; })]);') })],
+  ['the status writer rewrites the whole row', b => ({ [C]: swap(b[C], '    sheet.getRange(hit.row, labels.indexOf(\'status\') + 1).setValue(status);', '    sheet.getRange(hit.row, 1, 1, grid[0].length).setValues([grid[0].map(function() { return status; })]);') })],
+  ['Passed goes through without a reason', b => ({ [C]: swap(b[C], "  if (status === 'Passed' && !reason) return", "  if (false) return") })],
+  ['the Pass reason is never written', b => ({ [C]: swap(b[C], '    if (reasonCol) sheet.getRange(hit.row, reasonCol).setValue(reason);', '') })],
+  ['an old Handoff stays Handoff', b => ({ [C]: swap(b[C], "  return /^handoff$/i.test(s) ? 'Saved' : s;", '  return s;') })],
   ['an ambiguous Company + Title takes the first row', b => ({ [C]: swap(b[C], '  if (byName.length === 1) return { row: byName[0] };', '  if (byName.length >= 1) return { row: byName[0] };') })],
   ['any status is accepted', b => ({ [C]: swap(b[C], "  if (CAR_TRACKER_STATUSES_.indexOf(status) === -1) return { ok: false, error: 'Unknown status: ' + status };\n", '') })],
   ['old 1–10 scores are not converted', b => ({ [C]: swap(b[C], '  if (n <= 10) return', '  if (n < 0) return') })],

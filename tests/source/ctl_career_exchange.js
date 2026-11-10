@@ -47,7 +47,7 @@ const CONTROLS = [
   ['figures go unmarked', b => ({ [C]: swap(b[C], ".forEach(function(m) { add('figure', m); });", '.forEach(function(m) {});') })],
   ['ordinary acronyms are marked', b => ({ [C]: swap(b[C], "if (CAR_PLAIN_ACRONYMS_.indexOf(m.replace(/-/g, '')) === -1) add('initiative', m);", "add('initiative', m);") })],
   ['the Pipeline shows a pasted role twice', b => ({ [C]: swap(b[C], 'if (!x.jobLink || links.indexOf(x.jobLink) === -1) rows.push(x);', 'rows.push(x);') })],
-  ['an Exchange role’s status goes to the Tracker', b => ({ [C]: swap(b[C], "  if (body.source === 'exchange') return carSetRoleMatchStatus_(body, status);\n", '') })],
+  ['an Exchange role’s status goes to the Tracker', b => ({ [C]: swap(b[C], "  if (body.source === 'exchange') return carSetRoleMatchStatus_(body, status, reason);\n", '') })],
   // ---- Exchange: outbound and overdue ---------------------------------------------
   ['copying intents isn’t remembered', b => ({ [C]: swap(b[C], "    carStateSet_('intents_exported', { quarter: quarter, at: now.toISOString() });\n", '') })],
   ['the package leaks into MATCHER-CONTEXT', b => ({ [C]: swap(b[C], 'staticProfile: (g.brand || {}).staticProfile, today: now', 'staticProfile: (g.brand || {}).staticProfile + JSON.stringify(g.package), today: now') })],

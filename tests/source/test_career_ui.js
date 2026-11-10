@@ -214,7 +214,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
   // ---- Pipeline (phase 2) ------------------------------------------------------
   const PIPE = {
-    ok: true, configured: true, statuses: ['New', 'Passed', 'Handoff', 'Applied', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'],
+    ok: true, configured: true, statuses: ['New', 'Saved', 'Applied', 'Interviewing', 'Offer', 'Hired', 'Declined', 'Not offered', 'Passed', 'Ignored'],
+    passReasons: ['Too senior', 'Too junior', 'Wrong function', 'Location', 'Pay', 'Industry', 'Company', 'Skills gap', 'Other'],
     health: { lastFound: '2026-10-20', weekdays: 3, stale: true },
     pattern: { fpa: { count: 2, avgScore: 78, handedOff: 1, applied: 0, offers: 0, hired: 0 }, pmo: { count: 1, avgScore: 88, handedOff: 0, applied: 0, offers: 0, hired: 0 } },
     package: { base: 160000 },
@@ -224,8 +225,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
         market: { lo: 150000, hi: 200000, mid: 175000, pctMid: 9, pctTop: 25, estTotalMid: 210000, vsTotal: 12000, firstYearVsTotal: -20000, verdict: 'lateral', clearsFloor: true } },
       { row: 3, status: 'New', company: 'Madeup LLC', title: 'Associate Director, PMO', track: 'pmo', scoreText: '88/100', tier: '1', dateFound: '2026-10-20', jobLink: 'https://jobs.example/b', source: 'agent' },
       { row: 'X:CM-1', id: 'CM-1', source: 'exchange', status: 'New', company: 'Elsewhere Co', title: 'Associate Director, Transformation', track: 'pmo', scoreText: '81/100', dateFound: '2026-10-21', jobLink: 'https://jobs.example/x', suggestedPerson: 'Talent partner' },
-      { row: 4, status: 'Handoff', company: 'Other Co', title: 'Senior Manager, FP&A', track: 'fpa', scoreText: '8/10 (old scale)', tier: '1', dateFound: '2026-10-19', jobLink: 'https://jobs.example/c' },
-      { row: 5, status: 'Passed', company: 'Closed Co', title: 'Director, Finance', track: 'fpa', scoreText: '70/100', dateFound: '2026-10-18', jobLink: 'https://jobs.example/d' },
+      { row: 4, status: 'Saved', company: 'Other Co', title: 'Senior Manager, FP&A', track: 'fpa', scoreText: '8/10 (old scale)', tier: '1', dateFound: '2026-10-19', jobLink: 'https://jobs.example/c' },
+      { row: 5, status: 'Passed', passReason: 'Location', company: 'Closed Co', title: 'Director, Finance', track: 'fpa', scoreText: '70/100', dateFound: '2026-10-18', jobLink: 'https://jobs.example/d' },
     ],
   };
   for (const width of [390, 1280]) {
@@ -249,20 +250,31 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     check('PIES calibration lines show, sanitized', t.includes('Internal calibration · PIES, 2026-10') && t.includes('key gap: P&L ownership'));
     check('an old 1–10 score says so', t.includes('8/10 (old scale)'));
     check('closed matches are folded away', t.includes('Show closed · 1') && !t.includes('Closed Co'));
+    await clickText(page, 'button', 'Show closed · 1');
+    await wait(80);
+    check('a passed match shows why', (await text(page)).includes('Passed · Location'));
     await page.evaluate(() => {
       const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Madeup LLC'));
-      Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Handoff').click();
+      Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Save').click();
     });
     await wait(150);
     let p = await posts(page);
-    check('Handoff posts that match\u2019s status, keyed by its posting link', p.some(x => x.action === 'career_set_status' && x.status === 'Handoff' && x.jobLink === 'https://jobs.example/b' && x.company === 'Madeup LLC'), JSON.stringify(p));
+    check('Save posts that match\u2019s status as Saved, keyed by its posting link', p.some(x => x.action === 'career_set_status' && x.status === 'Saved' && x.jobLink === 'https://jobs.example/b' && x.company === 'Madeup LLC'), JSON.stringify(p));
     await page.evaluate(() => {
       const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Elsewhere Co'));
       Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Pass').click();
     });
+    await wait(120);
+    t = await text(page);
+    p = await posts(page);
+    check('Pass asks why, with the agent\u2019s reasons, before posting anything', t.includes('Why pass?') && t.includes('Skills gap') && !p.some(x => x.status === 'Passed'));
+    await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Elsewhere Co'));
+      Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Location').click();
+    });
     await wait(150);
     p = await posts(page);
-    check('an Exchange role’s status posts with its source and id', p.some(x => x.action === 'career_set_status' && x.status === 'Passed' && x.source === 'exchange' && x.id === 'CM-1'), JSON.stringify(p.slice(-1)));
+    check('an Exchange role’s status posts with its source, id and the reason', p.some(x => x.action === 'career_set_status' && x.status === 'Passed' && x.passReason === 'Location' && x.source === 'exchange' && x.id === 'CM-1'), JSON.stringify(p.slice(-1)));
     await page.evaluate(() => {
       const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Invented Corp'));
       Array.from(row.querySelectorAll('button')).find(b => b.textContent === '+ Network').click();

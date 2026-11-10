@@ -902,13 +902,31 @@ function carNightly_() {
 //   1. writes the North Star–owned Settings cells (CAR_AGENT_OWNED_LABELS_)
 //   2. fills the VERA Inbox link setting
 //   3. appends a dated tab to the Wins bank doc
-//   4. writes the Tracker's Status column, and nothing else in the Tracker
+//   4. writes the Tracker's Status and Pass reason columns, and nothing else in the Tracker
 //   5. reads the Tracker
 // Both ids live in Config (career_alert_sheet_id, career_wins_bank_doc_id),
 // never in the repo. Every read and write goes by header label, never position.
 // =============================================================================
 
-var CAR_TRACKER_STATUSES_ = ['New', 'Passed', 'Handoff', 'Applied', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'];
+// The job agent learns from Saved, Applied and Interviewing (for) and Passed with a Pass reason
+// (against), so VERA uses its words. "Handoff" was VERA's old word for Saved: rows that still
+// hold it read as Saved.
+var CAR_TRACKER_STATUSES_ = ['New', 'Saved', 'Applied', 'Interviewing', 'Offer', 'Hired', 'Declined', 'Not offered', 'Passed', 'Ignored'];
+/** The job agent's Pass reasons, as its instructions list them. */
+var CAR_PASS_REASONS_ = ['Too senior', 'Too junior', 'Wrong function', 'Location', 'Pay', 'Industry', 'Company', 'Skills gap', 'Other'];
+
+/** Pure: a stored status in today's words ("Handoff" → "Saved"); blank is New. */
+function carStatusWord_(s) {
+  s = String(s || '').trim();
+  if (!s) return 'New';
+  return /^handoff$/i.test(s) ? 'Saved' : s;
+}
+
+/** Pure: one of the Pass reasons, matched ignoring case, or ''. */
+function carPassReason_(s) {
+  var k = carLabel_(s);
+  return CAR_PASS_REASONS_.filter(function(r) { return carLabel_(r) === k; })[0] || '';
+}
 var CAR_TRACKER_REQUIRED_ = ['Date found', 'Company', 'Title', 'Job link', 'Status'];
 var CAR_AGENT_HEALTH_SOURCE_ = 'sheet:JobAgent';
 var CAR_AGENT_STALE_KEY_  = 'career-agent-stale';
@@ -975,7 +993,8 @@ function carTrackerParse_(grid, tz) {
       company: String(get(row, 'Company') || '').trim(), title: String(get(row, 'Title') || '').trim(),
       tier: String(get(row, 'Tier') || '').trim(), score: score.total, scoreText: score.text, oldScale: score.oldScale,
       jobLink: String(get(row, 'Job link') || '').trim(), materials: String(get(row, 'Materials folder') || '').trim(),
-      status: String(get(row, 'Status') || '').trim() || 'New', notes: String(get(row, 'Notes') || '').trim(),
+      status: carStatusWord_(get(row, 'Status')), passReason: String(get(row, 'Pass reason') || '').trim(),
+      notes: String(get(row, 'Notes') || '').trim(),
       salaryRange: String(get(row, 'Salary range') || '').trim(),
       suggestedPerson: String(get(row, 'Suggested person') || '').trim(),
       breakdown: String(get(row, 'Score breakdown') || '').trim(),
@@ -1015,8 +1034,8 @@ function carPatternRead_(rows) {
     p.count++;
     if (r.score !== null && r.score !== undefined) { p.scored++; p.scoreSum += r.score; }
     p.byStatus[r.status] = (p.byStatus[r.status] || 0) + 1;
-    if (['Handoff', 'Applied', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'].indexOf(r.status) !== -1) p.handedOff++;
-    if (['Applied', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'].indexOf(r.status) !== -1) p.applied++;
+    if (['Saved', 'Applied', 'Interviewing', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'].indexOf(r.status) !== -1) p.handedOff++;
+    if (['Applied', 'Interviewing', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'].indexOf(r.status) !== -1) p.applied++;
     if (['Offer', 'Hired', 'Declined'].indexOf(r.status) !== -1) p.offers++;
     if (r.status === 'Hired') p.hired++;
   });
@@ -1072,7 +1091,7 @@ function webGetCareerPipeline_() {
   var floor = { base: (carStateGet_('agent_constraints') || { values: {} }).values.baseFloor };
   var calibration = carStateGet_('pies_calibration');
   if (!sheetId && !extra.length) return { ok: true, configured: false, calibration: calibration, package: pkg };
-  var rows = [], out = { ok: true, configured: !!sheetId, statuses: CAR_TRACKER_STATUSES_ };
+  var rows = [], out = { ok: true, configured: !!sheetId, statuses: CAR_TRACKER_STATUSES_, passReasons: CAR_PASS_REASONS_ };
   if (sheetId) {
     var res = carReadTracker_(sheetId);
     if (res.status !== 'ok') out.error = 'Couldn’t read the job agent’s Tracker: ' + res.reason;
@@ -1096,19 +1115,24 @@ function webGetCareerPipeline_() {
 }
 
 /**
- * Write one match's status to the Tracker's Status cell — the only cell VERA
- * writes there. Hired also advances the ladder on the match's track and re-syncs
- * the agent's Settings (the new employer joins the exclusions).
+ * Write one match's status to the Tracker's Status cell, and its Pass reason to the
+ * Pass reason cell: the only two cells VERA writes there. Passed needs one of the
+ * agent's reasons; any other status clears the reason. A Tracker with no Pass reason
+ * column gets the status alone, and the answer says so. Hired also advances the
+ * ladder on the match's track and re-syncs the agent's Settings (the new employer
+ * joins the exclusions).
  */
 function webCareerSetStatus_(body) {
-  var status = String(body.status || '');
+  var status = carStatusWord_(body.status);
   if (CAR_TRACKER_STATUSES_.indexOf(status) === -1) return { ok: false, error: 'Unknown status: ' + status };
-  if (body.source === 'exchange') return carSetRoleMatchStatus_(body, status);
+  var reason = status === 'Passed' ? carPassReason_(body.passReason) : '';
+  if (status === 'Passed' && !reason) return { ok: false, error: 'Pick why you passed: ' + CAR_PASS_REASONS_.join(', ') + '.' };
+  if (body.source === 'exchange') return carSetRoleMatchStatus_(body, status, reason);
   var sheetId = carAgentSheetId_();
   if (!sheetId) return { ok: false, error: 'Add a career_alert_sheet_id row to Config first.' };
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return { ok: false, error: 'Another update is running — try again.' };
-  var hit;
+  var hit, reasonCol = 0;
   try {
     var sheet = carOpenAgentTab_(sheetId, 'Tracker');
     var grid = sheet.getDataRange().getValues();
@@ -1117,14 +1141,18 @@ function webCareerSetStatus_(body) {
     var found = carFindTrackerRow_(parsed.rows, body);
     if (found.error) return { ok: false, error: found.error };
     hit = found.row;
-    var statusCol = grid[0].map(carLabel_).indexOf('status') + 1;
-    sheet.getRange(hit.row, statusCol).setValue(status);
+    var labels = grid[0].map(carLabel_);
+    sheet.getRange(hit.row, labels.indexOf('status') + 1).setValue(status);
+    reasonCol = labels.indexOf(carLabel_('Pass reason')) + 1;
+    if (reasonCol) sheet.getRange(hit.row, reasonCol).setValue(reason);
   } finally {
     lock.releaseLock();
   }
   var advanced = false;
   if (status === 'Hired') advanced = carHire_(hit);
-  return { ok: true, row: hit.row, advanced: advanced };
+  var out = { ok: true, row: hit.row, advanced: advanced };
+  if (reason && !reasonCol) out.note = 'The Tracker has no Pass reason column, so only the status was saved.';
+  return out;
 }
 
 /** Hired: the match's track's next step becomes current, at that company, as an external hire. */
@@ -1527,7 +1555,7 @@ function webCareerResolveSuggestion_(body) {
 var CAR_CONTACT_HEADERS_ = ['ID', 'Name', 'Title', 'Org', 'Role', 'Tracks', 'Can Do', 'Warmth', 'Last Touch', 'Next Intent', 'Notes', 'Source', 'Added'];
 var CAR_EXCHANGE_LOG_HEADERS_ = ['ID', 'Date', 'Direction', 'Payload', 'Version', 'Period', 'Summary'];
 var CAR_ROLE_MATCH_HEADERS_ = ['ID', 'Date found', 'Company', 'Title', 'Level', 'Track', 'Score', 'Score breakdown',
-  'Salary range', 'Suggested person', 'Job link', 'Status', 'Calibration note', 'Added'];
+  'Salary range', 'Suggested person', 'Job link', 'Status', 'Calibration note', 'Added', 'Pass Reason'];
 var CAR_CONTACT_ROLES_ = ['sponsor', 'mentor', 'peer', 'recruiter', 'hiring-manager'];
 var CAR_WARMTH_ = ['cold', 'warm', 'strong'];
 // v1 Relationship → network role.
@@ -2020,18 +2048,18 @@ function carReadRoleMatches_() {
     return { row: 'X:' + r.ID, id: String(r.ID), source: 'exchange', dateFound: carDateText_(r['Date found']),
              company: String(r.Company || ''), title: String(r.Title || ''), tier: '', score: score.total,
              scoreText: score.text, oldScale: score.oldScale, jobLink: String(r['Job link'] || ''), materials: '',
-             status: String(r.Status || 'New'), notes: String(r['Calibration note'] || ''),
+             status: carStatusWord_(r.Status), passReason: String(r['Pass Reason'] || ''), notes: String(r['Calibration note'] || ''),
              salaryRange: String(r['Salary range'] || ''), suggestedPerson: String(r['Suggested person'] || ''),
              breakdown: String(r['Score breakdown'] || ''), track: carTrackOf_(r.Track) };
   });
 }
 
 /** Status for an Exchange role: written in VERA's own tab. */
-function carSetRoleMatchStatus_(body, status) {
+function carSetRoleMatchStatus_(body, status, reason) {
   var sheet = carSheet_(TABS.CAREER_ROLE_MATCHES, CAR_ROLE_MATCH_HEADERS_);
   var row = carFindRow_(sheet, body.id);
   if (!row) return { ok: false, error: 'That role is no longer in the Pipeline.' };
-  carUpsert_(sheet, { ID: body.id, Status: status }, 'CM');
+  carUpsert_(sheet, { ID: body.id, Status: status, 'Pass Reason': reason || '' }, 'CM');
   var advanced = false;
   if (status === 'Hired') advanced = carHire_({ track: carTrackOf_(row.Track), company: row.Company, title: row.Title });
   return { ok: true, row: 'X:' + body.id, advanced: advanced };

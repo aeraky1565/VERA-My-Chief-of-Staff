@@ -46,7 +46,7 @@ const FX = {
   },
 };
 const PIPE = {
-  ok: true, configured: true, statuses: ['New', 'Passed', 'Handoff'],
+  ok: true, configured: true, statuses: ['New', 'Saved', 'Passed'],
   benchmarks: [{ track: 'fpa', level: 'Associate Director', count: 3, lo: 160000, hi: 210000, mid: 185000 }],
   rows: [{ row: 2, title: 'Associate Director, FP&A', company: 'Invented Corp', salaryRange: '$160K–$220K', track: 'fpa',
            market: { lo: 160000, hi: 220000, mid: 190000, pctMid: 27, pctTop: 47, estTotalMid: 229000, vsTotal: 24000, firstYearVsTotal: -21000, verdict: 'step-up', clearsFloor: true } }],
@@ -227,7 +227,7 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
     await wait(80);
     t = await text(page);
     check('How it connects shows the three systems and every payload crossing', ['PIES', 'VERA', 'Job agent'].every(s => t.includes(s)) &&
-          ['PIES-BRIEF v1', 'VERA-INTENTS v1', 'MATCHER-CONTEXT v1', 'ROLE-MATCH v1'].every(s => t.includes(s)) && t.includes('Tracker → Status column, nothing else'));
+          ['PIES-BRIEF v1', 'VERA-INTENTS v1', 'MATCHER-CONTEXT v1', 'ROLE-MATCH v1'].every(s => t.includes(s)) && t.includes('Tracker → Status and Pass reason columns, nothing else'));
     check('…with the rules and where each file lives', t.includes('Links into VERA never carry a token.') && t.includes('Job Agent Settings sheet'));
     check('How it connects: no sideways scroll (wide tables scroll inside their card)', await noScroll(page));
     await clickText(page, 'button', 'Back to Career');

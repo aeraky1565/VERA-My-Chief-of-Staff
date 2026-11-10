@@ -1,5 +1,5 @@
 // Career tab v2, phase 2 (issue #216): the job agent link. VERA reads the agent's
-// Tracker, writes only its Status cell, keeps the agent's Settings in step with
+// Tracker, writes only its Status and Pass reason cells, keeps the agent's Settings in step with
 // North Star (VERA-owned cells only, never a new row), appends a dated Wins bank
 // tab without touching earlier ones, flags an agent that has gone quiet, and once
 // a quarter suggests criteria from the matches. Invented companies and figures.
@@ -93,22 +93,50 @@ console.log('\nagent health and the pattern read');
   const p = run(S, 'carPatternRead_(carReadTracker_("AGENT").rows)');
   check('the pattern read is split by track, with an average score', p.pmo.count === 1 && p.pmo.avgScore === 88 && p.fpa.count === 2 && p.fpa.avgScore === 73 && p.unassigned.avgScore === 80, JSON.stringify(p));
   check('…and the funnel counts a Handoff', p.pmo.handedOff === 1 && p.pmo.applied === 0);
+  check('an old Handoff in the Tracker reads as Saved', run(S, 'carReadTracker_("AGENT")').rows[1].status === 'Saved');
 }
 
 console.log('\nwriting a status');
 {
   const S = agentSandbox();
-  const r = run(S, 'webCareerSetStatus_({ jobLink: "https://jobs.example/a", company: "x", title: "y", status: "Passed" })');
+  const r = run(S, 'webCareerSetStatus_({ jobLink: "https://jobs.example/a", company: "x", title: "y", status: "Passed", passReason: "Location" })');
   check('a status is written by Job link', r.ok && r.row === 2);
+  check('…and with no Pass reason column, it says only the status was saved', /no Pass reason column/.test(r.note || ''), r.note);
   check('…into the Status cell only — one write, nothing appended or deleted', JSON.stringify(S.A.writes) === JSON.stringify([['Tracker', 2, 1, 'Passed']]), JSON.stringify(S.A.writes));
   S.A.writes.length = 0;
   check('without a link it falls back to Company + Title', run(S, 'webCareerSetStatus_({ company: "madeup llc", title: "Associate Director, PMO", status: "Applied" })').row === 3);
-  check('two rows with the same Company + Title is refused, not guessed', /More than one/.test(run(S, 'webCareerSetStatus_({ company: "Same Co", title: "Director, Finance", status: "Passed" })').error));
-  check('a match no longer in the Tracker is refused', /no longer/.test(run(S, 'webCareerSetStatus_({ company: "Gone", title: "Gone", status: "Passed" })').error));
-  check('an unknown status is refused before anything opens', run(S, 'webCareerSetStatus_({ jobLink: "https://jobs.example/a", status: "Interviewing" })').ok === false);
+  check('two rows with the same Company + Title is refused, not guessed', /More than one/.test(run(S, 'webCareerSetStatus_({ company: "Same Co", title: "Director, Finance", status: "Passed", passReason: "Pay" })').error));
+  check('a match no longer in the Tracker is refused', /no longer/.test(run(S, 'webCareerSetStatus_({ company: "Gone", title: "Gone", status: "Passed", passReason: "Pay" })').error));
+  check('an unknown status is refused before anything opens', run(S, 'webCareerSetStatus_({ jobLink: "https://jobs.example/a", status: "Maybe" })').ok === false);
   check('only one write happened across all of that', S.A.writes.length === 1, JSON.stringify(S.A.writes));
   const N = sandbox();
-  check('without the Config row it says what to add', /career_alert_sheet_id/.test(run(N, 'webCareerSetStatus_({ status: "Passed" })').error));
+  check('without the Config row it says what to add', /career_alert_sheet_id/.test(run(N, 'webCareerSetStatus_({ status: "Applied" })').error));
+}
+
+console.log('\nthe job agent\u2019s words: Saved, Interviewing and a Pass reason');
+{
+  // The same Tracker with the agent's Pass reason column (column 14).
+  const withReason = () => tracker().map((row, i) => row.concat(i === 0 ? ['Pass reason'] : ['']));
+  const S = agentSandbox({});
+  const A = agentSheet(withReason(), SETTINGS());
+  S.SpreadsheetApp.openById = () => A.ss;
+  const set = b => run(S, 'webCareerSetStatus_(' + JSON.stringify(b) + ')');
+  check('the statuses are the agent\u2019s: Saved and Interviewing, no Handoff',
+        ['Saved', 'Interviewing', 'Applied', 'Passed'].every(x => run(S, 'CAR_TRACKER_STATUSES_').includes(x)) && !run(S, 'CAR_TRACKER_STATUSES_').includes('Handoff'));
+  const no = set({ jobLink: 'https://jobs.example/a', status: 'Passed' });
+  check('Passed without a reason is refused, and nothing is written', no.ok === false && /Pick why you passed/.test(no.error) && A.writes.length === 0, JSON.stringify(A.writes));
+  check('a reason the agent doesn\u2019t know is refused too', set({ jobLink: 'https://jobs.example/a', status: 'Passed', passReason: 'Vibes' }).ok === false);
+  const ok = set({ jobLink: 'https://jobs.example/a', status: 'Passed', passReason: 'too SENIOR' });
+  check('Passed with a reason writes the Status and Pass reason cells, in the agent\u2019s spelling',
+        ok.ok && !ok.note && JSON.stringify(A.writes) === JSON.stringify([['Tracker', 2, 1, 'Passed'], ['Tracker', 2, 14, 'Too senior']]), JSON.stringify(A.writes));
+  A.writes.length = 0;
+  set({ jobLink: 'https://jobs.example/a', status: 'Interviewing' });
+  check('another status clears the reason', JSON.stringify(A.writes) === JSON.stringify([['Tracker', 2, 1, 'Interviewing'], ['Tracker', 2, 14, '']]), JSON.stringify(A.writes));
+  A.writes.length = 0;
+  set({ jobLink: 'https://jobs.example/a', status: 'Handoff' });
+  check('an old client\u2019s Handoff is stored as Saved', A.writes[0][3] === 'Saved', JSON.stringify(A.writes));
+  check('the Pipeline sends the reasons and each row\u2019s Pass reason', JSON.stringify(run(S, 'webGetCareerPipeline_()').passReasons) === JSON.stringify(run(S, 'CAR_PASS_REASONS_')));
+  check('Interviewing counts as applied in the funnel', run(S, 'carPatternRead_([{ track: "fpa", status: "Interviewing" }])').fpa.applied === 1);
 }
 
 // ============ the Settings sync ===============================================
