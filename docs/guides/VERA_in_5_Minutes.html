@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VERA in 5 Minutes</title>
+<style>
+  :root {
+    --bg: #080f1e; --card: #0f1d40; --line: #22356a; --text: #eef1fa; --mute: #a3b0d0;
+    --gold: #e0bd5a; --goldbg: #2a2410; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    --blue: #7fb0ff; --pink: #f29ac0; --green: #6fd39a; --orange: #f2a46b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 18px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 18px; }
+  .hero { padding: 18px 4px 6px; }
+  .hero .brand { color: var(--gold); font-weight: 800; letter-spacing: .14em; font-size: 13px; text-transform: uppercase; }
+  .hero h1 { font-size: 34px; line-height: 1.1; margin: 6px 0 10px; }
+  .hero p { margin: 0; color: var(--mute); font-size: 19px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px 18px; }
+  .card h2 { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; font-size: 23px; line-height: 1.2; }
+  .num { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--gold); color: #14120a;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; }
+  .card p { margin: 0 0 10px; }
+  .big { font-size: 21px; font-weight: 700; }
+  .mute { color: var(--mute); }
+  /* timeline */
+  .time { display: grid; grid-template-columns: 92px 1fr; gap: 10px 14px; align-items: start; }
+  .time b { color: var(--gold); font-size: 17px; }
+  .time span { color: var(--text); }
+  /* calendar rules */
+  .rule { border-top: 1px solid var(--line); padding: 14px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+  .rule:first-of-type { border-top: 0; padding-top: 2px; }
+  .rule .what { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; }
+  .rule .what i { font-style: normal; font-size: 24px; }
+  .ex { display: inline-block; align-self: flex-start; background: #fff; color: #1a1f33; border-radius: 10px;
+    padding: 7px 12px; font-weight: 700; font-size: 17px; border-left: 6px solid var(--c, var(--blue)); }
+  .how { color: var(--mute); font-size: 16.5px; }
+  .how b { color: var(--text); }
+  /* flags */
+  .btns { display: flex; flex-direction: column; gap: 10px; }
+  .btn { display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border-radius: 12px; background: #0a1430; border: 1px solid var(--line); }
+  .btn b { min-width: 112px; font-size: 18px; }
+  .levels { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+  .lvl { padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; }
+  .say { background: #0a1430; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 10px 14px; margin: 0 0 8px; font-size: 17.5px; }
+  .tip { background: var(--goldbg); border: 1px solid #6b5410; color: #f3dfa2; border-radius: 12px; padding: 12px 14px; font-size: 16.5px; }
+  .more { grid-column: 1 / -1; color: var(--mute); font-size: 15px; padding: 8px 2px 0; }
+  .more a { color: var(--gold); }
+  @media print {
+    .more { display: none; }
+    :root { --bg: #fff; --card: #fff; --line: #d6dbe7; --text: #151a2c; --mute: #4c5672; --gold: #9a7a12; --goldbg: #fbf5e2; }
+    body { font-size: 9.6px; line-height: 1.35; }
+    .wrap { max-width: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .hero { grid-column: 1 / -1; padding: 0 0 2px; } .hero h1 { font-size: 19px; margin: 1px 0 2px; } .hero p { font-size: 10px; }
+    .card { padding: 7px 9px; border-radius: 8px; break-inside: avoid; }
+    .card.wide { grid-column: 1 / -1; }
+    .card h2 { font-size: 12.5px; margin-bottom: 4px; gap: 6px; } .num { width: 18px; height: 18px; font-size: 10px; }
+    .big { font-size: 10.5px; } .time { grid-template-columns: 58px 1fr; gap: 2px 6px; } .time b { font-size: 9.6px; }
+    .rule { padding: 4px 0 2px; gap: 2px; } .rule .what { font-size: 10.5px; gap: 5px; } .rule .what i { font-size: 12px; }
+    .ex { font-size: 9.6px; padding: 2px 6px; border-left-width: 3px; border: 1px solid #d6dbe7; border-left: 3px solid var(--c); }
+    .how { font-size: 9.2px; } .btn { padding: 3px 6px; gap: 6px; } .btn b { min-width: 60px; font-size: 9.6px; }
+    .btns { gap: 3px; } .say { padding: 3px 7px; margin-bottom: 3px; font-size: 9.4px; } .tip { padding: 5px 7px; font-size: 9.2px; }
+    .lvl { font-size: 8.6px; padding: 1px 7px; } .levels { margin: 0 0 4px; gap: 4px; }
+    .card.wide { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+    .card.wide h2, .card.wide > p { grid-column: 1 / -1; }
+    .card.wide .rule:nth-of-type(2) { border-top: 0; padding-top: 2px; }
+    body { font-size: 9px; } .card p { margin: 0 0 4px; } .how { font-size: 8.7px; line-height: 1.3; }
+    .btn, .say { background: #f4f6fb; color: var(--text); border-color: #d6dbe7; }
+    .tip { background: #fbf5e2; color: #4a3a08; border-color: #d9c27a; }
+    .lvl { border: 1px solid #d6dbe7; }
+    .lvl:nth-child(1) { background: #fde8e8 !important; color: #8a1c1c !important; }
+    .lvl:nth-child(2) { background: #fdf2d6 !important; color: #7a5a00 !important; }
+    .lvl:nth-child(3) { background: #eef1f7 !important; color: #3a4560 !important; }
+    @page { size: letter; margin: 0.3in; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="brand">VERA · Quick start</div>
+    <h1>VERA in 5 minutes</h1>
+    <p>VERA reads your calendar every night and tells you what needs you. You don't need the dashboard. Just write calendar events the way VERA understands, read the morning email, and ask when you need something.</p>
+  </header>
+
+  <section class="card">
+    <h2><span class="num">1</span>When VERA does things</h2>
+    <div class="time">
+      <b>11 PM</b><span>Reads your calendars, tasks, bills and trips. Decides what matters.</span>
+      <b>7 AM</b><span>Sends the <b>morning email</b>. No email means nothing needs you. 🎉</span>
+      <b>All day</b><span>Reminders and flight alerts in Slack, only when they matter.</span>
+      <b>Wednesday</b><span>Weekend ideas, once the weekend weather is known.</span>
+      <b>The 1st</b><span>A short monthly review email.</span>
+      <b>Trips</b><span>An email 2 days before, the night before, on each travel day, and when you're home.</span>
+    </div>
+  </section>
+
+  <section class="card wide">
+    <h2><span class="num">2</span>Write your calendar so VERA understands</h2>
+    <p class="mute">VERA reads the <b>words in the title</b>. Use these and it does the rest.</p>
+
+    <div class="rule"><div class="what"><i>✈️</i>A trip</div>
+      <span class="ex" style="--c:#3d7be0">Trip: Chicago for Christmas</span>
+      <div class="how">An <b>all-day</b> event, <b>2 days or longer</b>, with <b>Trip, Vacation, Cruise, Getaway, Visit, Tour, Travel</b> or <b>Holiday</b> in the title. Put it on your shared calendar. Moving the dates later is fine: VERA keeps everything attached.</div></div>
+
+    <div class="rule"><div class="what"><i>🌴</i>A day off from work</div>
+      <span class="ex" style="--c:#2e9d5b">Vacation</span> <span class="ex" style="--c:#2e9d5b">PTO</span>
+      <div class="how">On your <b>work calendar</b>: an all-day event called <b>Vacation</b> uses a vacation day; all-day <b>PTO</b> uses a personal day; a <b>timed</b> "PTO" uses just those hours.</div></div>
+
+    <div class="rule"><div class="what"><i>🩺</i>A doctor or dentist visit</div>
+      <span class="ex" style="--c:#d9548f">DR: Victoria - Dentist - Dr. Patel</span>
+      <div class="how">Start with <b>DR:</b>, then the <b>person</b>, the <b>type of visit</b>, and the doctor if you like. VERA remembers the last visit and reminds you when the next is due.</div></div>
+
+    <div class="rule"><div class="what"><i>🏋️</i>A workout</div>
+      <span class="ex" style="--c:#7b5cd6">Gym (notes: EXERCISE)</span>
+      <div class="how">Type <b>EXERCISE</b> in the event's <b>notes</b>. Afterwards VERA asks "did you go?" so it can track your streak.</div></div>
+
+    <div class="rule"><div class="what"><i>🎂</i>A birthday or anniversary</div>
+      <span class="ex" style="--c:#e07b39">Sarah's Birthday</span>
+      <div class="how">Put it on the <b>shared family calendar</b> with <b>Birthday</b> in the title. VERA reminds you a month ahead for a gift or card.</div></div>
+
+    <div class="rule"><div class="what"><i>💳</i>A bill</div>
+      <span class="ex" style="--c:#2e9d5b">Internet Bill</span>
+      <div class="how">Put <b>Bill, Payment, Rent</b> or <b>Subscription</b> in the title on the <b>Bills</b> calendar. VERA warns you before it's due.</div></div>
+
+    <div class="rule"><div class="what"><i>🎉</i>A wedding, party or big night out</div>
+      <span class="ex" style="--c:#c9a84c">Emma &amp; Tom's Wedding</span>
+      <div class="how">Use the plain word (<b>Wedding</b>, <b>Party</b>, <b>Concert</b>, <b>Dinner</b>, <b>Graduation</b>…). VERA tells you what to do ahead: weddings 2 months out, concerts 3 weeks, parties 2 weeks, dinners a week.</div></div>
+
+    <div class="rule"><div class="what"><i>🛏️</i>Guests staying over</div>
+      <span class="ex" style="--c:#e07b39">Guest Stay: Mom &amp; Dad</span>
+      <div class="how">Use <b>Guest Stay</b> or <b>Guest Visit</b> in the title, so VERA can help you get the house ready.</div></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span>When VERA flags something</h2>
+    <p>A <b>flag</b> is VERA saying "this needs you". Each has a level:</p>
+    <div class="levels"><span class="lvl" style="background:#3a1416;color:#ffb4b4">High: soon</span><span class="lvl" style="background:#3a2b0c;color:#ffd98a">Medium: this week</span><span class="lvl" style="background:#1d2638;color:#c6d0e4">Low: good to know</span></div>
+    <div class="btns">
+      <div class="btn"><b>✅ Resolve</b><span>Done. It goes away.</span></div>
+      <div class="btn"><b>😴 Snooze</b><span>Not now. It comes back on the day you pick.</span></div>
+      <div class="btn"><b>👀 Acknowledge</b><span>Only means "seen". It stays open.</span></div>
+    </div>
+    <p class="tip" style="margin-top:10px">Ignore a flag for 3 days and it gets more urgent. Keep ignoring a kind of flag and VERA learns to stop sending it.</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span>Ask VERA anything</h2>
+    <p>Message <b>#vera-chat</b> in Slack (or the Chat in the dashboard). Plain words, no commands:</p>
+    <div class="say">"What's on this weekend?"</div>
+    <div class="say">"Add milk to the Costco list"</div>
+    <div class="say">"Mark the water bill paid"</div>
+    <div class="say">"Remind me to call the plumber Friday"</div>
+    <div class="say">"Add a dinner on the 12th at 7:30 to our trip"</div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">5</span>Two handy extras</h2>
+    <p><b>🧾 Snap a grocery receipt.</b> Tap <b>Log a grocery run</b> and take a photo. VERA fills the pantry, ticks off the shopping list and counts the spending.</p>
+    <p><b>🚪 Leaving home?</b> Tap <b>Heading out</b> for a checklist (lights, thermostat, plants) that fits the season and how long you'll be away.</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">6</span>If something looks wrong</h2>
+    <p>Check the event title has the right word (step 2). Still odd? Look in <b>#vera-logs</b> in Slack, or tell VERA in #vera-chat what you expected.</p>
+    <p class="mute">Changes to the calendar show up after the next 11 PM run.</p>
+  </section>
+
+  <footer class="more">More detail: <a href="VERA_Quick_User_Guide.html">Full user guide</a> · <a href="VERA_Lite_Guide.html">Victoria's lite guide</a> · <a href="VERA_Quick_Reference.html">Cheat sheet</a></footer>
+
+</div>
+</body>
+</html>

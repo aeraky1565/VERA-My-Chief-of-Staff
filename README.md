@@ -105,6 +105,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 
 | Guide | For |
 |-------|-----|
+| [VERA in 5 minutes](docs/guides/VERA_in_5_Minutes.html) | Start here: when VERA acts, how to write calendar events it understands, flags, asking VERA. Phone cards that print on one page |
 | [User guide](docs/guides/VERA_Quick_User_Guide.html) | Every feature of the full dashboard: what it's for, where, how |
 | [Cheat sheet](docs/guides/VERA_Quick_Reference.html) | Two printable pages: where things are, common taps, chat examples, key settings |
 | [Victoria's lite guide](docs/guides/VERA_Lite_Guide.html) | The lite dashboard, tab by tab |
