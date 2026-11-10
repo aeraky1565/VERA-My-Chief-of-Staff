@@ -90,7 +90,7 @@
 <header class="top">
   <span class="brand">VERA · Cheat sheet</span>
   <h1>Where things are, and what to ask</h1>
-  <p>Page 1: every area of the full dashboard and the taps you'll use most. Page 2: things to ask VERA in chat or Slack, and the Config settings you're most likely to change. Prints on two pages.</p>
+  <p>Page 1: every area of the full dashboard and the taps you'll use most. Page 2: things to ask VERA in chat or Slack, and which assistant to go to for what. Prints on two pages.</p>
 </header>
 
 <div class="page">
@@ -155,24 +155,18 @@
 </section>
 
 <section class="grp" style="--c:var(--gold)">
-  <h2><span class="chip">⚙️</span>Settings you're most likely to change (VERA sheet › CONFIG)</h2>
+  <h2><span class="chip">🤖</span>Assistants at a glance</h2>
   <div class="tablewrap"><table class="ref">
-    <thead><tr><th>Section</th><th>Setting</th><th>What it does</th></tr></thead>
+    <thead><tr><th>Assistant</th><th>Go to it for</th><th>Where it shows up in VERA</th></tr></thead>
     <tbody>
-      <tr><td>General</td><td><code>morning_nudge_time</code></td><td>Hour the morning briefing goes out</td></tr>
-      <tr><td>General</td><td><code>max_flags_per_night</code></td><td>Most new flags a night</td></tr>
-      <tr><td>Notifications</td><td><code>notif_…_channel</code></td><td>Where each message goes (or use System › Notifications)</td></tr>
-      <tr><td>Calendars</td><td><code>gap_calendars</code> · <code>skip_calendars</code></td><td>Calendars checked for free time · ignored</td></tr>
-      <tr><td>Travel</td><td><code>home_airports</code> · <code>pretrip_briefing_hours</code></td><td>Where you fly from · how early the pre-trip email goes</td></tr>
-      <tr><td>Travel</td><td><code>victoria_email</code></td><td>Victoria's address for her Travel Day email</td></tr>
-      <tr><td>PTO</td><td><code>pto_vacation_days</code> · <code>pto_rollover_days</code> · <code>pto_year</code></td><td>Balances for the year (same keys with <code>victoria_</code> for Victoria)</td></tr>
-      <tr><td>Finances</td><td><code>finance_skip_categories</code></td><td>Categories left out of spending</td></tr>
-      <tr><td>Home</td><td><code>shop_grocery_stores</code></td><td>Which stores count as groceries</td></tr>
-      <tr><td>Fitness</td><td><code>fitness_weekly_target</code></td><td>Workouts a week you aim for</td></tr>
-      <tr><td>Life</td><td><code>coming_up_days</code> · <code>home_address</code></td><td>How far ahead Coming up looks · where leave-by times start</td></tr>
+      <tr><td><span class="tag" style="--c:var(--travel)"></span><b>ARIA</b></td><td>Flight prices for a trip: watching, scouting ideas, "book now"</td><td>✈️ Book now flag + Slack · Travel › Plan › ARIA · a trip's <b>Ask ARIA</b> · option <b>Scout</b></td></tr>
+      <tr><td><span class="tag" style="--c:var(--money)"></span><b>WILLA</b></td><td>Can we afford it? The trip budget, net worth, CDs</td><td>Finances › Net worth and Goals · <b>Budget from WILLA</b> on a trip idea · "Send the final total to WILLA" flag</td></tr>
+      <tr><td><span class="tag" style="--c:var(--career)"></span><b>TESS</b></td><td>Job matches from LinkedIn alerts, tailored resume and cover letter</td><td>Career › Agents › Pipeline · the daily digest's "Triage in VERA" link</td></tr>
+      <tr><td><span class="tag" style="--c:var(--career)"></span><b>PIES</b></td><td>Work tasks and wins (on the work machine)</td><td>Career › Agents › Exchange: paste the monthly brief; copy intents back each quarter</td></tr>
+      <tr><td><span class="tag" style="--c:var(--home)"></span><b>HAILEY</b></td><td>Homes for sale that fit the buy box</td><td>The roster link on Home (no data in VERA yet)</td></tr>
     </tbody>
   </table></div>
-  <p class="note">Change only column B. Grey italic "(default)" rows show what VERA uses when you leave them alone. Never move or insert columns in the data tabs: VERA reads them by position.</p>
+  <p class="note">Settings you might change now live in the System Documentation (§14). How each assistant connects is in the System Documentation (§21).</p>
 </section>
 </div>
 

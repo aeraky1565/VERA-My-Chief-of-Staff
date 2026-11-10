@@ -46,10 +46,12 @@
   .lvl { padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; }
   .say { background: #0a1430; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 10px 14px; margin: 0 0 8px; font-size: 17.5px; }
   .tip { background: var(--goldbg); border: 1px solid #6b5410; color: #f3dfa2; border-radius: 12px; padding: 12px 14px; font-size: 16.5px; }
+  .aria { margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; border: 1px solid #2c4d8f; background: #0e2350; font-size: 16.5px; }
   .more { grid-column: 1 / -1; color: var(--mute); font-size: 15px; padding: 8px 2px 0; }
   .more a { color: var(--gold); }
   @media print {
     .more { display: none; }
+    .aria { background: #eef4ff; border-color: #bcd0f5; color: var(--text); padding: 4px 7px; margin-top: 5px; font-size: 9px; }
     :root { --bg: #fff; --card: #fff; --line: #d6dbe7; --text: #151a2c; --mute: #4c5672; --gold: #9a7a12; --goldbg: #fbf5e2; }
     body { font-size: 9.6px; line-height: 1.35; }
     .wrap { max-width: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
@@ -104,7 +106,7 @@
 
     <div class="rule"><div class="what"><i>✈️</i>A trip</div>
       <span class="ex" style="--c:#3d7be0">Trip: Chicago for Christmas</span>
-      <div class="how">An <b>all-day</b> event, <b>2 days or longer</b>, with <b>Trip, Vacation, Cruise, Getaway, Visit, Tour, Travel</b> or <b>Holiday</b> in the title. Put it on your shared calendar. Moving the dates later is fine: VERA keeps everything attached.</div></div>
+      <div class="how">An <b>all-day</b> event, <b>2 days or longer</b>, with <b>Trip, Vacation, Cruise, Getaway, Visit, Tour, Travel</b> or <b>Holiday</b> in the title. Put it on your shared calendar. Moving the dates later is fine: VERA keeps everything attached. Once it's on the calendar, ARIA can watch its flights.</div></div>
 
     <div class="rule"><div class="what"><i>🌴</i>A day off from work</div>
       <span class="ex" style="--c:#2e9d5b">Vacation</span> <span class="ex" style="--c:#2e9d5b">PTO</span>
@@ -144,6 +146,7 @@
       <div class="btn"><b>😴 Snooze</b><span>Not now. It comes back on the day you pick.</span></div>
       <div class="btn"><b>👀 Acknowledge</b><span>Only means "seen". It stays open.</span></div>
     </div>
+    <p class="aria"><b>✈️ Book now</b> comes from <b>ARIA</b>, VERA's travel helper, which watches flight prices for your trips. It means the fare is good: book it yourself, then add it to the trip. ARIA watches flights only, not hotels.</p>
     <p class="tip" style="margin-top:10px">Ignore a flag for 3 days and it gets more urgent. Keep ignoring a kind of flag and VERA learns to stop sending it.</p>
   </section>
 

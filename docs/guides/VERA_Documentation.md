@@ -29,7 +29,8 @@
 18. [Places, Gifts, Life & Career](#18-places-gifts-life--career)
 19. [Family Planning & the Cycle Tracker](#19-family-planning--the-cycle-tracker)
 20. [Dashboards, Navigation & Notifications](#20-dashboards-navigation--notifications)
-21. [Appendix: Developer Reference](#21-appendix-developer-reference)
+21. [Your Assistants and How They Connect](#21-your-assistants-and-how-they-connect)
+22. [Appendix: Developer Reference](#22-appendix-developer-reference)
 
 ---
 
@@ -470,7 +471,7 @@ Always calls `markSent_(ruleKey, message)` after delivery to record the send in 
 
 ### Weekend Planner integration
 
-`hourlyCheck()` contains an additional gate: `if (day === 1 && hour === cfg['weekend_planner_hour'])`, which calls `runWeekendPlanner_()`. This fires every Monday at the configured hour (default 8am). The planner uses a 9000-minute cooldown in `Reminders Memory` (approximately 6.25 days) to prevent double-sends.
+`hourlyCheck()` contains an additional gate: `if (day === 3 && hour === cfg['weekend_planner_hour'])`, which calls `runWeekendPlanner_()`. This fires every Wednesday at the configured hour (default 8am). The planner uses a 9000-minute cooldown in `Reminders Memory` (approximately 6.25 days) to prevent double-sends.
 
 `runWeekendPlanner_()` assembles clear weekend windows (via `findClearWindows_()` filtered to windows that touch a Friday or Monday), computes the intensity signal, reads goals, the Shared Interest Ledger, and PTO stats, then calls Claude to generate a "Weekend Decision Memo" with three archetypes:
 - **THE EXTENSION**: goal-anchored activity
@@ -821,6 +822,25 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 - **Writers** (`Groceries.js`, `PTO.js`, the notification channel route in `WebApp.js`, `ComingUp.js`) all find their row by key and write column B, or append; none depend on row positions.
 - **Data tabs are different:** they are read by position (`getRange(2, 1, n, HEADERS.length)`), so columns there are never moved or inserted. Formatting (colours, banding, frozen rows, number formats on numeric cells, tab order and tab colours) is safe; issue #235 turns the sheet styling into a re-runnable script.
 
+### Settings you're most likely to change
+
+Change only column B. The full list of keys is in the appendix (§22).
+
+| Section | Setting | What it does |
+|---|---|---|
+| General | `morning_nudge_time` | Hour the morning briefing goes out |
+| General | `max_flags_per_night` | Most new flags a night |
+| Notifications | `notif_<key>_channel`, `notif_<key>_enabled` | Where each message goes, or off (System › Notifications edits them) |
+| Calendars | `gap_calendars`, `skip_calendars` | Calendars checked for free time; calendars ignored |
+| Travel | `home_airports`, `pretrip_briefing_hours` | Where you fly from; how early the pre-trip email goes |
+| Travel | `victoria_email` | Victoria's address for her Travel Day email |
+| PTO | `pto_vacation_days`, `pto_rollover_days`, `pto_year` | Balances for the year (the same keys with `victoria_` for Victoria) |
+| Finances | `finance_skip_categories` | Categories left out of spending |
+| Home | `shop_grocery_stores` | Which stores count as groceries |
+| Fitness | `fitness_weekly_target` | Workouts a week you aim for |
+| Life | `coming_up_days`, `home_address` | How far ahead Coming up looks; where leave-by times start |
+| Assistants | see §21.5 | Links to WILLA, TESS and ARIA |
+
 ---
 
 ## 15. Trip Identity, Emails & Readiness
@@ -868,7 +888,92 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 
 ---
 
-## 21. Appendix: Developer Reference
+## 21. Your Assistants and How They Connect
+
+VERA is one of six assistants. Each runs on its own and keeps its own data; this section records every place two of them touch, who writes what, and what breaks when a link is missing. The dashboard's Home roster ("Your assistants") links each one from a Config row `roster_link_<name>` (a link or a bare sheet ID, read at run time, never written in the repo).
+
+| Assistant | What it is | Where it runs | Link with VERA |
+|---|---|---|---|
+| **PIES** (Personal Intelligence & Execution System) | Work signal turned into prioritised actions; the work Done-Log | The work machine, in Claude Code | By hand only, through Career › Exchange |
+| **VERA** (Virtual Executive & Reminder Assistant) | Chief of staff | Apps Script, the VERA sheet, the two dashboards | — |
+| **WILLA** (Work-optional Income & Lifestyle Longevity Analyzer) | The work-optional retirement planner | Its own Google Sheet | VERA reads it; trip budgets go back and forth by paste |
+| **TESS** (Tailored Employment Search Scout), "the job agent" in the code | LinkedIn job alerts, scoring, tailored materials | A Claude scheduled task, weekdays 6:36 AM ET, with its Job Agent Settings sheet | Automatic, both ways, through named cells only |
+| **HAILEY** (Home Alerts, Inventory & Listings Evaluator, Yours) | Zillow search against the buy box; new listings and price drops | Outside VERA | None yet: a roster link only |
+| **ARIA** (Arrangements, Reservations & Itinerary Assistant) | Travel agent: watches and scouts fares, says when to book | A Claude scheduled task, daily at 06:52 ET, with the ARIA Travel Tracker sheet | Automatic: VERA reads ARIA's sheet; ARIA reads VERA's "ARIA Requests" tab |
+
+**Rules that hold for every link**
+
+- VERA never writes another assistant's data, except the named cells listed below for TESS. It never writes ARIA's sheet or WILLA's planner.
+- Every read goes by header or label, never by cell position, because the other side may add or move columns. A label VERA can't find makes that piece unavailable rather than wrong.
+- Sheet IDs and links live only in Config (or Script Properties), never in the repository.
+- Each assistant keeps working if VERA is down. VERA flags a link that has gone quiet instead of failing silently.
+
+### 21.1 ARIA (travel)
+
+| From → To | What | When | How | Lands in |
+|---|---|---|---|---|
+| VERA's calendar trips → ARIA | Every calendar trip | ARIA's daily run | ARIA's side | ARIA's Watchlist as a **Draft** row |
+| VERA → ARIA | **Watch** request for a trip's flights (home airports from Config, travellers from TripMeta, ceiling from the Trip Budget flights line) | When you tap *Ask ARIA* on a trip's Summary | VERA writes its own *ARIA Requests* tab | ARIA reads it on its morning run; it fills only blank Watchlist cells |
+| VERA → ARIA | **Scout** request for a starred option of a shortlisted trip idea (at most 3 at once) | When you tap *Scout* | *ARIA Requests* | ARIA prices the idea's months and logs the cheapest date pairs under the option |
+| VERA → ARIA | Scout becomes Watch when the idea settles; new dates when a trip moves | Hourly | *ARIA Requests* | ARIA moves its row to the Trip ID and keeps the fares |
+| VERA → ARIA | **Booked**: flights out and back seen in the itinerary | Each sync | *ARIA Requests* Status = Booked | ARIA stops pricing on its next run |
+| VERA → ARIA | The household airline rule | With each request | Request columns | ARIA's search; the dashboard judges logged fares by the same rule |
+| ARIA → VERA | Watchlist, Fare Log, Run Log, Settings | From 07:30, then every 3 hours until 22:00 | Read by header | Travel › ARIA, the trip Summary, Home banner, trip idea options |
+| ARIA → VERA | Actions: ✈️ Book now and 💸 Under your ceiling (High); 📅 Trip dates changed and ⚠️ couldn't price (Medium); watch, ceiling and airport set-up (Low) | Each sync | One flag per action, closed when it leaves the Watchlist | Flags |
+| ARIA → VERA → you | Book now | Once per Book now | Slack post plus ARIA's own email | #vera-notifications |
+
+Code: `Aria.js`. The sync is `maybeSyncAriaFlags_` on `hourlyCheck` (reads cached 10 minutes); settled ideas and moved trips are `tiLinkSettled_` and `ariaFollowTrip_`; Booked is `ariaMarkBooked_`. Flags are keyed `ARIA|<id>|<type>` by ARIA's Action Key. The Slack post is notification `aria_book_now` (on by default). The airline rule comes from Config `aria_airline_pref` and `aria_airline_premium`.
+
+**Health.** `ARIA|RUN_HEALTH` is raised when no run is logged in 26 hours or the last run failed; "VERA can't read ARIA" (High) when the tracker won't open; `ARIA|EMAIL_FAILED|<run>` when a Book now email didn't send. On a failed read only the health flag changes: nothing ARIA raised is closed. The gaps view lists future trips ARIA has no row for (trips you drive to are skipped), Watching rows with no airports or ceiling, no fare in 7 days, and requests not picked up in 2 days.
+
+**Set-up.** Config `roster_link_aria` (or Script Property `ARIA_SHEET_ID`) holds the tracker; `home_airports` gives the origins. ARIA's own preferences live in its stored instructions and change only with your approval; VERA never edits them. The manual fallbacks (Copy for ARIA, Paste ARIA's fare) are in `docs/trip-handoffs.md`. Hotels are not watched yet.
+
+### 21.2 WILLA (money and plans)
+
+- **VERA reads the planner** (`planner_sheet_id`), live and by label, never writing it: Finances › Net worth and CD maturities (a flag 30 days ahead), the Summary, and planner Goals (`NetWorth.js`, `FinSummary.js`, `PlannerGoals.js`).
+- **Trip budgets by paste** (`docs/trip-handoffs.md`): *Copy for WILLA* on a trip idea option sends the estimate; *Budget from WILLA* takes the figure back, with a preview.
+- **The final total.** When an idea settles into a calendar trip, VERA raises a Low flag "Send the final total for … to WILLA", and keeps its reason updated with what has been booked so far (`TripActuals.js`). You send it by hand.
+
+### 21.3 TESS (job search) and PIES (work)
+
+Career is the only place these two meet VERA, and they never meet each other. The dashboard's Career › *How it connects* view is the live record of every crossing; `test_career_exchange` checks it lists every payload VERA reads or writes.
+
+| From → To | What | When | How | Lands in |
+|---|---|---|---|---|
+| VERA → TESS | North Star constraints, current-employer exclusion, credentials held, the VERA Inbox link | On save | Automatic: VERA's own Settings cells only | Job Agent Settings › Settings |
+| VERA → TESS | New Evidence | Monthly | Automatic | Wins bank doc, a new "YYYY-MM update" tab |
+| TESS → VERA | Matches with track, scores, salary ranges, suggested people, links | Weekdays 6:36 AM | Automatic read of the Tracker | Career › Pipeline, Market, quarterly criteria suggestions |
+| VERA → TESS | Status | When you set it | Automatic: the Tracker's Status column, nothing else | Tracker |
+| TESS → you | Daily digest with a "Triage in VERA" link | Weekdays 6:36 AM | Email | Your inbox → Career › Pipeline |
+| PIES → VERA | PIES-BRIEF v1 | Monthly | Paste into Exchange (previewed, names and figures marked) | Evidence, readiness notes, Pipeline calibration |
+| VERA → PIES | VERA-INTENTS v1 | Quarterly | Copy from Exchange | The PIES Goals doc, "Career Intents" |
+| VERA → Claude → VERA | MATCHER-CONTEXT v1 out, ROLE-MATCH v1 back | A role found outside the alerts | Copy, then paste into Exchange | Pipeline (one entry if TESS has the same link) |
+
+Code: `Career.js` (VERA's own Settings cells are `CAR_AGENT_OWNED_LABELS_`), `CareerCredentials.js`; the dashboard's crossings list is `CAR_CROSSINGS` in `docs/app.js`.
+
+**Health.** TESS: a Medium flag when the Tracker has had no new row for `career_agent_stale_weekdays` (default 2) weekdays. PIES has no automatic check: the monthly brief is a reminder, not a feed.
+
+**Set-up.** Config `career_alert_sheet_id` (Job Agent Settings) and `career_wins_bank_doc_id`. The manual copy from the work machine is the compliance gate: no shared files and no sync between PIES and VERA. The agent never sees your package, only your floors, and internal postings are PIES's job, so your current employer is always excluded.
+
+### 21.4 HAILEY (home search)
+
+No data link yet. HAILEY reports to you on its own; VERA shows it on the roster through `roster_link_hailey`. A future link would follow the same rules: VERA reads HAILEY's sheet by header and raises flags, and never writes it.
+
+### 21.5 Config rows for the assistants
+
+| Row | Used for |
+|---|---|
+| `roster_link_pies` … `roster_link_aria` | The Home roster links. WILLA and TESS fall back to `planner_sheet_id` and `career_alert_sheet_id` |
+| `roster_link_aria` | Also ARIA's tracker, unless the Script Property `ARIA_SHEET_ID` is set |
+| `planner_sheet_id` | WILLA's planner |
+| `career_alert_sheet_id`, `career_wins_bank_doc_id` | TESS's Settings sheet and the Wins bank doc |
+| `career_agent_stale_weekdays` | Days without a TESS match before the stale flag |
+| `aria_airline_pref`, `aria_airline_premium` | The airline rule sent with ARIA requests |
+| `home_airports` | Origins for ARIA watch requests |
+
+---
+
+## 22. Appendix: Developer Reference
 
 > Carried over from the old developer cheat sheet (last updated November 1, 2026). Modules added since are covered in sections 15–20.
 
@@ -993,8 +1098,8 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 | ergonomic_interval_min | 60 | Reminders.js | Ergonomic break target interval in minutes |
 | hydration_interval_min | 120 | Reminders.js | Hydration reminder interval in minutes |
 | mobility_reminder_hour | 20 | Reminders.js | 24h hour for evening mobility nudge |
-| weekend_planner_enabled | true | WeekendPlanner.js | Enable Monday morning Weekend Planner Slack message |
-| weekend_planner_hour | 8 | Reminders.js, WeekendPlanner.js | Hour to fire Weekend Planner (fires from hourlyCheck on Monday) |
+| weekend_planner_enabled | true | WeekendPlanner.js | Enable the Wednesday morning Weekend Planner Slack message |
+| weekend_planner_hour | 8 | Reminders.js, WeekendPlanner.js | Hour to fire Weekend Planner (fires from hourlyCheck on Wednesday; the Monday goal check-in uses the same hour) |
 | weekend_planner_lookahead_days | 21 | WeekendPlanner.js | Days ahead to look for upcoming trips/events |
 | monthly_review_enabled | true | MonthlyReview.js | Generate monthly life review on 1st of each month |
 | pantry_enabled | false | Pantry.js | Enable purchase history + auto-restock tracking |
