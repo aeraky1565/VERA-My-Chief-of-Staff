@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Working with Your Assistants</title>
+<meta name="description" content="Step by step: how VERA, ARIA, WILLA, TESS and PIES work together.">
+<style>
+  /* VERA guide style: shared verbatim by VERA_Quick_User_Guide.html, VERA_Lite_Guide.html and VERA_Quick_Reference.html */
+  :root {
+    --bg: #080f1e; --card: #0d1b3e; --card2: #12224a; --line: #1e3060;
+    --text: #dde1f0; --mute: #8a9abf; --gold: #c9a84c; --goldT: #f0d78a;
+    --today: #c9a84c; --travel: #3d7be0; --money: #2e9d5b; --home: #e07b39;
+    --health: #d9548f; --career: #7b5cd6; --life: #1f9e9e; --system: #8a94a6;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+  a { color: var(--goldT); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; flex-direction: column; gap: 6px; padding: 28px 0 20px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  header.top .brand { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  header.top h1 { margin: 0; font-size: clamp(26px, 6vw, 38px); line-height: 1.15; text-wrap: balance; }
+  header.top p { margin: 0; color: var(--mute); max-width: 62ch; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+  nav.toc a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+    border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 600; }
+  nav.toc a .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--gold)); }
+  section.grp { margin: 0 0 36px; scroll-margin-top: 12px; }
+  section.grp > h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 22px; }
+  section.grp > h2 .chip { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--c) 22%, transparent); border: 1px solid var(--c); font-size: 16px; }
+  section.grp > p.lead { margin: 0 0 14px; color: var(--mute); max-width: 68ch; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--gold)); border-radius: 12px;
+    padding: 14px 14px 12px; min-width: 0; break-inside: avoid; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.3; }
+  .card p { margin: 0 0 8px; font-size: 14px; color: #c3c9de; }
+  .card ul, .card ol { margin: 0 0 8px; padding-left: 18px; font-size: 14px; color: #c3c9de; }
+  .card li { margin: 2px 0; }
+  .new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: #2a2410; color: var(--goldT); border: 1px solid #6b5410; vertical-align: middle; }
+  .path { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; padding: 3px 9px; border-radius: 8px;
+    background: var(--card2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--goldT); }
+  .path b { color: var(--mute); font-weight: 400; }
+  .note { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #0f1a33; border: 1px dashed var(--line); font-size: 13.5px; color: var(--mute); }
+  table.ref { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  table.ref th, table.ref td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  table.ref tr:last-child td { border-bottom: 0; }
+  code { font: 12.5px/1.4 'SFMono-Regular', Menlo, Consolas, monospace; background: #0a1430; border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; color: #cfe0ff; }
+  .tag { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 6px; vertical-align: -1px; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px; }
+  @media print {
+    :root { --bg: #fff; --card: #fff; --card2: #f4f6fb; --line: #d5dbe8; --text: #14182a; --mute: #4b5670; --goldT: #7a5a00; }
+    body { background: #fff; font-size: 11.5px; }
+    .card p, .card ul, .card ol { color: #2a3046; }
+    code { background: #f4f6fb; color: #14182a; }
+    nav.toc { display: none; }
+    .wrap { padding: 0; max-width: none; }
+    .page + .page { break-before: page; }
+    footer { display: none; }
+    .note { background: #f7f8fb; }
+    header.top { padding: 0 0 6px; margin-bottom: 8px; }
+    header.top h1 { font-size: 18px; }
+    header.top p { font-size: 10px; }
+    section.grp { margin: 0 0 10px; }
+    section.grp > h2 { font-size: 13px; margin-bottom: 4px; }
+    section.grp > h2 .chip { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+    table.ref { font-size: 9.5px; }
+    table.ref th, table.ref td { padding: 3px 6px; }
+    table.ref th { font-size: 8.5px; }
+    .tablewrap { overflow: visible; }
+    code { font-size: 9px; padding: 0 3px; }
+    .note { font-size: 9.5px; padding: 5px 8px; margin-top: 6px; }
+    footer { margin-top: 8px; padding-top: 6px; font-size: 9px; }
+    .cards { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .card { padding: 6px 8px; }
+    .card h3 { font-size: 11.5px; }
+    .card p, .card ul, .card ol { font-size: 9.5px; }
+  }
+  @page { margin: 0.45in; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<style>
+  /* playbook extras */
+  .day { display: grid; grid-template-columns: 92px 1fr; gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+  .day > * { padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .day > b { color: var(--goldT); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .day > :nth-last-child(-n+2) { border-bottom: 0; }
+  ol.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; color: #c3c9de; }
+  ol.steps > li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--c) 25%, transparent); border: 1px solid var(--c); color: var(--text); font-weight: 700; font-size: 13px; }
+  ol.steps p { margin: 4px 0 0; }
+  .who { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; margin-right: 6px; vertical-align: 1px; border: 1px solid; }
+  .who.you { color: #f0d78a; border-color: #6b5410; background: #2a2410; }
+  .who.vera { color: #b9c6ea; border-color: #3a4f86; background: #142352; }
+  .who.aria { color: #a9c8ff; border-color: #2c5fb8; background: #0f2a5c; }
+  .who.willa { color: #9fe0bb; border-color: #23784a; background: #0f3322; }
+  .who.hailey { color: #ffc89e; border-color: #a35a24; background: #3a2010; }
+  .who.tess, .who.pies { color: #cdbcff; border-color: #5a43a8; background: #231a4a; }
+  .when { color: var(--mute); font-size: 12.5px; }
+  @media print {
+    .day > * { padding: 3px 6px; font-size: 9.5px; } .day { grid-template-columns: 60px 1fr; }
+    ol.steps { gap: 3px; } ol.steps > li { padding: 4px 6px; font-size: 9.5px; grid-template-columns: 18px 1fr; gap: 6px; color: #2a3046; }
+    ol.steps > li::before { width: 16px; height: 16px; font-size: 9px; color: #14182a; }
+    .who { font-size: 8px; padding: 0 5px; }
+    .who.you, .who.vera, .who.aria, .who.willa, .who.tess, .who.pies, .who.hailey { background: #fff; }
+    .who.you { color: #7a5a00; } .who.vera { color: #2b3d70; } .who.aria { color: #1d4fa8; } .who.willa { color: #1d6b40; } .who.tess, .who.pies { color: #4b3596; } .who.hailey { color: #8a4510; }
+    .when { font-size: 8.5px; }
+  }
+</style>
+
+<header class="top">
+  <span class="brand">VERA · Working with your assistants</span>
+  <h1>Who does what, step by step</h1>
+  <p>VERA works alongside ARIA (flights), WILLA (money plans), TESS (job search) and PIES (work); HAILEY (home search) runs on its own. This guide follows each job from start to finish and shows whose turn it is at every step: <span class="who you">YOU</span><span class="who vera">VERA</span><span class="who aria">ARIA</span><span class="who willa">WILLA</span><span class="who tess">TESS</span><span class="who pies">PIES</span>. How the links are built is in the System Documentation, §21.</p>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <a href="#day" style="--c:var(--gold)"><span class="dot"></span>🕰️ A normal day</a>
+  <a href="#trip" style="--c:var(--travel)"><span class="dot"></span>✈️ Plan and book a trip</a>
+  <a href="#trip2" style="--c:var(--travel)"><span class="dot"></span>📅 A trip already on the calendar</a>
+  <a href="#jobs" style="--c:var(--career)"><span class="dot"></span>💼 Job search</a>
+  <a href="#pies" style="--c:var(--career)"><span class="dot"></span>🗂️ Work wins (PIES)</a>
+  <a href="#money" style="--c:var(--money)"><span class="dot"></span>💰 Money (WILLA)</a>
+  <a href="#home" style="--c:var(--home)"><span class="dot"></span>🏠 Home search (HAILEY)</a>
+  <a href="#fix" style="--c:var(--system)"><span class="dot"></span>🔧 When a link breaks</a>
+</nav>
+
+<section class="grp" id="day" style="--c:var(--gold)">
+  <h2><span class="chip">🕰️</span>A normal day</h2>
+  <p class="lead">The assistants run on their own schedules (Eastern time). You don't start any of them. The complete list of scheduled tasks is in the System Documentation, §21.0.</p>
+  <div class="day">
+    <b>6:36 AM</b><span><span class="who tess">TESS</span>Weekdays: checks the LinkedIn alerts and emails you the job digest.</span>
+    <b>6:52 AM</b><span><span class="who aria">ARIA</span>Prices every trip it watches and anything VERA asked it to scout.</span>
+    <b>7:00 AM</b><span><span class="who vera">VERA</span>The morning email, if anything needs you.</span>
+    <b>7:30 AM</b><span><span class="who vera">VERA</span>Reads what ARIA found, then again every 3 hours until 10 PM. A new ✈️ Book now goes to Slack.</span>
+    <b>7:38 AM</b><span><span class="who hailey">HAILEY</span>Weekdays: searches Zillow for homes. Emails only when one crosses your alert lines.</span>
+    <b>Every 30 min</b><span><span class="who vera">VERA</span>Reads booking confirmation emails into the trip's itinerary.</span>
+    <b>11 PM</b><span><span class="who vera">VERA</span>The nightly run: calendars, money, the planner, the job tracker; new flags.</span>
+    <b>Fridays 7 PM</b><span><span class="who hailey">HAILEY</span>The weekly home digest.</span>
+    <b>1st &amp; 15th</b><span><span class="who tess">TESS</span>Evening: the calibration review emails suggested changes to TESS's settings. Nothing changes until you approve.</span>
+  </div>
+</section>
+
+<section class="grp" id="trip" style="--c:var(--travel)">
+  <h2><span class="chip">✈️</span>Plan and book a trip, from idea to booked</h2>
+  <p class="lead">Travel › Plan › Trip Ideas. Victoria can follow steps 6 to 8 on her own.</p>
+  <ol class="steps">
+    <li><div><span class="who you">YOU</span>Add the idea and its options. <b>📋 Copy for an AI chat</b> gives a chat everything it needs; paste its answer back as options.</div></li>
+    <li><div><span class="who you">YOU</span><span class="who willa">WILLA</span>Can we afford it? On an option, <b>↗ Hand off › Copy for WILLA</b>, paste it to WILLA, then bring the answer back with <b>💰 Budget from WILLA</b>.</div></li>
+    <li><div><span class="who you">YOU</span>Mark the idea <b>Shortlisted</b>, star (★) the option you like and tap <b>🧭 Scout</b>. Up to three options can be scouted at once.</div></li>
+    <li><div><span class="who aria">ARIA</span><span class="who vera">VERA</span>Next morning ARIA prices the idea's months; VERA shows the cheapest dates on the option. <span class="when">One morning.</span></div></li>
+    <li><div><span class="who you">YOU</span>Pick the dates: <b>🏁 Settle this trip</b> downloads a calendar event. Add it to the shared calendar (all-day, with "Trip" in the title).</div></li>
+    <li><div><span class="who vera">VERA</span><span class="who aria">ARIA</span>Within the hour VERA links the idea to the trip and turns the scout into a watch. ARIA keeps the fares it found and watches from then on: weekly from 6 months out, every 3 days from 3 months, daily in the last 6 weeks.</div></li>
+    <li><div><span class="who aria">ARIA</span><span class="who you">YOU</span><b>✈️ Book now</b> arrives (flag, Slack and ARIA's email): the fare is under your ceiling and near the lowest ARIA has seen. Check it's still live and book on the airline's site. Your confirmation email does the rest.
+      <p class="when">VERA sees the flights in the itinerary and tells ARIA "booked"; ARIA stops pricing the next morning.</p></div></li>
+    <li><div><span class="who you">YOU</span><span class="who willa">WILLA</span>Once everything is booked, the flag <b>"Send the final total to WILLA"</b> shows what was spent. Send it with the WILLA line on the option.</div></li>
+  </ol>
+  <p class="note">Moving the trip on the calendar is fine at any step: VERA updates ARIA's request, and ARIA raises 📅 Trip dates changed so you can check its dates.</p>
+</section>
+
+<section class="grp" id="trip2" style="--c:var(--travel)">
+  <h2><span class="chip">📅</span>A trip that's already on the calendar</h2>
+  <ol class="steps">
+    <li><div><span class="who aria">ARIA</span>ARIA adds every calendar trip to its list as a <b>Draft</b>. A Draft isn't priced yet.</div></li>
+    <li><div><span class="who you">YOU</span>To have its flights watched: Travel › My Trips › the trip › <b>Ask ARIA</b>. VERA fills in airports, travellers and a price ceiling from the trip budget; check them and send.</div></li>
+    <li><div><span class="who aria">ARIA</span>From the next morning it watches. Low flags such as 🛫 <b>Add airports</b> or 💲 <b>Set a price ceiling</b> mean ARIA needs that before it can price. You can also fill the yellow cells in ARIA's Watchlist yourself; ARIA never overwrites them.</div></li>
+    <li><div><span class="who aria">ARIA</span><span class="who you">YOU</span>👀 <b>Set up a SlickTrip watch</b>: ARIA never creates price watches itself. Create one in SlickTrip for the trip and paste its Watch ID into the trip's row in ARIA's Watchlist. Until then ARIA still prices it by search.</div></li>
+    <li><div><span class="who you">YOU</span>Same as above from here: Book now → book → the confirmation email closes the loop. Then 🛑 <b>Stop the SlickTrip watch</b> asks you to stop that watch in SlickTrip. Driving? ARIA skips the trip.</div></li>
+  </ol>
+</section>
+
+<section class="grp" id="jobs" style="--c:var(--career)">
+  <h2><span class="chip">💼</span>Job search with TESS</h2>
+  <ol class="steps">
+    <li><div><span class="who you">YOU</span>Set what you want once: Career › <b>North Star</b> (level, pay floors, work mode, where, deal-breakers). VERA saves it straight into TESS's settings.</div></li>
+    <li><div><span class="who tess">TESS</span>Weekday mornings: matches from the LinkedIn alerts, scored, with a tailored resume, cover letter and fit note, and a digest email.</div></li>
+    <li><div><span class="who you">YOU</span>Tap <b>Triage in VERA</b> in the digest. In Career › Agents › <b>Pipeline</b> set each one's status: Applied, Passed, Ignored… VERA writes it back to TESS's Tracker.</div></li>
+    <li><div><span class="who you">YOU</span><span class="who tess">TESS</span>Teach TESS: it learns from Saved, Applied, Interviewing and Passed <b>with a Pass reason</b> (Too senior, Location, Pay…). VERA can't set the Pass reason yet, so add it in TESS's Tracker. Three alike and TESS starts adjusting scores.</div></li>
+    <li><div><span class="who you">YOU</span>Apply yourself. TESS never applies for you.</div></li>
+    <li><div><span class="who tess">TESS</span><span class="who you">YOU</span>On the 1st and 15th the calibration review emails up to 5 suggested changes. Reply in your Claude chat to approve any.</div></li>
+    <li><div><span class="who you">YOU</span>Found a role somewhere else? Career › Agents › Exchange › <b>Copy MATCHER-CONTEXT</b>, paste it with the job description into a Claude chat, and paste the ROLE-MATCH answer back into Exchange.</div></li>
+  </ol>
+  <p class="note">Each month VERA also sends your new evidence to the Wins bank doc that TESS writes from. Nothing to do.</p>
+</section>
+
+<section class="grp" id="pies" style="--c:var(--career)">
+  <h2><span class="chip">🗂️</span>Work wins from PIES</h2>
+  <p class="lead">PIES stays on the work machine. The only bridge is a copy and paste you do yourself.</p>
+  <ol class="steps">
+    <li><div><span class="who pies">PIES</span>Monthly: writes the <b>PIES-BRIEF</b> (your accomplishments, sanitised).</div></li>
+    <li><div><span class="who you">YOU</span>Copy it and paste it into Career › Agents › <b>Exchange</b>. Check the preview: names, figures and project names are marked. Then import.</div></li>
+    <li><div><span class="who vera">VERA</span>It lands in Evidence and readiness.</div></li>
+    <li><div><span class="who you">YOU</span>Each quarter: Exchange › <b>Copy VERA-INTENTS</b>, and paste it into the "Career Intents" section of the PIES Goals doc.</div></li>
+  </ol>
+</section>
+
+<section class="grp" id="money" style="--c:var(--money)">
+  <h2><span class="chip">💰</span>Money with WILLA</h2>
+  <ol class="steps">
+    <li><div><span class="who willa">WILLA</span><span class="who vera">VERA</span>Keep the planner up to date in WILLA. VERA reads it live for Finances › Net worth, Goals and the Summary, and never changes it.</div></li>
+    <li><div><span class="who vera">VERA</span>A flag 30 days before a CD matures, so you can decide in time.</div></li>
+    <li><div><span class="who you">YOU</span>Trip budgets go through WILLA by copy and paste (steps 2 and 8 of planning a trip).</div></li>
+  </ol>
+</section>
+
+<section class="grp" id="home" style="--c:var(--home)">
+  <h2><span class="chip">🏠</span>Home search with HAILEY</h2>
+  <p class="lead">HAILEY works on its own: nothing goes between it and VERA. Change markets, budgets and alert lines in HAILEY's own sheet; HAILEY emails you an alert when a home crosses one, and a digest every Friday.</p>
+</section>
+
+<section class="grp" id="fix" style="--c:var(--system)">
+  <h2><span class="chip">🔧</span>When a link breaks</h2>
+  <div class="tablewrap"><table class="ref">
+    <thead><tr><th>You see</th><th>What it means</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>🧭 VERA can't read ARIA</td><td>The ARIA sheet won't open</td><td>Check the ARIA link in Config (<code>roster_link_aria</code>) and that the sheet is shared with VERA's account</td></tr>
+      <tr><td>ARIA run health flag</td><td>No ARIA run in 26 hours, or the last one failed</td><td>Open ARIA's scheduled task in Claude and look at its last run</td></tr>
+      <tr><td>Book now email didn't send</td><td>ARIA found a fare but its email failed</td><td>The fare is still in Travel › ARIA and Slack; book from there</td></tr>
+      <tr><td>👀 Set up a SlickTrip watch · 🛑 Stop the SlickTrip watch</td><td>ARIA never creates or stops price watches</td><td>Do it in SlickTrip; for a new watch, paste its Watch ID into ARIA's Watchlist</td></tr>
+      <tr><td>A request "not picked up" for 2 days</td><td>ARIA hasn't read VERA's request</td><td>Check ARIA is running; ask again from the trip or option</td></tr>
+      <tr><td>The job search agent has found nothing since…</td><td>No new TESS match for 2 weekdays</td><td>Check the "Daily job search digest" scheduled task and that LinkedIn alert emails still arrive</td></tr>
+      <tr><td>Net worth says "unavailable"</td><td>VERA couldn't find a label in WILLA's planner</td><td>A row or tab was renamed in the planner; put the name back, or tell VERA's developer</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>VERA · working with your assistants · updated November 2026 · <a href="VERA_in_5_Minutes.html">VERA in 5 minutes</a> · <a href="VERA_Quick_User_Guide.html">User guide</a> · <a href="VERA_Quick_Reference.html">Cheat sheet</a> · <a href="VERA_Documentation.md">System Documentation</a></footer>
+
+</div>
+</body>
+</html>

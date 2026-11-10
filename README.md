@@ -107,6 +107,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 |-------|-----|
 | [VERA in 5 minutes](docs/guides/VERA_in_5_Minutes.html) | Start here: when VERA acts, how to write calendar events it understands, flags, asking VERA. Phone cards that print on one page |
 | [User guide](docs/guides/VERA_Quick_User_Guide.html) | Every feature of the full dashboard: what it's for, where, how |
+| [Working with your assistants](docs/guides/VERA_Working_with_Assistants.html) | Step by step, whose turn it is: trips with WILLA and ARIA, job search with TESS, work wins from PIES, and what to do when a link breaks |
 | [Cheat sheet](docs/guides/VERA_Quick_Reference.html) | Two printable pages: where things are, common taps, chat examples, key settings |
 | [Victoria's lite guide](docs/guides/VERA_Lite_Guide.html) | The lite dashboard, tab by tab |
 | [System documentation](docs/guides/VERA_Documentation.md) ([PDF](docs/guides/VERA_Documentation.pdf)) | How VERA works inside, with a developer reference appendix. Rebuild the PDF with `python docs/guides/pdf/convert_to_pdf.py` (needs `reportlab`) |
