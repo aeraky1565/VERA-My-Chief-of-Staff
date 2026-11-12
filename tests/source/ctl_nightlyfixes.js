@@ -32,7 +32,7 @@ const CONTROLS = [
     'ApiHealth.js': swap(b['ApiHealth.js'], '  detail = redactSecrets_(detail);   // VERALog.js\n', ''),
   })],
   ['the scrub runs every night', FIX, b => ({
-    'VERALog.js': swap(b['VERALog.js'], '  if (props.getProperty(SECRETS_SCRUBBED_PROPERTY_)) return -1;\n', ''),
+    'VERALog.js': swap(b['VERALog.js'], '  if (veraOnceGet_(SECRETS_SCRUBBED_PROPERTY_)) return -1;\n', ''),
   })],
 
   // ---- the nightly run -------------------------------------------------------

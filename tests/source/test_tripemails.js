@@ -36,7 +36,7 @@ function ctx(o) {
     webGetTripMeta_: e => ({ ok: true, traveler: meta[e.parameter.tripKey] || '' }),
     webSetTripMeta_: e => { meta[e.parameter.tripKey] = e.parameter.traveler; return { ok: true }; },
     getTripsSheet_: () => ({ getRange: (r, col) => ({ setValue: v => { cells[r + ':' + col] = v; const t = trips.find(x => x._row === r); if (t && col === THEAD.indexOf('Email Recipients') + 1) t.recipients = v; } }) }) };
-  vm.createContext(c); vm.runInContext(SRC, c);
+  vm.createContext(c); loadSettings_(c); vm.runInContext(SRC, c);
   c.__cells = cells; c.__meta = meta; c.__props = props; c.__trips = trips;
   return c;
 }
@@ -141,3 +141,13 @@ console.log('\nthe wiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

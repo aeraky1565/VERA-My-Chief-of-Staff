@@ -166,7 +166,7 @@ function budgetMatch_(model,c,raw){var rows=[],T=model.tracker;
 
 /** The Tracker tab's cells, or { error }. Read only. */
 function bgReadTracker_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var id = veraSettingId_('SAT_SHEET_ID');
   if (!id) return { error: 'The budget tracker isn’t connected (Script Property SAT_SHEET_ID).' };
   var ss;
   try { ss = SpreadsheetApp.openById(id); } catch (err) { return { error: 'Can’t open the budget tracker: ' + err.message }; }

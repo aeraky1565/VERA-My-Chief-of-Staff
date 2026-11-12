@@ -436,7 +436,7 @@ function carReadLegacyNetwork_() {
 function carMigrateV1_(opts) {
   var dryRun = !!(opts && opts.dryRun);
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {
+  if (veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {
     return { skipped: true };
   }
   var lock = null;
@@ -445,7 +445,7 @@ function carMigrateV1_(opts) {
     if (!lock.tryLock(20000)) throw new Error('Career migration is already running.');
   }
   try {
-    if (!dryRun && (props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return { skipped: true };
+    if (!dryRun && (veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return { skipped: true };
     var ss = getSpreadsheet();
     var old = function(name) { return carReadRows_(ss.getSheetByName(name)); };
     var position = old(TABS.CAREER_POSITION)[0] || {};
@@ -479,7 +479,7 @@ function carMigrateV1_(opts) {
       if (sh && !sh.isSheetHidden()) sh.hideSheet();
     });
     carStateSet_('migration_v1', { at: new Date().toISOString(), counts: counts });
-    props.setProperty(CAR_MIGRATED_PROP_, new Date().toISOString());
+    veraOnceSet_(CAR_MIGRATED_PROP_, new Date().toISOString());
     return { migrated: true, counts: counts };
   } finally {
     if (lock) lock.releaseLock();
@@ -1252,7 +1252,7 @@ function webCareerSyncAgent_() {
   var current = {};
   grid.slice(1).forEach(function(r) { current[String(r[head.indexOf('setting')]).trim()] = r[head.indexOf('your value')]; });
   var prev = carStateGet_('agent_sync_last') || {};
-  var dash = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || CAR_DEFAULT_DASHBOARD_;
+  var dash = veraSetting_('VERA_DASHBOARD_URL') || CAR_DEFAULT_DASHBOARD_;
   var plan = carAgentSettingsCells_(carReadLadder_(), current, prev.employer, dash);
   var res = carWriteAgentSettings_(sheet, plan.cells);
   // The employer last written stays remembered until a rung names a new one, so a

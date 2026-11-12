@@ -14,7 +14,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
-const SRV = fs.readFileSync(path.join(ROOT, 'TripEmails.js'), 'utf8');
+// Settings.js (veraOnceGet_ …) rides along: from ROOT when a control copied it there, else the repo.
+const SETTINGS_SRC = fs.readFileSync(fs.existsSync(path.join(ROOT, 'Settings.js')) ? path.join(ROOT, 'Settings.js') : path.join(__dirname, '..', '..', 'Settings.js'), 'utf8');
+const SRV = SETTINGS_SRC + '\n' + fs.readFileSync(path.join(ROOT, 'TripEmails.js'), 'utf8');
 const CODE = fs.readFileSync(path.join(ROOT, 'Code.js'), 'utf8');
 const cut = s => { const a = s.indexOf('// Who\'s travelling and who gets the Travel Day email (TripEmails.js, issue #233)'), b = s.indexOf('// Readiness per traveller (TripReadiness.js, issue #227)'); return a === -1 || b === -1 ? '' : s.slice(a, b); };
 const TS = s => { const a = s.indexOf('// ---- TripSummaryView (itinerary redesign)'), b = s.indexOf('// ---- /TripSummaryView ----'); return a === -1 || b === -1 ? '' : s.slice(a, b); };

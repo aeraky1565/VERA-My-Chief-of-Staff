@@ -28,7 +28,7 @@ const CONTROLS = [
   ['volunteering needs no hours', life("if (g.kind === 'volunteering' && g.hours == null) return 'How many hours?';", "")],
   ['the same weekend wish is added twice', life("if (list.some(function(w) { return lfNorm_(w.text) === lfNorm_(t); })) return list;", "")],
   ['a bought wish moves to Planned Purchases', life("if (!w || !w.item || /^purchased$/i.test(w.status || '')) return null;", "if (!w || !w.item) return null;")],
-  ['the Wish List moves every night', life("if (props.getProperty(LF_WISH_MIGRATED_PROP_)) return { moved: 0, reason: 'already moved' };", "")],
+  ['the Wish List moves every night', life("if (veraOnceGet_(LF_WISH_MIGRATED_PROP_)) return { moved: 0, reason: 'already moved' };", "")],
   ['the Weekend Planner is not told the wishes', b => ({ 'WeekendPlanner.js': swap(b['WeekendPlanner.js'], "  if (ctx.weekendWishes && ctx.weekendWishes.length) {", "  if (false) {") })],
   // Growth
   ['"daily" reads as once a week', lg("if (/\\b(daily|every ?day)\\b/.test(r)) return 7;", "")],

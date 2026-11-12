@@ -196,7 +196,7 @@ function harness(opts) {
     getConfigValues: () => (o.config || {}),
     _tabs: tabs, _created: created, _health: health, _props: props,
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext([
     decl(SRC.Book, 'ADDRESS_BOOK_PROP_'),
     decl(SRC.Book, 'ADDRESS_BOOK_HEALTH_'),
@@ -329,9 +329,11 @@ console.log('\nThe sheet id can come from the Config TAB, not just a property');
   check('the script property still works', viaProp.webGetAddressBook_().configured === true,
         'an existing deployment must not break');
 
-  const both = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' },
-                         config: { address_book_sheet_id: 'WRONG-ID' }, tabs: seeded() });
-  check('the property wins when both are set', both.webGetAddressBook_().ok === true,
+  // The Config row is the home now (Settings.js): when both are set, it wins, and the
+  // old property is only read until it is moved.
+  const both = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'WRONG-ID' },
+                         config: { address_book_sheet_id: 'BOOK-ID' }, tabs: seeded() });
+  check('the Config row wins when both are set', both.webGetAddressBook_().ok === true,
         'openById throws on any id but BOOK-ID, so this proves which was used');
 
   const neither = harness({ props: {}, config: {} });
@@ -1981,7 +1983,7 @@ console.log('\nThe dashboards');
           /apiPost\(apiUrl, apiToken, body\)|apiPost\(apiUrl,apiToken,body\)/.test(ab),
           'a GET would drop every cleared field');
     check(label + ': the unconfigured state is explained, not an error',
-          /ADDRESS_BOOK_SHEET_ID/.test(ab));
+          /address_book_sheet_id/.test(ab));
     check(label + ': deleting a household warns about what goes with it',
           /member' : 'members'/.test(ab) && /mailing' : 'mailings'/.test(ab),
           'the cascade now covers a third tab and must not be a surprise');
@@ -2070,7 +2072,7 @@ console.log('\nThe dashboards');
         setAddingTo:   v => got.adding.push(v),
         setUnsentOnly: v => got.unsent.push(v),
       };
-      vm.createContext(ctx);
+      vm.createContext(ctx); loadSettings_(ctx);
       vm.runInContext(extractFn(abBlock(s), 'startEvent') +
                       ';startEvent(' + JSON.stringify(choice) + ');', ctx);
       return got;
@@ -2127,7 +2129,7 @@ console.log('\nThe dashboards');
         abIsSent: m => String((m && m.sent) || '').trim() !== '',
         window: { confirm: msg => { asked.push(msg); return confirmYes; } },
       };
-      vm.createContext(ctx);
+      vm.createContext(ctx); loadSettings_(ctx);
       const done = vm.runInContext(extractFn(block, fnName) +
         ';' + fnName + '({ id: "HH-1", household: "The Smith Family" });', ctx);
       return { posts: posts, asked: asked, done: done };
@@ -2254,3 +2256,13 @@ Promise.all(pending).then(() => {
   console.log('\n' + pass + ' passed, ' + (fail + 1) + ' failed');
   process.exit(1);
 });
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

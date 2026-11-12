@@ -80,7 +80,7 @@ function helperCtx() {
     Logger: { log: () => {} },
     Utilities: { formatDate: fmtDate },
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(HELPERS.map(n => extractFn(SRC.Code, n)).join('\n'), ctx);
   return ctx;
 }
@@ -298,7 +298,7 @@ console.log('\nThe nightly checker: the Global Entry row, on 20 December');
         setProperty: (k, v) => { props[k] = v; },
       }) },
     };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext([
       ...HELPERS.map(n => extractFn(SRC.Code, n)),
       extractFn(SRC.Code, 'perkCalendarMark_'),
@@ -397,7 +397,7 @@ console.log('\nThe notice fires once, and the next cycle is a different key');
     Utilities: { formatDate: fmtDate },
     writeFlags: f => flags.push.apply(flags, f),
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext([...HELPERS.map(n => extractFn(SRC.Code, n)),
                    extractFn(SRC.Code, 'checkCardPerkEligibleAgain_')].join('\n'), ctx);
 
@@ -488,7 +488,7 @@ console.log('\nMarking it used: re-anchor, and close the notice');
       __writes: writes,
       __outcomes: outcomes,
     };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext([
       ...HELPERS.map(n => extractFn(SRC.Code, n)),
       extractFn(SRC.Web, 'resolveCardPerkRow_'),
@@ -632,7 +632,7 @@ console.log('\nThe dashboard: the server and the browser must agree');
   const browser = {
     String, Number, Object, Array, Date, Math, JSON, RegExp, Boolean, parseInt, console,
   };
-  vm.createContext(browser);
+  vm.createContext(browser); loadSettings_(browser);
   vm.runInContext([
     'var __Real = Date;',
     'Date = function() {',
@@ -849,7 +849,7 @@ console.log('\nThe writers: validating an anchor a human typed');
       __appended: appended,
       __rows: rows,
     };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext([
       extractFn(SRC.Code, 'perkCycleYears_'),
       extractFn(SRC.Code, 'perkAnchorDate_'),
@@ -1073,7 +1073,7 @@ console.log('\nThe form and the row — all three dashboard copies');
     // share, which is that an empty string never leaves the browser.
     {
       const mu = { URL, Object, String, console };
-      vm.createContext(mu);
+      vm.createContext(mu); loadSettings_(mu);
       vm.runInContext(extractFn(s, 'makeUrl'), mu);
       const sent = mu.makeUrl('https://x.test/exec', 'TOK',
                               { action: 'update_card_perk', id: 'CP-14', lastUsed: '' });
@@ -1110,3 +1110,13 @@ console.log('\nThe form and the row — all three dashboard copies');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

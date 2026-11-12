@@ -23,7 +23,7 @@ const CONTROLS = [
   ['a full number is kept', srv("function tpLast4_(v) { return String(v == null ? '' : v).replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase(); }", "function tpLast4_(v) { return String(v == null ? '' : v).replace(/[^A-Za-z0-9]/g, '').toUpperCase(); }"), SRV],
   ['long numbers in notes are kept', srv("return d.length >= 5 ? '••••' + d.slice(-4) : run;", 'return run;'), SRV],
   ['the save doesn’t say it trimmed', srv("var trimmed = raw.replace(/[^A-Za-z0-9]/g, '').length > 4;", 'var trimmed = false;'), SRV],
-  ['the old tab is copied every time', srv("if (props.getProperty(TP_MIGRATED_PROP_)) return 0;", ""), SRV],
+  ['the old tab is copied every time', srv("if (veraOnceGet_(TP_MIGRATED_PROP_)) return 0;", ""), SRV],
   ['a passport is copied twice', srv('    if (haveIds[id]) return;\n', ''), SRV],
   ['the visa checks lose the passports', srv("return (items || []).filter(function(i) { return i.section === 'document' && i.kind === 'passport'; })", "return (items || []).filter(function(i) { return false; })"), SRV],
   ['a visa that runs out mid-trip still covers it', srv("(!d.expiry || !endDate || d.expiry >= endDate)", 'true'), SRV],

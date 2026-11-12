@@ -352,22 +352,21 @@ const CONTROLS = {
               'const shown = households.filter(h => {\n    if (cardsOnly && !h.sendCard) return false;')),
 
   // ---- the Config-tab fallback (the 50-property editor cap) ----------------
+  // The Config read itself lives in Settings.js (veraSettingId_); these cut AddressBook.js's use of it.
   'the Config tab fallback is removed (unsettable past 50 properties)': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace(
-      /  if \(!id\) \{\n    try \{ id = String\(getConfigValues\(\)\['address_book_sheet_id'\] \|\| ''\)\.trim\(\); \}\n    catch \(cfgErr\) \{ id = ''; \}\n  \}\n/, ''),
+    'AddressBook.js': b['AddressBook.js'].replace("  try { id = veraSettingId_(ADDRESS_BOOK_PROP_); } catch (e) { id = ''; }",
+      "  try { id = String(PropertiesService.getScriptProperties().getProperty(ADDRESS_BOOK_PROP_) || '').trim(); } catch (e) { id = ''; }"),
   }),
   'the Config tab wins over the script property': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace(
-      "  if (!id) {\n    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }",
-      "  if (true) {\n    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }"),
+    'AddressBook.js': b['AddressBook.js'].replace("  try { id = veraSettingId_(ADDRESS_BOOK_PROP_); } catch (e) { id = ''; }",
+      "  try { id = String(PropertiesService.getScriptProperties().getProperty(ADDRESS_BOOK_PROP_) || '').trim() || veraSettingId_(ADDRESS_BOOK_PROP_); } catch (e) { id = ''; }"),
   }),
   'a broken Config tab takes the whole read down': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace(
-      "    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }\n    catch (cfgErr) { id = ''; }",
-      "    id = String(getConfigValues()['address_book_sheet_id'] || '').trim();"),
+    'AddressBook.js': b['AddressBook.js'].replace("  try { id = veraSettingId_(ADDRESS_BOOK_PROP_); } catch (e) { id = ''; }",
+      "  id = (getConfigValues(), veraSettingId_(ADDRESS_BOOK_PROP_));"),
   }),
   'the config key is spelled differently': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace("'address_book_sheet_id'", "'addressBookSheetId'"),
+    'AddressBook.js': b['AddressBook.js'].replace("veraSettingId_(ADDRESS_BOOK_PROP_)", "veraSettingId_('addressBookSheetId')"),
   }),
 
   // ---- the property prune --------------------------------------------------
@@ -474,7 +473,7 @@ const CONTROLS = {
   },
   'the unconfigured state stops naming the property': b => {
     const o = {};
-    DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/ADDRESS_BOOK_SHEET_ID/g, 'the setting'); });
+    DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/address_book_sheet_id/g, 'the setting'); });
     return o;
   },
   // ---- planned rows: a blank Sent means on the list, not posted -------------

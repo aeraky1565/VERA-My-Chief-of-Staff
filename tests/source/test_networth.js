@@ -67,7 +67,7 @@ function sandbox(over) {
   S.recordApiHealth_ = (src, ok, detail) => S.health.push({ src, ok, detail });
   S.getSuppressedKeyPatterns_ = S.getSuppressedKeyPatterns_ || (() => []);
   S.colorCodeFlags = () => {};
-  vm.createContext(S);
+  vm.createContext(S); loadSettings_(S);
   vm.runInContext(extractFn(TRIP, 'dateCellToIso_'), S);
   vm.runInContext(NW, S);
   // The CD flag writer is the shared exact-key helper now (Code.js), not a copy in NetWorth.js.
@@ -351,7 +351,7 @@ console.log('\nCD flags: inside 30 days, name and date only');
   // WHY THIS DOESN'T GO THROUGH writeFlags(). Its fuzzy check, real and extracted from
   // Code.js, calls these two keys the same flag — the second CD would never be raised.
   const C = { String, Math };
-  vm.createContext(C);
+  vm.createContext(C); loadSettings_(C);
   vm.runInContext(extractFn(CODE, 'keysAreSimilar_'), C);
   C.fp = new Set(['key:' + due[0].key]);
   check('writeFlags’ fuzzy check WOULD have swallowed the second CD (the reason for the exact-key writer)',
@@ -443,7 +443,7 @@ console.log('\nboth dashboards carry the same NetWorthTab, byte for byte');
 console.log('\nthe slicer adds up, every way round');
 {
   const C = { Math, isFinite, String, Number, Object, Array, Date, console };
-  vm.createContext(C);
+  vm.createContext(C); loadSettings_(C);
   vm.runInContext(block(APP), C);
   const S = sandbox();
   S.g = grids(); S.cfg = MAPPING_CFG;
@@ -528,3 +528,13 @@ console.log('\nwiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

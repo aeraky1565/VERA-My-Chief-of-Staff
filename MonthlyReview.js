@@ -135,7 +135,7 @@ function buildMonthlyReview_(label, priorMonth, ptoStats) {
 /** The Life balance ask: rate the month, 1 to 5, for six areas, in Life › Growth › Review. */
 function buildLifeBalanceAsk_(label) {
   var url = '';
-  try { url = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || ''; } catch (e) {}
+  try { url = veraSetting_('VERA_DASHBOARD_URL') || ''; } catch (e) {}
   return '🌿 How did ' + label + ' feel?\n' +
     '   Rate health, relationships, career, money, growth and fun, 1 to 5' +
     (url ? ': ' + url.replace(/[?#].*$/, '') + '?tab=life&sub=review' : ', in VERA › Life › Growth › Review') + '\n';
@@ -405,7 +405,7 @@ function sendMonthlyReviewEmail_(label, reviewText) {
   var inlineImages = {};
   var logoTag = '';
   try {
-    var logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
+    var logoFileId = veraSettingId_('VERA_LOGO_FILE_ID');
     if (logoFileId) {
       inlineImages = { veraLogo: DriveApp.getFileById(logoFileId).getBlob() };
       logoTag = '<img src="cid:veraLogo" alt="VERA" style="width:100%;display:block;border:0;" />';
@@ -413,7 +413,7 @@ function sendMonthlyReviewEmail_(label, reviewText) {
   } catch (e) { /* no logo — use text banner */ }
 
   // ── Dashboard button ──────────────────────────────────────────────────────
-  var dashUrl = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || '';
+  var dashUrl = veraSetting_('VERA_DASHBOARD_URL') || '';
   var dashBtn = dashUrl
     ? '<tr><td style="padding:0 0 24px 0;">' +
       '<a href="' + dashUrl + '" style="display:inline-block;background:#0d1b3e;color:#c9a84c;' +

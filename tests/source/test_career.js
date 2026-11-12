@@ -131,7 +131,7 @@ console.log('\nthe one-time migration');
   const again = run(S, 'carMigrateV1_()');
   check('a second run does nothing', again.skipped === true &&
         ['Career Ladder','Career Criteria','Career Evidence','Career Intents','Career Package'].map(n => rows(n).length).join() === counts);
-  delete S.props.CAR_MIGRATED_V1;
+  delete S.props.CAR_MIGRATED_V1; delete S.props.VERA_ONCE_MARKERS;   // the marker, in either home (Settings.js)
   check('…even with its Script Property lost (the State row also guards it)', run(S, 'carMigrateV1_()').skipped === true &&
         ['Career Ladder','Career Criteria','Career Evidence','Career Intents','Career Package'].map(n => rows(n).length).join() === counts);
   const D = sandbox();
@@ -304,3 +304,13 @@ console.log('\nwiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

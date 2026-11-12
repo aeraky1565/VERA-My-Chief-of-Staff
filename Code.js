@@ -18,7 +18,8 @@ const CONFIG = {
   // seeded by createSheetTabs is vestigial: nothing reads it.)
   CALENDAR_DAYS_AHEAD: 7,
   MAX_FLAGS: 8,
-  MORNING_NUDGE_EMAIL: PropertiesService.getScriptProperties().getProperty('MORNING_NUDGE_EMAIL') || '',
+  // From Config (morning_nudge_email), else the old Script Property; read when used (Settings.js).
+  get MORNING_NUDGE_EMAIL() { return veraSetting_('MORNING_NUDGE_EMAIL'); },
   MORNING_NUDGE_HOUR: 7,
   NIGHTLY_RUN_HOUR: 23,
 };
@@ -1342,6 +1343,9 @@ function nightlyRun() {
     // property editor goes read-only past 50 — which is how adding a setting by
     // hand became impossible.
     nightlyStep_(ctx, 'pruneScriptProperties_', pruneScriptProperties_);
+    // The copy of the Config-tab settings used only if the Config tab can't be read
+    // (Settings.js); written only when a value changed.
+    nightlyStep_(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_);
     nightlyStep_(ctx, 'sendWeeklyTrendReview_', sendWeeklyTrendReview_);
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
@@ -3846,8 +3850,7 @@ function checkCardPerksExpiring_() {
           // WebApp.js). No VERA email has ever carried one, and this one goes to
           // two mailboxes plus whatever indexes them. Same property-with-fallback
           // shape the other email buttons use.
-          var perkDashUrl = PropertiesService.getScriptProperties()
-                              .getProperty('VERA_DASHBOARD_URL') ||
+          var perkDashUrl = veraSetting_('VERA_DASHBOARD_URL') ||
                             'https://aeraky1565.github.io/VERA-My-Chief-of-Staff/';
           var subject  = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
           var plainBody = flagText + '\n\n' + reason +
@@ -4339,7 +4342,7 @@ function morningNudge() {
     var inlineImages = {};
     var logoTag = '';
     nightlyStep_(ctx, 'loadLogoFromDrive', function() {
-      var logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
+      var logoFileId = veraSettingId_('VERA_LOGO_FILE_ID');
       if (logoFileId) {
         var logoBlob = DriveApp.getFileById(logoFileId).getBlob();
         inlineImages = { veraLogo: logoBlob };
@@ -4348,7 +4351,7 @@ function morningNudge() {
     });
 
     // ---- Optional dashboard button (set VERA_DASHBOARD_URL in Script Properties) ----
-    const dashboardUrl = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || '';
+    const dashboardUrl = veraSetting_('VERA_DASHBOARD_URL') || '';
     const dashboardBtn = dashboardUrl
       ? '<tr><td style="padding:0 0 24px 0;">' +
           '<a href="' + dashboardUrl + '" style="display:inline-block;background:#0d1b3e;color:#c9a84c;font-size:14px;font-weight:700;letter-spacing:1px;padding:12px 28px;border-radius:6px;text-decoration:none;border:2px solid #c9a84c;">Open VERA Dashboard &rarr;</a>' +

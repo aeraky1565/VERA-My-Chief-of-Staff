@@ -90,6 +90,8 @@ module.exports = function(read) {
     S.ss = S.ss || new FakeSS(v1Tabs());
     S.getSpreadsheet = () => S.ss;
     vm.createContext(S);
+    { const p_ = require('path'), repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+      vm.runInContext(require('fs').readFileSync(require('fs').existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), S); }
     vm.runInContext(TABS_SRC + '\n' + extractFn(CODE, 'ensureSheet') + '\n' + CAR, S);
     return S;
   }

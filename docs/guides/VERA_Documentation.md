@@ -567,8 +567,8 @@ Apps Script does not reliably decode form-encoded POST bodies into `e.parameter`
 Three send functions handle outbound messages:
 
 - `sendSlackMessage_(channelId, text, blocks, threadTs)`: Generic send to any channel. Accepts optional Block Kit `blocks` array and optional `threadTs` for threading.
-- `sendSlackNotification_(text, blocks, urgency)`: Routes to `#vera-notifications` (`SLACK_NOTIFICATIONS_CHANNEL_ID`). For `urgency === 'High'`, prepends `<@AHMED_USER_ID>` to trigger a Slack mention.
-- `sendSlackLog_(text)`: Plain text to `#vera-logs` (`SLACK_LOGS_CHANNEL_ID`). Called by `nightlyRun()`, reminder delivery, pattern recognition, travel pipeline, and monthly review.
+- `sendSlackNotification_(text, blocks, urgency)`: Routes to `#vera-notifications` (Config `slack_notifications_channel_id`). For `urgency === 'High'`, prepends `<@AHMED_USER_ID>` to trigger a Slack mention.
+- `sendSlackLog_(text)`: Plain text to `#vera-logs` (Config `slack_logs_channel_id`). Called by `nightlyRun()`, reminder delivery, pattern recognition, travel pipeline, and monthly review.
 
 ### Block Kit
 
@@ -585,9 +585,9 @@ The morning nudge uses `buildMorningNudgeBlocks_()` which groups flags by urgenc
 
 | Channel | Script Property key | Purpose |
 |---|---|---|
-| `#vera-chat` | `SLACK_CHAT_CHANNEL_ID` | Bidirectional conversation (Ahmed + Victoria) |
-| `#vera-notifications` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Flag alerts with Acknowledge/Snooze buttons |
-| `#vera-logs` | `SLACK_LOGS_CHANNEL_ID` | System event log — nightly run, feature fires, errors |
+| `#vera-chat` | Config `slack_chat_channel_id` | Bidirectional conversation (Ahmed + Victoria) |
+| `#vera-notifications` | Config `slack_notifications_channel_id` | Flag alerts with Acknowledge/Snooze buttons |
+| `#vera-logs` | Config `slack_logs_channel_id` | System event log — nightly run, feature fires, errors |
 
 ---
 
@@ -785,29 +785,37 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 
 | Property | Used by | Purpose |
 |---|---|---|
-| `VERA_SHEET_ID` | `Code.js` (`CONFIG.SHEET_ID`) | The Life OS Google Sheet ID |
-| `MORNING_NUDGE_EMAIL` | `Code.js` | Email address for error notifications and email-mode nudges |
+| `VERA_SHEET_ID` | `Code.js` (`CONFIG.SHEET_ID`) | The Life OS Google Sheet ID (needed before the Config tab can be read) |
 | `CLAUDE_API_KEY` | `Claude.js` | Anthropic API key |
+| `VERA_WEB_TOKEN` | `WebApp.js` | Token on every dashboard request |
 | `SLACK_BOT_TOKEN` | `Slack.js` | Slack bot OAuth token |
-| `SLACK_CHAT_CHANNEL_ID` | `Slack.js` | `#vera-chat` channel ID |
-| `SLACK_NOTIFICATIONS_CHANNEL_ID` | `Slack.js` | `#vera-notifications` channel ID |
-| `SLACK_LOGS_CHANNEL_ID` | `Slack.js` | `#vera-logs` channel ID |
-| `SLACK_AHMED_USER_ID` | `Slack.js` | Ahmed's Slack user ID (for @mentions) |
-| `SLACK_VICTORIA_USER_ID` | `Slack.js` | Victoria's Slack user ID |
-| `SLACK_ALLOWED_USER_IDS` | `Slack.js` | Comma-separated allowlist of Slack user IDs |
+| `SLACK_ALLOWED_USER_IDS` | `Slack.js` | Comma-separated allowlist of Slack user IDs (who may talk to VERA) |
 | `AVIATIONSTACK_KEY` | `FlightStatus.js` | AviationStack API access key |
+| `WEATHER_API_KEY` | `Weather.js` | OpenWeather API key |
+| `GOOGLE_STATIC_MAPS_API_KEY` | `TravelDayBriefing.js`, `TravelLegs.js` | Google Maps key |
 | `VERA_SEARCH_API_KEY` | `Chat.js` | Serper.dev or Tavily API key for web search |
-| `VERA_SEARCH_ENGINE` | `Chat.js` | `'serper'` or `'tavily'` |
-| `PACING_MODE_ACTIVE` | `Pacing.js` | Runtime state flag |
-| `PACING_MODE_ENDS` | `Pacing.js` | Runtime state — expiry date |
-| `VACATION_MODE_ACTIVE` | `Pacing.js` | Runtime state flag |
-| `VACATION_MODE_ENDS` | `Pacing.js` | Runtime state — trip end date |
-| `VACATION_TRIP_NAME` | `Pacing.js` | Runtime state — active trip key |
-| `VERA_LOGO_FILE_ID` | `Code.js` (morningNudge) | Google Drive file ID for email logo |
+
+The ids, links, channel and user ids, the email address and the search engine are
+**Config rows**, not Script Properties: `morning_nudge_email`, `vera_dashboard_url`,
+`vera_logo_file_id`, `sat_sheet_id`, `transactions_sheet_id`, `address_book_sheet_id`,
+`life_plan_doc_id`, `shopping_list_doc_id`, `slack_chat_channel_id`,
+`slack_notifications_channel_id`, `slack_act_now_channel_id`, `slack_logs_channel_id`,
+`slack_ahmed_user_id`, `slack_victoria_user_id`, `vera_search_engine`,
+`neighborhood_hoa_url`, and `roster_link_aria` for ARIA. `veraSetting_` (Settings.js)
+reads the Config row first, then the old Script Property of the same name in capitals,
+so a deployment that hasn't moved still works. `moveSettingsToConfig()`, run once from
+the editor after a backup copy of the sheet, moves them: it fills only blank Config
+cells, reads each back before deleting the property, leaves a Config row that holds a
+different value alone, and logs names and counts, never values. The one-time "already
+done" markers live together in `VERA_ONCE_MARKERS` (`veraOnceGet_`/`veraOnceSet_`),
+and `VERA_SETTINGS_COPY` is a nightly copy of the settings used only when the Config
+tab can't be read. The rest of the store is VERA's runtime state (pacing and vacation
+mode, run stamps, caches), which VERA writes itself.
 
 ### Decision rule for where a value lives
 
-- **Secret or credential** (API key, channel ID, user ID, sensitive token) → Script Property. Never in the sheet, never in source control.
+- **Secret or credential** (API key, sensitive token, who may talk to VERA) → Script Property. Never in the sheet, never in source control.
+- **An id or link that isn't a secret** (a sheet, doc or file id, a Slack channel or user id, the dashboard link, an email address) → Config tab, read with `veraSetting_`. Never in source control either: the repo is public.
 - **Value the user might want to tune** (thresholds, labels, calendar names, feature flags) → Config tab with a sensible default fallback in code.
 - **Value that changes system behaviour** (feature on/off switches, interval days, target counts) → Config tab with a sensible default fallback. The fallback ensures the system works without any Config row being present for that key.
 - **Value that is computed at runtime and needs to survive between executions** (pacing mode active/inactive, vacation mode, AviationStack backoff window) → Script Properties as ephemeral state. These are not secrets but they need to persist across the 6-minute execution boundary.
@@ -958,7 +966,7 @@ Code: `Aria.js`. The sync is `maybeSyncAriaFlags_` on `hourlyCheck` (reads cache
 
 **Health.** `ARIA|RUN_HEALTH` is raised when no run is logged in 26 hours or the last run failed; "VERA can't read ARIA" (High) when the tracker won't open; `ARIA|EMAIL_FAILED|<run>` when a Book now email didn't send. On a failed read only the health flag changes: nothing ARIA raised is closed. The gaps view lists future trips ARIA has no row for (trips you drive to are skipped), Watching rows with no airports or ceiling, no fare in 7 days, and requests not picked up in 2 days.
 
-**Set-up.** Config `roster_link_aria` (or Script Property `ARIA_SHEET_ID`) holds the tracker; `home_airports` gives the origins. ARIA's own preferences live in its stored instructions and change only with your approval; VERA never edits them. The manual fallbacks (Copy for ARIA, Paste ARIA's fare) are in `docs/trip-handoffs.md`. Hotels are watched only when you ask, one stay at a time.
+**Set-up.** Config `roster_link_aria` holds the tracker; `home_airports` gives the origins. ARIA's own preferences live in its stored instructions and change only with your approval; VERA never edits them. The manual fallbacks (Copy for ARIA, Paste ARIA's fare) are in `docs/trip-handoffs.md`. Hotels are watched only when you ask, one stay at a time.
 
 ### 21.2 WILLA (money and plans)
 
@@ -1000,7 +1008,7 @@ Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:
 | Row | Used for |
 |---|---|
 | `roster_link_pies` … `roster_link_aria` | The Home roster links. WILLA and TESS fall back to `planner_sheet_id` and `career_alert_sheet_id` |
-| `roster_link_aria` | Also ARIA's tracker, unless the Script Property `ARIA_SHEET_ID` is set |
+| `roster_link_aria` | Also ARIA's tracker (the old Script Property `ARIA_SHEET_ID` is read until it is moved) |
 | `planner_sheet_id` | WILLA's planner |
 | `career_alert_sheet_id`, `career_wins_bank_doc_id` | TESS's Settings sheet and the Wins bank doc |
 | `career_agent_stale_weekdays` | Days without a TESS match before the stale flag |
@@ -1164,27 +1172,18 @@ Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:
 
 ### Script Properties Project Settings → Script Properties in Apps Script editor
 
+The ids, links, channel and user ids, the email address (`morning_nudge_email`, required) and the search engine are Config rows now; see *Script Properties* above for the list and how `moveSettingsToConfig()` moves them.
+
 | Property Key | Required? | Used By | Description |
 |---|---|---|---|
 | CLAUDE_API_KEY | Required | Claude.js | Anthropic API key for claude-sonnet-4-6 |
 | VERA_SHEET_ID | Required | Code.js (CONFIG) | Google Sheet ID of the Life OS sheet |
-| MORNING_NUDGE_EMAIL | Required | Code.js (CONFIG) | Email address for morning nudge and error alerts |
 | VERA_WEB_TOKEN | Required | WebApp.js | Auth token for all WebApp GET/POST requests (`?token=...`) |
-| VERA_LOGO_FILE_ID | Optional | Code.js, MonthlyReview.js | Google Drive file ID for VERA logo in emails |
-| VERA_DASHBOARD_URL | Optional | Code.js, MonthlyReview.js | Netlify/dashboard URL — shown as button in emails |
 | SLACK_BOT_TOKEN | Optional | Slack.js | Slack bot OAuth token (xoxb-...) |
-| SLACK_CHAT_CHANNEL_ID | Optional | Slack.js | #vera-chat channel ID (bidirectional conversation) |
-| SLACK_NOTIFICATIONS_CHANNEL_ID | Optional | Slack.js | #vera-notifications channel ID (flags with Block Kit buttons) |
-| SLACK_LOGS_CHANNEL_ID | Optional | Slack.js | #vera-logs channel ID (nightly run summaries, errors) |
-| SLACK_AHMED_USER_ID | Optional | Slack.js | Ahmed's Slack member ID for @mentions on High flags |
-| SLACK_VICTORIA_USER_ID | Optional | Slack.js | Victoria's Slack member ID |
 | SLACK_ALLOWED_USER_IDS | Optional | Slack.js | Comma-separated Slack member IDs authorized to chat with VERA |
-| TRANSACTIONS_SHEET_ID | Optional | Finance.js, WebApp.js | Separate Google Sheet ID for transaction history (Empower CSV format) |
-| SAT_SHEET_ID | Optional | Finance.js, WebApp.js | Simple Ass Tracker Google Sheet ID (household budget) |
 | AVIATIONSTACK_KEY | Optional | FlightStatus.js | AviationStack API key for flight status monitoring |
 | WEATHER_API_KEY | Optional | Weather.js, WebApp.js | OpenWeather API key for weather ticker and destination forecasts |
 | VERA_SEARCH_API_KEY | Optional | Chat.js | Serper.dev or Tavily API key for web search tool in chat |
-| VERA_SEARCH_ENGINE | Optional | Chat.js | `serper` (default) or `tavily` |
 | PACING_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when pacing mode is active (written by VERA) |
 | PACING_MODE_ENDS | Runtime | Pacing.js | ISO date string when pacing mode expires |
 | VACATION_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when vacation mode is active |
@@ -1194,8 +1193,6 @@ Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:
 | PACING_OFFER_FLAG_KEY | Runtime | Pacing.js | Flag key for the pacing offer flag (dedup guard) |
 | FLIGHT_STATUS_CACHE | Runtime | FlightStatus.js | JSON cache of last known flight statuses |
 | LAST_NIGHTLY_RUN | Runtime | Slack.js (App Home) | Timestamp of last successful nightly run |
-| SHOPPING_LIST_DOC_ID | Optional | Shopping.js | Google Doc ID for shared shopping list |
-| LIFE_PLAN_DOC_ID | Optional | FinancialGoals.js | Google Doc ID for Life Plan document |
 | SLACK_PINNED_MORNING_TS | Runtime | Slack.js | Slack message timestamp of pinned morning summary |
 
 
@@ -1267,9 +1264,9 @@ Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:
 
 | Channel | Property Key | Direction | What posts there |
 |---|---|---|---|
-| `#vera-chat` | `SLACK_CHAT_CHANNEL_ID` | Bidirectional | Ahmed + Victoria conversational chat. Messages processed async via CacheService queue. @mentions resolve to names via SLACK_AHMED_USER_ID / SLACK_VICTORIA_USER_ID. |
-| `#vera-notifications` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Outbound only | Flag alerts with Block Kit Acknowledge + Snooze buttons. High-urgency flags @mention Ahmed via SLACK_AHMED_USER_ID. Morning nudge summary. Weekend Planner. |
-| `#vera-logs` | `SLACK_LOGS_CHANNEL_ID` | Outbound only | Nightly run summaries (flag counts, step warnings, elapsed time). WebApp errors. Flight status updates. Feature fire confirmations. |
+| `#vera-chat` | Config `slack_chat_channel_id` | Bidirectional | Ahmed + Victoria conversational chat. Messages processed async via CacheService queue. @mentions resolve to names via SLACK_AHMED_USER_ID / SLACK_VICTORIA_USER_ID. |
+| `#vera-notifications` | Config `slack_notifications_channel_id` | Outbound only | Flag alerts with Block Kit Acknowledge + Snooze buttons. High-urgency flags @mention Ahmed via SLACK_AHMED_USER_ID. Morning nudge summary. Weekend Planner. |
+| `#vera-logs` | Config `slack_logs_channel_id` | Outbound only | Nightly run summaries (flag counts, step warnings, elapsed time). WebApp errors. Flight status updates. Feature fire confirmations. |
 
 
 ### WebApp GET Actions doGet() in WebApp.js — all require ?token=VERA_WEB_TOKEN

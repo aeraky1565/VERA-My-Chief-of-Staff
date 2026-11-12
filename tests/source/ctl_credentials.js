@@ -23,7 +23,7 @@ const CONTROLS = [
   ['the reminder key has no expiry date', srv("out.push({ key: 'career_cert_' + slug + '_' + c.expires + '_' + lead,", "out.push({ key: 'career_cert_' + slug + '_' + lead,")],
   ['lead times ignore Config', srv("var out = String(v == null || v === '' ? '90,30,7' : v)", "var out = String('90')")],
   ['no pace reminder', srv("if (p && p.left && p.perMonth != null && p.perMonth > paceMax)", "if (false)")],
-  ['the import runs every time', srv("  if (props.getProperty(CAR_CRED_IMPORT_PROP_)) return { imported: false, reason: 'already imported' };\n", "")],
+  ['the import runs every time', srv("  if (veraOnceGet_(CAR_CRED_IMPORT_PROP_)) return { imported: false, reason: 'already imported' };\n", "")],
   ['the bachelor’s degree isn’t added', srv("items.unshift({ kind: 'degree', name: CAR_CRED_BACHELOR_, earned: '', expires: '' });", "")],
   ['a save doesn’t reach the agent', srv("  try { var s = carCredSyncAgent_(); out.sync = s; } catch (e) { out.sync = { ok: false, error: e.message }; }\n", "")],
   ['renewing keeps the old credits', srv("  if (cur.renewal === 'credits') sheet.getRange(cur._row, CAR_CRED_HEADERS_.indexOf('Credits Earned') + 1).setValue(0);\n", "")],

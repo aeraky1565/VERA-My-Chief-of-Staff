@@ -108,27 +108,12 @@ var IMPORT_ADDRESS_PARTS_ = ['Address Line 1', 'Address Line 2', 'City', 'State'
  * @returns {Object} { ok, configured, ss, error }
  */
 function getAddressBookSheet_() {
+  // The Config tab (address_book_sheet_id) is the home for this: the Apps Script
+  // property editor lists only the first 50 properties and goes read-only past
+  // that, so a value a human has to type can't be added there. The old Script
+  // Property ADDRESS_BOOK_SHEET_ID is still read until it's moved (Settings.js).
   var id = '';
-  try {
-    id = String(PropertiesService.getScriptProperties().getProperty(ADDRESS_BOOK_PROP_) || '').trim();
-  } catch (propErr) { id = ''; }
-
-  // THE CONFIG TAB IS THE USABLE HOME FOR THIS, and the Script Property is the
-  // fallback rather than the other way round in practice.
-  //
-  // The Apps Script property editor lists only the first 50 properties and goes
-  // READ-ONLY past that — "to manage or view all of your properties, do so
-  // programmatically using the Properties service". VERA is well past 50, largely
-  // through latches nothing prunes (day_plan_*, PERK_NOTIFY_*, TDB_SENT_*), so a
-  // value a human has to type simply cannot be added there any more.
-  //
-  // The Config tab has no such cap, is a sheet both of them can already edit, and
-  // is where wishlist_* and victoria_email already live. Property first so an
-  // existing deployment keeps working.
-  if (!id) {
-    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }
-    catch (cfgErr) { id = ''; }
-  }
+  try { id = veraSettingId_(ADDRESS_BOOK_PROP_); } catch (e) { id = ''; }
 
   if (!id) return { ok: true, configured: false, ss: null, error: '' };
 

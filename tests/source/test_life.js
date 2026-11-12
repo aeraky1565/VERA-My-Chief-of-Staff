@@ -23,7 +23,7 @@ function extractFn(src, name) {
   throw new Error('unbalanced: ' + name);
 }
 const ctx = { console };
-vm.createContext(ctx);
+vm.createContext(ctx); loadSettings_(ctx);
 vm.runInContext(LIFE + '\n' + LG + '\n' + CU + '\n' + QC, ctx);
 const L = ctx;
 
@@ -111,7 +111,7 @@ check('as an idea, for its person, with its price', wp.stage === 'idea' && wp.fo
 check('description, links and notes become research notes', J(wp.notes.map(n => [n.text, n.link])) === J([['The brass one', ''], ['Link from the Wish List', 'https://example.test/l1'], ['Link from the Wish List', 'https://example.test/l2'], ['after the move', '']]), J(wp.notes));
 check('bought ones stay behind', L.lfWishToPurchase_({ item: 'Old thing', status: 'Purchased' }) === null);
 check('someone else is Shared', L.lfWishToPurchase_({ item: 'Rug', person: 'Both' }).forWho === 'Shared');
-check('the move runs once, from Planned Purchases', /props\.getProperty\(LF_WISH_MIGRATED_PROP_\)\) return/.test(LIFE) && /try \{ lfMigrateWishList_\(\); \}/.test(extractFn(PP, 'webPlannedPurchases_')));
+check('the move runs once, from Planned Purchases', /veraOnceGet_\(LF_WISH_MIGRATED_PROP_\)\) return/.test(LIFE) && /try \{ lfMigrateWishList_\(\); \}/.test(extractFn(PP, 'webPlannedPurchases_')));
 check('…and skips anything already planned', /if \(!p \|\| have\[lfNorm_\(p\.item\)\]\) return;/.test(LIFE));
 
 // ============ wiring ============
@@ -289,7 +289,7 @@ check('leave-by: start less the drive and ten minutes', L.cuLeaveBy_('19:00', 35
 console.log('\nComing up: wiring');
 check('GET coming_up and coming_up_leave_by', /case 'coming_up':\s+return jsonOut_\(webComingUp_\(\)\);/.test(WEB) && /case 'coming_up_leave_by':\s+return jsonOut_\(webComingUpLeaveBy_\(e\.parameter\)\);/.test(WEB));
 check('POST coming_up_debrief and coming_up_bring', /case 'coming_up_debrief':\s+return jsonOut_\(webComingUpDebrief_\(body\)\);/.test(WEB) && /case 'coming_up_bring':\s+return jsonOut_\(webComingUpBring_\(body\)\);/.test(WEB));
-check('the Config rows are seeded once, never over a row you have', /if \(props\.getProperty\(CU_SEEDED_PROP_\)\) return 0;/.test(CU) && /if \(!have\[p\[0\]\]\) \{ sheet\.appendRow\(p\); added\+\+; \}/.test(CU));
+check('the Config rows are seeded once, never over a row you have', /if \(veraOnceGet_\(CU_SEEDED_PROP_\)\) return 0;/.test(CU) && /if \(!have\[p\[0\]\]\) \{ sheet\.appendRow\(p\); added\+\+; \}/.test(CU));
 check('separate from the PTO milestones', !/getMilestones_/.test(CU.replace(/^ \*.*$/gm, '')));
 check('How was it? logs a note or a favourite', /createInterest_\('Ahmed', text, 'Other', 'Manual', 'After ' \+ title\)/.test(CU) && /webAddNote_\(\{ parameter: \{ title: 'After ' \+ title/.test(CU));
 check('leave-by reuses the trips drive-time cache', /loadTravelLegCache_\(\)/.test(CU) && /fetchTravelLeg_\(from, to, 'driving', apiKey\)/.test(CU));
@@ -314,3 +314,13 @@ check('POST life_quick_capture', /case 'life_quick_capture':\s+return jsonOut_\(
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

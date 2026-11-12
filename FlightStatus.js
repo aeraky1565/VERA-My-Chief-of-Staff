@@ -56,7 +56,7 @@ function flightPollGapMin_(cfg) {
 /** Adds flight_status_poll_minutes = 15 to Config, once, so the settings modal lists it. */
 function seedFlightPollConfig_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(FLIGHT_POLL_SEEDED_PROP_)) return 0;
+  if (veraOnceGet_(FLIGHT_POLL_SEEDED_PROP_)) return 0;
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return 0;
   var have = false;
@@ -66,7 +66,7 @@ function seedFlightPollConfig_() {
     });
   }
   if (!have) sheet.appendRow(['flight_status_poll_minutes', String(FLIGHT_POLL_MIN_MINUTES_)]);
-  props.setProperty(FLIGHT_POLL_SEEDED_PROP_, new Date().toISOString());
+  veraOnceSet_(FLIGHT_POLL_SEEDED_PROP_, new Date().toISOString());
   _configCache_ = null;
   return have ? 0 : 1;
 }

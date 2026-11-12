@@ -157,7 +157,7 @@ function carCredAgentLine_() {
 /** Once ever: the agent's line, then the bachelor's degree, into the tab. Idempotent by name. */
 function carCredImportOnce_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(CAR_CRED_IMPORT_PROP_)) return { imported: false, reason: 'already imported' };
+  if (veraOnceGet_(CAR_CRED_IMPORT_PROP_)) return { imported: false, reason: 'already imported' };
   var line = '';
   try { line = carCredAgentLine_(); } catch (e) { return { imported: false, reason: e.message }; }
   var items = carCredParseAgent_(line);
@@ -172,7 +172,7 @@ function carCredImportOnce_() {
       renewal: 'none', creditsEarned: null, sendToAgent: true, notes: 'Imported from the job agent' }));
     added++;
   });
-  props.setProperty(CAR_CRED_IMPORT_PROP_, new Date().toISOString());
+  veraOnceSet_(CAR_CRED_IMPORT_PROP_, new Date().toISOString());
   return { imported: true, added: added };
 }
 

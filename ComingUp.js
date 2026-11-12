@@ -164,14 +164,14 @@ function cuLeaveBy_(time, driveMin) {
 /** Once ever: the default Coming up rows into VERA's Config tab (a row already there is left alone). */
 function cuSeedConfig_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(CU_SEEDED_PROP_)) return 0;
+  if (veraOnceGet_(CU_SEEDED_PROP_)) return 0;
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return 0;
   var have = {};
   if (sheet.getLastRow() >= 2) sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) { have[String(r[0] || '').trim()] = 1; });
   var added = 0;
   CU_DEFAULTS_.forEach(function(p) { if (!have[p[0]]) { sheet.appendRow(p); added++; } });
-  props.setProperty(CU_SEEDED_PROP_, new Date().toISOString());
+  veraOnceSet_(CU_SEEDED_PROP_, new Date().toISOString());
   try { _configCache_ = null; } catch (e) {}
   return added;
 }

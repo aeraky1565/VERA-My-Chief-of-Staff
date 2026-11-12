@@ -47,7 +47,7 @@ function ctx(o) {
     webGetPrescriptions_: () => ({ prescriptions: o.rx || [] }),
     writeFlags: f => flags.push(...f), wasRecentlySent_: k => (o.sentBefore || []).indexOf(k) !== -1,
     sendNudge_: (k, subj, text, notif) => sent.push({ k, subj, text, notif }) };
-  vm.createContext(c); vm.runInContext(SRC, c);
+  vm.createContext(c); loadSettings_(c); vm.runInContext(SRC, c);
   c.__items = items.rows; c.__props = props; c.__flags = flags; c.__sent = sent; c.__old = old;
   return c;
 }
@@ -78,7 +78,7 @@ console.log('\nthe old Traveler Profiles tab, copied once');
   const c = ctx({ old });
   const n = c.tpMigrateOnce_();
   check('each passport becomes an item, notes kept together, long numbers cut', n === 3 && c.__items.length === 4 && c.__items[1][0] === 'TI-prof_1' && c.__items[1][11] === 'NEXUS card · blue cover' && c.__items[3][11] === 'passport ••••6789', J(c.__items[3]));
-  check('runs once: the flag is set and a second call copies nothing', /copied 3/.test(c.__props.TP_MIGRATED) && c.tpMigrateOnce_() === 0 && c.__items.length === 4);
+  check('runs once: the flag is set and a second call copies nothing', /copied 3/.test(JSON.parse(c.__props.VERA_ONCE_MARKERS || '{}').TP_MIGRATED) && c.tpMigrateOnce_() === 0 && c.__items.length === 4);
   const c2 = ctx({ old, rows: [['TI-prof_1', 'Sam', 'document', 'passport', '', 'Canada', '', '', '2031-05-01', '', '', '', '']] });
   check('never copies a passport twice', c2.tpMigrateOnce_() === 2 && c2.__items.filter(r => r[0] === 'TI-prof_1').length === 1);
   c.webTpDelete_({ id: 'TI-prof_2' });
@@ -170,3 +170,13 @@ console.log('\nthe wiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

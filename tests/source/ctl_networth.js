@@ -78,7 +78,7 @@ const CONTROLS = {
 
   // ---- the mapping seed --------------------------------------------------
   'the seed ignores that it already ran, putting deleted rows back': b => ({
-    [NW]: swap(b[NW], '  if (props.getProperty(NW_SEEDED_PROPERTY_)) return 0;\n', ''),
+    [NW]: swap(b[NW], '  if (veraOnceGet_(NW_SEEDED_PROPERTY_)) return 0;\n', ''),
   }),
   'the seed writes over rows that already exist': b => ({
     [NW]: swap(b[NW], '    if (existing[pair[0]]) return;\n', ''),

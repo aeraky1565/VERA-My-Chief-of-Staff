@@ -340,7 +340,7 @@ console.log('\nthe nightly checks');
 console.log('\nthe deep link');
 {
   const D = {};
-  vm.createContext(D);
+  vm.createContext(D); loadSettings_(D);
   vm.runInContext('var CAR_SUBS;' + APP.match(/var CAR_SUBS=\[[^\]]*\];/)[0] + extractFn(APP, 'carParseDeepLink'), Object.assign(D, { URLSearchParams }));
   const dl = q => JSON.stringify(vm.runInContext('carParseDeepLink(' + JSON.stringify(q) + ')', D));
   check('?tab=career&sub=pipeline opens the Pipeline', dl('?tab=career&sub=pipeline') === '{"tab":"career","sub":"pipeline"}');
@@ -371,3 +371,13 @@ console.log('\nwiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

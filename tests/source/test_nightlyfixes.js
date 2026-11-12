@@ -34,7 +34,7 @@ function extractFn(src, name) {
 // ============ redaction ======================================================
 console.log('redactSecrets_: credentials never reach a log');
 const R = {};
-vm.createContext(R);
+vm.createContext(R); loadSettings_(R);
 vm.runInContext(extractFn(LOG, 'redactSecrets_'), R);
 const red = s => { R.s = s; return vm.runInContext('redactSecrets_(s)', R); };
 {
@@ -57,7 +57,7 @@ console.log('\n…applied where things are written');
   // veraLog_ → Slack text AND the buffered System Log row.
   const slack = [], rows = [];
   const S = { sendSlackLog_: t => slack.push(t), Logger: { log() {} } };
-  vm.createContext(S);
+  vm.createContext(S); loadSettings_(S);
   vm.runInContext(extractFn(LOG, 'redactSecrets_') + extractFn(LOG, 'veraLog_'), S);
   S.bufferSystemLogRow_ = (...a) => rows.push(a);
   vm.runInContext("veraLog_('apiHealth:aviationstack', 'System', 'Failed', 'see ?access_key=SECRET1', 0, 'GET https://x.test/v1?access_key=SECRET2&q=1')", S);
@@ -66,7 +66,7 @@ console.log('\n…applied where things are written');
 
   // bufferSystemLogRow_ on its own — other callers reach the sheet through it.
   const B = { _systemLogBuffer_: [], SYSTEM_LOG_AUTOFLUSH_ROWS_: 99, flushSystemLog_() {}, Date };
-  vm.createContext(B);
+  vm.createContext(B); loadSettings_(B);
   vm.runInContext(extractFn(LOG, 'redactSecrets_') + extractFn(LOG, 'bufferSystemLogRow_'), B);
   vm.runInContext("bufferSystemLogRow_('r', 'c', 'Failed', 'x?key=SECRET3', 0, 'y?appid=SECRET4')", B);
   check('bufferSystemLogRow_ masks the summary and the error', !/SECRET/.test(JSON.stringify(B._systemLogBuffer_)));
@@ -94,7 +94,7 @@ console.log('\nscrubLoggedSecrets_: what was logged before, once');
     getApiHealthState_: () => JSON.parse(JSON.stringify(state)),
     setApiHealthState_: s => { savedState = s; },
   };
-  vm.createContext(S);
+  vm.createContext(S); loadSettings_(S);
   vm.runInContext("var SECRETS_SCRUBBED_PROPERTY_ = 'LOG_SECRETS_SCRUBBED';" + extractFn(LOG, 'redactSecrets_') + extractFn(LOG, 'scrubLoggedSecrets_'), S);
   const n = vm.runInContext('scrubLoggedSecrets_()', S);
   check('rewrites the leaked System Log cell', written && !/OLDSECRET/.test(JSON.stringify(written)) && /access_key=\[redacted\]&flight_iata=UA590/.test(written[0][6]), JSON.stringify(written && written[0]));
@@ -119,7 +119,7 @@ console.log('\nthe nightly run');
   const at = head.indexOf("veraLog_('nightlyRun', 'Nightly',");
   const call = head.slice(at, head.indexOf(');', head.indexOf("stepFailures.length ? stepFailures.join('; ') : ''", at)) + 2);
   const S = {};
-  vm.createContext(S);
+  vm.createContext(S); loadSettings_(S);
   S.got = null;
   vm.runInContext('function veraLog_() { got = Array.prototype.slice.call(arguments); }' +
     'var stepFailures = [], stepSkipped = ["a"], flagCount = 2, highCount = 1, medCount = 1, lowCount = 0, deduped = 0, elapsed = 300;' +
@@ -133,7 +133,7 @@ console.log('\nthe nightly run');
 console.log('\nthe flight poll: only flights near departure are looked up');
 {
   const F = {};
-  vm.createContext(F);
+  vm.createContext(F); loadSettings_(F);
   vm.runInContext('var FLIGHT_POLL_MIN_MINUTES_ = 15;' + extractFn(FLIGHT, 'flightPollGapMin_'), F);
   const gap = v => { F.cfg = { flight_status_poll_minutes: v }; return vm.runInContext('flightPollGapMin_(cfg)', F); };
   check('the setting is read: 60', gap('60') === 60);
@@ -181,7 +181,7 @@ console.log('\nthe flight poll: only flights near departure are looked up');
   C.CalendarApp = { getAllCalendars: () => [{ getEvents: () => events.map(e => ({
     getId: () => e.id, getTitle: () => e.title, getLocation: () => e.location,
     getStartTime: () => new C.Date(e.start), isAllDayEvent: () => e.allDay })) }] };
-  vm.createContext(C);
+  vm.createContext(C); loadSettings_(C);
   const SRC = ['flightPollGapMin_', 'flightPollIntervalMin_', 'flightStaleAfterMin_', 'flightDueForCheck_', 'flightCheckIntervalMin_',
                'buildFlightDays_', 'refreshFlightDays_', 'getCalFlightStatusCache_', 'setCalFlightStatusCache_', 'checkFlightStatuses_']
     .map(n => extractFn(FLIGHT, n)).join('\n');
@@ -235,7 +235,7 @@ console.log('\nthe flight poll: only flights near departure are looked up');
   const D = { clock: new Date('2026-10-27T12:00:00').getTime() };
   const RealDate = Date;
   D.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(D.clock); } static now() { return D.clock; } };
-  vm.createContext(D);
+  vm.createContext(D); loadSettings_(D);
   vm.runInContext(extractFn(APP, 'flightLiveFromText') + extractFn(APP, 'flightInWindowNow'), D);
   const live = (when, it) => { D.clock = new Date(when).getTime(); D.it = it; return vm.runInContext('flightLiveFromText(it)', D); };
   const fl = { type: 'flight', date: '2026-10-28', startTime: '07:30' };
@@ -260,7 +260,7 @@ console.log('\nthe flight poll: only flights near departure are looked up');
       getRange: (r, c, n) => ({ getValues: () => rows.slice(0, n).map(x => [x[0]]) }), appendRow: r => rows.push(r) }) }),
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
   };
-  vm.createContext(S);
+  vm.createContext(S); loadSettings_(S);
   vm.runInContext("var FLIGHT_POLL_MIN_MINUTES_ = 15, FLIGHT_POLL_SEEDED_PROP_ = 'FLIGHT_POLL_CONFIG_SEEDED';" + extractFn(FLIGHT, 'seedFlightPollConfig_'), S);
   vm.runInContext('seedFlightPollConfig_(); seedFlightPollConfig_();', S);
   check('seeded once, at 15', rows.filter(r => r[0] === 'flight_status_poll_minutes').length === 1 && rows[1][1] === '15');
@@ -276,7 +276,7 @@ console.log('\nthe flight poll: only flights near departure are looked up');
 console.log('\naviationstack errors say what they were');
 {
   const C = {};
-  vm.createContext(C);
+  vm.createContext(C); loadSettings_(C);
   vm.runInContext(extractFn(FLIGHT, 'classifyAviationStackError_'), C);
   const cls = (code, body) => { C.c = code; C.b = body; return vm.runInContext('classifyAviationStackError_(c, b)', C); };
   const quotaBody = JSON.stringify({ error: { code: 'usage_limit_reached', message: 'Your monthly usage limit has been reached.' } });
@@ -299,7 +299,7 @@ console.log('\naviationstack errors say what they were');
       recordApiHealth_: (source, ok, detail, httpCode) => recorded.push({ ok, detail, httpCode }),
       UrlFetchApp: { fetch: () => { if (throwOn) throw new Error(throwOn); return { getResponseCode: () => code, getContentText: () => body }; } },
       Utilities: { formatDate: (d, tz, f) => f === 'MMM d' ? 'Nov 21' : '2:00 PM' }, Session: { getScriptTimeZone: () => 'America/New_York' } };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext(extractFn(FLIGHT, 'classifyAviationStackError_') + '\n' + fn, ctx);
     const out = ctx.fetchFlightStatus_('UA590', '2026-10-21');
     return { out, r: recorded[0] || {}, backoffs };
@@ -321,3 +321,13 @@ console.log('\naviationstack errors say what they were');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

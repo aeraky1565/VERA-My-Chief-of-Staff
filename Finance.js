@@ -69,7 +69,7 @@ function getFinanceSummaries() {
  * Returns one summary row per (person × metric) combination found.
  */
 function getSATSummaries_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var id = veraSettingId_('SAT_SHEET_ID');
   if (!id) {
     Logger.log('Finance: SAT_SHEET_ID not set in Script Properties — skipping');
     return [];
@@ -282,7 +282,7 @@ function readTransactionTab_(sheet, person) {
 }
 
 function getTransactionSummaries_() {
-  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  var id = veraSettingId_('TRANSACTIONS_SHEET_ID');
   if (!id) {
     Logger.log('Finance: TRANSACTIONS_SHEET_ID not set — skipping');
     return [];
@@ -528,7 +528,7 @@ function logSATData() {
  * object inside getSATSummaries_() (all lowercase).
  */
 function debugSATLabels() {
-  var id = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var id = veraSettingId_('SAT_SHEET_ID');
   if (!id) { Logger.log('SAT_SHEET_ID not set.'); return; }
 
   var sheet = SpreadsheetApp.openById(id).getSheetByName('Tracker');

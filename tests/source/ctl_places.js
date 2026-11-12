@@ -22,7 +22,7 @@ const srv = (from, to) => b => ({ [S]: swap(b[S], from, to) });
 
 const CONTROLS = [
   ['the move overwrites a filled Occasion', srv("if (occ || !notes) return r;", "if (!notes) return r;"), SRV],
-  ['the move runs every time', b => ({ [S]: swap(b[S], "if (props.getProperty(PL_MOVED_PROP_)) return 0;", "if (false) return 0;") }), SRV],
+  ['the move runs every time', b => ({ [S]: swap(b[S], "if (veraOnceGet_(PL_MOVED_PROP_)) return 0;", "if (false) return 0;") }), SRV],
   ['free text isn’t grouped under its pick', b => ({ [S]: swap(swap(b[S], "if (t === p || t.indexOf(p) !== -1) return picks[i];", "if (t === p) return picks[i];"), "if (stem.length >= 4 && t.indexOf(stem) !== -1) return picks[i];", "") }), SRV],
   ['suggestions repeat a pick in another case', srv("s = plStr_(s, 60); var k = s.toLowerCase();", "s = plStr_(s, 60); var k = s;"), SRV],
   ['planned includes trips that ended', srv("    if ((r.endDate || r.startDate) < today) return false;\n", ""), SRV],

@@ -47,7 +47,7 @@ const S = {
   Session: { getScriptTimeZone: () => 'UTC' }, LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Logger: { log() {} },
   getSpreadsheet: () => ss(VERA, 'vera'), getConfigValues: () => CONFIG,
 };
-vm.createContext(S);
+vm.createContext(S); loadSettings_(S);
 vm.runInContext(extractFn(read('Code.js'), 'ensureSheet'), S);
 ['tiSchema_', 'tiRows_', 'tiRowOf_', 'tiMintId_', 'tiNow_', 'tiLocked_'].forEach(n => vm.runInContext(extractFn(read('TripIdeas.js'), n), S));
 vm.runInContext(BG, S); vm.runInContext(PP, S);
@@ -97,3 +97,13 @@ check('the routes are wired', /case 'phone_plan':\s+return jsonOut_\(webGetPhone
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

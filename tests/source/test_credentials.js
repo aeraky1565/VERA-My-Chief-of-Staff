@@ -47,7 +47,7 @@ const S = {
   getSpreadsheet: () => ({ getSheetByName: n => VERA[n] ? fakeSheet(n, VERA[n], 'vera') : null, insertSheet: n => { VERA[n] = []; return fakeSheet(n, VERA[n], 'vera'); } }),
   getConfigValues: () => CONFIG, TABS: { CAREER_STATE: 'Career State' }, __u: 0,
 };
-vm.createContext(S);
+vm.createContext(S); loadSettings_(S);
 vm.runInContext(extractFn(CODE, 'ensureSheet'), S);
 vm.runInContext(CAR.match(/var CAR_STATE_HEADERS_\s*=[^;]*;/)[0] + CAR.match(/var CAR_AGENT_OWNED_LABELS_ = \[[\s\S]*?\];/)[0], S);
 ['carSheet_', 'carReadRows_', 'carStateGet_', 'carStateSet_', 'carLabel_', 'carAgentSheetId_', 'carOpenAgentTab_', 'carWriteAgentSettings_'].forEach(n => vm.runInContext(extractFn(CAR, n), S));
@@ -91,7 +91,7 @@ check('…on pace, none', run('carCredRemindersDue_(X, "2026-11-02", [90,30,7], 
 console.log('\nthe one-time import and the agent');
 let r = run('webCareerCredentials_()');
 const names = r.credentials.map(c => c.kind + ':' + c.name);
-check('imported once: the agent’s line plus the bachelor’s degree', J(names) === J(['degree:Bachelor of Engineering', 'degree:MBA', 'cert:Example PM Pro', 'cert:Quality Belt', 'cert:Cloud Architect Cert', 'cert:Agile Lead Cert']) && !!PROPS.CAR_CRED_IMPORTED, J(names));
+check('imported once: the agent’s line plus the bachelor’s degree', J(names) === J(['degree:Bachelor of Engineering', 'degree:MBA', 'cert:Example PM Pro', 'cert:Quality Belt', 'cert:Cloud Architect Cert', 'cert:Agile Lead Cert']) && !!JSON.parse(PROPS.VERA_ONCE_MARKERS || '{}').CAR_CRED_IMPORTED, J(names));
 check('…with the years it gave', r.credentials.find(c => c.name === 'Cloud Architect Cert').earned === '2024');
 check('…and never again (the guard)', run('carCredImportOnce_()').imported === false && run('webCareerCredentials_()').credentials.length === 6);
 check('the totals', r.totals.degrees === 2 && r.totals.active === 4 && r.totals.soon === 0);
@@ -123,3 +123,13 @@ check('Chat: renew_credential and log_credits', /ACTION:renew_credential\|\{name
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

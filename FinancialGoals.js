@@ -2,12 +2,13 @@
 // FinancialGoals.js — Issue #127: What-If Scenario Planner
 // ============================================================
 
-var LIFE_PLAN_DOC_ID = '1rtFqqjbix9sDAMt2-7j1QLwW7WcqSQLYCuNDaWf9dvU';
+// The Life Plan doc: Config life_plan_doc_id (an id or the doc's link). Never in code: the repo is public.
 
 // ---- Life Plan Doc Reader --------------------------------------------------
 
 function readLifePlanDoc_() {
-  var docId = PropertiesService.getScriptProperties().getProperty('LIFE_PLAN_DOC_ID') || LIFE_PLAN_DOC_ID;
+  var docId = veraSettingId_('LIFE_PLAN_DOC_ID');
+  if (!docId) return { goals: [], accounts: {}, raw: '', configured: false };
   try {
     var doc  = DocumentApp.openById(docId);
     var body = doc.getBody().getText();

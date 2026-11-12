@@ -285,9 +285,9 @@ function tpRead_() {
 /** The one-time copy of the old Traveler Profiles tab. Safe to call every time. */
 function tpMigrateOnce_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(TP_MIGRATED_PROP_)) return 0;
+  if (veraOnceGet_(TP_MIGRATED_PROP_)) return 0;
   return tpLocked_(function() {
-    if (props.getProperty(TP_MIGRATED_PROP_)) return 0;
+    if (veraOnceGet_(TP_MIGRATED_PROP_)) return 0;
     var old = getSpreadsheet().getSheetByName(TABS.TRAVELER_PROFILES), n = 0;
     if (old && old.getLastRow() >= 2) {
       var have = {};
@@ -296,7 +296,7 @@ function tpMigrateOnce_() {
       add.forEach(function(i) { sh.appendRow(tpRowOut_(i)); });
       n = add.length;
     }
-    props.setProperty(TP_MIGRATED_PROP_, new Date().toISOString() + ' copied ' + n);
+    veraOnceSet_(TP_MIGRATED_PROP_, new Date().toISOString() + ' copied ' + n);
     return n;
   });
 }

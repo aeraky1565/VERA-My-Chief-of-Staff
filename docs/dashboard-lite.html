@@ -692,7 +692,7 @@ function ShoppingTab(props){var h=React.createElement,stores=props.stores||[],bu
   var _o=React.useState(true),showDone=_o[0],setShowDone=_o[1];
   var _sh=React.useState(false),sheet=_sh[0],setSheet=_sh[1];
   React.useEffect(function(){if(stores.length>0){setActiveStore(function(prev){return stores.find(function(s){return s.tabId===prev;})?prev:stores[0].tabId;});}else{setActiveStore(null);}},[stores]);
-  if(!stores.length){return h('div',{className:'empty-state'},h('div',{style:{fontSize:32,marginBottom:12}},'🛒'),h('div',null,'No shopping list connected.'),h('div',{style:{fontSize:13,color:'#6b7fa8',marginTop:8}},'Set ',h('code',{style:{background:'#13244d',padding:'1px 6px',borderRadius:4}},'SHOPPING_LIST_DOC_ID'),' in Script Properties to connect your Google Doc.'));}
+  if(!stores.length){return h('div',{className:'empty-state'},h('div',{style:{fontSize:32,marginBottom:12}},'🛒'),h('div',null,'No shopping list connected.'),h('div',{style:{fontSize:13,color:'#6b7fa8',marginTop:8}},'Put your Google Doc’s link in the Config tab, row ',h('code',{style:{background:'#13244d',padding:'1px 6px',borderRadius:4}},'shopping_list_doc_id'),', to connect it.'));}
   var current=stores.find(function(s){return s.tabId===activeStore;})||stores[0];
   var g=shopGroup_(current.items);
   var left=current.items.filter(function(i){return !i.done;}).length;
@@ -13119,8 +13119,8 @@ function AddressBookView({ apiUrl, apiToken }) {
         <div style={{ fontSize:32, marginBottom:12 }}>📒</div>
         <div style={{ color:'#dde1f0', marginBottom:6 }}>No address book connected yet.</div>
         <div style={{ fontSize:13, color:'#6b7fa8' }}>
-          Add <code style={{ background:'rgba(255,255,255,0.06)', padding:'1px 5px', borderRadius:4 }}>ADDRESS_BOOK_SHEET_ID</code>
-          {' '}to Apps Script → Project Settings → Script Properties, set to your sheet’s id.
+          Add an <code style={{ background:'rgba(255,255,255,0.06)', padding:'1px 5px', borderRadius:4 }}>address_book_sheet_id</code>
+          {' '}row to the Config tab, set to your sheet’s id or link.
           VERA will add <strong>Households</strong> and <strong>People</strong> tabs and leave everything else in that sheet alone.
         </div>
       </div>

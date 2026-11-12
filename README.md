@@ -423,7 +423,7 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 ### Finance Overview Dashboard (`Finance.js`)
 
-The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet via `SAT_SHEET_ID`), spending by category from the Transactions sheet (`TRANSACTIONS_SHEET_ID`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
+The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
 ### Address Book (`AddressBook.js`, `WebApp.js`)
 
@@ -436,8 +436,8 @@ without handing over finances, health and career with it.
 
 **Point VERA at it from the Config tab**, with a row whose key is
 `address_book_sheet_id` and whose value is the sheet id. The
-`ADDRESS_BOOK_SHEET_ID` script property is also read, and wins when both are set, so
-an existing deployment keeps working — but the Config tab is the one that actually
+old `ADDRESS_BOOK_SHEET_ID` script property is still read until it is moved (the Config
+row wins when both are set), so an existing deployment keeps working — but the Config tab is the one that actually
 works in practice:
 
 > **The Apps Script property editor lists only the first 50 properties and is
@@ -1826,11 +1826,11 @@ Trips in Google Calendar should use the prefix `TRIP:` in the event title. VERA'
 
 ### Transactions Sheet
 
-Financial transaction data lives in a **separate** Google Sheet (not a tab in Life OS), identified by `TRANSACTIONS_SHEET_ID` in Script Properties. Data format matches the Empower CSV export: Date, Account, Description, Category, Tags, Amount. This separation keeps sensitive financial data isolated from the main Life OS sheet.
+Financial transaction data lives in a **separate** Google Sheet (not a tab in Life OS), identified by the Config row `transactions_sheet_id`. Data format matches the Empower CSV export: Date, Account, Description, Category, Tags, Amount. This separation keeps sensitive financial data isolated from the main Life OS sheet.
 
 ### Simple Ass Tracker (SAT) Budget Integration
 
-The SAT budget sheet is read via `SAT_SHEET_ID`. VERA reads the `Tracker` tab and supports both horizontal layouts (column-per-person) and vertical layouts (section-per-person). Budget metrics (net income, fixed expenses, shared expense splits) are surfaced in the Finance Overview dashboard and included in the nightly Claude context.
+The SAT budget sheet is read via the Config row `sat_sheet_id`. VERA reads the `Tracker` tab and supports both horizontal layouts (column-per-person) and vertical layouts (section-per-person). Budget metrics (net income, fixed expenses, shared expense splits) are surfaced in the Finance Overview dashboard and included in the nightly Claude context.
 
 ### Finance Overview Dashboard
 
@@ -1944,10 +1944,10 @@ The `Contracts` tab tracks active agreements: name, category, counterparty, star
 
 | Channel | Property Key | Purpose |
 |---------|-------------|---------|
-| `#vera-chat` | `SLACK_CHAT_CHANNEL_ID` | Bidirectional conversational chat — Ahmed and Victoria can message VERA |
-| `#vera-notifications` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Outbound flag alerts with Block Kit Acknowledge + Snooze buttons; High-urgency flags @mention Ahmed |
-| `#vera-act-now` | Config `slack_act_now_channel_id` (or Script Property `SLACK_ACT_NOW_CHANNEL_ID`) | Time-sensitive alerts only: ARIA's ✈️ Book now and 🏨 Book this stay. Turn phone notifications on for every message here. Until the ID is set, these go to #vera-notifications |
-| `#vera-logs` | `SLACK_LOGS_CHANNEL_ID` | Nightly run summary (flag counts, step warnings, elapsed time), errors, pre-trip briefing confirmations |
+| `#vera-chat` | Config `slack_chat_channel_id` | Bidirectional conversational chat — Ahmed and Victoria can message VERA |
+| `#vera-notifications` | Config `slack_notifications_channel_id` | Outbound flag alerts with Block Kit Acknowledge + Snooze buttons; High-urgency flags @mention Ahmed |
+| `#vera-act-now` | Config `slack_act_now_channel_id` | Time-sensitive alerts only: ARIA's ✈️ Book now and 🏨 Book this stay. Turn phone notifications on for every message here. Until the ID is set, these go to #vera-notifications |
+| `#vera-logs` | Config `slack_logs_channel_id` | Nightly run summary (flag counts, step warnings, elapsed time), errors, pre-trip briefing confirmations |
 
 ### Block Kit Interactive Buttons
 
@@ -1959,9 +1959,9 @@ VERA resolves Slack user IDs to human names via Script Properties:
 
 | Property | Usage |
 |----------|-------|
-| `SLACK_AHMED_USER_ID` | @mention on High-urgency flags; identity resolution in chat |
-| `SLACK_VICTORIA_USER_ID` | Identity resolution in chat |
-| `SLACK_ALLOWED_USER_IDS` | Comma-separated list of Slack user IDs authorised to chat with VERA |
+| Config `slack_ahmed_user_id` | @mention on High-urgency flags; identity resolution in chat |
+| Config `slack_victoria_user_id` | Identity resolution in chat |
+| Script Property `SLACK_ALLOWED_USER_IDS` | Comma-separated list of Slack user IDs authorised to chat with VERA |
 
 ### Inbound Message Flow
 
@@ -2127,31 +2127,62 @@ Add these rows to the `Config` tab (`Setting` | `Value`). All keys are read via 
 
 ## Script Properties Reference
 
-Set all properties in the Apps Script editor: **Project Settings → Script Properties**.
+Script Properties hold **secrets only**, plus the two values VERA needs before it can
+read anything else. Set them in the Apps Script editor: **Project Settings → Script
+Properties**. Everything else, the ids, links, channel ids and email address, is a row
+in the **Config tab** (next table), because the property editor lists only the first 50
+properties and turns read-only past that.
 
 | Property Key | Required | Used By | Description |
 |-------------|----------|---------|-------------|
-| `VERA_SHEET_ID` | Yes | Code.js | Google Sheet ID for the Life OS sheet |
-| `MORNING_NUDGE_EMAIL` | Yes | Code.js | Email address for morning briefing |
+| `VERA_SHEET_ID` | Yes | Code.js | Google Sheet ID for the Life OS sheet (VERA needs it to find the Config tab) |
 | `CLAUDE_API_KEY` | Yes | Claude.js | Anthropic API key |
 | `VERA_WEB_TOKEN` | Yes | WebApp.js | Secret token required on all dashboard API requests (`?token=...`) |
-| `VERA_DASHBOARD_URL` | No | morningNudge | Dashboard URL shown as "Open VERA Dashboard →" button in email |
-| `VERA_LOGO_FILE_ID` | No | morningNudge | Google Drive file ID for VERA logo in morning email; falls back to text banner |
-| `SAT_SHEET_ID` | No | Finance.js | Simple Ass Tracker Google Sheet ID |
-| `ADDRESS_BOOK_SHEET_ID` | No | AddressBook.js | Shared address book Google Sheet ID. Unset simply hides the feature |
-| `TRANSACTIONS_SHEET_ID` | No | Finance.js | Transactions Google Sheet ID (Empower CSV format) |
 | `SLACK_BOT_TOKEN` | No | Slack.js | Slack bot OAuth token (`xoxb-...`) |
-| `SLACK_CHAT_CHANNEL_ID` | No | Slack.js | Channel ID for #vera-chat |
-| `SLACK_NOTIFICATIONS_CHANNEL_ID` | No | Slack.js | Channel ID for #vera-notifications |
-| `SLACK_LOGS_CHANNEL_ID` | No | Slack.js | Channel ID for #vera-logs |
-| `SLACK_AHMED_USER_ID` | No | Slack.js | Ahmed's Slack user ID (for @mention on High flags) |
-| `SLACK_VICTORIA_USER_ID` | No | Slack.js | Victoria's Slack user ID |
-| `SLACK_ALLOWED_USER_IDS` | No | Slack.js | Comma-separated authorised Slack user IDs |
+| `SLACK_ALLOWED_USER_IDS` | No | Slack.js | Comma-separated Slack user IDs allowed to chat with VERA. Kept here on purpose: it decides who may talk to VERA |
 | `AVIATIONSTACK_KEY` | No | FlightStatus.js | AviationStack API key for flight status polling |
-| `OPENWEATHER_API_KEY` | No | Weather.js | OpenWeather API key for weather ticker and destination forecasts |
+| `WEATHER_API_KEY` | No | Weather.js | OpenWeather API key for weather ticker and destination forecasts |
 | `GOOGLE_STATIC_MAPS_API_KEY` | No | TravelDayBriefing.js, TravelLegs.js | Google Maps key for the travel email's route image **and** the Distance Matrix travel times. **Restrict by API, never by referrer or IP** — see below |
 | `VERA_SEARCH_API_KEY` | No | Chat.js | Serper.dev or Tavily API key for web search in chat |
-| `VERA_SEARCH_ENGINE` | No | Chat.js | `serper` (default) or `tavily` |
+
+VERA also keeps its own records here (run stamps, caches, and one bundle of one-time
+"already done" markers, `VERA_ONCE_MARKERS`). You never set or edit those.
+
+### Settings in the Config tab
+
+Each is a row in the Config tab: the key in column A, the value in column B. Where the
+value is a sheet, doc or file, the id or the whole link both work. Settings.js reads
+the Config row first, then the old Script Property of the same name in capitals, so a
+deployment that hasn't moved yet keeps working.
+
+| Config row | Was Script Property | Description |
+|-----------|---------------------|-------------|
+| `morning_nudge_email` | `MORNING_NUDGE_EMAIL` | **Required.** Your email address: the morning briefing and error alerts |
+| `vera_dashboard_url` | `VERA_DASHBOARD_URL` | Dashboard link for the "Open VERA Dashboard →" buttons in emails |
+| `vera_logo_file_id` | `VERA_LOGO_FILE_ID` | The VERA logo image in Drive, for emails; falls back to a text banner |
+| `sat_sheet_id` | `SAT_SHEET_ID` | The budget tracker sheet |
+| `transactions_sheet_id` | `TRANSACTIONS_SHEET_ID` | The Transactions sheet (Empower CSV format) |
+| `address_book_sheet_id` | `ADDRESS_BOOK_SHEET_ID` | The shared address book sheet. Unset simply hides the feature |
+| `life_plan_doc_id` | `LIFE_PLAN_DOC_ID` | The Life Plan doc for the what-if planner |
+| `shopping_list_doc_id` | `SHOPPING_LIST_DOC_ID` | The shared shopping list doc |
+| `slack_chat_channel_id` | `SLACK_CHAT_CHANNEL_ID` | Channel ID for #vera-chat |
+| `slack_notifications_channel_id` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Channel ID for #vera-notifications |
+| `slack_act_now_channel_id` | `SLACK_ACT_NOW_CHANNEL_ID` | Channel ID for #vera-act-now (falls back to #vera-notifications) |
+| `slack_logs_channel_id` | `SLACK_LOGS_CHANNEL_ID` | Channel ID for #vera-logs |
+| `slack_ahmed_user_id` | `SLACK_AHMED_USER_ID` | Ahmed's Slack user ID (for @mention on High flags) |
+| `slack_victoria_user_id` | `SLACK_VICTORIA_USER_ID` | Victoria's Slack user ID |
+| `vera_search_engine` | `VERA_SEARCH_ENGINE` | `serper` (default) or `tavily` |
+| `neighborhood_hoa_url` | `NEIGHBORHOOD_HOA_URL` | The HOA website to watch (also set from the dashboard) |
+| `roster_link_aria` | `ARIA_SHEET_ID` | ARIA's Travel Tracker (the same link the Home roster uses) |
+
+**Moving an existing deployment.** Make a backup copy of the sheet, then run
+`moveSettingsToConfig()` once from the Apps Script editor. For each setting it copies the
+property into its Config row only where that cell is blank, reads it back, and only then
+deletes the property. A Config row that already holds a different value is left as it is,
+and so is its property (the Config row wins). It also moves the one-time markers into
+`VERA_ONCE_MARKERS`. It logs names and counts, never values, and is safe to run again.
+A nightly step keeps a copy of these settings in `VERA_SETTINGS_COPY`, used only if the
+Config tab can't be read at all.
 
 > **The travel map needs TWO things, and the dashboard working tells you nothing about
 > either.** They are different Google services with different keys:
@@ -2865,7 +2896,7 @@ deploy by hand when a test is wrong and something urgent is broken.
 3. In the repo directory: `clasp push`
 4. Alternatively, use `push.ps1` to push to Apps Script and GitHub simultaneously.
 
-### Step 3 — Set all Script Properties
+### Step 3 — Set the Script Properties (secrets)
 
 In the Apps Script editor: **Project Settings → Script Properties → Add property**.
 
@@ -2874,26 +2905,23 @@ Minimum required:
 | Property | Value |
 |----------|-------|
 | `VERA_SHEET_ID` | Your Life OS Sheet ID from Step 1 |
-| `MORNING_NUDGE_EMAIL` | Your email address |
 | `CLAUDE_API_KEY` | Your Anthropic API key |
 | `VERA_WEB_TOKEN` | Any random string (e.g. generate with `openssl rand -hex 16`) |
 
-Optional but recommended:
+Optional, as you turn features on:
 
 | Property | Value |
 |----------|-------|
-| `VERA_LOGO_FILE_ID` | Google Drive file ID of a VERA logo image |
 | `SLACK_BOT_TOKEN` | Slack bot OAuth token (if using Slack integration) |
-| `SLACK_CHAT_CHANNEL_ID` | Channel ID for #vera-chat |
-| `SLACK_NOTIFICATIONS_CHANNEL_ID` | Channel ID for #vera-notifications |
-| `SLACK_LOGS_CHANNEL_ID` | Channel ID for #vera-logs |
-| `SAT_SHEET_ID` | Simple Ass Tracker Sheet ID (if using finance module) |
-| `ADDRESS_BOOK_SHEET_ID` | Shared address book Sheet ID (if using the Address Book) |
-| `TRANSACTIONS_SHEET_ID` | Transactions Sheet ID (if using transaction tracking) |
+| `SLACK_ALLOWED_USER_IDS` | Slack user IDs allowed to chat with VERA |
 | `AVIATIONSTACK_KEY` | AviationStack API key (if using flight status) |
 | `GOOGLE_STATIC_MAPS_API_KEY` | Google Maps key — the travel email's route map and point-to-point travel times |
-| `OPENWEATHER_API_KEY` | OpenWeather API key (if using weather) |
+| `WEATHER_API_KEY` | OpenWeather API key (if using weather) |
 | `VERA_SEARCH_API_KEY` | Serper.dev or Tavily API key (if using web search in chat) |
+
+Everything else goes in the Config tab once Step 4 has created it: at least
+`morning_nudge_email`, then the sheet ids, logo and Slack channel ids as you need them
+(see **Settings in the Config tab** above).
 
 ### Step 4 — Run setupVERA() once
 
@@ -2913,10 +2941,10 @@ You will be prompted to authorise the required OAuth scopes. Approve all of them
 4. Who has access: **Anyone**
 5. Click **Deploy** — copy the Web App URL
 
-### Step 6 — Set VERA_DASHBOARD_URL
+### Step 6 — Set the dashboard link
 
 1. Deploy the React dashboard to Netlify (or any static host).
-2. Go back to Script Properties and add `VERA_DASHBOARD_URL` → your Netlify URL.
+2. In the Config tab, add the row `vera_dashboard_url` → your dashboard URL.
 3. The morning email will now include an "Open VERA Dashboard →" button.
 
 ### Step 7 — Configure Slack (optional)
@@ -2926,8 +2954,8 @@ You will be prompted to authorise the required OAuth scopes. Approve all of them
 3. Enable the Events API. Set the request URL to your Web App URL.
 4. Subscribe to the `message.channels` event type.
 5. Install the app to your workspace and copy the Bot OAuth token → `SLACK_BOT_TOKEN`.
-6. Add the bot to your three channels and copy each channel ID → the respective Script Properties.
-7. Add `SLACK_AHMED_USER_ID`, `SLACK_VICTORIA_USER_ID`, and `SLACK_ALLOWED_USER_IDS`.
+6. Add the bot to your channels and put each channel ID in its Config row (`slack_chat_channel_id`, `slack_notifications_channel_id`, `slack_act_now_channel_id`, `slack_logs_channel_id`).
+7. Add the Config rows `slack_ahmed_user_id` and `slack_victoria_user_id`, and the Script Property `SLACK_ALLOWED_USER_IDS`.
 
 ### Step 8 — Add Config tab rows for customisation
 

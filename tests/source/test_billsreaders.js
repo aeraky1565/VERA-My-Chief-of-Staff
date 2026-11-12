@@ -63,7 +63,7 @@ const S = {
   getSpreadsheet: () => ss(VERA, 'vera'), getConfigValues: () => ({}), getConfigAliases_: () => ({}),
   TABS: { BILLS: 'Bills', CONFIG: 'Config' }, BILL_HEADERS: OLD[0],
 };
-vm.createContext(S);
+vm.createContext(S); loadSettings_(S);
 vm.runInContext(extractFn(CODE, 'ensureSheet'), S);
 ['tiSchema_', 'tiRows_', 'tiRowOf_', 'tiMintId_', 'tiNow_', 'tiLocked_'].forEach(n => vm.runInContext(extractFn(read('TripIdeas.js'), n), S));
 ['fmtMoney_', 'isIncomeBillRow_'].forEach(n => vm.runInContext(extractFn(FIN, n), S));
@@ -150,3 +150,13 @@ check('neither the tracker nor the old Bills sheet was written', !writes.some(w 
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

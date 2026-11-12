@@ -32,11 +32,11 @@ const CONTROLS = [
   // ---- migration -------------------------------------------------------------------
   // The guard is checked before and again inside the lock; each control reverts both.
   ['the migration runs every time', b => ({ [C]: swap(swap(b[C],
-      "  if (props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {\n    return { skipped: true };\n  }\n", ''),
-      "    if (!dryRun && (props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return { skipped: true };\n", '') })],
+      "  if (veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {\n    return { skipped: true };\n  }\n", ''),
+      "    if (!dryRun && (veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return { skipped: true };\n", '') })],
   ['only the Script Property guards the migration', b => ({ [C]: swap(swap(b[C],
-      "  if (props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {", "  if (props.getProperty(CAR_MIGRATED_PROP_)) {"),
-      "(props.getProperty(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return", "(props.getProperty(CAR_MIGRATED_PROP_))) return") })],
+      "  if (veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1')) {", "  if (veraOnceGet_(CAR_MIGRATED_PROP_)) {"),
+      "(veraOnceGet_(CAR_MIGRATED_PROP_) || carStateGet_('migration_v1'))) return", "(veraOnceGet_(CAR_MIGRATED_PROP_))) return") })],
   ['the v1 tabs are deleted instead of hidden', b => ({ [C]: swap(b[C], '      if (sh && !sh.isSheetHidden()) sh.hideSheet();', '      if (sh) ss.deleteSheet(sh);') })],
   ['the v1 Network tab is hidden too', b => ({ [C]: swap(b[C], '     TABS.CAREER_DEVELOPMENT, TABS.CAREER_WINS].forEach', '     TABS.CAREER_DEVELOPMENT, TABS.CAREER_WINS, TABS.CAREER_NETWORK].forEach') })],
   ['a dry run writes', b => ({ [C]: swap(b[C], '    if (dryRun) return { dryRun: true, counts: counts };\n', '') })],

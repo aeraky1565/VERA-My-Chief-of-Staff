@@ -186,7 +186,7 @@ function teLocked_(fn) {
 /** GET te_get: every upcoming trip, the people with profiles, and the retired list (once). */
 function webTeGet_() {
   var prof = teProfiles_(), cfg = getConfigValues();
-  var legacy = PropertiesService.getScriptProperties().getProperty(TE_LEGACY_PROP_) ? [] : teLegacy_(cfg['travel_companions']);
+  var legacy = veraOnceGet_(TE_LEGACY_PROP_) ? [] : teLegacy_(cfg['travel_companions']);
   return { ok: true, today: teToday_(), partnerSet: teEmailOk_(cfg['victoria_email']),
     people: prof.names.map(function(n) { return { name: n, you: teSame_(n, TE_OWNER_), hasEmail: teSame_(n, TE_PARTNER_) ? teEmailOk_(cfg['victoria_email']) : !!prof.emails[n] }; }),
     legacy: legacy, trips: teUpcoming_().map(function(t) { return teTrip_(t, prof); }) };
@@ -235,7 +235,7 @@ function webTeLegacy_(body) {
         if (tokens.length !== before) { teWriteTokens_(t, tokens); added++; }
       });
     }
-    props.setProperty(TE_LEGACY_PROP_, new Date().toISOString() + ' ' + ((body && body.mode) || 'dismiss') + ' ' + added);
+    veraOnceSet_(TE_LEGACY_PROP_, new Date().toISOString() + ' ' + ((body && body.mode) || 'dismiss') + ' ' + added);
     return { ok: true, trips: added };
   });
 }

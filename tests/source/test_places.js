@@ -56,7 +56,7 @@ function ctx(o) {
     webSaveTripIdea_: body => { (o.saved = o.saved || []).push(body.idea); return o.saveFails ? { ok: false, error: 'Give the idea a name' } : { ok: true, idea: Object.assign({ id: 'IDEA-NEW' }, body.idea) }; },
     lfPlaceWords_: s => String(s).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2 && ['trip', 'the', 'and'].indexOf(w) === -1),
   };
-  vm.createContext(c); vm.runInContext(SRC, c);
+  vm.createContext(c); loadSettings_(c); vm.runInContext(SRC, c);
   c.__sheets = sheets; c.__props = props; c.__cache = cache; c.__o = o;
   return c;
 }
@@ -88,7 +88,7 @@ console.log('\nthe one-time move out of Notes');
   check('empty rows and rows without an ID are left alone', r.rows[3][7] === '' && r.rows[4][6] === 'stray' && r.moved === 1);
   const s = ctx({ visits: [['c1', 'Italy', 'Rome', 2023, 'Both', '', 'Anniversary', ''], ['c2', 'Japan', 'Tokyo', 2024, 'Both', '', 'Holiday', '']] });
   s.webGetPlaces_();
-  check('it runs on the first places read', s.__sheets.Countries.rows[1][7] === 'Anniversary' && s.__sheets.Countries.rows[2][7] === 'Holiday' && /moved 2/.test(s.__props.PL_OCCASION_MOVED));
+  check('it runs on the first places read', s.__sheets.Countries.rows[1][7] === 'Anniversary' && s.__sheets.Countries.rows[2][7] === 'Holiday' && /moved 2/.test(JSON.parse(s.__props.VERA_ONCE_MARKERS || '{}').PL_OCCASION_MOVED));
   s.__sheets.Countries.rows.push(['c3', 'Peru', 'Cusco', 2026, 'Both', '', 'a note', '']);
   s.webGetPlaces_();
   check('…and only once: later notes stay notes', s.__sheets.Countries.rows[3][6] === 'a note' && s.__sheets.Countries.rows[3][7] === '');
@@ -229,3 +229,13 @@ console.log('\nafter the trip');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

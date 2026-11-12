@@ -313,7 +313,7 @@ function webGetFamilyWishLists_() {
  */
 function seedWishListInitialsConfig_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(WISH_SEEDED_PROPERTY_)) return 0;
+  if (veraOnceGet_(WISH_SEEDED_PROPERTY_)) return 0;
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return 0;
   var existing = {};
@@ -328,7 +328,7 @@ function seedWishListInitialsConfig_() {
     sheet.appendRow(pair);
     added++;
   });
-  props.setProperty(WISH_SEEDED_PROPERTY_, new Date().toISOString());
+  veraOnceSet_(WISH_SEEDED_PROPERTY_, new Date().toISOString());
   _configCache_ = null;
   Logger.log('seedWishListInitialsConfig_: added ' + added + ' initials row(s).');
   return added;

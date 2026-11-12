@@ -2013,7 +2013,7 @@ function webGetTodaysEvents_() {
  * SAT_SHEET_ID must be set in Script Properties.
  */
 function webGetBudget_() {
-  var sheetId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var sheetId = veraSettingId_('SAT_SHEET_ID');
   if (!sheetId) return { ok: true, rows: [], configured: false };
 
   try {
@@ -2112,7 +2112,7 @@ function webDebugApiHealth_() {
 }
 
 function webDebugTracker_() {
-  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var satId = veraSettingId_('SAT_SHEET_ID');
   if (!satId) return { ok: false, error: 'SAT_SHEET_ID not set' };
   var ss;
   try { ss = SpreadsheetApp.openById(satId); } catch(e) { return { ok: false, error: e.message }; }
@@ -2130,7 +2130,7 @@ function webDebugTracker_() {
 }
 
 function webGetTrackerBudget_() {
-  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var satId = veraSettingId_('SAT_SHEET_ID');
   if (!satId) return { ok: true, configured: false, error: 'SAT_SHEET_ID not set in Script Properties' };
 
   var ss;
@@ -2279,7 +2279,7 @@ function webGetTrackerBudget_() {
 }
 
 function webUpdateTrackerEntry_(e) {
-  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  var satId = veraSettingId_('SAT_SHEET_ID');
   if (!satId) return { ok: false, error: 'SAT_SHEET_ID not configured' };
   var rowParam = parseInt(e.parameter.row || '0', 10);
   var colParam = parseInt(e.parameter.col !== undefined ? e.parameter.col : '-1', 10);
@@ -2652,7 +2652,7 @@ function webUpdateBill_(e) {
  * Returns [] gracefully if TRANSACTIONS_SHEET_ID is not set or sheet is inaccessible.
  */
 function getTransactionMatchMap_(currMonth) {
-  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  var id = veraSettingId_('TRANSACTIONS_SHEET_ID');
   if (!id) return [];
 
   var ss;
@@ -2727,7 +2727,7 @@ function webGetTxList_() {
  * Used by the Finance Overview tab (Issue #77).
  */
 function webGetRecentTransactions_() {
-  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  var id = veraSettingId_('TRANSACTIONS_SHEET_ID');
   if (!id) return { ok: true, transactions: [], configured: false };
 
   var ss;
@@ -3141,7 +3141,7 @@ function webGetCashflow_(e) {
 
   // ---- 3. Read actual transactions for the month (positive = income) ------
   var txIncome = [];
-  var txId = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  var txId = veraSettingId_('TRANSACTIONS_SHEET_ID');
   if (txId) {
     try {
       var txSS   = SpreadsheetApp.openById(txId);
@@ -3482,7 +3482,7 @@ function webToggleCalBill_(e) {
     // Attempt to auto-link to a Tracker budget entry by name
     var budgetEntryAuto = '';
     try {
-      var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+      var satId = veraSettingId_('SAT_SHEET_ID');
       if (satId) {
         var satSS = SpreadsheetApp.openById(satId);
         var trkSheet = satSS.getSheetByName('Tracker');
@@ -10641,6 +10641,7 @@ function webGetSavedScenarios_(params) {
 function webSyncLifePlanDoc_() {
   try {
     var data = readLifePlanDoc_();
+    if (data && data.configured === false) return { ok: false, error: 'Put the Life Plan doc’s link in Config → life_plan_doc_id.' };
     return { ok: true, parsed: data };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -11763,7 +11764,7 @@ function webFlyerToCalendar_(e) {
  */
 function webGetHoaConfig_() {
   try {
-    var url = PropertiesService.getScriptProperties().getProperty(NEIGHBORHOOD_HOA_URL_KEY) || '';
+    var url = veraSetting_(NEIGHBORHOOD_HOA_URL_KEY);
     return { ok: true, url: url };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -11771,12 +11772,13 @@ function webGetHoaConfig_() {
 }
 
 /**
- * GET set_hoa_config?url=... — saves the HOA URL to Script Properties.
+ * GET set_hoa_config?url=... — saves the HOA URL to Config (neighborhood_hoa_url).
  */
 function webSetHoaConfig_(e) {
   try {
     var url = ((e.parameter || {}).url || '').toString().trim();
-    PropertiesService.getScriptProperties().setProperty(NEIGHBORHOOD_HOA_URL_KEY, url);
+    if (url && !/^https?:\/\/[^\s"'<>]+$/i.test(url)) return { ok: false, error: 'That isn’t a web link (it should start with https://).' };
+    if (!veraSetSetting_(NEIGHBORHOOD_HOA_URL_KEY, url)) return { ok: false, error: 'Config sheet not found' };
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

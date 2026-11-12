@@ -41,16 +41,15 @@ function getSlackChannelId_(name) {
     logs:          'SLACK_LOGS_CHANNEL_ID',
     'act-now':     'SLACK_ACT_NOW_CHANNEL_ID',
   };
-  var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty(map[short] || name) || '';
-  // #vera-act-now (time-sensitive alerts, ARIA's Book now): its channel ID may sit
-  // in the Config tab (slack_act_now_channel_id), since a channel ID isn't a secret
-  // and Script Properties can be full. Until either is set, it falls back to
-  // #vera-notifications, so nothing is lost.
-  if (!id && short === 'act-now') {
-    try { id = String((getConfigValues() || {})['slack_act_now_channel_id'] || '').trim(); } catch (e) { id = ''; }
-    if (!/^[CG][A-Z0-9]{6,}$/.test(id)) id = '';
-    if (!id) id = props.getProperty(map.notifications) || '';
+  // Channel ids are settings, not secrets: Config slack_chat_channel_id and so on,
+  // else the old Script Property (veraSetting_, Settings.js).
+  var valid = function(v) { v = String(v || '').trim(); return /^[CG][A-Z0-9]{6,}$/.test(v) ? v : ''; };
+  var id = map[short] ? veraSetting_(map[short]) : (PropertiesService.getScriptProperties().getProperty(name) || '');
+  // #vera-act-now (time-sensitive alerts, ARIA's Book now) falls back to
+  // #vera-notifications until its channel is set, so nothing is lost.
+  if (short === 'act-now') {
+    id = valid(id);
+    if (!id) id = veraSetting_(map.notifications) || '';
   }
   return id;
 }
@@ -61,14 +60,14 @@ function getSlackAllowedUserIds_() {
 }
 
 function getSlackUserName_(userId) {
-  var props = PropertiesService.getScriptProperties();
-  if (userId === props.getProperty('SLACK_AHMED_USER_ID'))    return 'Ahmed';
-  if (userId === props.getProperty('SLACK_VICTORIA_USER_ID')) return 'Victoria';
+  if (!userId) return null;
+  if (userId === veraSetting_('SLACK_AHMED_USER_ID'))    return 'Ahmed';
+  if (userId === veraSetting_('SLACK_VICTORIA_USER_ID')) return 'Victoria';
   return null;
 }
 
 function getSlackAhmedUserId_() {
-  return PropertiesService.getScriptProperties().getProperty('SLACK_AHMED_USER_ID') || '';
+  return veraSetting_('SLACK_AHMED_USER_ID');
 }
 
 // ─── SEND ─────────────────────────────────────────────────────────────────────

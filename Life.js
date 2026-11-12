@@ -386,7 +386,7 @@ function lfChatLogGiving_(args) {
 /** Once ever: someday purchases from the Wish List into Planned Purchases at stage "idea". */
 function lfMigrateWishList_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(LF_WISH_MIGRATED_PROP_)) return { moved: 0, reason: 'already moved' };
+  if (veraOnceGet_(LF_WISH_MIGRATED_PROP_)) return { moved: 0, reason: 'already moved' };
   var sh = getSpreadsheet().getSheetByName(TABS.WISH_LIST), moved = 0;
   if (sh && sh.getLastRow() >= 2) {
     var have = {};
@@ -400,7 +400,7 @@ function lfMigrateWishList_() {
       if (res && res.ok) { moved++; have[lfNorm_(p.item)] = 1; }
     });
   }
-  props.setProperty(LF_WISH_MIGRATED_PROP_, new Date().toISOString());
+  veraOnceSet_(LF_WISH_MIGRATED_PROP_, new Date().toISOString());
   return { moved: moved };
 }
 

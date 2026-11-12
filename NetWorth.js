@@ -479,7 +479,7 @@ function checkPlannerCdMaturity_() {
  */
 function seedNetWorthMappingConfig_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(NW_SEEDED_PROPERTY_)) return 0;
+  if (veraOnceGet_(NW_SEEDED_PROPERTY_)) return 0;
 
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return 0;
@@ -497,7 +497,7 @@ function seedNetWorthMappingConfig_() {
     sheet.appendRow(pair);
     added++;
   });
-  props.setProperty(NW_SEEDED_PROPERTY_, new Date().toISOString());
+  veraOnceSet_(NW_SEEDED_PROPERTY_, new Date().toISOString());
   _configCache_ = null;
   Logger.log('seedNetWorthMappingConfig_: added ' + added + ' mapping row(s).');
   return added;

@@ -58,7 +58,7 @@ console.log('Network');
   const S = full();
   check('the v1 Network migrates once', rows(S, 'Career Contacts').length === 1);
   run(S, 'carStateSet_("contacts_v1", null)');
-  delete S.props.CAR_MIGRATED_V1;
+  delete S.props.CAR_MIGRATED_V1; delete S.props.VERA_ONCE_MARKERS;   // the marker, in either home (Settings.js)
   run(S, 'carMigrateContacts_()');
   check('…and never on top of contacts already there', rows(S, 'Career Contacts').length === 1);
   const fresh = sandbox({ Date: FixedDate });
@@ -87,7 +87,7 @@ console.log('Network');
   check('“Touched today” sets the last-touch date, and nothing else', run(S, 'carReadContacts_()').find(x => x.id === saved.id).lastTouch === '2026-10-23' &&
         run(S, 'carReadContacts_()').find(x => x.id === saved.id).org === 'Invented Corp');
   check('the dashboard turns a suggested person into a contact without inventing a name', (() => {
-    const D = {}; vm.createContext(D);
+    const D = {}; vm.createContext(D); loadSettings_(D);
     vm.runInContext(extractFn(APP, 'carContactFromMatch'), D);
     const r = vm.runInContext('carContactFromMatch({ suggestedPerson: "Talent partner", company: "Madeup LLC", track: "pmo", title: "AD, PMO" })', D);
     return r.name === 'Talent partner' && r.role === 'recruiter' && r.warmth === 'cold' && J(r.tracks) === '["pmo"]' && r.source === 'agent';
@@ -351,7 +351,7 @@ console.log('\noverdue and flags');
 // ============ How it connects ======================================================
 console.log('\nHow it connects');
 {
-  const D = {}; vm.createContext(D);
+  const D = {}; vm.createContext(D); loadSettings_(D);
   vm.runInContext(APP.match(/var CAR_SYSTEMS=\[[\s\S]*?\];\nvar CAR_CROSSINGS=\[[\s\S]*?\];\nvar CAR_RULES=\[[\s\S]*?\];\nvar CAR_FILES=\[[\s\S]*?\];/)[0], D);
   const what = D.CAR_CROSSINGS.map(c => c.what).join('\n');
   const headers = new Set();
@@ -387,3 +387,13 @@ console.log('\nwiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

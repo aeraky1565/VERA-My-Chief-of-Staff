@@ -14,7 +14,7 @@
 // ---- Config ----------------------------------------------------------------
 
 function getShoppingDocId_() {
-  return PropertiesService.getScriptProperties().getProperty('SHOPPING_LIST_DOC_ID') || '';
+  return veraSettingId_('SHOPPING_LIST_DOC_ID');
 }
 
 // ---- Read ------------------------------------------------------------------

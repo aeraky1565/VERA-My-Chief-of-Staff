@@ -9,7 +9,8 @@
 //      structured event data (title, date, location, etc.)
 //
 // Script Properties used:
-//   NEIGHBORHOOD_HOA_URL — URL of the HOA website to monitor
+//   Config neighborhood_hoa_url — URL of the HOA website to monitor (the old Script
+//   Property NEIGHBORHOOD_HOA_URL is read until moved; Settings.js)
 // ============================================================
 
 var NEIGHBORHOOD_HOA_URL_KEY = 'NEIGHBORHOOD_HOA_URL';
@@ -26,10 +27,9 @@ var NEIGHBORHOOD_HOA_URL_KEY = 'NEIGHBORHOOD_HOA_URL';
 function scanHoaWebsite_() {
   var _hoaStart = Date.now();
   try {
-    var props  = PropertiesService.getScriptProperties();
-    var hoaUrl = props.getProperty(NEIGHBORHOOD_HOA_URL_KEY);
+    var hoaUrl = veraSetting_(NEIGHBORHOOD_HOA_URL_KEY);
     if (!hoaUrl) {
-      Logger.log('🏘 HOA URL not configured. Set NEIGHBORHOOD_HOA_URL in Script Properties.');
+      Logger.log('🏘 HOA URL not configured. Put the link in Config → neighborhood_hoa_url.');
       return;
     }
 

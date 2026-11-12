@@ -56,8 +56,7 @@ function getSearchTools_() {
 function doWebSearch_(rawQuery, numResults) {
   var apiKey = PropertiesService.getScriptProperties()
                  .getProperty('VERA_SEARCH_API_KEY') || '';
-  var engine = PropertiesService.getScriptProperties()
-                 .getProperty('VERA_SEARCH_ENGINE') || 'serper';
+  var engine = veraSetting_('VERA_SEARCH_ENGINE') || 'serper';
   if (!apiKey) return [];
   var n = numResults || 3;
 

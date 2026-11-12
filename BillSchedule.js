@@ -244,7 +244,7 @@ function bsPlan_() {
 
 /** The uploaded transactions for some months: [{ month:'YYYY-MM', description, amount, account }]. */
 function bsReadTransactions_(months) {
-  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  var id = veraSettingId_('TRANSACTIONS_SHEET_ID');
   if (!id) return null;
   var ss;
   try { ss = SpreadsheetApp.openById(id); } catch (e) { return null; }

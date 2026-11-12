@@ -192,7 +192,7 @@ var SECRETS_SCRUBBED_PROPERTY_ = 'LOG_SECRETS_SCRUBBED';
  */
 function scrubLoggedSecrets_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(SECRETS_SCRUBBED_PROPERTY_)) return -1;
+  if (veraOnceGet_(SECRETS_SCRUBBED_PROPERTY_)) return -1;
   var changed = 0;
 
   var sheet = getSpreadsheet().getSheetByName(TABS.SYSTEM_LOG);
@@ -218,7 +218,7 @@ function scrubLoggedSecrets_() {
     if (touched) setApiHealthState_(state);
   } catch (e) { Logger.log('scrubLoggedSecrets_: API health state — ' + e.message); }
 
-  props.setProperty(SECRETS_SCRUBBED_PROPERTY_, new Date().toISOString());
+  veraOnceSet_(SECRETS_SCRUBBED_PROPERTY_, new Date().toISOString());
   Logger.log('scrubLoggedSecrets_: ' + changed + ' logged value(s) had a credential masked.');
   return changed;
 }

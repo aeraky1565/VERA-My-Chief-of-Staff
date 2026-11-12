@@ -31,7 +31,7 @@ const CONTROLS = [
   ['you can be switched like a guest', srv("if (n && !teSame_(n, TE_OWNER_) && !out.some", "if (n && !out.some"), SRV],
   ['your address reaches the screen', srv("email: x.source === 'added' ? x.email : '',", 'email: x.email,'), SRV],
   ['cancelled trips are listed', srv("&& !/cancel|merged|deleted|archived/i.test(t.status || '')", ''), SRV],
-  ['the shared list is offered forever', srv("var legacy = PropertiesService.getScriptProperties().getProperty(TE_LEGACY_PROP_) ? [] :", 'var legacy = false ? [] :'), SRV],
+  ['the shared list is offered forever', srv("var legacy = veraOnceGet_(TE_LEGACY_PROP_) ? [] :", 'var legacy = false ? [] :'), SRV],
   ['Add to all includes her solo trips', srv("if (travellers.length && !travellers.some(function(x) { return teSame_(x, TE_OWNER_); })) return;", ''), SRV],
   ['the send ignores the per-trip list', b => ({ [T]: swap(b[T], "try { return teRecipientsFor_(tripKey); }", "try { return [CONFIG.MORNING_NUDGE_EMAIL]; }") }), SRV],
   ['everyone goes in To again', b => ({ [T]: swap(b[T], "var mailTo = recipients[0] || CONFIG.MORNING_NUDGE_EMAIL, mailBcc = recipients.slice(1);", "var mailTo = recipients.join(','), mailBcc = [];") }), SRV],

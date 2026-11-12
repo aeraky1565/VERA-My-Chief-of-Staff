@@ -239,9 +239,9 @@ function plLocked_(fn) {
 /** The one-time Notes → Occasion move on Countries. Safe to call every time: it runs once. */
 function plMoveOccasionsOnce_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty(PL_MOVED_PROP_)) return 0;
+  if (veraOnceGet_(PL_MOVED_PROP_)) return 0;
   return plLocked_(function() {
-    if (props.getProperty(PL_MOVED_PROP_)) return 0;
+    if (veraOnceGet_(PL_MOVED_PROP_)) return 0;
     var sheet = plCountriesSheet_(), moved = 0;
     if (sheet.getLastRow() >= 2) {
       var rows = sheet.getRange(1, 1, sheet.getLastRow(), COUNTRIES_HEADERS.length).getValues();
@@ -249,7 +249,7 @@ function plMoveOccasionsOnce_() {
       if (r.moved) sheet.getRange(1, 1, r.rows.length, COUNTRIES_HEADERS.length).setValues(r.rows);
       moved = r.moved;
     }
-    props.setProperty(PL_MOVED_PROP_, new Date().toISOString() + ' moved ' + moved);
+    veraOnceSet_(PL_MOVED_PROP_, new Date().toISOString() + ' moved ' + moved);
     return moved;
   });
 }
