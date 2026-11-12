@@ -278,6 +278,15 @@ function invalidateTripKeyCache_() { _tripKeySetCache_ = {}; }
  * @param {string} tripKey
  * @returns {string} 'TRIP-…' or ''
  */
+/**
+ * The value for a trip tab's Trip ID column (#239): the trip's ID for a key, or ''
+ * when it doesn't resolve (yet). Never throws, never writes; a blank cell is filled
+ * by tripIdStampAll_ once the trip is in the registry.
+ */
+function tripIdCell_(tripKey) {
+  try { return tripIdForKey_(tripKey) || ''; } catch (e) { return ''; }
+}
+
 function tripIdForKey_(tripKey) {
   var key = String(tripKey == null ? '' : tripKey).trim();
   if (!key) return '';

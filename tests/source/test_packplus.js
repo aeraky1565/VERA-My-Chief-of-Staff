@@ -282,7 +282,7 @@ console.log('\nluggage additions');
 
 console.log('\nwiring');
 {
-  check('PackingItems gains Status, Qty, Why, By, At', J(H.PackingItems.slice(8)) === J(['Status', 'Qty', 'Why', 'By', 'At']));
+  check('PackingItems gains Status, Qty, Why, By, At, then the Trip ID (#239)', J(H.PackingItems.slice(8)) === J(['Status', 'Qty', 'Why', 'By', 'At', 'Trip ID']));
   check('the writers fill all 13 columns', /'FALSE', 'manual', addedDate, 'ready', '', '', '', '',/.test(WEB) && /'ready', '', '', '', '',   \/\/ Status, Qty, Why, By, At/.test(WEB));
   check('the old tick keeps Status in step', /found\.sheet\.getRange\(found\.rowNum, 9\)\.setValue\(val === 'TRUE' \? 'bag' : 'ready'\)/.test(WEB));
   check('making a list adds staples and counts', /if \(typeof pkAfterGenerate_ === 'function'\) pkAfterGenerate_\(tripKey, startDate, endDate, pkTempsFrom_\(weatherSummary\)\);/.test(WEB) && WEB.indexOf('pkAfterGenerate_(tripKey') < WEB.indexOf('var packResult = webGetPacking_(e);'));

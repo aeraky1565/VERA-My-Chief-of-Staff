@@ -238,7 +238,7 @@ function lhView_(run, template) {
 /** Writes a run (appending it the first time). */
 function lhSaveRun_(run) {
   var sh = lhRunSheet_(), stamp = lhStamp_();
-  var row = [run.id || lhId_(run.kind === 'away' ? 'AWAY-' : run.kind === 'checkout' ? 'OUT-' : 'TRIP-'), run.kind, run.tripKey || '', run.home, run.leaveAt, run.nights, (run.leaving || []).join(', '), JSON.stringify(run.ticks || {}), JSON.stringify(run.oneOffs || []), run.sent || '', stamp];
+  var row = [run.id || lhId_(run.kind === 'away' ? 'AWAY-' : run.kind === 'checkout' ? 'OUT-' : 'TRIP-'), run.kind, run.tripKey || '', run.home, run.leaveAt, run.nights, (run.leaving || []).join(', '), JSON.stringify(run.ticks || {}), JSON.stringify(run.oneOffs || []), run.sent || '', stamp, run.tripKey ? (typeof tripIdCell_ === 'function' ? tripIdCell_(run.tripKey) : '') : ''];
   if (run._row) sh.getRange(run._row, 1, 1, LEAVE_RUN_HEADERS.length).setValues([row]);
   else { sh.appendRow(row); run._row = sh.getLastRow(); }
   run.id = row[0];

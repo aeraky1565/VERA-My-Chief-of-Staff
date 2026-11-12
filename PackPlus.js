@@ -245,9 +245,9 @@ function pkNewId_(sh, seqHint) {
 /** Appends items: [{person, category, item, qty, why, source, status}]. */
 function pkAppend_(tripKey, items) {
   if (!items.length) return 0;
-  var sh = pkSheet_(), added = pkToday_();
+  var sh = pkSheet_(), added = pkToday_(), tid = (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '');
   var rows = items.map(function(x, i) {
-    return [pkNewId_(sh, i), tripKey, x.person, x.category || 'General', x.item, x.status === 'bag' ? 'TRUE' : 'FALSE', x.source || 'manual', added, x.status || 'ready', x.qty || '', x.why || '', '', ''];
+    return [pkNewId_(sh, i), tripKey, x.person, x.category || 'General', x.item, x.status === 'bag' ? 'TRUE' : 'FALSE', x.source || 'manual', added, x.status || 'ready', x.qty || '', x.why || '', '', '', tid];
   });
   var start = sh.getLastRow() + 1;
   sh.getRange(start, 1, rows.length, PACKING_ITEM_HEADERS.length).setValues(rows);
@@ -454,7 +454,7 @@ function webPkOutfitsMake_(body) {
   var plan = pkCleanOutfits_(r.json, travellers);
   if (!plan.people.length) return { ok: false, error: 'The plan came back empty. Try again in a minute.' };
   pkLocked_(function() {
-    var have = pkOutfitsFor_(tripKey), sh = pkOutfitSheet_(), row = [tripKey, JSON.stringify(plan), pkStamp_()];
+    var have = pkOutfitsFor_(tripKey), sh = pkOutfitSheet_(), row = [tripKey, JSON.stringify(plan), pkStamp_(), (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '')];
     if (have) sh.getRange(have._row, 1, 1, TRIP_OUTFIT_HEADERS.length).setValues([row]); else sh.appendRow(row);
   });
   return { ok: true, has: true, updated: pkStamp_(), people: pkWithPieces_(plan).people };
@@ -634,7 +634,7 @@ function webPkReviewSave_(body) {
       pkReviewLessons_(r, pkLabel_(tripKey)).forEach(function(l) { try { var x = logTripLesson_(l.text, scope, 'Packing', pkLabel_(tripKey), l.detail); if (x && x.ok) lessons.push(l.text); } catch (e) { Logger.log('pk lesson: ' + e.message); } });
       logged = lessons.length > 0;
     }
-    var row = [tripKey, JSON.stringify(r.unused), JSON.stringify(r.forgot), JSON.stringify(r.bought), pkStr_(body.by, 40), pkStamp_(), logged ? 'yes' : ''];
+    var row = [tripKey, JSON.stringify(r.unused), JSON.stringify(r.forgot), JSON.stringify(r.bought), pkStr_(body.by, 40), pkStamp_(), logged ? 'yes' : '', (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '')];
     if (have._row) sh.getRange(have._row, 1, 1, PACKING_REVIEW_HEADERS.length).setValues([row]); else sh.appendRow(row);
     return { ok: true, lessons: lessons, alreadyLogged: !!have.logged };
   });

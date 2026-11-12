@@ -4810,7 +4810,7 @@ function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, sno
   var values = [
     rowNum === -1 ? 'TD-' + Date.now() : String(sheet.getRange(rowNum, 1).getValue() || 'TD-' + Date.now()),
     tripKey, groupKey, slotDate || '', status, chosenItemId || '', snoozedUntil || '', now,
-    notes || '',
+    notes || '', (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : ''),
   ];
   if (rowNum === -1) sheet.appendRow(values);
   else sheet.getRange(rowNum, 1, 1, TRIP_DECISION_HEADERS.length).setValues([values]);
@@ -4953,6 +4953,7 @@ function webAddItineraryItem_(e) {
     (p.location  || '').trim(),
     (p.notes     || '').trim(),
     (p.metadata  || '').trim(),
+    (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : ''),
   ]]);
   return { ok: true, id: id, action: 'created' };
 }
@@ -5187,6 +5188,7 @@ function webSetTripMeta_(e) {
     // sizes itself from — a short row throws on dimension mismatch rather than
     // writing a blank cell.
     (p.characteristics || '').trim(),
+    (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : ''),   // Trip ID (#239)
   ]]);
   return { ok: true };
 }
@@ -5241,8 +5243,8 @@ function setTripBriefing_(tripKey, text) {
   dateCell.setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, TRIP_META_HEADERS.length).setValues([[
     // Width must track TRIP_META_HEADERS.length, which the getRange above sizes
-    // from — the trailing '' is Characteristics, and a short row throws.
-    key, '', briefing, today, '', '', 2, '', '', '', '',
+    // from — then Characteristics and the Trip ID (#239); a short row throws.
+    key, '', briefing, today, '', '', 2, '', '', '', '', (typeof tripIdCell_ === 'function' ? tripIdCell_(key) : ''),
   ]]);
   return { ok: true, tripKey: key, briefing: briefing, action: 'created' };
 }
@@ -5375,7 +5377,7 @@ function webAddPackingItem_(e) {
   sheet.getRange(newRow, 6).setNumberFormat('@');
   sheet.getRange(newRow, 8).setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, PACKING_ITEM_HEADERS.length).setValues([[
-    id, tripKey, person, category, item, 'FALSE', 'manual', addedDate, 'ready', '', '', '', '',
+    id, tripKey, person, category, item, 'FALSE', 'manual', addedDate, 'ready', '', '', '', '', (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : ''),
   ]]);
 
   return { ok: true, id };
@@ -6053,6 +6055,7 @@ function webGeneratePacking_(e) {
   }
 
   // Only what isn't already kept as a checked item.
+  const packTripId = (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '');   // #239
   const allNewItems = regen.append.map(function(entry) {
     return [
       'PACK-' + dateKey + '-' + String(seq++).padStart(2, '0'),
@@ -6064,6 +6067,7 @@ function webGeneratePacking_(e) {
       'ai',
       addedDate,
       'ready', '', '', '', '',   // Status, Qty, Why, By, At (#234)
+      packTripId,                // Trip ID (#239)
     ];
   });
 
@@ -6239,7 +6243,7 @@ function webAcceptRecommendation_(e) {
   // map point and travel-time endpoint the moment it is added — previously this
   // was hard-coded empty, which is why accepted restaurants had no location.
   itinSheet.getRange(newRow, 1, 1, ITINERARY_HEADERS.length).setValues([[
-    newId, tripKey, rec.type, rec.title, rec.date, '', '', rec.address || '', rec.description, metadata,
+    newId, tripKey, rec.type, rec.title, rec.date, '', '', rec.address || '', rec.description, metadata, (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : ''),
   ]]);
 
   // Mark rec as 'added'
@@ -6768,6 +6772,7 @@ function webGenerateRecommendations_(e) {
   }
 
   const newRows = [];
+  var recTripId = (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '');
   recsData.forEach(function(rec) {
     if (!rec.title) return;
     newRows.push([
@@ -6784,6 +6789,7 @@ function webGenerateRecommendations_(e) {
       'ai',
       generatedAt,
       rec.address     || '',
+      recTripId,                  // Trip ID (#239)
     ]);
   });
 

@@ -226,8 +226,8 @@ const TAKEOUT_RESTAURANT_HEADERS = ['Name', 'Cuisine', 'Phone', 'Website', 'Rati
 const TAKEOUT_ITEM_HEADERS       = ['Restaurant', 'Item', 'Description', 'Rating', 'Notes'];
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags', 'Notes', 'Status'];
-const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata'];
-const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date', 'Traveler', 'Trip Budget', 'Trip Travellers', 'Outbound Mode', 'Return Mode', 'Luggage JSON', 'Characteristics'];
+const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata', 'Trip ID'];
+const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date', 'Traveler', 'Trip Budget', 'Trip Travellers', 'Outbound Mode', 'Return Mode', 'Luggage JSON', 'Characteristics', 'Trip ID'];
 
 /**
  * What KIND of trip this is — as opposed to Context, which is who you are with and
@@ -239,19 +239,19 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
  * the field lie. Kept short on purpose — a long dropdown is one nobody reads.
  */
 const TRIP_CHARACTERISTICS      = ['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'];
-const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date', 'Status', 'Qty', 'Why', 'By', 'At']; // Status..At: #234 (PackPlus.js)
+const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date', 'Status', 'Qty', 'Why', 'By', 'At', 'Trip ID']; // Status..At: #234 (PackPlus.js)
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes', 'Occasion']; // Occasion: #228
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited', 'Occasion', 'Trip Idea', 'Best Months']; // Occasion, Trip Idea, Best Months: #228
-const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
-const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
+const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes', 'Trip ID']; // Issue #96
+const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As', 'Trip ID']; // Issue #187; Kind/Status/Packs As #227
 const CYCLE_LOG_HEADERS        = ['ID', 'Start', 'End', 'Logged By', 'Logged At', 'Notes']; // Cycle.js
 const BAG_HEADERS              = ['ID', 'Name', 'Type', 'Size', 'Empty Weight (lb)', 'Whose', 'Notes', 'Updated']; // Luggage.js (#230)
 const LEAVE_HOME_HEADERS       = ['ID', 'Home', 'Group', 'Item', 'Order', 'Updated', 'By']; // LeavingHome.js (#231)
-const TRIP_OUTFIT_HEADERS      = ['Trip Key', 'Plan JSON', 'Updated']; // PackPlus.js (#234)
-const PACKING_REVIEW_HEADERS   = ['Trip Key', 'Unused JSON', 'Forgot JSON', 'Bought JSON', 'By', 'Updated', 'Lessons Logged']; // PackPlus.js (#234)
-const LEAVE_RUN_HEADERS        = ['ID', 'Kind', 'Trip Key', 'Home', 'Leave At', 'Nights', 'Leaving', 'Ticks JSON', 'One-offs JSON', 'Sent', 'Updated']; // LeavingHome.js (#231)
+const TRIP_OUTFIT_HEADERS      = ['Trip Key', 'Plan JSON', 'Updated', 'Trip ID']; // PackPlus.js (#234)
+const PACKING_REVIEW_HEADERS   = ['Trip Key', 'Unused JSON', 'Forgot JSON', 'Bought JSON', 'By', 'Updated', 'Lessons Logged', 'Trip ID']; // PackPlus.js (#234)
+const LEAVE_RUN_HEADERS        = ['ID', 'Kind', 'Trip Key', 'Home', 'Leave At', 'Nights', 'Leaving', 'Ticks JSON', 'One-offs JSON', 'Sent', 'Updated', 'Trip ID']; // LeavingHome.js (#231)
 const GIFT_PLACE_IDEAS_HEADERS  = ['Place', 'Ideas', 'Updated']; // #227: gift ideas per place, one Claude call each
-const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];
+const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address', 'Trip ID'];
 // Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary
 // item IDs, so an entry survives edits and is reused across trips forever.
 // Status records the verdict, including 'no_route' / 'not_found', so a pair that
@@ -262,7 +262,7 @@ const TRAVEL_LEGS_HEADERS       = ['From', 'To', 'Mode', 'Minutes', 'Distance', 
 // keeps decide-by deterministic rather than stored-and-stale, avoids writing on
 // a GET path, and means a hold deleted from the calendar stops being a decision
 // instead of leaving an orphan row. Status is Decided / Snoozed / Dropped.
-const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', 'Status', 'Chosen Item ID', 'Snoozed Until', 'Decided At', 'Notes'];
+const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', 'Status', 'Chosen Item ID', 'Snoozed Until', 'Decided At', 'Notes', 'Trip ID'];
 
 // The trip registry. Trip identity used to be the string startDate + '|' + label,
 // frozen into eight tabs at write time — so moving a trip's start date gave it two
@@ -1356,6 +1356,9 @@ function nightlyRun() {
     nightlyStep_(ctx, 'adoptLegacyTripKeys_', function() {
       adoptLegacyTripKeys_({ dryRun: false });
     });
+    // Step 0e-iii: fill blank Trip IDs on the trip tabs (#239), now that legacy keys
+    // resolve. Writes only blank Trip ID cells; never overwrites one.
+    nightlyStep_(ctx, 'tripIdStampAll_', tripIdStampAll_);
 
     // Step 0f: Pre-trip briefings (48-hour auto-summary) (Issue #81)
     nightlyStep_(ctx, 'checkPreTripBriefings_', checkPreTripBriefings_);

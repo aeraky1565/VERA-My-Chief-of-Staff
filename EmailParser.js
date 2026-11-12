@@ -455,6 +455,7 @@ function createItineraryRowFromEmail_(basic, rich, messageId) {
     (basic.location  || ''),
     '',                         // Notes
     JSON.stringify(metadata),
+    '',                         // Trip ID — blank until the Trip Key is assigned (#239)
   ];
 
   // Force plain-text format on date/time columns (5, 6, 7 = cols E, F, G)

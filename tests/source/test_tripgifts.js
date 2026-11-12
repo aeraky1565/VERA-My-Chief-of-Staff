@@ -71,7 +71,7 @@ const row = (id, trip, who, item, amount, purchased, kind, status, packs) => [id
 console.log('\nthe sheet');
 {
   const H = eval(HEADERS);
-  check('three columns appended after the original seven', H.slice(0, 7).join() === 'ID,Trip Key,Recipient,Item,Amount,Purchased,Notes' && H.slice(7).join() === 'Kind,Status,Packs As');
+  check('three columns appended after the original seven', H.slice(0, 7).join() === 'ID,Trip Key,Recipient,Item,Amount,Purchased,Notes' && H.slice(7).join() === 'Kind,Status,Packs As,Trip ID');
   check('the ideas tab is declared', /GIFT_PLACE_IDEAS:\s*'Gift Place Ideas'/.test(CODE) && eval(IDEA_HEADERS).join() === 'Place,Ideas,Updated');
   const c = ctx({ oldHeaders: true, gifts: [['G1', T, 'Dad', 'Cork wallet', 28, 'Yes', '']] });
   c.webAddTripGift_({ parameter: { tripKey: T, item: 'Tiles', recipient: 'Mom' } });
