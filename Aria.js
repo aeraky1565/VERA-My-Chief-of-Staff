@@ -718,6 +718,8 @@ function syncAriaFlags_() {
   }
   // ARIA reads VERA's "ARIA Requests" tab only once it exists: make sure it does, with ARIA's headers.
   try { ariaRequestsSheet_(); } catch (e) { Logger.log('aria: ARIA Requests tab not ensured'); }
+  // A trip moved or renamed on the calendar: its watch requests follow (#240).
+  try { ariaFollowRegistry_(); } catch (e) { Logger.log('aria: requests not followed: ' + e.message); }
   var wanted = ariaWantedFlags_(t.watch, t.runs, t.settings, new Date().toISOString());
   var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
   try { ariaPostBookNow_(t.watch); } catch (e) { Logger.log('aria: Book now Slack post skipped: ' + e.message); }
@@ -815,23 +817,57 @@ function ariaWatchSettled_(optionId, trip) {
 }
 
 /**
- * A settled trip moved on the calendar: its active watch requests take the new
- * dates and Trip Key. ARIA's own Date Change Flag covers its Watchlist row.
- * Called under tiLinkSettled_'s lock. Returns rows changed.
+ * Pure: an active watch request brought in line with its trip as the registry
+ * has it now: dates, Trip Key and Label. → the updated request, or null when it
+ * already matches, isn't an active watch, or the trip is gone or archived. (#240:
+ * a trip renamed on the same dates kept its old key and label.)
  */
-function ariaFollowTrip_(trip) {
-  var id = String(trip.tripId || '').toUpperCase(), sh = ariaRequestsSheet_(), now = tiNow_();
+function ariaRequestFollows_(req, trip) {
+  if (!req || !trip || req.kind !== 'watch' || req.status !== 'active') return null;
+  if (String(req.tripId || '').toUpperCase() !== String(trip.tripId || '').toUpperCase()) return null;
+  if (!trip.startDate || !trip.endDate || /cancel|merged|deleted|archived/i.test(String(trip.status || ''))) return null;
+  var key = trip.startDate + '|' + trip.label, label = String(trip.label || '');
+  if (req.earliest === trip.startDate && req.latest === trip.endDate && req.tripKey === key && req.label === label) return null;
+  var r = {};
+  Object.keys(req).forEach(function(k) { r[k] = req[k]; });
+  r.earliest = trip.startDate; r.latest = trip.endDate; r.tripKey = key; r.label = label;
+  return r;
+}
+
+/** Rewrites each request row that ariaRequestFollows_ changes. → rows changed. */
+function ariaFollowRows_(tripsById) {
+  var sh = ariaRequestsSheet_(), now = tiNow_();
   var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
-  var key = trip.startDate + '|' + trip.label, n = 0;
+  var n = 0;
   rows.forEach(function(row, i) {
     var r = ariaRequestFromRow_(row);
-    if (!id || String(r.tripId).toUpperCase() !== id || r.kind !== 'watch' || r.status !== 'active') return;
-    if (r.earliest === trip.startDate && r.latest === trip.endDate && r.tripKey === key) return;
-    r.earliest = trip.startDate; r.latest = trip.endDate; r.tripKey = key; r.updated = now;
-    sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++;
+    var next = ariaRequestFollows_(r, tripsById[String(r.tripId || '').toUpperCase()]);
+    if (!next) return;
+    next.updated = now;
+    sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(next)]); n++;
   });
   if (n) ariaForget_();
   return n;
+}
+
+/**
+ * A settled trip moved on the calendar: its active watch requests take the new
+ * dates, Trip Key and Label. ARIA's own Date Change Flag covers its Watchlist row.
+ * Called under tiLinkSettled_'s lock. Returns rows changed.
+ */
+function ariaFollowTrip_(trip) {
+  var byId = {};
+  if (trip && trip.tripId) byId[String(trip.tripId).toUpperCase()] = trip;
+  return ariaFollowRows_(byId);
+}
+
+/**
+ * Every active watch request follows its trip in the registry: a trip moved or
+ * renamed on the calendar, whether it came from a settled idea or "Ask ARIA" on
+ * the trip (#240). Runs with each ARIA sync. Returns rows changed.
+ */
+function ariaFollowRegistry_() {
+  return ariaFollowRows_(readTripRegistry_().byId || {});
 }
 
 // ---- One trip: ARIA on My Itinerary's Summary (trip_aria, aria_request_watch) ----------

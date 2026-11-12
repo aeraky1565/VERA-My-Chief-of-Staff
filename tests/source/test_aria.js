@@ -234,6 +234,24 @@ console.log('\nasking ARIA to scout an option');
     && run('ariaFollowTrip_({ tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-06-05", endDate: "2027-06-18" })') === 0);
   check('…and a request that is not an active watch stays put', run('ariaFollowTrip_({ tripId: "TRIP-NONE", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
   run('ariaFollowTrip_({ tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-05-29", endDate: "2027-06-11" })');
+  // #240: a trip renamed on the same dates kept its old Trip Key and Label.
+  const fr0 = ARQ.find(r => r[2] === 'OPT-ABC').slice();
+  const rn = run('ariaFollowTrip_({ tripId: "TRIP-SET1", label: "Spring in Portugal", startDate: "2027-05-29", endDate: "2027-06-11" })');
+  const fr2 = ARQ.find(r => r[2] === 'OPT-ABC');
+  check('a trip renamed on the same dates: its watch request takes the new Trip Key and Label', rn === 1 && fr2[4] === '2027-05-29|Spring in Portugal' && fr2[5] === 'Spring in Portugal' && fr2[9] === '2027-05-29', JSON.stringify(fr2));
+  check('…its airports and other fields kept', fr2[7] === fr0[7] && fr2[2] === fr0[2] && fr2[16] === 'Active');
+  const reg1 = S.readTripRegistry_;
+  S.readTripRegistry_ = () => ({ byId: { 'TRIP-SET1': { tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29', endDate: '2027-06-11', status: 'active' } }, rows: [] });
+  const before3 = ARQ.map(r => r.slice());
+  const fg = run('ariaFollowRegistry_()');
+  check('each ARIA sync follows every watch request from the trip registry (renamed back here)', fg === 1 && ARQ.find(r => r[2] === 'OPT-ABC')[5] === 'Spring in Europe', fg);
+  check('…touching only requests whose trip changed', ARQ.filter(r => r[2] !== 'OPT-ABC').every(r => JSON.stringify(r) === JSON.stringify(before3.find(b => b[0] === r[0]))) && run('ariaFollowRegistry_()') === 0);
+  S.readTripRegistry_ = reg1;
+  check('an archived or merged trip is not followed', run('ariaRequestFollows_({ kind: "watch", status: "active", tripId: "T1", tripKey: "x", label: "a" }, { tripId: "T1", label: "b", startDate: "2027-01-01", endDate: "2027-01-03", status: "merged:T2" })') === null);
+  check('a label left behind on its own is caught up too', (run('ariaRequestFollows_({ kind: "watch", status: "active", tripId: "T1", tripKey: "2027-01-01|New", label: "Old", earliest: "2027-01-01", latest: "2027-01-03" }, { tripId: "T1", label: "New", startDate: "2027-01-01", endDate: "2027-01-03" })') || {}).label === 'New');
+  check('a scout or withdrawn request is not followed', run('ariaRequestFollows_({ kind: "scout", status: "active", tripId: "T1" }, { tripId: "T1", label: "b", startDate: "2027-01-01", endDate: "2027-01-03" })') === null &&
+        run('ariaRequestFollows_({ kind: "watch", status: "withdrawn", tripId: "T1" }, { tripId: "T1", label: "b", startDate: "2027-01-01", endDate: "2027-01-03" })') === null);
+  check('the ARIA sync runs the follow', /ariaRequestsSheet_\(\); \} catch[^\n]*\n[^\n]*\n  try \{ ariaFollowRegistry_\(\); \}/.test(SRC));
   check('an option never scouted has no request to change', run('ariaWatchSettled_("OPT-NEVER", { tripId: "T", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
   S.vtS = [{ tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29' }];
   S.rqS = [{ ref: 'OPT-ABC', kind: 'watch', tripId: 'TRIP-SET1', status: 'active', created: '2027-02-20T00:00:00Z' }];
