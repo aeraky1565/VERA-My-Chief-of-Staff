@@ -779,6 +779,8 @@ function ensureSheet(ss, name, headers, defaultRows) {
       .setBackground('#1a1a2e')
       .setFontColor('#ffffff');
     sheet.setFrozenRows(1);
+    // The sheet's look for a new tab: banding and its area's colour (SheetStyle.js, #235).
+    if (typeof ssStyleNewTab_ === 'function') ssStyleNewTab_(sheet, headers.length);
 
     // Seed default data rows if provided and sheet is otherwise empty
     if (defaultRows && defaultRows.length > 0) {

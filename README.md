@@ -2472,6 +2472,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `TestBench.js` | **The index of manual test entry points.** One `tb*` callout per user-facing feature, grouped into four sections, with knobs at the top because the Run menu cannot pass arguments. Clears the relevant dedup guard before anything that would otherwise silently no-op |
 | `MyTrips.js` | Travel › My Trips: calendar trips, pencilled-in trips, a 15-month strip and past trips (#220) |
 | `TripEmails.js` | Who's travelling, and per-trip Travel Day email recipients (`teResolve_`) (#233) |
+| `SheetStyle.js` | The VERA sheet's look as a script (#235): `styleVeraSheet()`, run by hand from the editor, re-applies headers, banding, tab colours and order, column formats and colour rules; never writes a value or moves a column; new tabs get it from `ensureSheet` |
 | `TravelerProfiles.js` · `TripReadiness.js` | Traveller documents, trusted traveller, memberships, preferences, health (last 4 digits only); per-traveller trip readiness (`trdReadiness_`) (#227) |
 | `Luggage.js` · `LeavingHome.js` · `PackPlus.js` | Bag advice and Our bags (#230); leaving-home checklists and Heading out (#231); enriched packing: statuses, staples, outfits, buy list, checkout, review (#234) |
 | `TripGifts.js` · `Places.js` · `BucketPlus.js` | Gifts per trip; Countries and the Bucket List with best months, points and long weekends (#227, #228) |
