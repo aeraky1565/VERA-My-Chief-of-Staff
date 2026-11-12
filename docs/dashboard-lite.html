@@ -364,6 +364,14 @@ function SettingsModal({ initial, onSave, onClose }) {
           <div className="form-hint">Set in Apps Script → Project Settings → Script Properties</div>
         </div>
 
+        <div className="form-group lite-guides">
+          <label className="form-label">How to use VERA</label>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 14 }}>
+            <a href="guides/VERA_Lite_Guide.html" target="_blank" rel="noopener" style={{ color: '#c9a84c' }}>Your guide ↗</a>
+            <a href="guides/VERA_in_5_Minutes.html" target="_blank" rel="noopener" style={{ color: '#c9a84c' }}>VERA in 5 minutes ↗</a>
+          </div>
+        </div>
+
         <div className="modal-actions">
           {onClose && <button className="btn btn-ghost" onClick={onClose}>Cancel</button>}
           <button className="btn btn-primary" onClick={save} disabled={!url.trim() || !token.trim()}>
@@ -13692,7 +13700,7 @@ var VN_GROUPS={
     {id:'family',label:'Family',icon:'👶',items:['family_planning']}],
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
-  system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health']},
+  system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents','guides']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health']},
     {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags']}],
   life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
@@ -14904,6 +14912,17 @@ function App() {
           >
             ↺
           </button>
+          <a
+            className="btn-settings lite-guide-link"
+            href="guides/VERA_Lite_Guide.html"
+            target="_blank"
+            rel="noopener"
+            title="How to use VERA"
+            aria-label="How to use VERA"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            📖
+          </a>
           <button
             className="btn-settings"
             onClick={() => setShowSettings(true)}
