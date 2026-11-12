@@ -85,8 +85,8 @@ console.log('\none helper decides which days a trip covers');
         calOnly['2026-11-02|Work'].max === '2026-11-04', JSON.stringify(calOnly));
   check('the scheduled run uses the helper',
         /travelDayRanges_\(data, calTrips, tz\)/.test(extractFn(TDB, 'checkAndSendTravelDayBriefings_')));
-  check('…and passes the day and the trip\'s last day to the send',
-        /sendTravelDayBriefing_\(tripKey, _rows, \{ date: today, lastDay: _range\.max \}\)/
+  check('…and passes the day and the trip\'s first and last days to the send',
+        /sendTravelDayBriefing_\(tripKey, _rows, \{ date: today, firstDay: _range\.min, lastDay: _range\.max \}\)/
           .test(extractFn(TDB, 'checkAndSendTravelDayBriefings_')));
 }
 
@@ -181,7 +181,8 @@ function runSend(items, opts, o) {
     sendSlack_: (ch, text) => { out.slack.push(ch); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'sendTravelDayBriefing_']
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'travelDaysBetween_', 'travelDayKind_',
+    'travelStayTonight_', 'travelDayArea_', 'travelDayHeading_', 'sendTravelDayBriefing_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__i = items; ctx.__o = opts;
   out.ret = vm.runInContext('sendTravelDayBriefing_("2026-10-21|Lake Trip", __i, __o)', ctx);

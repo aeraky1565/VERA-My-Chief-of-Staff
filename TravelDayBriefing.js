@@ -314,7 +314,7 @@ function checkAndSendTravelDayBriefings_(opts) {
                    ' — falling back to sheet rows. ' + itinErr.message);
       }
 
-      sendTravelDayBriefing_(tripKey, _rows, { date: today, lastDay: _range.max });
+      sendTravelDayBriefing_(tripKey, _rows, { date: today, firstDay: _range.min, lastDay: _range.max });
       _tdbProps.setProperty(_sKey, new Date().toISOString());
       sent++;
     } catch (err) {
@@ -395,12 +395,39 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   var homeCity = String(cfg['weather_location'] || '').trim();
   var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
 
+  // Where today sits in the trip (#237). Read once, before anything asks Claude:
+  // the narrative, the per-stop details and the subject all depend on it. Every
+  // day of a trip gets this email, and a port day on a cruise is not a day you
+  // fly anywhere.
+  var _allRows = [], _tripKeys = tripKeysFor_(tripKey);
+  try {
+    var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (_itSheet && _itSheet.getLastRow() >= 2) {
+      _allRows = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    }
+  } catch (itErr) { Logger.log('TravelDay: itinerary read failed (non-fatal) — ' + itErr.message); }
+  var _tripRows = _allRows.filter(function(row) { return tripRowMatches_(row[1], _tripKeys); });
+  // The caller's range is the better answer (it includes the calendar); without
+  // one, the sheet's own, checkouts included — never the last row someone added.
+  var _firstDay = String(opts.firstDay || ''), _lastDay = String(opts.lastDay || '');
+  if (!_firstDay || !_lastDay) {
+    var _own = travelDayRanges_(_tripRows.map(function(row) { var r = row.slice(); r[1] = tripKey; return r; }), [], tz)[tripKey];
+    if (_own) { _firstDay = _firstDay || _own.min; _lastDay = _lastDay || _own.max; }
+  }
+  var dayCtx = travelDayKind_(dayStr, _firstDay, _lastDay, sortedItems);
+  dayCtx.stay = travelStayTonight_(_tripRows.map(function(row) {
+    return { type: String(row[2] || '').trim().toLowerCase(), title: String(row[3] || '').trim(),
+             date: travelRowDate_(row[4], tz), metadata: String(row[9] || '') };
+  }), dayStr);
+  dayCtx.onCruise = !!(dayCtx.stay && dayCtx.stay.type === 'cruise');
+  dayCtx.area = travelDayArea_(sortedItems);
+
   var toneMode      = getTripToneMode_(tripKey);
   // The trip briefing shapes the narrative, not the per-item detail lookups —
   // "why we are going" changes how the day should be told, and changes nothing
   // about a venue's address or phone number.
   var tripBriefing  = tripBriefingFor_(tripKey);
-  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, tripBriefing);
+  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, dayCtx, tripBriefing);
 
   // Lounge access. Five things have to line up, and until now NONE of them said
   // so in the log — which is how this section stayed silently empty on every
@@ -433,23 +460,9 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   var tomorrowFlights = [];
   var isReturnDay     = false;
   try {
-    var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
-    if (_itSheet && _itSheet.getLastRow() >= 2) {
+    if (_allRows.length) {
       var _tomorrow = Utilities.formatDate(new Date(dayNoon.getTime() + 86400000), tz, 'yyyy-MM-dd');
-      var _allRows  = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-      var _tripKeys = tripKeysFor_(tripKey);
-      // Is this the trip's last day? This compared against a `today` that was
-      // never defined in this function, so it threw, the catch below swallowed
-      // it, and tomorrow's flights were never shown. The caller's range is the
-      // better answer (it includes the calendar); without one, the sheet's own,
-      // checkouts included — never the last row someone happened to add.
-      var _lastDay = String(opts.lastDay || '');
-      if (!_lastDay) {
-        var _own = travelDayRanges_(_allRows.filter(function(row) {
-          return tripRowMatches_(row[1], _tripKeys);
-        }).map(function(row) { var r = row.slice(); r[1] = tripKey; return r; }), [], tz)[tripKey];
-        _lastDay = _own ? _own.max : '';
-      }
+      // Is this the trip's last day? Worked out above, with the day's context.
       isReturnDay = (_lastDay !== '' && _lastDay === dayStr);
       tomorrowFlights = _allRows.filter(function(row) {
         var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
@@ -468,7 +481,7 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
 
   // Enrich once, share across the schedule + map sections (and plain text) \u2014
   // see enrichTravelItems_'s doc comment for why this can't happen per-section.
-  var enrichedItems    = enrichTravelItems_(sortedItems);
+  var enrichedItems    = enrichTravelItems_(sortedItems, dayCtx);
   var directionsUrl    = buildTravelDirectionsUrl_(enrichedItems);
   var staticMapsApiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_STATIC_MAPS_API_KEY') || '';
 
@@ -494,10 +507,11 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
 
   // A test goes to you unless you asked for everyone.
   var recipients = isTest ? [CONFIG.MORNING_NUDGE_EMAIL] : getTravelDayRecipients_(tripKey);
+  var heading    = travelDayHeading_(dayCtx);
   var subject    = (isTest ? 'TEST \u00B7 ' : '') +
-                   '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
-  var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
-  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData, directionsUrl);
+                   heading.subject + ' \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
+  var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections, { label: heading.label, hasFlight: dayCtx.hasFlight });
+  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData, directionsUrl, heading);
 
   // A test is always an email: it is what you are checking.
   var travelCh = isTest ? 'email' : getNotifChannel_('travel_day_briefing');
@@ -532,7 +546,8 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
  * @param {Array}  sections   — [{ id, builder, data }] ordered pipeline
  * @returns {string} Full HTML email body
  */
-function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
+function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections, opts) {
+  opts = opts || {};
   var BLUE = '#1565c0';
 
   var html =
@@ -546,7 +561,7 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
     // ── Blue header ──────────────────────────────────────────────────────────
     '<tr><td style="padding:32px 40px 28px;background:' + BLUE + ';">' +
     '<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);' +
-    'letter-spacing:2px;text-transform:uppercase;">Travel Day</p>' +
+    'letter-spacing:2px;text-transform:uppercase;">' + escapeHtml_(opts.label || 'Travel Day') + '</p>' +
     '<p style="margin:0 0 4px;font-size:28px;font-weight:700;color:#ffffff;line-height:1.2;">' +
     escapeHtml_(tripLabel) + '</p>' +
     '<p style="margin:0;font-size:15px;color:rgba(255,255,255,0.85);">' +
@@ -576,7 +591,11 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
   // This is the highest-stakes email VERA sends — anything shown here can change
   // what the user does at the airport, so a failed refresh must be stated plainly.
   try {
-    var degradedTravel = getDegradedSources_();
+    // Flight data that isn't live only matters on a day with a flight (#237): on
+    // a port day it was a warning about nothing.
+    var degradedTravel = getDegradedSources_().filter(function(d) {
+      return opts.hasFlight !== false || !/aviation|flight/i.test(String(d.source || ''));
+    });
     if (degradedTravel.length > 0) {
       html +=
         '<div style="margin-top:24px;padding:12px 14px;background:#fff8e6;border-left:3px solid #e8b44a;border-radius:4px;">' +
@@ -601,7 +620,7 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
     '</td></tr>' +
     '<tr><td style="padding:16px 40px;background:#f7f7fa;border-top:1px solid #eeeeee;">' +
     '<p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">' +
-    'Have a great trip! \u2014 Sent automatically on travel day.' +
+    'Have a great trip! \u2014 Sent automatically each day of your trip.' +
     '</p>' +
     '</td></tr>' +
     '</table></td></tr></table></body></html>';
@@ -805,13 +824,13 @@ function buildTravelScheduleSection_(enrichedItems) {
  * @param {Array} items — sorted flat row array (all types)
  * @returns {Array} [{ row, details, displayAddress }]
  */
-function enrichTravelItems_(items) {
+function enrichTravelItems_(items, dayCtx) {
   return (items || []).map(function(row) {
     var title = String(row[3] || '').trim() || '(untitled)';
     var loc   = String(row[7] || '').trim();
 
     var details = null;
-    try { details = buildTravelItemDetailsData_(row); } catch (enrichErr) {
+    try { details = buildTravelItemDetailsData_(row, dayCtx); } catch (enrichErr) {
       Logger.log('TravelDayBriefing: enrichment error for "' + title + '": ' + enrichErr.message);
     }
 
@@ -987,7 +1006,7 @@ function buildTravelMapSection_(data) {
  * @param {Array} row — one Itinerary sheet row
  * @returns {Object}
  */
-function buildTravelItemDetailsData_(row) {
+function buildTravelItemDetailsData_(row, dayCtx) {
   var type  = String(row[2] || '').trim().toLowerCase();
   var title = String(row[3] || '').trim();
   var tz    = Session.getScriptTimeZone();
@@ -1048,7 +1067,8 @@ function buildTravelItemDetailsData_(row) {
     'Find day-of details for this itinerary item:\n' +
     'Title: ' + title + '\n' +
     'Type: ' + (type || 'unknown') + '\n' +
-    'Date: ' + date + knownStr + '\n\n' +
+    'Date: ' + date + knownStr + '\n' +
+    travelDetailsContext_(dayCtx, title, loc) + '\n' +
     'Return ONLY a JSON object with these fields (null if unknown/uncertain):\n' +
     '{\n' +
     '  "address": "full street address or null",\n' +
@@ -1082,7 +1102,8 @@ function buildTravelItemDetailsData_(row) {
     if (!details.address    && enriched.address)       details.address       = enriched.address;
     if (!details.directions && enriched.directions)    details.directions    = enriched.directions;
     if (!details.contactPhone && enriched.contactPhone) details.contactPhone = enriched.contactPhone;
-    if (!details.parkingInfo  && enriched.parkingInfo)  details.parkingInfo  = enriched.parkingInfo;
+    // On a cruise nobody is driving: parking is noise wherever the lookup found it.
+    if (!details.parkingInfo  && enriched.parkingInfo && !(dayCtx && dayCtx.onCruise)) details.parkingInfo = enriched.parkingInfo;
     if (!details.importantNotes && enriched.importantNotes) details.importantNotes = enriched.importantNotes;
     if (enriched.found === false && !hasAnyDetails_(details)) details.notFound = true;
   } else {
@@ -1129,9 +1150,9 @@ function getTravelDayRecipients_(tripKey) {
  * @param {Object|null} loungeData    — optional result from buildTravelLoungeData_()
  * @param {string|null} directionsUrl — optional result from buildTravelDirectionsUrl_(), same value used in the HTML map section
  */
-function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData, directionsUrl) {
+function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData, directionsUrl, heading) {
   var lines = [
-    '\u2708\uFE0F Travel Day \u2014 ' + tripLabel,
+    ((heading && heading.subject) || '\u2708\uFE0F Travel Day') + ' \u2014 ' + tripLabel,
     dateLabel,
     '',
   ];
@@ -1405,7 +1426,7 @@ function webTestTravelSend_(e) {
 
   var _t0 = Date.now();
   var rows = fetchTripDayItems_(tripKey, r.min, r.max, date) || [];
-  var sent = sendTravelDayBriefing_(tripKey, rows, { date: date, lastDay: r.max, test: true });
+  var sent = sendTravelDayBriefing_(tripKey, rows, { date: date, firstDay: r.min, lastDay: r.max, test: true });
   veraLog_('webTestTravelSend', 'Travel', 'Success',
     'Test travel-day email for ' + tripKey + ' on ' + date + ' (' + to + ')', Date.now() - _t0);
   return { ok: true, to: sent.to, subject: sent.subject, count: sent.count };
@@ -2723,6 +2744,131 @@ function buildTravelTomorrowSection_(tomorrowFlights) {
 // VERA Narrative section — Claude-powered travel day story
 // ---------------------------------------------------------------------------
 
+// ---- Where today sits in the trip (#237) --------------------------------------
+// Every day of a trip gets a Travel Day email. Until #237 each one was written as
+// if it were the day you fly out: "wheels up" on a port day, a flight tip on a
+// day with no flight, and the day's stops looked up as if you were arriving by
+// air. These pure helpers say what kind of day it is, where you sleep tonight
+// and where you are, and the prompts, the subject and the header use them.
+
+/** Pure: whole days from a to b ('yyyy-MM-dd'), or null. */
+function travelDaysBetween_(a, b) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(b || ''))) return null;
+  return Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
+}
+
+/**
+ * Pure: the kind of day it is on a trip. → { kind, n, total, hasFlight }
+ * kind: departure (the first day, a one-day trip too) | return (the last day) |
+ *       transit (a day in the middle with a flight) | during (any other day in the middle).
+ * n and total count days from 1, inclusive; null when an end is unknown, and then
+ * a day with a flight reads as departure and any other as during.
+ */
+function travelDayKind_(dayStr, firstDay, lastDay, items) {
+  var hasFlight = (items || []).some(function(row) {
+    var t = String((row && row[2]) || '').trim().toLowerCase();
+    return t === 'flight' || t === 'plane';
+  });
+  var fromStart = travelDaysBetween_(firstDay, dayStr), span = travelDaysBetween_(firstDay, lastDay);
+  if (fromStart === null || span === null || fromStart < 0 || fromStart > span) {
+    return { kind: hasFlight ? 'departure' : 'during', n: null, total: null, hasFlight: hasFlight };
+  }
+  var n = fromStart + 1, total = span + 1;
+  var kind = n === 1 ? 'departure' : n === total ? 'return' : hasFlight ? 'transit' : 'during';
+  return { kind: kind, n: n, total: total, hasFlight: hasFlight };
+}
+
+/**
+ * Pure: the stay that covers tonight — a hotel, an arranged stay or a cruise whose
+ * date is on or before today and whose checkout (metadata.checkoutDate, else the
+ * next day) is after it. The same rule ariaNightsCovered_ uses. → { type, title } | null
+ * items: [{ type, title, date, metadata }]. The latest one wins.
+ */
+function travelStayTonight_(items, dayStr) {
+  var hit = null;
+  (items || []).forEach(function(it) {
+    if (!it || !it.date || ['hotel', 'arranged_stay', 'cruise'].indexOf(it.type) === -1 || it.date > dayStr) return;
+    var out = '';
+    try { out = String((JSON.parse(it.metadata || '{}') || {}).checkoutDate || ''); } catch (e) {}
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(out) || out <= it.date) {
+      var p = it.date.split('-').map(Number);
+      out = new Date(Date.UTC(p[0], p[1] - 1, p[2] + 1)).toISOString().slice(0, 10);
+    }
+    if (dayStr < out && (!hit || it.date >= hit.date)) hit = { type: it.type, title: it.title, date: it.date };
+  });
+  return hit ? { type: hit.type, title: hit.title } : null;
+}
+
+/** Pure: where today happens — the distinct locations of today's stops, in order, at most three. */
+function travelDayArea_(items) {
+  var out = [];
+  (items || []).forEach(function(row) {
+    var t = String((row && row[2]) || '').trim().toLowerCase();
+    if (t === 'flight' || t === 'plane' || t === 'dining') return;
+    var loc = String((row && row[7]) || '').trim();
+    if (loc && out.indexOf(loc) === -1) out.push(loc);
+  });
+  return out.slice(0, 3);
+}
+
+/** Pure: the subject's lead and the header's label for the kind of day. */
+function travelDayHeading_(ctx) {
+  ctx = ctx || {};
+  if (ctx.kind === 'during') {
+    var count = ctx.n && ctx.total ? 'Day ' + ctx.n + ' of ' + ctx.total : 'Trip Day';
+    return { subject: '🌴 ' + count, label: count };
+  }
+  if (ctx.kind === 'return') return { subject: '🏡 Travel Day — Heading home', label: 'Heading home' };
+  return { subject: '✈️ Travel Day', label: 'Travel Day' };
+}
+
+/** Pure: the line that tells the narrative which day of the trip it is writing for. */
+function travelDayPromptLine_(ctx) {
+  ctx = ctx || {};
+  var of = ctx.n && ctx.total ? 'day ' + ctx.n + ' of ' + ctx.total : '';
+  var lines = [];
+  if (ctx.kind === 'departure') {
+    lines.push('Today is departure day' + (of ? ', ' + of : '') + ': the trip starts today.');
+  } else if (ctx.kind === 'return') {
+    lines.push('Today is the last day' + (of ? ', ' + of : '') + ': heading home.');
+  } else if (ctx.kind === 'transit') {
+    lines.push('Today is ' + (of || 'a day mid-trip') + ': already on the trip, moving on to the next stop today.');
+  } else {
+    lines.push('Today is ' + (of || 'a day in the middle of the trip') + '. They are already on the trip. ' +
+      'Do not write about departing, "wheels up", flights, airports, packing or arriving at the destination: ' +
+      'there is no flight today. Tell today, where they already are.');
+  }
+  if (ctx.stay && ctx.stay.title) {
+    lines.push('Staying tonight: ' + ctx.stay.title + ' (' + String(ctx.stay.type).replace('_', ' ') + ').');
+  }
+  if (ctx.onCruise && ctx.kind !== 'departure') {
+    lines.push('They are on a cruise: today\'s places are ports of call reached by the ship, and the evening is back on board.');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Pure: what the per-stop details lookup must know so it doesn't send you to an
+ * airport on a port day, or find a same-named restaurant in another country.
+ */
+function travelDetailsContext_(ctx, title, loc) {
+  if (!ctx) return '';
+  var lines = [];
+  var area = (ctx.area || []).filter(function(a) { return a && a !== loc; });
+  if (area.length) lines.push('Where they are today: ' + area.join('; ') + '.');
+  if (ctx.onCruise) {
+    var ship = ctx.stay && ctx.stay.title ? ctx.stay.title : 'the cruise ship';
+    lines.push('They are on a cruise aboard ' + ship + '. They arrive at today\'s stops by ship: give directions from the cruise pier or tender dock, never from an airport or a ferry terminal, and leave out immigration and ferry details (the cruise line handles them). parkingInfo must be null.');
+    if (!/\d/.test(loc || '')) {
+      lines.push('A meal or venue with no street address on a cruise day is most likely on board ' + ship + ': look it up there first.');
+    }
+  } else if (ctx.kind === 'during' || (ctx.kind === 'return' && !ctx.hasFlight)) {
+    lines.push('They are already at the destination' + (ctx.stay && ctx.stay.title ? ', staying at ' + ctx.stay.title : '') + '. Give directions from there, never airport-arrival directions.');
+  }
+  lines.push('Only describe a place in that area. If the only match is somewhere else (another city or country), set found=false rather than give its details.');
+  return lines.join('\n') + '\n';
+}
+
 /**
  * getTripToneMode_(tripKey)
  * Returns 'personal' for anniversary/romantic trips (checked against TripMeta Context),
@@ -2761,7 +2907,7 @@ function getTripToneMode_(tripKey) {
  * @param {string}      toneMode     — 'professional' (default) or 'personal'
  * @returns {{ tagline, narrative, tip }|null}
  */
-function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, briefing) {
+function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, dayCtx, briefing) {
   try {
     if (!sortedItems || sortedItems.length === 0) return null;
 
@@ -2803,7 +2949,8 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode
       : '"professional": polished, first-class concierge. Warm but refined. Email may be forwarded to travel companions.';
 
     var prompt =
-      'You are VERA, Ahmed\'s Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
+      'You are VERA, Ahmed\'s Chief of Staff. Trip: ' + tripLabel + '.\n' +
+      travelDayPromptLine_(dayCtx) + '\n\n' +
       // Omitted entirely when unset — an empty line is something to reason about.
       (briefing ? 'What this trip is actually for: ' + briefing + '\n' +
                   'Let that shape the tagline and narrative.\n\n' : '') +
@@ -2814,7 +2961,7 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode
       '{\n' +
       '  "tagline": "One thematic line (or two short lines joined by \\\\n) capturing the spirit of today. Day-specific — reference actual activities. Professional: sophisticated. Personal: playful or heartfelt.",\n' +
       '  "narrative": "2–3 short paragraphs painting the arc of the day. Reference specific times and places. Don\'t list — tell the story. No markdown, no headers.",\n' +
-      '  "tip": "One sentence: a practical heads-up or encouragement specific to today."\n' +
+      '  "tip": "One sentence: a practical heads-up or encouragement specific to today, true to where today sits in the trip."\n' +
       '}';
 
     var result = callClaudeJson_(prompt, null);
