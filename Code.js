@@ -175,7 +175,7 @@ const NOTIF_REGISTRY = [
   // Travel
   { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false },
   { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
-  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-notifications', description: 'ARIA says a watched fare is worth booking (once per trip)', locked: false },
+  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false },
   { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false },
   { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false },
   // Routines
@@ -282,7 +282,7 @@ const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Night
 // Trip IDs Ahmed said are a different trip, so the match is never offered again.
 // Legs, Cost, Verdict and Wishes are JSON (see tiCleanOption_); Pros and Cons are newline lists.
 const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated', 'Verdict', 'Wishes'];
-const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP'];
+const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night'];
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];

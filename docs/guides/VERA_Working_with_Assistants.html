@@ -122,7 +122,7 @@
 <header class="top">
   <span class="brand">VERA · Working with your assistants</span>
   <h1>Who does what, step by step</h1>
-  <p>VERA works alongside ARIA (flights), WILLA (money plans), TESS (job search) and PIES (work); HAILEY (home search) runs on its own. This guide follows each job from start to finish and shows whose turn it is at every step: <span class="who you">YOU</span><span class="who vera">VERA</span><span class="who aria">ARIA</span><span class="who willa">WILLA</span><span class="who tess">TESS</span><span class="who pies">PIES</span>. How the links are built is in the System Documentation, §21.</p>
+  <p>VERA works alongside ARIA (flights and hotels), WILLA (money plans), TESS (job search) and PIES (work); HAILEY (home search) runs on its own. This guide follows each job from start to finish and shows whose turn it is at every step: <span class="who you">YOU</span><span class="who vera">VERA</span><span class="who aria">ARIA</span><span class="who willa">WILLA</span><span class="who tess">TESS</span><span class="who pies">PIES</span>. How the links are built is in the System Documentation, §21.</p>
 </header>
 
 <nav class="toc" aria-label="Sections">
@@ -143,7 +143,7 @@
     <b>6:36 AM</b><span><span class="who tess">TESS</span>Weekdays: checks the LinkedIn alerts and emails you the job digest.</span>
     <b>6:52 AM</b><span><span class="who aria">ARIA</span>Prices every trip it watches and anything VERA asked it to scout.</span>
     <b>7:00 AM</b><span><span class="who vera">VERA</span>The morning email, if anything needs you.</span>
-    <b>7:30 AM</b><span><span class="who vera">VERA</span>Reads what ARIA found, then again every 3 hours until 10 PM. A new ✈️ Book now goes to Slack.</span>
+    <b>7:30 AM</b><span><span class="who vera">VERA</span>Reads what ARIA found, then again every 3 hours until 10 PM. A new ✈️ Book now or 🏨 Book this stay goes to Slack, in #vera-act-now.</span>
     <b>7:38 AM</b><span><span class="who hailey">HAILEY</span>Weekdays: searches Zillow for homes. Emails only when one crosses your alert lines.</span>
     <b>Every 30 min</b><span><span class="who vera">VERA</span>Reads booking confirmation emails into the trip's itinerary.</span>
     <b>11 PM</b><span><span class="who vera">VERA</span>The nightly run: calendars, money, the planner, the job tracker; new flags.</span>
@@ -177,6 +177,8 @@
     <li><div><span class="who aria">ARIA</span>From the next morning it watches. Low flags such as 🛫 <b>Add airports</b> or 💲 <b>Set a price ceiling</b> mean ARIA needs that before it can price. You can also fill the yellow cells in ARIA's Watchlist yourself; ARIA never overwrites them.</div></li>
     <li><div><span class="who aria">ARIA</span><span class="who you">YOU</span>👀 <b>Set up a SlickTrip watch</b>: ARIA never creates price watches itself. Create one in SlickTrip for the trip and paste its Watch ID into the trip's row in ARIA's Watchlist. Until then ARIA still prices it by search.</div></li>
     <li><div><span class="who you">YOU</span>Same as above from here: Book now → book → the confirmation email closes the loop. Then 🛑 <b>Stop the SlickTrip watch</b> asks you to stop that watch in SlickTrip. Driving? ARIA skips the trip.</div></li>
+    <li><div><span class="who you">YOU</span>Nights with no place to sleep show under <b>Still to book</b> on the trip's Summary. Tap <b>🏨 Watch this stay</b>: VERA fills in the place, check-in, nights and travellers; add a most-per-night if you like, and send.</div></li>
+    <li><div><span class="who aria">ARIA</span><span class="who you">YOU</span>From the next morning ARIA prices hotels there; the best price shows on the stay. <b>🏨 Book this stay</b> (flag and Slack) means a good price: book it yourself. Once the hotel is in the itinerary VERA tells ARIA "booked" and it stops.</div></li>
   </ol>
 </section>
 

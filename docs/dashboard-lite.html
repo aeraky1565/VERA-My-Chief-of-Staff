@@ -8220,6 +8220,42 @@ function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=pr
         h('span',{style:{fontSize:13,color:'#b8c3e0'}},row&&row.status==='draft'?'ARIA has this trip as a Draft: it isn’t pricing it yet.':'ARIA isn’t watching these flights.'),
         btn('🧭 Watch with ARIA','ts-aria-watch',function(){setForm(Object.assign({},d.draft||{}));},true)),
     err&&!form&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
+// Unbooked nights in runs: one stay request per run (issue #238). missing: the night dates with no place to sleep.
+function tsNightRuns_(missing){var runs=[];(missing||[]).slice().sort().forEach(function(d){var r=runs[runs.length-1];if(r&&tsAddDays_(r.to,1)===d){r.to=d;r.nights++;}else runs.push({from:d,to:d,nights:1});});return runs;}
+// Hotels for the open nights, watched by ARIA (issue #238): each run of nights with no place to sleep gets
+// "Watch this stay" (place, check-in, nights, travellers, ceiling per night) → aria_request_stay. A watched
+// stay shows ARIA's latest hotel price from the Fare Log ("Hotel: …" routes) and "Stop watching".
+function TsAriaStays(props){var h=React.createElement;var d=props.data||{};var _f=React.useState(null),form=_f[0],setForm=_f[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var runs=tsNightRuns_(props.missing);var stays=d.stays||[];var fares=d.hotelFares||[];var draft=d.stayDraft||{};
+  var stayFor=function(r){for(var i=0;i<stays.length;i++){var s=stays[i];if(s.earliest&&s.earliest>=r.from&&s.earliest<=r.to)return s;}return null;};
+  var priceFor=function(s){var p=String(s.place||'').toLowerCase();var m=fares.filter(function(f){return !p||String(f.route||'').toLowerCase().indexOf(p)!==-1;});return (m.length?m:fares)[0]||null;};
+  var money=function(v){return v==null||v===''?'':'$'+Math.round(Number(v)).toLocaleString();};
+  var send=function(){setBusy('send');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_stay',tripId:d.tripId,tripKey:props.trip.tripKey,label:props.trip.label,place:form.place,checkIn:form.checkIn,nights:form.nights,travelers:form.travelers,ceilingNight:form.ceilingNight})
+    .then(function(){setBusy('');setForm(null);props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t ask ARIA');});};
+  var stop=function(s){setBusy('stop');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',ref:s.ref}).then(function(){setBusy('');props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t stop it');});};
+  var inp=function(k,lbl,ph,type){return h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,fontWeight:600,color:'#9aa9cc',minWidth:0}},lbl,
+    h('input',{className:'ts-stay-'+k,type:type||'text',value:form[k]==null?'':form[k],placeholder:ph||'',onChange:function(e){var v=e.target.value;setForm(function(f){var n=Object.assign({},f);n[k]=v;return n;});},
+      style:{minHeight:40,padding:'0 10px',borderRadius:8,border:'1px solid #2a3f6f',background:'#06112a',color:'#eef1fb',fontSize:14,minWidth:0,boxSizing:'border-box',width:'100%'}}));};
+  var btn=function(t,cls,on,primary){return h('button',{type:'button',className:cls,disabled:!!busy,onClick:on,style:{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',border:primary?'none':'1px solid #24386a',background:primary?'#8ab4f8':'transparent',color:primary?'#0a1428':'#cfe0ff'}},t);};
+  var when=function(r){return r.nights+' night'+(r.nights===1?'':'s')+' from '+r.from;};
+  return h('div',{className:'ts-stays',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
+    h('span',{style:{fontSize:12,color:'#9aa9cc',fontWeight:700,letterSpacing:'.06em'}},'🏨 STAYS · 🧭 ARIA'),
+    runs.map(function(r){var s=stayFor(r);var p=s&&priceFor(s);var open=form&&form.run===r.from;
+      return h('div',{key:r.from,className:'ts-stay-run',style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:13,color:'#f6d27a'}},'No place to sleep: '+when(r)),
+        s?h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
+            h('span',{className:'ts-stay-watched',style:{fontSize:13,color:'#dde1f0'}},'ARIA is watching hotels in '+(s.place||'this area')+(s.ceilingNight?' under '+money(s.ceilingNight)+'/night':'')+'.'),
+            p?h('span',{className:'ts-stay-price',style:{fontSize:13,color:'#b8c3e0'}},'Best seen: '+money(p.total)+(p.dateSeen?' · '+p.dateSeen:'')+(p.source?' · '+p.source:''),p.link?h('a',{href:p.link,target:'_blank',rel:'noopener',style:{marginLeft:8,color:'#8ab4f8'}},'Open'):null)
+             :h('span',{style:{fontSize:12,color:'#9aa9cc'}},'No hotel prices yet: ARIA checks once a day.'),
+            btn(busy==='stop'?'Stopping…':'Stop watching','ts-stay-stop',function(){stop(s);}))
+         :open?h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}},
+              inp('place','Where','Town, area or hotel'),inp('checkIn','Check-in','','date'),inp('nights','Nights','','number'),inp('travelers','Travellers','','number'),inp('ceilingNight','Most per night ($)','Optional','number')),
+            err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err),
+            h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-stay-send',send,true),btn('Cancel','ts-stay-cancel',function(){setForm(null);setErr('');})))
+         :btn('🏨 Watch this stay','ts-stay-watch',function(){setErr('');setForm({run:r.from,place:draft.place||'',checkIn:r.from,nights:r.nights,travelers:draft.travelers||2,ceilingNight:''});},true));}),
+    stays.filter(function(s){return s.status==='booked';}).map(function(s){return h('span',{key:s.ref,className:'ts-stay-booked',style:{fontSize:12,color:'#4ade80'}},'✓ Booked: '+(s.place||'stay')+' from '+s.earliest+' · ARIA stopped pricing it');}),
+    err&&!form&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
 // The two together: one read of trip_aria for the trip; nothing at all for a trip that's over.
 function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var _d=React.useState(null),data=_d[0],setData=_d[1];var _n=React.useState(0),n=_n[0],setN=_n[1];
   var past=trip.endDate&&trip.endDate<props.today;
@@ -8233,7 +8269,7 @@ function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var
     data.plan&&data.plan.option&&h(TsPlan,{plan:data.plan,actuals:data.actuals,items:props.items,ends:props.ends,card:props.card,label:props.label}),
     (needFlights||openNights>0)&&h('section',{className:'ts-still',style:props.card,'aria-label':'Still to book'},h('span',{style:props.label},'Still to book'),
       needFlights&&h(TsAriaFlights,{data:data,ends:props.ends,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}}),
-      openNights>0&&h('span',{className:'ts-still-stays',style:{fontSize:13,color:'#f6d27a'}},'🏨 '+openNights+' night'+(openNights===1?'':'s')+' with no place to sleep · not watched (ARIA watches flights for now)')));}
+      openNights>0&&h(TsAriaStays,{data:data,missing:props.nights.missing,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}})));}
 // Who's travelling and who gets the Travel Day email (TripEmails.js, issue #233). One editor, used
 // on each trip's summary and on System › Trip emails. You're always on it for your trips; Victoria
 // and other travellers only when switched on; anyone can be added from the Address Book or typed.

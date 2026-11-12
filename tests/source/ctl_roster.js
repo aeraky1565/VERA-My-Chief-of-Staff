@@ -27,7 +27,7 @@ const CONTROLS = [
   ['ARIA shows as not built', b => { const f = s => swap(s, "you book yourself',state:'live'}];", "you book yourself',state:'planned'}];"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['lite is missing ARIA', b => ({ [L]: swap(b[L], "  {name:'ARIA',", "  {nome:'ARIA',") })],
   ['HAILEY shows as not built', b => { const f = s => swap(s, "price drops',state:'live'", "price drops',state:'planned'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
-  ['links hand over the opener', b => { const f = s => swap(s, "target:'_blank',rel:'noopener'", "target:'_blank'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
+  ['links hand over the opener', b => { const f = s => swap(s, "{href:href,target:'_blank',rel:'noopener',className:'roster-link'", "{href:href,target:'_blank',className:'roster-link'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['VERA ignores its Config row', b => { const f = s => swap(s, "var href=L[r.name]||(r.name==='VERA'?veraHref:'');", "var href=r.name==='VERA'?veraHref:(L[r.name]||'');"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['a sheet id is written into the roster', b => { const f = s => swap(s, "{name:'WILLA',", "{name:'WILLA',id:'InventedPlannerId_0123456789abcdefgh',"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['System stops rendering the roster', b => ({ [A]: swap(b[A], "cur==='assistants'&&h(VeraRoster,", "cur==='assistants'&&h(VeraRosterGone,") })],

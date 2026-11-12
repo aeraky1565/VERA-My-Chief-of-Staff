@@ -44,13 +44,30 @@ const noScroll = page => page.evaluate(() => document.documentElement.scrollWidt
 async function scenario(page, label, width) {
   const draftRow = { tripId: 'TRIP-SET1', label: 'Spring in Europe', status: 'draft' };
   const asked = { ok: true, tripId: 'TRIP-SET1', configured: true, row: draftRow, fares: [], request: { kind: 'watch', status: 'active', origins: 'IAD, DCA', dests: 'LIS', created: '2027-02-20T12:00:00Z', updated: '2027-02-20T12:00:00Z' }, draft: DRAFT, plan: null };
-  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: draftRow, fares: [], request: null, draft: DRAFT, plan: null }, asked]);
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: draftRow, fares: [], request: null, draft: DRAFT, plan: null, stays: [], hotelFares: [], stayDraft: { place: 'Algarve', travelers: 2 } }, asked]);
   let t = await text(page);
   check(label + ': a future trip shows what is still to book', /STILL TO BOOK/i.test(t) && /FLIGHTS · 🧭 ARIA/.test(t), t.slice(0, 200));
   check(label + ': …ARIA has it as a Draft, with a Watch button', /ARIA has this trip as a Draft: it isn’t pricing it yet/.test(t) && !!(await page.$('#taprobe .ts-aria-watch')));
   const g = await page.evaluate(() => window.__gets.find(q => q.action === 'trip_aria'));
   check(label + ': it asks for this trip by ID, key and dates', g && g.tripId === 'TRIP-SET1' && g.tripKey === TRIP.tripKey && g.startDate === '2027-05-29' && g.endDate === '2027-06-11', JSON.stringify(g));
-  check(label + ': the nights with nowhere to sleep say they aren\'t watched', /night(s)? with no place to sleep · not watched \(ARIA watches flights for now\)/.test(t));
+  const runs = await page.$$eval('#taprobe .ts-stay-run', ns => ns.map(n => n.innerText));
+  check(label + ': each run of nights with nowhere to sleep offers "Watch this stay"', runs.length >= 1 && runs.every(r => /No place to sleep: \d+ nights? from 2027-/.test(r) && /Watch this stay/.test(r)) && !/flights for now/.test(t), JSON.stringify(runs));
+  await page.evaluate(() => window.__q('.ts-stay-run:last-child .ts-stay-watch').click()); await wait(80);
+  const sv = await page.evaluate(() => ['place', 'checkIn', 'nights', 'travelers', 'ceilingNight'].map(k => (document.querySelector('#taprobe .ts-stay-' + k) || {}).value));
+  check(label + ': …its form comes prefilled with the place, the run\'s check-in and nights, and travellers', sv[0] === 'Algarve' && /^2027-06-0[23]$/.test(sv[1]) && Number(sv[2]) >= 1 && sv[3] === '2' && sv[4] === '', JSON.stringify(sv));
+  await page.evaluate(() => window.__set(window.__q('.ts-stay-ceilingNight'), '180')); await wait(40);
+  await page.evaluate(() => window.__q('.ts-stay-send').click()); await wait(200);
+  const sp = await page.evaluate(() => window.__posts.pop());
+  check(label + ': Ask ARIA to watch posts the stay', sp && sp.action === 'aria_request_stay' && sp.tripId === 'TRIP-SET1' && sp.place === 'Algarve' && sp.checkIn === sv[1] && String(sp.ceilingNight) === '180', JSON.stringify(sp));
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: draftRow, fares: [], request: null, draft: DRAFT, plan: null,
+    stays: [{ kind: 'stay', ref: 'STAY-TRIP-SET1-' + sv[1], status: 'active', place: 'Algarve', earliest: sv[1], ceilingNight: 180 }],
+    hotelFares: [{ tripId: 'TRIP-SET1', route: 'Hotel: Algarve', dateSeen: '2027-02-19', total: 412, source: 'Trivago', link: 'https://hotels.example/x' }], stayDraft: { place: 'Algarve', travelers: 2 } }]);
+  const watched = await page.$eval('#taprobe .ts-stays', n => n.innerText).catch(() => '');
+  check(label + ': a watched stay shows ARIA\'s ceiling and its best hotel price', /ARIA is watching hotels in Algarve under \$180\/night\./.test(watched) && /Best seen: \$412 · 2027-02-19 · Trivago/.test(watched), watched);
+  await page.evaluate(() => window.__q('.ts-stay-stop').click()); await wait(150);
+  const ss = await page.evaluate(() => window.__posts.pop());
+  check(label + ': Stop watching a stay withdraws it by its ref, never the flights', ss && ss.action === 'aria_request_withdraw' && ss.ref === 'STAY-TRIP-SET1-' + sv[1] && !ss.tripId, JSON.stringify(ss));
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: draftRow, fares: [], request: null, draft: DRAFT, plan: null }, asked]);
   await page.evaluate(() => window.__q('.ts-aria-watch').click()); await wait(80);
   const vals = await page.evaluate(() => ['origins', 'dests', 'travelers', 'ceiling', 'flexDays'].map(k => (document.querySelector('#taprobe .ts-aria-' + k) || {}).value));
   check(label + ': the form comes prefilled from what VERA knows', JSON.stringify(vals) === JSON.stringify(['IAD, DCA', '', '2', '360', '1']), JSON.stringify(vals));

@@ -57,6 +57,8 @@ var ARIA_ACTIONS_ = {
   NEEDS_WATCH_SETUP: ['👀 Set up a SlickTrip watch', 'Low'],
   CEILING_NOT_SET:   ['💲 Set a price ceiling', 'Low'],
   NEEDS_AIRPORTS:    ['🛫 Add airports', 'Low'],
+  BOOK_STAY:           ['🏨 Book this stay', 'High'],          // #238
+  HOTEL_UNDER_CEILING: ['🏨 Hotel under your ceiling', 'High'], // #238
 };
 var ARIA_STALE_HOURS_ = 26;   // ARIA runs daily; a day and two hours without a run means it didn't
 var ARIA_FARE_FIELDS_ = {
@@ -590,7 +592,13 @@ function ariaRequestFromOption_(idea, option, homeAirports) {
   };
 }
 
-function ariaRequestsSheet_() { return tiSchema_(ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS), ARIA_REQUESTS_HEADERS); }
+function ariaRequestsSheet_() {
+  var sh = ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS);
+  // Place and Ceiling Per Night (#238) went on the end: widen a tab made narrower first,
+  // or the header rewrite below reads past its last column.
+  if (sh && sh.getMaxColumns && sh.getMaxColumns() < ARIA_REQUESTS_HEADERS.length) sh.insertColumnsAfter(sh.getMaxColumns(), ARIA_REQUESTS_HEADERS.length - sh.getMaxColumns());
+  return tiSchema_(sh, ARIA_REQUESTS_HEADERS);
+}
 
 /**
  * Pure: a request → its row. Status is written as ARIA's contract spells it
@@ -601,7 +609,7 @@ function ariaRequestToRow_(r) {
   var st = String(r.status || '').toLowerCase();
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
     v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays),
-    v(r.airlinePref), v(r.premium)];
+    v(r.airlinePref), v(r.premium), v(r.place), v(r.ceilingNight)];
 }
 
 /** Pure: a row → a request. */
@@ -615,7 +623,8 @@ function ariaRequestFromRow_(row) {
     earliest: d(row[9]), latest: d(row[10]), nightsMin: n(row[11]), nightsMax: n(row[12]), travelers: n(row[13]),
     bags: String(row[14] || '').trim(), ceiling: ariaMoney_(row[15]),
     status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]),
-    airlinePref: String(row[20] || '').trim(), premium: String(row[21] || '').trim() };
+    airlinePref: String(row[20] || '').trim(), premium: String(row[21] || '').trim(),
+    place: String(row[22] || '').trim(), ceilingNight: ariaMoney_(row[23]) };
 }
 
 /** Every request, from VERA's tab ([] when there is none yet). */
@@ -678,7 +687,7 @@ function webWithdrawAriaRequest_(body) {
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
     rows.forEach(function(row, i) {
       var r = ariaRequestFromRow_(row);
-      if (r.status !== 'active' || !(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)) return;
+      if (r.status !== 'active' || !(ref ? r.ref === ref : (r.kind !== 'stay' && String(r.tripId).toUpperCase() === tid))) return;
       r.status = 'withdrawn'; r.updated = now;
       sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++; last = r;
     });
@@ -724,6 +733,7 @@ function syncAriaFlags_() {
   var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
   try { ariaPostBookNow_(t.watch); } catch (e) { Logger.log('aria: Book now Slack post skipped: ' + e.message); }
   try { ariaMarkBooked_(t.watch); } catch (e) { Logger.log('aria booked: check skipped: ' + e.message); }
+  try { ariaMarkStaysBooked_(); } catch (e) { Logger.log('aria stays: check skipped: ' + e.message); }
   ariaForget_();
   Logger.log('aria flags: ' + Object.keys(wanted).length + ' wanted, ' + opened + ' opened');
   return { ok: true, wanted: Object.keys(wanted).length, opened: opened };
@@ -740,11 +750,12 @@ var ARIA_POSTED_KEEP_ = 60;
 function ariaBookNowPosts_(watch, posted) {
   var seen = {};
   (posted || []).forEach(function(k) { seen[k] = 1; });
-  return (watch || []).filter(function(w) { return w.actionType === 'BOOK_NOW'; }).map(function(w) {
-    var key = w.actionKey || ('ARIA|' + (w.tripId || w.ref) + '|BOOK_NOW');
+  return (watch || []).filter(function(w) { return w.actionType === 'BOOK_NOW' || w.actionType === 'BOOK_STAY'; }).map(function(w) {
+    var stay = w.actionType === 'BOOK_STAY';
+    var key = w.actionKey || ('ARIA|' + (w.tripId || w.ref) + '|' + w.actionType);
     var dates = w.earliest ? ' (' + w.earliest + (w.latest ? '–' + w.latest : '') + ')' : '';
     var fare = w.bestFare != null ? ': best $' + String(Math.round(w.bestFare)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (w.travelers ? ' for ' + w.travelers : '') : '';
-    return { id: key + '|' + (w.actionSince || ''), text: '🧭 ARIA says book now: ' + (w.label || w.tripId || w.ref) + dates + fare + '.'
+    return { id: key + '|' + (w.actionSince || ''), text: (stay ? '🏨 ARIA says book this stay: ' : '🧭 ARIA says book now: ') + (w.label || w.tripId || w.ref) + dates + fare + '.'
       + (w.actionNeeded ? ' ' + w.actionNeeded.replace(/\.$/, '') + '.' : '') + (w.bestLink ? ' <' + w.bestLink + '|Book>' : '') };
   }).filter(function(p) { return !seen[p.id]; });
 }
@@ -967,7 +978,7 @@ function webTripAria_(p) {
   var planRef = plan && plan.option ? plan.option.id.toUpperCase() : '';
   var row = configured ? (st.watchlist || []).filter(function(w) { return (tripId && w.tripId === tripId) || (planRef && w.ref === planRef); })[0] || null : null;
   var fares = configured && row ? (st.fares || []).filter(function(f) { return f.tripId === row.tripId || (row.ref && f.tripId === row.ref); }) : [];
-  var request = reqs.filter(function(r) { return r.status === 'active' && ((tripId && String(r.tripId).toUpperCase() === tripId) || (planRef && r.ref === planRef)); })[0] || null;
+  var request = reqs.filter(function(r) { return r.status === 'active' && r.kind !== 'stay' && ((tripId && String(r.tripId).toUpperCase() === tripId) || (planRef && r.ref === planRef)); })[0] || null;
   var facts = ariaTripFacts_(tripKey);
   var firstFly = plan && plan.option ? (plan.option.legs || []).filter(function(l) { return l.kind === 'move' && l.mode === 'fly'; })[0] : null;
   var draft = {
@@ -982,7 +993,14 @@ function webTripAria_(p) {
   var cfgP = getConfigValues();
   var household = { tiers: ariaAirlinePref_(cfgP['aria_airline_pref']), premium: ariaPremium_(cfgP['aria_airline_premium']) };
   var airlines = { home: ariaPrefWords_(household.tiers, false), abroad: ariaPrefWords_(household.tiers, true), premium: ariaPremiumWords_(household.premium) };
-  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan, actuals: actuals, airlines: airlines };
+  // Stays (#238): this trip's stay requests, and ARIA's hotel prices for it.
+  var stays = reqs.filter(function(r) { return r.kind === 'stay' && (r.status === 'active' || r.status === 'booked') && tripId && String(r.tripId).toUpperCase() === tripId; });
+  var hotelFares = configured ? ariaHotelFares_(st.fares || [], tripId) : [];
+  // Where to look: the settled plan's first stop when there is one, else the trip's name.
+  var firstStop = plan && plan.option ? (plan.option.legs || []).filter(function(l) { return l.kind === 'stop' && l.place; })[0] : null;
+  var stayDraft = { place: firstStop ? firstStop.place : label, travelers: (row && row.travelers) || facts.travelers };
+  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan, actuals: actuals, airlines: airlines,
+    stays: stays, hotelFares: hotelFares, stayDraft: stayDraft };
 }
 
 /**
@@ -1055,5 +1073,108 @@ function ariaMarkBooked_(watch) {
     ariaForget_();
     Logger.log('aria booked: ' + booked.length + ' trip(s) told to ARIA as booked');
     return booked.length;
+  });
+}
+
+// ---- Stays: ARIA watches hotels too (#238) ---------------------------------------
+//
+// A stay request is one run of nights with no place to sleep, from My Trips ›
+// Still to book: Kind "stay", Ref STAY-<Trip ID>-<check-in>, the place, check-in
+// (Earliest Depart), checkout (Latest Return), Nights Min = Nights Max, travellers,
+// and a ceiling per night. ARIA prices it and logs Fare Log rows whose Route starts
+// "Hotel:" under the Trip ID, and raises HOTEL_UNDER_CEILING / BOOK_STAY. VERA marks
+// it Booked once the itinerary covers those nights (a hotel, an arranged stay or a
+// cruise), and ARIA stops pricing it.
+
+var ARIA_STAY_REF_ = 'STAY-';
+
+/** Pure: a day plus n days, 'yyyy-MM-dd'. */
+function ariaPlusDays_(d, n) {
+  var p = String(d || '').split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Pure: a stay request from what the dashboard sent, or {error}.
+ * body: {tripId, tripKey, label, place, checkIn, nights, travelers, ceilingNight}
+ */
+function ariaStayRequest_(body) {
+  body = body || {};
+  var tripId = String(body.tripId || '').trim().toUpperCase();
+  var place = String(body.place || '').trim().slice(0, 120);
+  var checkIn = String(body.checkIn || '').trim();
+  var nights = parseInt(body.nights, 10), travelers = parseInt(body.travelers, 10);
+  if (!tripId) return { error: 'This trip has no Trip ID yet. Open it again in a minute.' };
+  if (!place) return { error: 'Where should ARIA look? Add a city or area.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn)) return { error: 'Pick the check-in date.' };
+  if (!(nights >= 1 && nights <= 60)) return { error: 'Nights must be between 1 and 60.' };
+  var ceiling = ariaMoney_(body.ceilingNight);
+  return { kind: 'stay', ref: ARIA_STAY_REF_ + tripId + '-' + checkIn, tripId: tripId, tripKey: String(body.tripKey || '').trim(),
+    label: String(body.label || '').trim(), place: place, earliest: checkIn, latest: ariaPlusDays_(checkIn, nights),
+    nightsMin: nights, nightsMax: nights, travelers: travelers >= 1 ? travelers : 2, ceilingNight: ceiling != null && ceiling > 0 ? ceiling : null };
+}
+
+/**
+ * POST {action:'aria_request_stay', tripId, tripKey, label, place, checkIn, nights,
+ * travelers, ceilingNight} → asks ARIA to watch hotels for those nights. One request
+ * per trip and check-in date: asking again refreshes it.
+ */
+function webStayAriaRequest_(body) {
+  var req = ariaStayRequest_(body);
+  if (req.error) return { ok: false, error: req.error };
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_();
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    var all = rows.map(ariaRequestFromRow_), at = -1;
+    all.forEach(function(r, i) { if (at === -1 && r.kind === 'stay' && r.ref === req.ref) at = i; });
+    req.status = 'active'; req.updated = now;
+    if (at === -1) { req.id = tiMintId_('REQ-'); req.created = now; sh.appendRow(ariaRequestToRow_(req)); }
+    else { req.id = all[at].id; req.created = all[at].created || now; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(req)]); }
+    ariaForget_();
+    Logger.log('aria_request_stay: stay request ' + (at === -1 ? 'added' : 'refreshed'));
+    return { ok: true, request: req };
+  });
+}
+
+/** Pure: is every night of a stay request covered (hotel, arranged stay or cruise)? */
+function ariaStayCovered_(req, items) {
+  if (!req || !req.earliest || !req.latest || req.latest <= req.earliest) return false;
+  var c = ariaNightsCovered_(items, req.earliest, req.latest);
+  return c.total > 0 && c.have === c.total;
+}
+
+/** Pure: a trip's hotel prices from the Fare Log — rows whose Route starts "Hotel:", newest first. */
+function ariaHotelFares_(fares, tripId) {
+  var id = String(tripId || '').toUpperCase();
+  return (fares || []).filter(function(f) { return id && String(f.tripId || '').toUpperCase() === id && /^hotel:/i.test(String(f.route || '')); })
+    .sort(function(a, b) { return String(b.dateSeen || '') < String(a.dateSeen || '') ? -1 : 1; });
+}
+
+/** Marks active stay requests Booked once the itinerary covers their nights. Runs from syncAriaFlags_. */
+function ariaMarkStaysBooked_() {
+  var reqs = ariaReadRequests_().filter(function(r) { return r.kind === 'stay' && r.status === 'active' && r.tripId; });
+  if (!reqs.length) return 0;
+  var reg = readTripRegistry_(), byTrip = {};
+  var done = reqs.filter(function(r) {
+    var t = reg.byId[String(r.tripId).toUpperCase()];
+    if (!t || !t.startDate || !t.endDate) return false;
+    var key = t.tripId;
+    if (!byTrip[key]) { try { byTrip[key] = tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate, 'aria stays'); } catch (e) { byTrip[key] = []; } }
+    return ariaStayCovered_(r, byTrip[key]);
+  });
+  if (!done.length) return 0;
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_();
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    var refs = done.map(function(r) { return r.ref; }), n = 0;
+    rows.forEach(function(row, i) {
+      var r = ariaRequestFromRow_(row);
+      if (r.kind !== 'stay' || r.status !== 'active' || refs.indexOf(r.ref) === -1) return;
+      r.status = 'booked'; r.updated = now;
+      sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++;
+    });
+    if (n) ariaForget_();
+    Logger.log('aria stays: ' + n + ' stay request(s) told to ARIA as booked');
+    return n;
   });
 }

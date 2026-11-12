@@ -33,7 +33,7 @@ const CONTROLS = [
   ['finding the trip mints an ID', b => ({ [T]: swap(b[T], "{ mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }", "{ mint: true }) || '').toUpperCase(); } catch (e) {} }") })],
   ['asking again adds a second watch', b => ({ [T]: swap(b[T], "rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });", "") })],
   ['a trip ARIA watches on its own is never told booked', b => ({ [T]: swap(b[T], "if (['watching', 'draft', 'scouting'].indexOf(w.status) !== -1 && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w };", "") })],
-  ['Stop watching by trip does nothing', b => ({ [T]: swap(b[T], "!(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)", "!(r.ref === ref)") })],
+  ['Stop watching by trip does nothing', b => ({ [T]: swap(b[T], "!(ref ? r.ref === ref : (r.kind !== 'stay' && String(r.tripId).toUpperCase() === tid))", "!(r.ref === ref)") })],
   ['the booked check never runs', b => ({ [T]: swap(b[T], "  try { ariaMarkBooked_(t.watch); }", "  try { }") })],
   ['the watch form ignores Trip Budget', b => ({ [T]: swap(b[T], ": ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),", ": null,") })],
   ['Status is written lower case', b => ({ [T]: swap(b[T], "st ? st.charAt(0).toUpperCase() + st.slice(1) : ''", "st") })],

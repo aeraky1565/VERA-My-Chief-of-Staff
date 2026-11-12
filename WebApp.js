@@ -729,6 +729,7 @@ function doPost(e) {
       case 'aria_request_save':          return jsonOut_(webSaveAriaRequest_(body));
       case 'aria_request_withdraw':      return jsonOut_(webWithdrawAriaRequest_(body));
       case 'aria_request_watch':         return jsonOut_(webWatchAriaRequest_(body));
+      case 'aria_request_stay':          return jsonOut_(webStayAriaRequest_(body));
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));
@@ -11931,7 +11932,7 @@ function webSetNotifChannel_(e) {
   var p = e.parameter || {};
   var key = (p.key || '').trim();
   var channel = (p.channel || '').trim();
-  var valid = ['vera-chat', 'vera-notifications', 'vera-logs', 'email'];
+  var valid = ['vera-chat', 'vera-notifications', 'vera-act-now', 'vera-logs', 'email'];
   if (!key) return { ok: false, error: 'key required' };
   if (valid.indexOf(channel) === -1) return { ok: false, error: 'invalid channel' };
   var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });

@@ -1946,6 +1946,7 @@ The `Contracts` tab tracks active agreements: name, category, counterparty, star
 |---------|-------------|---------|
 | `#vera-chat` | `SLACK_CHAT_CHANNEL_ID` | Bidirectional conversational chat — Ahmed and Victoria can message VERA |
 | `#vera-notifications` | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Outbound flag alerts with Block Kit Acknowledge + Snooze buttons; High-urgency flags @mention Ahmed |
+| `#vera-act-now` | Config `slack_act_now_channel_id` (or Script Property `SLACK_ACT_NOW_CHANNEL_ID`) | Time-sensitive alerts only: ARIA's ✈️ Book now and 🏨 Book this stay. Turn phone notifications on for every message here. Until the ID is set, these go to #vera-notifications |
 | `#vera-logs` | `SLACK_LOGS_CHANNEL_ID` | Nightly run summary (flag counts, step warnings, elapsed time), errors, pre-trip briefing confirmations |
 
 ### Block Kit Interactive Buttons
