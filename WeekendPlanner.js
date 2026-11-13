@@ -1185,7 +1185,7 @@ function getTravelContextForPlanner_() {
  */
 function readPlannerHistory_() {
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty('WKND_PLAN_HISTORY');
+    var raw = veraStoreGet_('WKND_PLAN_HISTORY');   // the hidden VERA State tab (Settings.js)
     if (!raw) return [];
     var parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -1217,7 +1217,7 @@ function writePlannerHistory_(planText, activities) {
       activities: Array.isArray(activities) ? activities : [],
     };
     var updated = [entry].concat(existing).slice(0, 24);
-    PropertiesService.getScriptProperties().setProperty('WKND_PLAN_HISTORY', JSON.stringify(updated));
+    veraStoreSet_('WKND_PLAN_HISTORY', JSON.stringify(updated));
     Logger.log('writePlannerHistory_: saved ' + updated.length + ' entries (' + entry.activities.length + ' activities this week)');
   } catch (e) {
     Logger.log('writePlannerHistory_: error: ' + e.message);

@@ -2954,7 +2954,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
     if (capOverride) {
       try {
         var tz = Session.getScriptTimeZone();
-        PropertiesService.getScriptProperties().setProperties({
+        veraStateProps_('CAPACITY_OVERRIDE').setProperties({
           capacity_override_mode: capOverride,
           capacity_override_date: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')
         });

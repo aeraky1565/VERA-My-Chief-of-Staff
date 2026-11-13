@@ -145,6 +145,7 @@ const TABS = {
   HOUSEHOLD_INFO:  'HouseholdInfo',   // Household cheat sheet — insurance, utilities, contacts, etc.
   BANK_ACCOUNTS:   'Bank Accounts',   // Bank/payment account tracker — metadata + min-balance for bills
   SYSTEM_LOG:      'System Log',      // Persisted veraLog_ audit trail (previously Slack-only)
+  VERA_STATE:      'VERA State',      // Hidden: VERA's caches and histories, one row each (Settings.js)
 };
 
 // ---- Notification Registry (Issue #188) ------------------------------------
@@ -4098,7 +4099,7 @@ function inferCapacityMode_() {
   } catch (e) { /* non-fatal */ }
 
   if (tripActive) {
-    PropertiesService.getScriptProperties().setProperties({
+    veraStateProps_('CAPACITY_INFERRED').setProperties({
       capacity_inferred_mode: 'light',
       capacity_inferred_date: Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd')
     });
@@ -4150,7 +4151,7 @@ function inferCapacityMode_() {
     mode = 'normal';
   }
 
-  PropertiesService.getScriptProperties().setProperties({
+  veraStateProps_('CAPACITY_INFERRED').setProperties({
     capacity_inferred_mode: mode,
     capacity_inferred_date: Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd')
   });
@@ -4165,11 +4166,11 @@ function inferCapacityMode_() {
 function getCapacityMode_() {
   var tz      = Session.getScriptTimeZone();
   var today   = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var props   = PropertiesService.getScriptProperties();
-  var overrideMode = props.getProperty('capacity_override_mode') || '';
-  var overrideDate = props.getProperty('capacity_override_date') || '';
-  var inferredMode = props.getProperty('capacity_inferred_mode') || '';
-  var inferredDate = props.getProperty('capacity_inferred_date') || '';
+  var over    = veraStateGet_('CAPACITY_OVERRIDE'), inf = veraStateGet_('CAPACITY_INFERRED');   // Settings.js
+  var overrideMode = over.capacity_override_mode || '';
+  var overrideDate = over.capacity_override_date || '';
+  var inferredMode = inf.capacity_inferred_mode || '';
+  var inferredDate = inf.capacity_inferred_date || '';
 
   if (overrideMode && overrideDate === today) {
     return { mode: overrideMode, source: 'override' };

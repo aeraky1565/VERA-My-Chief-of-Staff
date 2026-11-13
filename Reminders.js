@@ -820,7 +820,7 @@ function callClaudeExplorer_(prompt) {
  */
 function readExplorerHistory_() {
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty('EXPLORER_HISTORY');
+    var raw = veraStoreGet_('EXPLORER_HISTORY');   // the hidden VERA State tab (Settings.js)
     if (!raw) return [];
     var parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.slice(0, 7) : [];
@@ -842,7 +842,7 @@ function writeExplorerHistory_(discoveryText) {
     var existing  = readExplorerHistory_();
     var entry     = { date: dateLabel, text: String(discoveryText || '').substring(0, 200) };
     var updated   = [entry].concat(existing).slice(0, 7);
-    PropertiesService.getScriptProperties().setProperty('EXPLORER_HISTORY', JSON.stringify(updated));
+    veraStoreSet_('EXPLORER_HISTORY', JSON.stringify(updated));
     Logger.log('writeExplorerHistory_: saved ' + updated.length + ' entries');
   } catch (e) {
     Logger.log('writeExplorerHistory_: error: ' + e.message);

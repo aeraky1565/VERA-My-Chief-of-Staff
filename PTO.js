@@ -1788,7 +1788,7 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
   // ---- Type 2: Buffer Day Alert -------------------------------------------
   // Stateful: if user deletes the event, treat it as "declined for this week"
   // and don't re-suggest until the following week.
-  var bProps         = PropertiesService.getScriptProperties();
+  var bProps         = veraStateProps_('PTO_BUFFER');   // one bundle, Settings.js
   var bEventId       = bProps.getProperty('PTO_BUFFER_EVENT_ID')       || '';
   var bEventDate     = bProps.getProperty('PTO_BUFFER_EVENT_DATE')      || '';
   var bDeclinedUntil = bProps.getProperty('PTO_BUFFER_DECLINED_UNTIL')  || '';

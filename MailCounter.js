@@ -114,8 +114,9 @@ function scanUSPSMail_(why) {
   try {
     if (!lock.tryLock(30000)) { Logger.log('scanUSPSMail_: another run holds the lock, skipping.'); return; }
     var props   = PropertiesService.getScriptProperties();
+    var mail    = veraStateProps_('MAIL');   // the counter's state, one bundle (Settings.js)
     props.setProperty('USPS_SCAN_START', new Date().toISOString());
-    var lastScan = props.getProperty('MAIL_COUNTER_LAST_SCAN') || '2000-01-01T00:00:00.000Z';
+    var lastScan = mail.getProperty('MAIL_COUNTER_LAST_SCAN') || '2000-01-01T00:00:00.000Z';
     var lastScanDate = new Date(lastScan);
 
     var threads = GmailApp.search('from:informeddelivery.usps.com is:unread', 0, 10);
@@ -153,10 +154,10 @@ function scanUSPSMail_(why) {
     }
 
     // Update running totals
-    var currentPieces = parseInt(props.getProperty('MAIL_COUNTER_PIECES')   || '0', 10);
-    var currentPkgs   = parseInt(props.getProperty('MAIL_COUNTER_PACKAGES') || '0', 10);
+    var currentPieces = parseInt(mail.getProperty('MAIL_COUNTER_PIECES')   || '0', 10);
+    var currentPkgs   = parseInt(mail.getProperty('MAIL_COUNTER_PACKAGES') || '0', 10);
 
-    props.setProperties({
+    mail.setProperties({
       'MAIL_COUNTER_PIECES':        String(currentPieces + mailDelta),
       'MAIL_COUNTER_PACKAGES':      String(currentPkgs   + pkgDelta),
       'MAIL_COUNTER_LAST_SCAN':     latestDate.toISOString(),
@@ -211,7 +212,7 @@ function uspsCatchUp_(now) {
  * @return {{pieces:number, packages:number, lastScan:string, lastScanRun:string, lastReset:string}}
  */
 function getMailCounter_() {
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('MAIL');
   return {
     pieces:      parseInt(props.getProperty('MAIL_COUNTER_PIECES')        || '0', 10),
     packages:    parseInt(props.getProperty('MAIL_COUNTER_PACKAGES')      || '0', 10),
@@ -227,7 +228,7 @@ function getMailCounter_() {
  * Does NOT clear MAIL_COUNTER_LAST_SCAN to avoid re-processing old emails.
  */
 function resetMailCounter_() {
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('MAIL');
   props.setProperties({
     'MAIL_COUNTER_PIECES':      '0',
     'MAIL_COUNTER_PACKAGES':    '0',

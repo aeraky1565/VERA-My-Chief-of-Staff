@@ -36,7 +36,7 @@ function checkPacing_() {
  */
 function checkVacationMode_() {
   var ss    = getSpreadsheet();
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('PACING');
   var tz    = Session.getScriptTimeZone();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -132,7 +132,7 @@ function checkVacationMode_() {
  * Fast Script Properties read — safe to call from any nightly job.
  */
 function isInVacationMode_() {
-  return PropertiesService.getScriptProperties()
+  return veraStateProps_('PACING')
            .getProperty('VACATION_MODE_ACTIVE') === 'true';
 }
 
@@ -161,7 +161,7 @@ function checkMissRate_() {
   }
 
   var ss             = getSpreadsheet();
-  var props          = PropertiesService.getScriptProperties();
+  var props          = veraStateProps_('PACING');
   var tz             = Session.getScriptTimeZone();
   var flagThreshold  = parseInt(cfg['pacing_flag_threshold'] || '3', 10) || 3;
   var pacingDays     = parseInt(cfg['pacing_mode_days']      || '7', 10) || 7;
@@ -372,7 +372,7 @@ function checkMissRate_() {
  * Auto-expires if past PACING_MODE_ENDS date.
  */
 function isInPacingMode_() {
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('PACING');
   if (props.getProperty('PACING_MODE_ACTIVE') !== 'true') return false;
   var endsStr = props.getProperty('PACING_MODE_ENDS');
   if (!endsStr) return false;
@@ -391,7 +391,7 @@ function isInPacingMode_() {
  * Returns a status object consumed by the get_pacing_status API endpoint.
  */
 function getPacingStatus_() {
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('PACING');
   return {
     vacationMode:     props.getProperty('VACATION_MODE_ACTIVE') === 'true',
     vacationModeEnds: props.getProperty('VACATION_MODE_ENDS')   || '',

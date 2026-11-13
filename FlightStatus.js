@@ -10,7 +10,7 @@
 //   4. Only flights due are looked up: from 6h before departure until departure
 //      (or, from the dashboard, flights departing today). See checkFlightStatuses_.
 //   5. Sheet flights: status stored in col J metadata JSON (flight_status key)
-//      Calendar flights: status stored in Script Properties (FLIGHT_STATUS_CACHE)
+//      Calendar flights: status stored in the hidden VERA State tab (FLIGHT_STATUS_CACHE)
 //   6. The dashboard reads status via ?action=flight_statuses&tripKey=...
 //      Both sheet and calendar statuses are merged and returned together.
 //
@@ -138,21 +138,20 @@ function setAviationStackBackoff_(responseBody) {
 // ---- Calendar flight status cache (Script Properties) ----------------------
 
 /**
- * Reads the Script Properties cache for calendar-sourced flight statuses.
- * Returns a plain object keyed by CAL-xxx IDs.
+ * Reads the cache of calendar-sourced flight statuses (its row in the hidden VERA
+ * State tab, Settings.js). Returns a plain object keyed by CAL-xxx IDs.
  */
 function getCalFlightStatusCache_() {
-  var raw = PropertiesService.getScriptProperties().getProperty('FLIGHT_STATUS_CACHE') || '{}';
+  var raw = veraStoreGet_('FLIGHT_STATUS_CACHE') || '{}';
   try { return JSON.parse(raw); } catch(e) { return {}; }
 }
 
 /**
- * Writes the updated calendar flight status cache back to Script Properties.
+ * Writes the updated calendar flight status cache back (VERA State tab, Settings.js).
  * @param {Object} cache  Plain object keyed by CAL-xxx IDs
  */
 function setCalFlightStatusCache_(cache) {
-  PropertiesService.getScriptProperties()
-    .setProperty('FLIGHT_STATUS_CACHE', JSON.stringify(cache));
+  veraStoreSet_('FLIGHT_STATUS_CACHE', JSON.stringify(cache));
 }
 
 // ---- AviationStack API wrapper ----------------------------------------------
@@ -549,13 +548,13 @@ function buildFlightDays_(sheetRows, calEvents, tz, nowMs, trips) {
 
 /**
  * The flight list, rebuilt when older than maxAgeMs: one read of the Itinerary tab
- * and of the calendars over the next two weeks. Kept in a Script Property so the
- * 15-minute trigger can decide in one read that there is nothing to do.
+ * and of the calendars over the next two weeks. Kept in its row of the hidden VERA
+ * State tab (Settings.js) so the 15-minute trigger can decide in one read that there
+ * is nothing to do.
  */
 function refreshFlightDays_(maxAgeMs) {
-  var props = PropertiesService.getScriptProperties();
   var saved = null;
-  try { saved = JSON.parse(props.getProperty(FLIGHT_DAYS_PROP_) || 'null'); } catch (e) {}
+  try { saved = JSON.parse(veraStoreGet_(FLIGHT_DAYS_PROP_) || 'null'); } catch (e) {}
   if (saved && saved.flights && Date.now() - (saved.at || 0) < maxAgeMs) return saved;
 
   var now = Date.now(), tz = Session.getScriptTimeZone();
@@ -572,7 +571,7 @@ function refreshFlightDays_(maxAgeMs) {
     } catch (calErr) { Logger.log('refreshFlightDays_: calendar read failed — ' + calErr.message); }
   });
   var list = { at: now, flights: buildFlightDays_(rows, events, tz, now, getUpcomingTripsForLegs_()) };   // TravelLegs.js
-  try { props.setProperty(FLIGHT_DAYS_PROP_, JSON.stringify(list)); } catch (e) {}
+  try { veraStoreSet_(FLIGHT_DAYS_PROP_, JSON.stringify(list)); } catch (e) {}
   Logger.log('refreshFlightDays_: ' + list.flights.length + ' flight(s) in the next ' + FLIGHT_DAYS_AHEAD_ + ' days.');
   return list;
 }

@@ -1132,7 +1132,7 @@ function handleSlashCommand_(params) {
 
     } else if (command === '/busy') {
       var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      PropertiesService.getScriptProperties().setProperties({
+      veraStateProps_('CAPACITY_OVERRIDE').setProperties({
         capacity_override_mode: 'busy',
         capacity_override_date: today,
       });
@@ -1140,7 +1140,7 @@ function handleSlashCommand_(params) {
 
     } else if (command === '/light') {
       var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      PropertiesService.getScriptProperties().setProperties({
+      veraStateProps_('CAPACITY_OVERRIDE').setProperties({
         capacity_override_mode: 'light',
         capacity_override_date: today,
       });

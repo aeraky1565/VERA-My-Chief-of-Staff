@@ -193,7 +193,7 @@ Tracks flag engagement over time in the `SignalLearning` tab. Each flag key patt
 
 ### Pacing & Capacity Mode (`Pacing.js`)
 
-**Vacation mode** is detected automatically each night: if today falls within an active trip in the Itinerary tab (where the traveller is not exclusively Victoria), `VACATION_MODE_ACTIVE` is set to `true` in Script Properties. While active, fitness consistency checks, pacing escalation, and flag escalation are all suppressed.
+**Vacation mode** is detected automatically each night: if today falls within an active trip in the Itinerary tab (where the traveller is not exclusively Victoria), `VACATION_MODE_ACTIVE` is set to `true` (in the `VERA_STATE_PACING` Script Property). While active, fitness consistency checks, pacing escalation, and flag escalation are all suppressed.
 
 **Pacing mode** is activated by the miss-rate checker. If 2+ domains show missed targets (gym sessions, overdue tasks, unacknowledged flags, overdue chores) within a 48-hour window, VERA fires a Medium deferral-offer flag. If the offer is not responded to within another 48 hours and the pattern persists, VERA auto-activates pacing mode for 7 days: defers upcoming non-recurring tasks to next Monday and pauses routine Anticipator reminders.
 
@@ -2145,8 +2145,12 @@ properties and turns read-only past that.
 | `GOOGLE_STATIC_MAPS_API_KEY` | No | TravelDayBriefing.js, TravelLegs.js | Google Maps key for the travel email's route image **and** the Distance Matrix travel times. **Restrict by API, never by referrer or IP** — see below |
 | `VERA_SEARCH_API_KEY` | No | Chat.js | Serper.dev or Tavily API key for web search in chat |
 
-VERA also keeps its own records here (run stamps, caches, and one bundle of one-time
-"already done" markers, `VERA_ONCE_MARKERS`). You never set or edit those.
+VERA also keeps its own records here: run stamps, one record per feature
+(`VERA_STATE_PACING`, `VERA_STATE_PTO_BUFFER`, `VERA_STATE_MAIL`,
+`VERA_STATE_CAPACITY_OVERRIDE`, `VERA_STATE_CAPACITY_INFERRED`), and one bundle of
+one-time "already done" markers, `VERA_ONCE_MARKERS`. Its caches and histories (flight
+status, the flight-days list, the discovery and weekend-plan histories) live in a
+hidden **VERA State** tab of the sheet, one row each. You never set or edit any of these.
 
 ### Settings in the Config tab
 
@@ -2180,7 +2184,9 @@ deployment that hasn't moved yet keeps working.
 property into its Config row only where that cell is blank, reads it back, and only then
 deletes the property. A Config row that already holds a different value is left as it is,
 and so is its property (the Config row wins). It also moves the one-time markers into
-`VERA_ONCE_MARKERS`. It logs names and counts, never values, and is safe to run again.
+`VERA_ONCE_MARKERS`, each feature's state into its `VERA_STATE_*` record, and the caches
+into the hidden VERA State tab, reading each back before deleting the old property. It
+logs names and counts, never values, and is safe to run again.
 A nightly step keeps a copy of these settings in `VERA_SETTINGS_COPY`, used only if the
 Config tab can't be read at all.
 
@@ -2234,14 +2240,10 @@ Config tab can't be read at all.
 > the `googlecalendar-advanced` health source, once per scan, so it reaches the morning
 > banner instead of only the execution log. `tbCalendarAccess()` prints the verdict
 > directly, alongside what a cold scan costs against a warm one.
-| `VACATION_MODE_ACTIVE` | Auto | Pacing.js | `true`/`false` — set nightly by `checkVacationMode_()` |
-| `VACATION_MODE_ENDS` | Auto | Pacing.js | `YYYY-MM-DD` last date of active trip |
-| `VACATION_TRIP_NAME` | Auto | Pacing.js | Trip key of active trip |
-| `PACING_MODE_ACTIVE` | Auto | Pacing.js | `true`/`false` — set when pacing mode is activated |
-| `PACING_MODE_ENDS` | Auto | Pacing.js | `YYYY-MM-DD` end of pacing mode window |
-| `PACING_FIRST_DETECTED` | Auto | Pacing.js | Timestamp (ms) when miss-rate cluster was first detected |
-| `PACING_OFFER_FLAG_KEY` | Auto | Pacing.js | Key of the deferral-offer flag that was written |
-| `FLIGHT_STATUS_CACHE` | Auto | FlightStatus.js | JSON cache of calendar-based flight statuses |
+| `VERA_STATE_PACING` | Auto | Pacing.js | One record for pacing and vacation mode: `VACATION_MODE_ACTIVE`/`_ENDS`, `VACATION_TRIP_NAME`, `PACING_MODE_ACTIVE`/`_ENDS`, `PACING_FIRST_DETECTED`, `PACING_OFFER_FLAG_KEY` |
+| `VERA_STATE_PTO_BUFFER` | Auto | PTO.js | The buffer-day suggestion: event id, its date, declined-until |
+| `VERA_STATE_MAIL` | Auto | MailCounter.js | The mail counter: pieces, packages, last scan, last reset |
+| `VERA_STATE_CAPACITY_OVERRIDE` / `VERA_STATE_CAPACITY_INFERRED` | Auto | Chat.js, Slack.js / Code.js | Your busy/light override, and the nightly run's guess, kept apart so one never undoes the other |
 | `AVIATIONSTACK_BACKOFF_UNTIL` | Auto | FlightStatus.js | Timestamp (ms) for AviationStack rate-limit backoff |
 | `CHAT_HISTORY_{sessionId}` | Auto | Chat.js | Stored conversation history per session (JSON, last 10 exchanges) |
 

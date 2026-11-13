@@ -63,7 +63,7 @@ var SS_AREAS_ = [
   { id: 'career',   color: '#7b5cd6', tabs: [], prefixes: ['Career '] },
   { id: 'life',     color: '#1f9e9e', tabs: ['Goals', 'Habits', 'HabitLog', 'Books', 'Courses', 'Skills', 'Shared Interests', 'Resources'],
     prefixes: ['Experiment'] },
-  { id: 'internal', color: '#8a94a6', tabs: ['System Log', 'Processed Emails', 'SignalLearning', 'Generation Inputs', 'Reminders Memory'],
+  { id: 'internal', color: '#8a94a6', tabs: ['System Log', 'Processed Emails', 'SignalLearning', 'Generation Inputs', 'Reminders Memory', 'VERA State'],
     prefixes: ['Memory '] },
 ];
 
@@ -279,6 +279,8 @@ function ssApply_(ss) {
     plan.order.forEach(function(name, i) {
       var sh = ss.getSheetByName(name);
       if (!sh || sh.getIndex() === i + 1) return;
+      // A hidden tab (VERA State) is left where it is: activating it to move it would show it.
+      if (sh.isSheetHidden && sh.isSheetHidden()) return;
       ss.setActiveSheet(sh);
       ss.moveActiveSheet(i + 1);
     });

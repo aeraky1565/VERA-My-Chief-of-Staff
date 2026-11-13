@@ -408,11 +408,11 @@ Returns `{ level, activeFlagCount, overdueTaskCount, meetingCount }`.
 
 ### `isInPacingMode_()`
 
-Fast read from Script Properties. Reads `PACING_MODE_ACTIVE`. Auto-expires: if `today > PACING_MODE_ENDS` date, sets `PACING_MODE_ACTIVE = 'false'` and returns false. Called from `PatternRecognition.js`, `Fitness.js`, and `Reminders.js`.
+Fast read from the `VERA_STATE_PACING` Script Property. Reads `PACING_MODE_ACTIVE`. Auto-expires: if `today > PACING_MODE_ENDS` date, sets `PACING_MODE_ACTIVE = 'false'` and returns false. Called from `PatternRecognition.js`, `Fitness.js`, and `Reminders.js`.
 
 ### `isInVacationMode_()`
 
-Fast read: returns `true` if `VACATION_MODE_ACTIVE === 'true'` in Script Properties. Set by `checkVacationMode_()` which runs inside `checkPacing_()` at the start of each nightly run.
+Fast read: returns `true` if `VACATION_MODE_ACTIVE === 'true'` in `VERA_STATE_PACING`. Set by `checkVacationMode_()` which runs inside `checkPacing_()` at the start of each nightly run.
 
 ### `checkVacationMode_()` — vacation detection logic
 
@@ -621,7 +621,7 @@ Polls the AviationStack API every 15 minutes via the `checkFlightStatuses_` trig
 - Departure 1–6h away: every 60 minutes
 - Departure < 1h away: every 15 minutes
 
-Status is stored in: (a) the Itinerary tab row's `Metadata` column (JSON with `flight_status` key) for sheet-sourced flights; (b) Script Properties under `FLIGHT_STATUS_CACHE` (keyed by `CAL-xxx` IDs) for calendar-sourced flights.
+Status is stored in: (a) the Itinerary tab row's `Metadata` column (JSON with `flight_status` key) for sheet-sourced flights; (b) the `FLIGHT_STATUS_CACHE` row of the hidden VERA State tab (keyed by `CAL-xxx` IDs) for calendar-sourced flights.
 
 When a 429 response is received from AviationStack: a monthly quota error backs off for 30 days; a rate-limit error backs off for 2 hours. The backoff window is stored in `AVIATIONSTACK_BACKOFF_UNTIL` Script Property and checked at the top of every poll.
 
@@ -809,8 +809,16 @@ cells, reads each back before deleting the property, leaves a Config row that ho
 different value alone, and logs names and counts, never values. The one-time "already
 done" markers live together in `VERA_ONCE_MARKERS` (`veraOnceGet_`/`veraOnceSet_`),
 and `VERA_SETTINGS_COPY` is a nightly copy of the settings used only when the Config
-tab can't be read. The rest of the store is VERA's runtime state (pacing and vacation
-mode, run stamps, caches), which VERA writes itself.
+tab can't be read. Each feature's runtime state is one record (`veraStateGet_` /
+`veraStateSet_`, or the `veraStateProps_` adapter): `VERA_STATE_PACING` (pacing and
+vacation mode), `VERA_STATE_PTO_BUFFER`, `VERA_STATE_MAIL`, and
+`VERA_STATE_CAPACITY_OVERRIDE` apart from `VERA_STATE_CAPACITY_INFERRED`, so a nightly
+write never undoes your override. Caches and histories (`FLIGHT_STATUS_CACHE`,
+`FLIGHT_DAYS`, `EXPLORER_HISTORY`, `WKND_PLAN_HISTORY`) are rows in the hidden
+**VERA State** tab (`veraStoreGet_` / `veraStoreSet_`), read once per run, falling back
+to the Script Property if the tab can't be written. A value not yet moved is still read
+from its old property, and `moveSettingsToConfig()` moves them all. What's left in the
+store is secrets and run stamps.
 
 ### Decision rule for where a value lives
 
@@ -1184,14 +1192,10 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | AVIATIONSTACK_KEY | Optional | FlightStatus.js | AviationStack API key for flight status monitoring |
 | WEATHER_API_KEY | Optional | Weather.js, WebApp.js | OpenWeather API key for weather ticker and destination forecasts |
 | VERA_SEARCH_API_KEY | Optional | Chat.js | Serper.dev or Tavily API key for web search tool in chat |
-| PACING_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when pacing mode is active (written by VERA) |
-| PACING_MODE_ENDS | Runtime | Pacing.js | ISO date string when pacing mode expires |
-| VACATION_MODE_ACTIVE | Runtime | Pacing.js | Set to `true` when vacation mode is active |
-| VACATION_MODE_ENDS | Runtime | Pacing.js | ISO date string when vacation mode expires |
-| VACATION_TRIP_NAME | Runtime | Pacing.js | Trip name stored when vacation mode activates |
-| PACING_FIRST_DETECTED | Runtime | Pacing.js | Epoch ms timestamp when overload was first detected |
-| PACING_OFFER_FLAG_KEY | Runtime | Pacing.js | Flag key for the pacing offer flag (dedup guard) |
-| FLIGHT_STATUS_CACHE | Runtime | FlightStatus.js | JSON cache of last known flight statuses |
+| VERA_STATE_PACING | Runtime | Pacing.js | Pacing and vacation mode, one JSON record (written by VERA) |
+| VERA_STATE_PTO_BUFFER / VERA_STATE_MAIL | Runtime | PTO.js / MailCounter.js | The buffer-day suggestion; the mail counter |
+| VERA_STATE_CAPACITY_OVERRIDE / _INFERRED | Runtime | Chat.js, Slack.js / Code.js | Your capacity override; the nightly guess |
+| (VERA State tab) | Runtime | FlightStatus.js, Reminders.js, WeekendPlanner.js | Flight status cache, flight-days list, discovery and weekend histories: rows of the hidden tab, not properties |
 | LAST_NIGHTLY_RUN | Runtime | Slack.js (App Home) | Timestamp of last successful nightly run |
 | SLACK_PINNED_MORNING_TS | Runtime | Slack.js | Slack message timestamp of pinned morning summary |
 
