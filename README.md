@@ -90,7 +90,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 |------|------------------|
 | **Home** | Today at a glance, Home slot card, ARIA banner, travel card, Log a grocery run |
 | **Chat · Flags · Tasks · Projects** | Conversational chat (also Slack #vera-chat); flags with urgency; VERA + Google Tasks; projects VERA drafts (shown only while active) |
-| **PTO Planner** | Ahmed / Victoria balances, pace and clear windows |
+| **PTO Planner** | Ahmed / Victoria balances, pace and clear windows · 📅 Next year: the PTO plan (#248) |
 | **Travel** | Plan (Trip Ideas, ARIA) · Trips (My Trips with summary, readiness, packing, luggage, leaving home, emails; Itinerary) · Places (Countries, Bucket List) · Travelers (Profiles, Our bags, Gifts) |
 | **Finances** | Overview (Summary + quarterly check-in) · Day to day (Budget + What-if, Bills & cashflow, Groceries + receipt runs, Phone plan) · Long term (Net worth, Goals, Planned Purchases, FSA & HSA) · Paperwork (Accounts, Cards, Contracts, Tax) |
 | **Shopping · Home Front** | Store lists with Done shopping · House (household, steward, vehicles, neighbourhood, leaving home), Chores, Kitchen (meal plan, recipes, pantry, takeouts), Hosting, Savings |
@@ -2472,6 +2472,10 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
+| `pto_strategy` | `year` (optional) | The PTO plan for this year or next: picks, budget, the accrual check, Use it before Dec 31, strategies and settings |
+| `pto_strategy_settings` (POST) | `preset`, `overrides`, `reset` | Save the strategy and Advanced settings (Config `pto_strategy`), then re-plan |
+| `pto_plan_accept` / `pto_plan_skip` / `pto_plan_remove` (POST) | `id`, `year` | Accept a break (VERA calendar + PTO Plan tab), skip or bring it back, take it off again |
+| `pto_plan_follow` (POST) | `id`, `what` (`away` / `trip`), `on` | Away mode on the break's first day, or a pencilled trip in My Trips |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
 | `health_appointments` | — | All tracked health appointments with next-due dates |
@@ -2509,6 +2513,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Claude.js` | `getApiKey()`, `buildPrompt()`, `generateFlags()`, `parseFlags()` |
 | `Calendar.js` | `getUpcomingEvents()` — reads all Google Calendars with label/color/status |
 | `Tasks.js` | `getOpenTasks()`, `parseFlexibleDate()`, `suggestDueDates()` |
+| `PTOStrategy.js` | Next year's PTO plan (#248): bridges over weekends and holidays for both of you and each, strategies and Advanced settings, the budget with carryover and the month-by-month accrual cap, accept / skip, the nightly flags and the morning email's Time off section |
 | `FlagsTasks.js` | Automatic flags (the prefixes a nightly check keeps, and what clears each), snooze to a date, a task made from a flag, Done this week, Reopen |
 | `Slack.js` | Slack bot — send/receive messages, Block Kit builders, App Home, event/interaction handlers |
 | `Summaries.js` | `writeSummarySnapshot()` — Metrics + Summaries tab auto-population |

@@ -333,7 +333,10 @@ function runWeekendPlanner_(opts) {
  */
 function getWeekendWindows_(gapCalendars, today, lookAheadDays) {
   var rawWindows = findClearWindows_(gapCalendars, today, lookAheadDays, 1);
-  return filterWeekendWindows_(rawWindows);
+  var windows = filterWeekendWindows_(rawWindows);
+  // Breaks accepted in PTO Planner › Next year are windows too (#248).
+  if (typeof ptsPlanWindows_ === 'function') { try { windows = ptsMergeWindows_(windows, ptsPlanWindows_(today, lookAheadDays)); } catch (e) { Logger.log('weekend windows: the PTO plan couldn’t be read'); } }
+  return windows;
 }
 
 /**

@@ -171,6 +171,7 @@ const NOTIF_REGISTRY = [
   { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false, whileAway: 'hold' },
   { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false, whileAway: 'hold' },
   { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false, whileAway: 'send' },
+  { key: 'pto_strategy',        label: 'PTO Plan',              emoji: '🌴', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Next year’s PTO plan from late November, time to use before Dec 31, and a reminder to request each accepted break at work', locked: false, whileAway: 'due' },
   { key: 'vehicle_renewals',    label: 'Vehicle Renewals',      emoji: '🚗', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Registration, insurance, inspections, service and warranties from the Vehicles tab, from 30 days ahead; stale miles once a month', locked: false, whileAway: 'due' },
   { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false, whileAway: 'hold' },
   { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false, whileAway: 'due' },
@@ -1175,6 +1176,8 @@ function nightlyRun() {
     // Step 0a2: Advance the PTO year + rollover once the calendar year has
     // turned over, before anything below reads cfg.year/cfg.rolloverDays.
     nightlyStep_(ctx, 'checkPTOYearRollover_', checkPTOYearRollover_);
+    // Step 0a3: next year's PTO plan — plan ready, use it before Dec 31, request it at work (#248).
+    nightlyStep_(ctx, 'checkPTOStrategy_', checkPTOStrategy_);
 
     // Step 0b [hoisted]: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
@@ -4554,6 +4557,9 @@ function morningNudge() {
       gDueTodayCount = gTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
     });
     // "While you were away" (#244): once, the first morning after Away mode ends.
+    // Time off (#248): next year's plan and this year's leftovers, in Nov and Dec.
+    var ptoPlanSection = null;
+    nightlyStep_(ctx, 'ptsEmailSection_', function() { if (typeof ptsEmailSection_ === 'function') ptoPlanSection = ptsEmailSection_(); });
     var welcomeBack = null;
     nightlyStep_(ctx, 'awayBackSection_', function() {
       if (typeof awayBackSection_ === 'function') welcomeBack = awayBackSection_(openTasks);
@@ -4665,6 +4671,7 @@ function morningNudge() {
       guestTicker +
       calendarSection +
       taskBadges +
+      (ptoPlanSection ? ptoPlanSection.html : '') +
       intelligenceSection +
       stalenessNotice +
       '</td></tr>' +
@@ -4699,6 +4706,7 @@ function morningNudge() {
       'Good morning, Ahmed.',
       '',
       welcomeBack ? welcomeBack.text + '\n' : false,
+      ptoPlanSection ? ptoPlanSection.text + '\n' : false,
       capPlainLine,
       '',
       'VERA flagged ' + total + (total === 1 ? ' item' : ' items') + ' overnight:',
@@ -4934,10 +4942,12 @@ function addPTOConfig() {
     ['pto_buffer_days',            '3'],    // reserve days held back from planning
     ['pto_accrual_day',            '16'],   // day of month the monthly vacation accrual posts (Jan-Oct)
     ['pto_year',                   String(new Date().getFullYear())],
-    ['gap_calendars',              'Verizon Calendar'],
-    ['milestone_keywords',         'Wedding,Graduation,Trip,Travel,Concert,Birthday'],
-    ['holiday_keywords',           'Day,Holiday,Floating,Closure'],
-    ['ignore_keywords',            'Pay Day'],
+    // pto_-prefixed: readPTOConfig_ only reads pto_* keys (these were written bare, and ignored).
+    // The values match readPTOConfig_'s defaults, so seeding changes nothing until edited.
+    ['pto_gap_calendars',          'Verizon Calendar,AE&VV - Our Joint Chaos'],
+    ['pto_milestone_keywords',     'Wedding,Graduation,Trip,Travel,Concert,Birthday'],
+    ['pto_holiday_keywords',       'Day,Holiday,Floating,Closure'],
+    ['pto_ignore_keywords',        'Pay Day'],
     ['pto_guest_keywords',         'Visit,Staying,Guests'],  // keywords to identify guest events in gap calendars (Issue #150)
   ];
 

@@ -93,7 +93,7 @@ console.log('\nnotifWhileAway_: the setting, and its default');
   const by = p => reg.filter(r => r.whileAway === p).map(r => r.key).sort();
   check('the agreed "send" list: travel, ARIA Book now, the system logs and watchdog, the morning email',
         J(by('send')) === J(['aria_book_now', 'error_alerts', 'leave_home', 'morning_briefing', 'nightly_log', 'packing_reminder', 'pretrip_briefing', 'travel_day_briefing', 'travel_docs', 'watchdog_email', 'watchdog_flag', 'watchdog_slack']), J(by('send')));
-  check('the agreed "due" list: High flags, bills, contracts, coupons, vehicle renewals (#245)', J(by('due')) === J(['bill_due', 'contract_expiry', 'coupon_expiry', 'flag_high', 'vehicle_renewals']), J(by('due')));
+  check('the agreed "due" list: High flags, bills, contracts, coupons, vehicle renewals (#245), the PTO plan (#248)', J(by('due')) === J(['bill_due', 'contract_expiry', 'coupon_expiry', 'flag_high', 'pto_strategy', 'vehicle_renewals']), J(by('due')));
 }
 
 console.log('\nawayFlagGetsThrough_: which flags still come through');

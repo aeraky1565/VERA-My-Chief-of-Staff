@@ -38,6 +38,10 @@ var AUTO_FLAG_KINDS_ = [
   { prefix: 'trip_decision_',    clears: 'Clears once you choose between the options.' },
   { prefix: 'trip_premise_',     clears: 'Clears once the trip’s plan is confirmed.' },
   { prefix: 'FLIGHTCHG|',        clears: 'Clears once the itinerary matches the airline’s time.' },
+  { prefix: 'PTOPLAN|READY|',    clears: 'Clears once every break in the plan is accepted or skipped.' },
+  { prefix: 'PTOPLAN|USE|',      clears: 'Clears once the time is booked on the work calendar, or the year ends.' },
+  { prefix: 'PTOPLAN|REQ|',      clears: 'Clears once the PTO shows on the work calendar.' },
+  { prefix: 'PTOPLAN|',          clears: 'Clears once the PTO plan no longer needs it.' },
 ];
 
 /** Pure: the automatic kind a flag key belongs to ({prefix, clears}), or null for a one-off flag. */

@@ -647,6 +647,17 @@ Fires `posttrip_capture_delay_days` (default: 1) after a trip's end date. Writes
 
 ## 11. PTO & Clear Windows
 
+### Next year's PTO plan — `PTOStrategy.js` (#248)
+
+PTO Planner › **📅 Next year** finds the days off that turn holidays and weekends into long breaks.
+- **Breaks.** A break is a run of days where each person is off or takes PTO: it can't be stretched by a day you both already have off, it includes a weekend or holiday, and it is worth at least the strategy's days off per PTO day. Each person's holidays come from their work calendar; where next year's aren't posted yet, the US federal list stands in, marked *assumed*. Locked trips, booked PTO, the PTO held for pencilled trips (Trip Ideas pulled into My Trips, placed in their cheapest window) and per-person blackouts are never clashed with.
+- **Budget.** Next year's allowance plus what rolls over, minus booked PTO, pencilled trips and the buffer (and any days to keep). Personal time is used first, since it expires Dec 31; it goes on the latest days so that vacation comes off the balance early.
+- **The accrual cap, month by month.** Ahmed's vacation accrues on the 16th, January to October, and an accrual is lost as far as it would take the balance over the cap (125% of the annual days from 2026-12-31). The plan checks the balance on each accrual day, adds breaks before the first one that would lose anything, and shows "to keep every accrual, take at least N by …" milestones. Rolling over more than leaves room for next January's accrual counts as lost too.
+- **Strategies:** Fill the 3-2-1 (the default), Most days off per PTO day, Spread evenly, Every bridge. Each is a set of Advanced settings, any of which can be changed: picks shown, skipped picks, together/each, buffer, keep, max PTO per break, minimum ratio, spacing, hold for pencilled trips, personal first, request lead (6 weeks, 8 for 5+ days), and the trigger date (Nov 25). They are saved in Config `pto_strategy` for the household.
+- **Picks** are one list in date order, each with a Together / Ahmed / Victoria pill, filterable by person. Accept writes one all-day event on the VERA calendar (never a work calendar) and a row in the *PTO Plan* tab; Skip hides a pick. An accepted break offers a pencilled trip (5+ days), Away mode from its first day, and shows when to request it at work. The Weekend Planner treats accepted breaks as windows. Each person's own PTO subtab lists their accepted breaks and which are on the work calendar yet. Lite's Today tab has a Time off card.
+- **This year:** *Use it before Dec 31* shows unspent personal time and vacation above what can roll over, with the best breaks left.
+- **Nightly (`checkPTOStrategy_`, notification `pto_strategy`):** "plan ready" from the trigger date (earlier once both employers' holidays are posted), "use it before Dec 31" in December, "request it at work" from the lead time until the PTO shows on that work calendar, and Away mode on an accepted break's first day when asked. The morning email has a Time off section in November and December.
+
 ### PTO snapshot — `writePTOSnapshot_()`
 
 Reads Ahmed's work calendar (configured via `pto_calendar_name` Config key, default `'Verizon Calendar'`). Classifies all-day events:
@@ -1406,6 +1417,8 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `away_status` | — | Away mode, and what it has held |
 | `agent_health` | `refresh=1` (optional) | Agent health: each agent's level, last run, strip and source |
 | `trip_id_check` | — | Trip IDs (read only): per-tab counts, mismatches, clean since, ready |
+| `pto_strategy` | `year` (optional) | The PTO plan: picks, budget, accrual check, leftovers, strategies |
+| `pto_strategy_settings`, `pto_plan_accept`, `pto_plan_skip`, `pto_plan_remove`, `pto_plan_follow` (POST) | see README | Save settings; accept, skip, remove a break; Away mode or a trip from it |
 | `whoami` | — | The signed-in person: name, owner, view, first tab, hidden tabs |
 | `people_list` | — | Owner only: everyone, their view, codes, last seen, tab count |
 | `set_notif_while_away` | `key`, `value` | A notification's While away setting (send / hold / due) |

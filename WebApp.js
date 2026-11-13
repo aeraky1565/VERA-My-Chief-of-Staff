@@ -136,6 +136,7 @@ function doGet(e) {
       case 'interests_add':    return jsonOut_(webAddInterest_(e));
       case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
       case 'pto':                   return jsonOut_(webGetPTO_());
+      case 'pto_strategy':          return jsonOut_(webPtoStrategy_(e.parameter));   // PTOStrategy.js (#248)
       case 'debug_calendars':       return jsonOut_(webDebugCalendars_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
@@ -755,6 +756,11 @@ function doPost(e) {
       case 'aria_request_watch':         return jsonOut_(webWatchAriaRequest_(body));
       case 'aria_request_stay':          return jsonOut_(webStayAriaRequest_(body));
       case 'away_set':                   return jsonOut_(webAwaySet_(body));   // Away mode (#246)
+      case 'pto_strategy_settings':      return jsonOut_(webPtoStrategySettings_(body));   // PTOStrategy.js (#248)
+      case 'pto_plan_accept':            return jsonOut_(webPtoPlanAccept_(body));
+      case 'pto_plan_skip':              return jsonOut_(webPtoPlanSkip_(body));
+      case 'pto_plan_remove':            return jsonOut_(webPtoPlanRemove_(body));
+      case 'pto_plan_follow':            return jsonOut_(webPtoPlanFollow_(body));
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));
@@ -1950,6 +1956,13 @@ function webGetPTO_() {
   } catch (vErr) {
     Logger.log('webGetPTO_: Victoria PTO error (non-fatal): ' + vErr.message);
   }
+
+  // The breaks accepted in PTO Planner › Next year, for each person's own view (#248).
+  try {
+    var saved = typeof ptsSaved_ === 'function' ? ptsSaved_() : {};
+    ahmedStats.plan = ptsPlanFor_(saved, 'ahmed', cfg.year, ptoResult.events);
+    if (victoriaStats) victoriaStats.plan = ptsPlanFor_(saved, 'victoria', vCfg.year, vPtoResult.events);
+  } catch (pErr) { Logger.log('webGetPTO_: the PTO plan couldn’t be read (non-fatal)'); }
 
   return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
 }

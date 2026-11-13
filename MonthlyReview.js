@@ -219,15 +219,17 @@ function buildPTOSection_(ptoStats) {
     var planned   = (ptoStats.planned   || {}).vacationDays || 0;
     var remaining = (ptoStats.remaining || {}).vacationDays || 0;
     var pace      = (ptoStats.burnDown  || {}).paceStatus   || '';
-    var plan321   = ptoStats['3-2-1']   || {};
+    // computePTOStats_ names it threeToOneStatus, each slot {target, used, planned}.
+    var plan321   = ptoStats.threeToOneStatus || ptoStats['3-2-1'] || {};
+    var slot321   = function(s) { return s && typeof s === 'object' ? ((s.used || 0) + (s.planned || 0)) + '/' + (s.target || 0) : (s || 0); };
 
     var lines = ['🌴 PTO'];
     lines.push('   Used: ' + used + ' days   Planned: ' + planned + ' days   Remaining: ' + remaining + ' days');
     if (pace) lines.push('   Pace: ' + pace);
     if (plan321.longWeekends !== undefined || plan321.midSizeWeeks !== undefined || plan321.bigPivot !== undefined) {
-      lines.push('   3-2-1: Long weekends ' + (plan321.longWeekends || 0) +
-                 ' · Mid-size ' + (plan321.midSizeWeeks || 0) +
-                 ' · Big pivot ' + (plan321.bigPivot || 0));
+      lines.push('   3-2-1: Long weekends ' + slot321(plan321.longWeekends) +
+                 ' · Mid-size ' + slot321(plan321.midSizeWeeks) +
+                 ' · Big pivot ' + slot321(plan321.bigPivot));
     }
     return lines.join('\n');
   } catch (e) {
