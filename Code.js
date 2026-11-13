@@ -2478,7 +2478,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       if (packSheet && packSheet.getLastRow() >= 2) {
         packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length)
           .getValues().forEach(function(r) {
-            var k = String(r[1]).trim();
+            var k = tripTallyKey_(r[1], r[PACKING_ITEM_HEADERS.length - 1]);   // its Trip ID when it has one (#239)
             if (!k) return;      // matched no trip before either — every key has a '|'
             packTotalByKey[k] = (packTotalByKey[k] || 0) + 1;
             var checked = String(r[5]).toLowerCase();

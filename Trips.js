@@ -264,9 +264,10 @@ function tripDateRangeFor_(tripId) {
 /** Per-execution memo. readTripRegistry_ is cached, but resolveTripId_'s
  *  label/date scan is O(rows) and these are called inside loops. */
 var _tripKeySetCache_ = {};
+var _tripIdOfCache_ = {};
 
 /** Dropped alongside _tripRegistryCache_ so a stale set cannot outlive the sheet. */
-function invalidateTripKeyCache_() { _tripKeySetCache_ = {}; }
+function invalidateTripKeyCache_() { _tripKeySetCache_ = {}; _tripIdOfCache_ = {}; }
 
 /**
  * The trip id a legacy key belongs to, or '' — never minting.
@@ -407,14 +408,63 @@ function tripKeyMatches_(cellValue, tripKey) {
   return tripRowMatches_(v, tripKeysFor_(k));
 }
 
+// ---- #239 phase 2: readers prefer the Trip ID ---------------------------------
+//
+// Every trip tab carries a Trip ID as its last column (TripIds.js). A reader asks
+// tripRowIs_(keyCell, idCell, tripKey): when the row has a Trip ID and the trip
+// resolves to one, the IDs decide; a moved or renamed trip keeps its rows, and a
+// row whose ID names another trip is not this trip's, whatever its key says.
+// A row with no ID, or a trip that doesn't resolve, matches by key exactly as before.
+// Writers still look rows up by key until phase 2's step 3.
+
+/** The trip's ID, upper case, or '' (cached per execution; never mints). */
+function tripIdOf_(tripKey) {
+  var k = String(tripKey == null ? '' : tripKey).trim();
+  if (!k) return '';
+  if (typeof _tripIdOfCache_ === 'object' && Object.prototype.hasOwnProperty.call(_tripIdOfCache_, k)) return _tripIdOfCache_[k];
+  var id = '';
+  if (/^TRIP-/i.test(k)) id = k.toUpperCase();
+  else if (typeof tripIdForKey_ === 'function') { try { id = String(tripIdForKey_(k) || '').trim().toUpperCase(); } catch (e) { id = ''; } }
+  if (typeof _tripIdOfCache_ === 'object') _tripIdOfCache_[k] = id;
+  return id;
+}
+
+/** A Trip ID cell's value, upper case, or '' when it isn't one. */
+function tripIdCellOf_(idCell) {
+  var v = String(idCell == null ? '' : idCell).trim().toUpperCase();
+  return /^TRIP-[0-9A-Z]+$/.test(v) ? v : '';
+}
+
+/** Does this row belong to the trip? Its Trip ID decides when it has one; else its key. */
+function tripRowIs_(keyCell, idCell, tripKey) {
+  var id = tripIdCellOf_(idCell);
+  if (id) { var want = tripIdOf_(tripKey); if (want) return id === want; }
+  return tripKeyMatches_(keyCell, tripKey);
+}
+
+/**
+ * What to tally a row under when counting rows per trip in one pass: its Trip ID
+ * when it has one, else its key. countForTripKeys_ with tripKeysFor_'s set (which
+ * includes the trip's ID) then counts both kinds of row.
+ */
+function tripTallyKey_(keyCell, idCell) {
+  return tripIdCellOf_(idCell) || String(keyCell == null ? '' : keyCell).trim();
+}
+
 /**
  * The index of the ONE row for this trip in a single-row-per-trip tab (TripMeta),
- * or -1. An exact key wins; otherwise the first row under any of the trip's keys.
+ * or -1. With idCells (#239), a row carrying the trip's ID wins and a row carrying
+ * another trip's ID never matches. Then an exact key wins; otherwise the first row
+ * under any of the trip's keys.
  */
-function tripKeyRowIndex_(cells, tripKey) {
+function tripKeyRowIndex_(cells, tripKey, idCells) {
   var k = String(tripKey == null ? '' : tripKey).trim();
+  var want = idCells && typeof tripIdOf_ === 'function' ? tripIdOf_(k) : '';
+  var other = function(i) { if (!want) return false; var id = tripIdCellOf_(idCells[i]); return !!id && id !== want; };
+  if (want) for (var j = 0; j < (cells || []).length; j++) if (tripIdCellOf_(idCells[j]) === want) return j;
   var alias = -1;
   for (var i = 0; i < (cells || []).length; i++) {
+    if (other(i)) continue;
     var v = String(cells[i] == null ? '' : cells[i]).trim();
     if (v === k) return i;
     if (alias === -1 && tripKeyMatches_(v, k)) alias = i;

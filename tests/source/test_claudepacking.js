@@ -147,7 +147,7 @@ function harness(opts) {
   vm.runInContext(extractDecl(CODE, 'const TABS = {'), ctx);
   // The REAL alias sum, not a stub: summing a tally across the alias set is the whole
   // of what the lookup now does, so a stub would leave the counts untested.
-  [extractFn(TRIPS, 'countForTripKeys_'),
+  [extractFn(TRIPS, 'countForTripKeys_'), extractFn(TRIPS, 'tripIdCellOf_'), extractFn(TRIPS, 'tripTallyKey_'),
    extractFn(CL, 'buildPrompt')].forEach(s => vm.runInContext(s, ctx));
   return ctx;
 }

@@ -5,6 +5,7 @@
 // booking with a total, and when a trip's Summary or Budget is opened, reading only
 // the Itinerary sheet. Every trip, booking and amount is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = fs.readFileSync(path.join(ROOT, 'TripActuals.js'), 'utf8');

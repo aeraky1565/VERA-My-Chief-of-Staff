@@ -18,7 +18,7 @@ const TEST = 'test_tripkeysites.js';
 
 const CONTROLS = [
   ['decisions read the raw key again', b => ({ 'TripDecisions.js': swap(b['TripDecisions.js'],
-    "      if (!tripKeyMatches_(r[1], tripKey)) return;\n      out[",
+    "      if (!tripRowIs_(r[1], r[TRIP_DECISION_HEADERS.length - 1], tripKey)) return;\n      out[",
     "      if (String(r[1] || '').trim() !== tripKey) return;\n      out[") })],
   ['the matcher ignores old keys', b => ({ [R]: swap(b[R],
     "  if (typeof tripKeysFor_ !== 'function') return false;\n  return tripRowMatches_(v, tripKeysFor_(k));",
@@ -36,7 +36,7 @@ const CONTROLS = [
     "      if (!_tdbForce && (_tdbProps.getProperty(_sKey) || _tdbProps.getProperty(_lKey))) {",
     "      if (!_tdbForce && _tdbProps.getProperty(_sKey)) {") })],
   ['one read site in the itinerary reverted', b => ({ [W]: swap(b[W],
-    "      if (!tripKeyMatches_(row[1], tripKey)) return; // different trip",
+    "      if (!tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey)) return; // different trip (its Trip ID decides when it has one, #239)",
     "      if (String(row[1]).trim() !== tripKey) return; // different trip") })],
   ['the old-key copy wins over the current one', b => ({ [W]: swap(b[W],
     "    if (it.tripKey === tripKey && prev.it.tripKey !== tripKey) {", "    if (false) {") })],

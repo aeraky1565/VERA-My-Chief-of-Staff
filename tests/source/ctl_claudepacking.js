@@ -63,14 +63,14 @@ const CONTROLS = {
   // tripRowMatches_, so a key typed with a trailing space has always counted.
   'the key cell is no longer trimmed': b => ({
     'Claude.js': swap(b['Claude.js'],
-      "            var k = String(r[1] == null ? '' : r[1]).trim();\n" +
+      "            var k = tripTallyKey_(r[1], r[PACKING_ITEM_HEADERS.length - 1]);   // its Trip ID when it has one (#239)\n" +
       '            if (k) packByKey_t[k] = (packByKey_t[k] || 0) + 1;',
       "            var k = String(r[1] == null ? '' : r[1]);\n" +
       '            if (k) packByKey_t[k] = (packByKey_t[k] || 0) + 1;'),
   }),
   'the itinerary key cell is no longer trimmed': b => ({
     'Claude.js': swap(b['Claude.js'],
-      "            var k = String(r[1] == null ? '' : r[1]).trim();\n" +
+      "            var k = tripTallyKey_(r[1], r[ITINERARY_HEADERS.length - 1]);   // its Trip ID when it has one (#239)\n" +
       '            if (k) itinByKey_t[k] = (itinByKey_t[k] || 0) + 1;',
       "            var k = String(r[1] == null ? '' : r[1]);\n" +
       '            if (k) itinByKey_t[k] = (itinByKey_t[k] || 0) + 1;'),

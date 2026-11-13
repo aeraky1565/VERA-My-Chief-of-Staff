@@ -18,7 +18,7 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripactuals.js';
 
 const CONTROLS = [
-  ['another trip\'s rows count', b => ({ [T]: swap(b[T], "var mine = key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);", "var mine = key ? true : (date && date >= trip.startDate && date <= trip.endDate);") })],
+  ['another trip\'s rows count', b => ({ [T]: swap(b[T], "      : key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);", "      : key ? true : (date && date >= trip.startDate && date <= trip.endDate);") })],
   ['keyless rows outside the dates count', b => ({ [T]: swap(b[T], ": (date && date >= trip.startDate && date <= trip.endDate);", ": !!date;") })],
   ['a booking\'s key is ignored', b => ({ [T]: swap(b[T], "  if (key) {\n    var named", "  if (false) {\n    var named") })],
   ['an archived trip takes bookings', b => ({ [T]: swap(b[T], "return tripIsLive_(t) && t.startDate && t.endDate && date >= t.startDate", "return t.startDate && t.endDate && date >= t.startDate") })],

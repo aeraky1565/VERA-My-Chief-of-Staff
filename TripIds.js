@@ -18,7 +18,8 @@
 //   - it writes only the Trip ID column (one setValues per tab, and only when
 //     something changed), plus the header cell when it is blank.
 //
-// Readers still match by key in phase 1; phase 2 switches them to the ID.
+// Phase 2, step 2: readers prefer the ID (tripRowIs_, Trips.js). Step 3, writers
+// looking rows up by ID, waits until webTripIdCheck_ has read clean for a week.
 //
 // Two layers: tidFill_ (pure) and tripIdStampAll_ (the reads and the writes).
 // ============================================================
@@ -46,19 +47,31 @@ function tidTabs_() {
  * mismatched when their key now resolves to another trip.
  */
 function tidFill_(rows, keyCol, idCol, resolve) {
-  var memo = {}, filled = 0, mismatched = 0;
-  var res = function(k) { if (!(k in memo)) { var v = ''; try { v = String(resolve(k) || '').toUpperCase(); } catch (e) { v = ''; } memo[k] = v; } return memo[k]; };
-  var ids = (rows || []).map(function(row) {
+  var memo = {}, filled = 0, mismatched = 0, withId = 0, blank = 0, mismatches = [], unresolved = [], MAX = 20;   // rows listed per tab; counts stay whole
+  var res = function(k) { if (!Object.prototype.hasOwnProperty.call(memo, k)) { var v = ''; try { v = String(resolve(k) || '').toUpperCase(); } catch (e) { v = ''; } memo[k] = v; } return memo[k]; };
+  var ids = (rows || []).map(function(row, i) {
     var key = String(row[keyCol] == null ? '' : row[keyCol]).trim();
     var id  = String(row[idCol] == null ? '' : row[idCol]).trim();
-    if (!key) return [id];
+    if (!key) { if (id) withId++; return [id]; }
     var want = res(key);
-    if (!id) { if (want) { filled++; return [want]; } return ['']; }
-    if (want && want !== id.toUpperCase()) mismatched++;
+    if (!id) {
+      if (want) { filled++; withId++; return [want]; }
+      blank++; if (unresolved.length < MAX) unresolved.push({ row: i + 2, key: key });
+      return [''];
+    }
+    withId++;
+    if (want && want !== id.toUpperCase()) {
+      mismatched++;
+      if (mismatches.length < MAX) mismatches.push({ row: i + 2, key: key, id: id.toUpperCase(), keyIs: want });
+    }
     return [id];
   });
-  return { ids: ids, filled: filled, mismatched: mismatched };
+  // withId and blank count the rows after filling; blank rows have a key that names no trip yet.
+  return { ids: ids, filled: filled, mismatched: mismatched, withId: withId, blank: blank, mismatches: mismatches, unresolved: unresolved };
 }
+
+var TID_CLEAN_SINCE_KEY_ = 'trip_ids_clean_since';
+var TID_CLEAN_DAYS_ = 7;           // a week of clean nights before writers switch (step 3)
 
 /**
  * Fills blank Trip IDs on every trip tab. → { tabs: [{tab, filled, mismatched, skipped}], filled }
@@ -66,7 +79,21 @@ function tidFill_(rows, keyCol, idCol, resolve) {
  * never written: that would mean a column was moved by hand.
  */
 function tripIdStampAll_() {
-  var ss = getSpreadsheet(), out = { tabs: [], filled: 0, mismatched: 0 };
+  var out = tripIdScan_(true);
+  tripIdRecordClean_(out);
+  Logger.log('tripIdStampAll_: ' + out.filled + ' Trip ID(s) filled' + (out.mismatched ? ', ' + out.mismatched + ' that disagree with their key (left as they are)' : ''));
+  return out;
+}
+
+function tidToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+
+/**
+ * Every trip tab, counted. write: fill blank IDs (the nightly run); without it the
+ * scan never writes anything (the System › Checks panel).
+ * → { tabs: [{tab, rows, withId, blank, filled, mismatched, mismatches, unresolved, skipped}], filled, mismatched, withId, blank }
+ */
+function tripIdScan_(write) {
+  var ss = getSpreadsheet(), out = { tabs: [], filled: 0, mismatched: 0, withId: 0, blank: 0 };
   tidTabs_().forEach(function(t) {
     var sh = ss.getSheetByName(t.tab);
     if (!sh) return;
@@ -75,19 +102,64 @@ function tripIdStampAll_() {
     var head = String(sh.getRange(1, width).getValue() || '').trim();
     if (head && head !== 'Trip ID') {
       out.tabs.push({ tab: t.tab, skipped: 'column ' + width + ' is "' + head + '", not Trip ID' });
-      Logger.log('tripIdStampAll_: ' + t.tab + ' skipped — column ' + width + ' holds "' + head + '"');
+      Logger.log('tripIdScan_: ' + t.tab + ' skipped — column ' + width + ' holds "' + head + '"');
       return;
     }
-    if (!head) sh.getRange(1, width).setValue('Trip ID');
-    if (sh.getLastRow() < 2) { out.tabs.push({ tab: t.tab, filled: 0, mismatched: 0 }); return; }
+    if (!head && write) sh.getRange(1, width).setValue('Trip ID');
+    if (sh.getLastRow() < 2) { out.tabs.push({ tab: t.tab, rows: 0, withId: 0, blank: 0, filled: 0, mismatched: 0, mismatches: [], unresolved: [] }); return; }
     var rows = sh.getRange(2, 1, sh.getLastRow() - 1, width).getValues();
     var r = tidFill_(rows, keyCol, idCol, tripIdForKey_);
-    if (r.filled) sh.getRange(2, width, r.ids.length, 1).setValues(r.ids);
-    out.tabs.push({ tab: t.tab, filled: r.filled, mismatched: r.mismatched });
-    out.filled += r.filled; out.mismatched += r.mismatched;
+    if (write && r.filled) sh.getRange(2, width, r.ids.length, 1).setValues(r.ids);
+    var filled = write ? r.filled : 0;
+    // A read-only scan reports would-be fills as still blank: nothing was written.
+    var withId = r.withId - (write ? 0 : r.filled), blank = r.blank + (write ? 0 : r.filled);
+    out.tabs.push({ tab: t.tab, rows: rows.length, withId: withId, blank: blank, filled: filled, mismatched: r.mismatched, mismatches: r.mismatches, unresolved: r.unresolved });
+    out.filled += filled; out.mismatched += r.mismatched; out.withId += withId; out.blank += blank;
   });
-  Logger.log('tripIdStampAll_: ' + out.filled + ' Trip ID(s) filled' + (out.mismatched ? ', ' + out.mismatched + ' that disagree with their key (left as they are)' : ''));
   return out;
+}
+
+/**
+ * Pure: the "clean since" date after tonight's scan. Clean = every tab read, no row
+ * without an ID and no mismatch. A clean night keeps the earlier date (or starts
+ * one); anything else clears it.
+ */
+function tidCleanSince_(scan, prev, todayIso) {
+  var clean = !!scan && !scan.blank && !scan.mismatched && !(scan.tabs || []).some(function(t) { return t.skipped; });
+  if (!clean) return '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(prev || '')) && String(prev) <= todayIso ? String(prev) : todayIso;
+}
+
+function tripIdRecordClean_(scan) {
+  try {
+    var todayIso = tidToday_(), prev = veraStoreGet_(TID_CLEAN_SINCE_KEY_) || '';
+    var next = tidCleanSince_(scan, prev, todayIso);
+    if (next !== prev) veraStoreSet_(TID_CLEAN_SINCE_KEY_, next);
+  } catch (e) { Logger.log('tripIdRecordClean_: ' + e.message); }
+}
+
+/** Pure: whole days from a to b (ISO dates), or 0. */
+function tidDays_(a, b) {
+  var x = Date.parse(String(a || '') + 'T00:00:00Z'), y = Date.parse(String(b || '') + 'T00:00:00Z');
+  return isFinite(x) && isFinite(y) && y >= x ? Math.round((y - x) / 86400000) : 0;
+}
+
+/**
+ * GET trip_id_check — the System › Checks › Trip IDs panel (#239). Read only: it
+ * never fills an ID. → { ok, totals: {withId, blank, mismatched}, tabs, cleanSince,
+ * cleanDays, ready, needDays }. ready: clean tonight and for TID_CLEAN_DAYS_ nights,
+ * the condition for step 3 (writers look rows up by ID).
+ */
+function webTripIdCheck_() {
+  var scan;
+  try { scan = tripIdScan_(false); } catch (e) { return { ok: false, error: 'The trip tabs couldn’t be read: ' + e.message }; }
+  var today = tidToday_(), since = '';
+  try { since = veraStoreGet_(TID_CLEAN_SINCE_KEY_) || ''; } catch (e) {}
+  var cleanNow = !scan.blank && !scan.mismatched && !scan.tabs.some(function(t) { return t.skipped; });
+  if (!cleanNow) since = '';
+  var days = since ? tidDays_(since, today) : 0;
+  return { ok: true, totals: { withId: scan.withId, blank: scan.blank, mismatched: scan.mismatched },
+    tabs: scan.tabs, cleanNow: cleanNow, cleanSince: since, cleanDays: days, needDays: TID_CLEAN_DAYS_, ready: cleanNow && !!since && days >= TID_CLEAN_DAYS_ };
 }
 
 /**

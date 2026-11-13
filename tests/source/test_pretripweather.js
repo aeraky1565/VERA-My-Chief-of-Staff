@@ -10,6 +10,7 @@
 //
 // Runs the REAL functions, lifted from WebApp.js by brace-matching.
 const fs = require('fs'), vm = require('vm');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_ROOT || REPO;
 

@@ -940,7 +940,7 @@ function ariaTripFacts_(tripKey) {
   try {
     var sh = getSpreadsheet().getSheetByName(TABS.TRIP_BUDGET);
     if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, TRIP_BUDGET_HEADERS.length).getValues().forEach(function(r) {
-      if (tripRowMatches_(r[1], tripKeysFor_(tripKey))) facts.budget.push({ category: r[2], label: r[3], budgeted: r[4], actual: r[5] });
+      if (tripRowIs_(r[1], r[TRIP_BUDGET_HEADERS.length - 1], tripKey)) facts.budget.push({ category: r[2], label: r[3], budgeted: r[4], actual: r[5] });
     });
   } catch (e) {}
   return facts;

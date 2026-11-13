@@ -395,7 +395,7 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   const BUD = [['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes'], ['B1', '2027-04-05|Chicago Trip', 'flights', 'Flights', 720, '', ''], ['B2', 'other', 'flights', 'x', 99999, '', '']];
   const budTab = { getLastRow: () => BUD.length, getRange: (r, c, nr, nc) => ({ getValues: () => BUD.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)) }) };
   S.TABS.TRIP_BUDGET = 'Trip Budget'; S.TRIP_BUDGET_HEADERS = BUD[0];
-  S.tripKeysFor_ = k => [k]; S.tripRowMatches_ = (cell, keys) => keys.indexOf(String(cell).trim()) !== -1;
+  S.tripKeysFor_ = k => [k]; S.tripRowMatches_ = (cell, keys) => keys.indexOf(String(cell).trim()) !== -1; S.tripRowIs_ = (cell, id, k) => String(cell).trim() === String(k).trim();
   S.getSpreadsheet = () => ({ getSheetByName: n => n === 'ARIA Requests' ? rq : n === 'Trip Budget' ? budTab : null });
   S.ensureSheet = (ss, n) => n === 'ARIA Requests' ? rq : null;
   S.tiSchema_ = sh => sh; S.tiLocked_ = fn => fn(); S.tiNow_ = () => '2027-02-20T12:00:00.000Z'; let mint = 100; S.tiMintId_ = p => p + (++mint);

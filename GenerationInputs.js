@@ -557,7 +557,8 @@ function genPlaceLabel_(g) {
 function cruisePortRows_(itinData, tripKey, endDate) {
   // The same alias set inferTripDestination_ matches on, so a renamed trip's rows count.
   var keys = typeof tripKeysFor_ === 'function' ? tripKeysFor_(tripKey) : [tripKey];
-  var rows = (itinData || []).filter(function(r) { return keys.indexOf(String(r[1]).trim()) !== -1; });
+  // Its Trip ID decides when the row has one (#239; itinData is in ITINERARY_HEADERS order, ID at 10).
+  var rows = (itinData || []).filter(function(r) { return typeof tripRowIs_ === 'function' ? tripRowIs_(r[1], r[10], tripKey) : keys.indexOf(String(r[1]).trim()) !== -1; });
   var windows = [];
   rows.forEach(function(r) {
     if (String(r[2]).trim() !== 'cruise' || !r[4]) return;

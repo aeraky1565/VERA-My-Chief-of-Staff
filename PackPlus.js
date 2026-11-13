@@ -228,14 +228,14 @@ function pkSheet_() {
 }
 function pkRow_(r, i) {
   return { _row: i + 2, id: String(r[0]).trim(), tripKey: String(r[1]).trim(), person: String(r[2] || '').trim(), category: String(r[3] || '').trim(), item: String(r[4] || '').trim(),
-    status: pkStatusOf_(r[8], r[5]), qty: Number(r[9]) > 0 ? Number(r[9]) : '', why: pkStr_(r[10], 160), by: pkStr_(r[11], 40), at: pkStr_(r[12], 20), source: String(r[6] || '').trim() || 'manual' };
+    status: pkStatusOf_(r[8], r[5]), qty: Number(r[9]) > 0 ? Number(r[9]) : '', why: pkStr_(r[10], 160), by: pkStr_(r[11], 40), at: pkStr_(r[12], 20), source: String(r[6] || '').trim() || 'manual', tripId: String(r[PACKING_ITEM_HEADERS.length - 1] || '').trim() };
 }
 function pkAllRows_() {
   var sh = pkSheet_();
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues().map(pkRow_).filter(function(r) { return r.id && r.item; });
 }
-function pkTripRows_(tripKey) { return pkAllRows_().filter(function(r) { return pkKeyMatch_(r.tripKey, tripKey); }); }
+function pkTripRows_(tripKey) { return pkAllRows_().filter(function(r) { return tripRowIs_(r.tripKey, r.tripId, tripKey); }); }   // #239: Trip ID first
 
 function pkNewId_(sh, seqHint) {
   var dateKey = Utilities.formatDate(new Date(), pkTz_(), 'yyyyMMdd'), seq = 1;
@@ -385,7 +385,7 @@ function webPkSimilar_(p) {
   var me = { label: pkLabel_(tripKey), start: pkStr_(p.startDate, 10) || pkStart_(tripKey), nights: pkNights_(p.startDate, p.endDate), traits: pkTraits_(tripKey) };
   var by = {}, today = pkToday_();
   pkAllRows_().forEach(function(r) {
-    if (pkKeyMatch_(r.tripKey, tripKey) || pkStart_(r.tripKey) >= (me.start || today)) return;
+    if (tripRowIs_(r.tripKey, r.tripId, tripKey) || pkStart_(r.tripKey) >= (me.start || today)) return;
     (by[r.tripKey] = by[r.tripKey] || []).push(r);
   });
   var reg = {};
@@ -549,7 +549,7 @@ function webPkBuy_(p) {
 // ---- leave nothing behind ---------------------------------------------------------------
 
 function pkCheckoutRun_(tripKey, endDate) {
-  var row = (typeof lhRuns_ === 'function' ? lhRuns_() : []).filter(function(r) { return r.kind === 'checkout' && pkKeyMatch_(r.tripKey, tripKey); })[0];
+  var row = (typeof lhRuns_ === 'function' ? lhRuns_() : []).filter(function(r) { return r.kind === 'checkout' && tripRowIs_(r.tripKey, r.tripId, tripKey); })[0];
   return row || { id: '', kind: 'checkout', tripKey: tripKey, home: '', leaveAt: (endDate || '') + 'T11:00', nights: 0, leaving: [], ticks: {}, oneOffs: [], sent: '' };
 }
 function pkCheckoutView_(tripKey, startDate, endDate, run) {
@@ -561,7 +561,7 @@ function pkCheckoutView_(tripKey, startDate, endDate, run) {
   var homeGifts = 0, giftNote = null;
   try {
     if (typeof tgAllRows_ === 'function') {
-      var gifts = tgAllRows_(getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS)).filter(function(r) { return pkKeyMatch_(r[1], tripKey); }).map(tgRowToGift_).filter(function(g) { return g.kind !== 'host'; });
+      var gifts = tgAllRows_(getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS)).filter(function(r) { return tripRowIs_(r[1], r[TRIP_GIFT_HEADERS.length - 1], tripKey); }).map(tgRowToGift_).filter(function(g) { return g.kind !== 'host'; });
       homeGifts = gifts.length;
       if (gifts.length && typeof tgHomeCheck_ === 'function') giftNote = tgHomeCheck_(gifts, typeof tgHome_ === 'function' ? tgHome_() : 'United States', pkTravellers_(tripKey).length);
     }

@@ -108,11 +108,13 @@ function tripActualsLines_(values, tripKey) {
  * its dates (the parser leaves the key blank). Another trip's rows are not its.
  * dateText turns a date cell into 'yyyy-MM-dd'.
  */
-function tripActualsItems_(values, trip, keys, dateText) {
-  var out = [];
+function tripActualsItems_(values, trip, keys, dateText, tripId) {
+  var out = [], want = String(tripId || '').trim().toUpperCase();
   (values || []).forEach(function(r) {
     var key = String(r[1] || '').trim(), date = String(dateText ? dateText(r[4]) : r[4]).trim();
-    var mine = key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);
+    var id = String(r[10] == null ? '' : r[10]).trim().toUpperCase();   // Trip ID (#239): it decides when both sides have one
+    var mine = want && /^TRIP-/.test(id) ? id === want
+      : key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);
     if (mine) out.push({ type: String(r[2] || ''), title: String(r[3] || ''), date: date, metadata: String(r[9] || '') });
   });
   return out;
@@ -133,7 +135,7 @@ function syncTripActualsFor_(trips) {
   var found = [];
   trips.forEach(function(t) {
     var key = t.startDate + '|' + t.label;
-    var a = tripActualsFromItems_(tripActualsItems_(values, t, tripKeysFor_(key).concat([key]), dateText));
+    var a = tripActualsFromItems_(tripActualsItems_(values, t, tripKeysFor_(key).concat([key]), dateText, tripIdOf_(key)));
     if (Object.keys(a).length) found.push({ trip: t, actuals: a });
   });
   if (!found.length) return 0;

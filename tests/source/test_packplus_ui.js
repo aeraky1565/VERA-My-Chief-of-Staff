@@ -47,6 +47,7 @@ var LockService = { getScriptLock: function() { return { waitLock: function() {}
 var Session = { getScriptTimeZone: function() { return 'UTC'; } }, Logger = { log: function() {} };
 var Utilities = { formatDate: function(d, tz, f) { return f === 'yyyy-MM-dd HH:mm' ? NOW.replace('T', ' ') : f === 'yyyy-MM-dd' ? NOW.slice(0, 10) : f === 'yyyyMMdd' ? NOW.slice(0, 10).replace(/-/g, '') : NOW; } };
 function tripKeyMatches_(a, b) { var v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); }
+function tripRowIs_(a, id, b) { return tripKeyMatches_(a, b); }   // #239: no Trip IDs in these rows
 function getSpreadsheet() { return { getSheetByName: function(n) { return SHEETS[n] || null; } }; }
 function ensureSheet(ss, n, h) { return SHEETS[n] || (SHEETS[n] = mk(n, h)); }
 var META = ${JSON.stringify(o.meta || {})};

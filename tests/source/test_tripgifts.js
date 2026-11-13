@@ -3,6 +3,7 @@
 // "given before" and the repeat warning, getting it home, ideas per place, the
 // endpoints against an in-memory sheet, and the Chat action. Invented gifts.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = fs.readFileSync(path.join(ROOT, 'TripGifts.js'), 'utf8');

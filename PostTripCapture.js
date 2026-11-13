@@ -245,12 +245,11 @@ function readTripRows_(tripKey) {
   var sheet = ss.getSheetByName(TABS.ITINERARY);
   if (!sheet || sheet.getLastRow() < 2) return [];
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-  // Every key this trip has answered to, not just the one we were handed. A trip
-  // whose start date moved owns two key strings, and matching only one returns
-  // half its itinerary — which is what made the post-trip email fire early.
-  var keys = tripKeysFor_(tripKey);
+  // Its Trip ID when the row has one, else every key this trip has answered to:
+  // a trip whose start date moved owns two key strings, and matching only one
+  // returns half its itinerary — which is what made the post-trip email fire early.
   return data
-    .filter(function(row) { return tripRowMatches_(row[1], keys); })
+    .filter(function(row) { return tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey); })   // #239: Trip ID first
     .sort(function(a, b) {
       var ak = String(a[4] || '') + '|' + String(a[5] || '');
       var bk = String(b[4] || '') + '|' + String(b[5] || '');

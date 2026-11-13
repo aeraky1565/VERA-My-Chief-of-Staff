@@ -333,7 +333,6 @@ function luNights_(a, b) {
   var x = Date.parse(String(a || '') + 'T00:00:00Z'), y = Date.parse(String(b || '') + 'T00:00:00Z');
   return isFinite(x) && isFinite(y) && y > x ? Math.round((y - x) / 86400000) : 0;
 }
-function luKeyMatch_(cell, tripKey) { return tripKeyMatches_(cell, tripKey); }   // Trips.js: the trip's current key or any it had
 
 /** The TripMeta row (1-based) for a trip, or 0. */
 function luMetaRow_(sheet, tripKey) {
@@ -352,7 +351,7 @@ function luPacking_(tripKey) {
   var sh = getSpreadsheet().getSheetByName(TABS.PACKING_ITEMS), out = [];
   if (!sh || sh.getLastRow() < 2) return out;
   sh.getRange(2, 1, sh.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues().forEach(function(r) {
-    if (!String(r[4] || '').trim() || !luKeyMatch_(r[1], tripKey)) return;
+    if (!String(r[4] || '').trim() || !tripRowIs_(r[1], r[PACKING_ITEM_HEADERS.length - 1], tripKey)) return;
     out.push({ id: String(r[0]).trim(), person: String(r[2] || '').trim(), category: String(r[3] || '').trim(), item: String(r[4]).trim(),
       status: typeof pkStatusOf_ === 'function' ? pkStatusOf_(r[8], r[5]) : (String(r[5]).toUpperCase() === 'TRUE' ? 'bag' : 'ready'), qty: Number(r[9]) > 0 ? Number(r[9]) : '' });
   });
@@ -362,7 +361,7 @@ function luPacking_(tripKey) {
 function luGifts_(tripKey) {
   try {
     if (typeof tgAllRows_ !== 'function') return [];
-    return tgAllRows_(getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS)).filter(function(r) { return luKeyMatch_(r[1], tripKey); }).map(tgRowToGift_);
+    return tgAllRows_(getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS)).filter(function(r) { return tripRowIs_(r[1], r[TRIP_GIFT_HEADERS.length - 1], tripKey); }).map(tgRowToGift_);
   } catch (e) { Logger.log('luGifts_: ' + e.message); return []; }
 }
 

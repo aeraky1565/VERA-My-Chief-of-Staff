@@ -34,8 +34,8 @@ const CONTROLS = {
   }),
   'readTripRows_ matches one key again': b => ({
     'PostTripCapture.js': b['PostTripCapture.js']
-      .replace('return tripRowMatches_(row[1], keys);',
-               'return String(row[1] || "").trim() === tripKey;'),
+      .replace('return tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey); })',
+               'return String(row[1] || "").trim() === tripKey; })'),
   }),
   'latches key on the string again (no id, no older-key search)': b => ({
     'Trips.js': b['Trips.js'].replace(fnOf(b['Trips.js'], 'tripLatchSeen_'),
@@ -69,7 +69,7 @@ const CONTROLS = {
   }),
   'the travel-day read matches one key again': b => ({
     'TravelDayBriefing.js': b['TravelDayBriefing.js']
-      .replace('return tripRowMatches_(row[1], _tripKeys) &&\n               rowDate === _tomorrow &&',
+      .replace('return tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey) &&\n               rowDate === _tomorrow &&',
                'return String(row[1] || "").trim() === tripKey &&\n               rowDate === _tomorrow &&'),
   }),
   'Chat trusts the transcript key': b => ({

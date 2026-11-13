@@ -8,6 +8,7 @@
 //
 // Invented trips throughout.
 const fs = require('fs'), vm = require('vm');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = require('path').join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(ROOT + '/' + f, 'utf8');

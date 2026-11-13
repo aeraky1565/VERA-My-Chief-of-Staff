@@ -366,7 +366,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
       if (packSheet_t && packSheet_t.getLastRow() >= 2) {
         packSheet_t.getRange(2, 1, packSheet_t.getLastRow() - 1, PACKING_ITEM_HEADERS.length)
           .getValues().forEach(function(r) {
-            var k = String(r[1] == null ? '' : r[1]).trim();
+            var k = tripTallyKey_(r[1], r[PACKING_ITEM_HEADERS.length - 1]);   // its Trip ID when it has one (#239)
             if (k) packByKey_t[k] = (packByKey_t[k] || 0) + 1;
           });
       }
@@ -378,7 +378,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
       if (itinSheet_t && itinSheet_t.getLastRow() >= 2) {
         itinSheet_t.getRange(2, 1, itinSheet_t.getLastRow() - 1, ITINERARY_HEADERS.length)
           .getValues().forEach(function(r) {
-            var k = String(r[1] == null ? '' : r[1]).trim();
+            var k = tripTallyKey_(r[1], r[ITINERARY_HEADERS.length - 1]);   // its Trip ID when it has one (#239)
             if (k) itinByKey_t[k] = (itinByKey_t[k] || 0) + 1;
           });
       }

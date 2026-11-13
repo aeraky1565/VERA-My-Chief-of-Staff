@@ -4,6 +4,7 @@
 // the after-trip review and its lessons, the luggage additions (wear on the plane, packed so far,
 // over-the-limit fixes), and the wiring. Invented people, trips and items.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -49,7 +50,7 @@ function ctx(o) {
   const doc = o.doc === null ? null : fakeDoc(o.doc || []);
   const c = { String, Number, Object, Array, Date, JSON, Math, RegExp, isNaN, isFinite, parseFloat, parseInt, Error,
     TABS: { PACKING_ITEMS: 'PackingItems', TRIP_OUTFITS: 'Trip Outfits', PACKING_REVIEWS: 'Packing Reviews', LEAVE_RUNS: 'Leaving Home Runs', LEAVE_HOME: 'Leaving Home', BAGS: 'Bags', TRIP_META: 'TripMeta', TRIP_GIFTS: 'TripGifts', CARD_PERKS: 'CardPerks', ITINERARY: 'Itinerary' },
-    PACKING_ITEM_HEADERS: H.PackingItems, TRIP_OUTFIT_HEADERS: H['Trip Outfits'], PACKING_REVIEW_HEADERS: H['Packing Reviews'], LEAVE_RUN_HEADERS: H['Leaving Home Runs'], LEAVE_HOME_HEADERS: H['Leaving Home'],
+    PACKING_ITEM_HEADERS: H.PackingItems, TRIP_GIFT_HEADERS: arr('TRIP_GIFT_HEADERS'), TRIP_OUTFIT_HEADERS: H['Trip Outfits'], PACKING_REVIEW_HEADERS: H['Packing Reviews'], LEAVE_RUN_HEADERS: H['Leaving Home Runs'], LEAVE_HOME_HEADERS: H['Leaving Home'],
     BAG_HEADERS: H.Bags, TRIP_META_HEADERS: H.TripMeta, ITINERARY_HEADERS: [],
     TE_OWNER_: 'Ahmed', TE_PARTNER_: 'Victoria',
     Session: { getScriptTimeZone: () => 'UTC' }, Logger: { log: () => {} },

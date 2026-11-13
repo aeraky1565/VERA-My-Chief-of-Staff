@@ -446,8 +446,7 @@ function checkTripPackingReminder_(now, hour, cfg) {
     var packCount = 0;
     if (packSheet && packSheet.getLastRow() >= 2) {
       var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-      var packKeys = tripKeysFor_(tripKey);
-      packData.forEach(function(r) { if (tripRowMatches_(r[1], packKeys)) packCount++; });
+      packData.forEach(function(r) { if (tripRowIs_(r[1], r[PACKING_ITEM_HEADERS.length - 1], tripKey)) packCount++; });
     }
 
     if (packCount > 0) return; // Already has items

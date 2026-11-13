@@ -367,8 +367,8 @@ function mtCarryToTrip_(idea, trip) {
   var tripKey = trip.startDate + '|' + trip.label;
   var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_META), have = { notes: '', traveler: '' };
   if (sheet && sheet.getLastRow() >= 2) {
-    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
-    var k = tripKeyRowIndex_(rows.map(function(r) { return r[0]; }), tripKey);
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    var k = tripKeyRowIndex_(rows.map(function(r) { return r[0]; }), tripKey, rows.map(function(r) { return r[TRIP_META_HEADERS.length - 1]; }));
     if (k !== -1) have = { notes: String(rows[k][2] || '').trim(), traveler: String(rows[k][4] || '').trim() };
   }
   var p = { tripKey: tripKey };

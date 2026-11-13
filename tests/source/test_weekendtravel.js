@@ -11,6 +11,7 @@
 //
 // The REAL functions, brace-matched into a vm context, with HTTP stubbed.
 const fs = require('fs'), vm = require('vm');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_ROOT || REPO;
 const WP  = fs.readFileSync(ROOT + '/WeekendPlanner.js', 'utf8');

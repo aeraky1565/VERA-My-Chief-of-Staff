@@ -24,7 +24,8 @@ module.exports = function installTripKeyHelpers(vm) {
   const root = process.env.VERA_ROOT && fs.existsSync(path.join(process.env.VERA_ROOT, 'Trips.js'))
     ? process.env.VERA_ROOT : repo;
   const src = fs.readFileSync(path.join(root, 'Trips.js'), 'utf8');
-  const code = ['tripRowMatches_', 'tripKeyMatches_', 'tripKeyRowIndex_', 'tripKeyForWrite_']
+  const code = 'var _tripIdOfCache_ = {};\n' + ['tripRowMatches_', 'tripKeyMatches_', 'tripKeyRowIndex_', 'tripKeyForWrite_',
+    'tripIdOf_', 'tripIdCellOf_', 'tripRowIs_', 'tripTallyKey_']
     .map(n => extract(src, n)).join('\n');
   const create = vm.createContext;
   if (create.__tripKeys) return;
@@ -34,4 +35,25 @@ module.exports = function installTripKeyHelpers(vm) {
     return c;
   };
   vm.createContext.__tripKeys = true;
+};
+
+// #239 phase 2: only the Trip ID readers (tripRowIs_ and friends), for a test that
+// stubs tripKeyMatches_ / tripRowMatches_ / tripKeysFor_ itself. Its stubs are kept;
+// tripKeyMatches_ is added only when the test has none. With no tripIdForKey_ in the
+// context, tripRowIs_ is exactly the test's own key comparison.
+module.exports.rowIs = function installTripRowIs(vm) {
+  const repo = path.join(__dirname, '..', '..');
+  const root = process.env.VERA_ROOT && fs.existsSync(path.join(process.env.VERA_ROOT, 'Trips.js'))
+    ? process.env.VERA_ROOT : repo;
+  const src = fs.readFileSync(path.join(root, 'Trips.js'), 'utf8');
+  const code = 'var _tripIdOfCache_ = {};\n' + ['tripIdOf_', 'tripIdCellOf_', 'tripRowIs_', 'tripTallyKey_'].map(n => extract(src, n)).join('\n') +
+    '\nif (typeof tripKeyMatches_ !== "function") this.tripKeyMatches_ = (function() { ' + extract(src, 'tripKeyMatches_') + '\nreturn tripKeyMatches_; })();';
+  const create = vm.createContext;
+  if (create.__tripRowIs || create.__tripKeys) return;
+  vm.createContext = function(o, opts) {
+    const c = create.call(vm, o, opts);
+    vm.runInContext(code, c);
+    return c;
+  };
+  vm.createContext.__tripRowIs = true;
 };

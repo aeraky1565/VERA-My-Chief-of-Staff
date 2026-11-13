@@ -80,7 +80,7 @@ const CONTROLS = {
     [GI]: swap(b[GI], '    if (!g) return;\n    if (base.geo', "    if (!g) g = { lat: 0, lon: 0, name: c.location, country: '' };\n    if (base.geo"),
   }),
   'a renamed trip’s rows stop counting as ports': b => ({
-    [GI]: swap(b[GI], "typeof tripKeysFor_ === 'function' ? tripKeysFor_(tripKey) : [tripKey];", '[tripKey];'),
+    [GI]: swap(b[GI], "typeof tripRowIs_ === 'function' ? tripRowIs_(r[1], r[10], tripKey) : keys.indexOf(String(r[1]).trim()) !== -1;", "String(r[1]).trim() === tripKey;"),
   }),
   'every stop is looked up for the whole trip, not its own day': b => ({
     [GI]: swap(b[GI], 'getPackingWeatherDetail_(p.label, p.date, p.date, p.geo)', 'getPackingWeatherDetail_(p.label, startDate, endDate, p.geo)'),

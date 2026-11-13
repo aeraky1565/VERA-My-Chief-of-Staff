@@ -195,7 +195,7 @@ console.log('\nRead only, and wired');
 console.log('\nThe dashboard');
 {
   check('System › Agent health, next to API health', /\{id:'api_health',label:'🩺 API health'\},\{id:'agent_health',label:'🤖 Agent health'\}/.test(APP) && /cur==='agent_health'&&h\(SysAgentHealth,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-  check('…in the Checks group of both dashboards’ menus', /items:\['test','api_health','agent_health'\]/.test(APP) && /items:\['test','api_health','agent_health'\]/.test(LITE));
+  check('…in the Checks group of both dashboards’ menus', /items:\['test','api_health','agent_health'[,\]]/.test(APP) && /items:\['test','api_health','agent_health'[,\]]/.test(LITE));
   const p = fnSrc(APP, 'SysAgentHealth');
   check('the panel: counts, a card per agent, the strip, the source link, Check again', /action:'agent_health',refresh:'1'/.test(p) && /\['ok','late','failed','none'\]/.test(p) && /h\(AgStrip,/.test(p) && /"open sheet"/.test(p) && /'Check again'/.test(p));
   check('the roster shows a dot and a short line per agent (both dashboards share it)', /H\[r\.name\]&&h\("span",\{className:'roster-health'/.test(APP) && /H\[r\.name\]&&h\("span",\{className:'roster-health'/.test(LITE));

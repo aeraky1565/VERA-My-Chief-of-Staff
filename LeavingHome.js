@@ -154,7 +154,7 @@ function lhRunRows_(rows) {
     return { id: String(r[0]).trim(), kind: String(r[1] || '') === 'away' ? 'away' : String(r[1] || '') === 'checkout' ? 'checkout' : 'trip', tripKey: String(r[2] || '').trim(), home: lhStr_(r[3], 60) || LH_HOME_DEFAULT_,
       leaveAt: lhAt_(r[4] instanceof Date ? Utilities.formatDate(r[4], Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm") : r[4]),
       nights: Math.max(0, Number(r[5]) || 0), leaving: String(r[6] || '').split(/\s*,\s*/).filter(String), ticks: lhJson_(r[7], {}) || {}, oneOffs: lhJson_(r[8], []) || [],
-      sent: String(r[9] || ''), updated: String(r[10] || ''), _row: i + 2 };
+      sent: String(r[9] || ''), updated: String(r[10] || ''), tripId: String(r[11] || '').trim(), _row: i + 2 };
   });
 }
 
@@ -164,7 +164,7 @@ function lhTz_() { return Session.getScriptTimeZone(); }
 function lhNow_() { return Utilities.formatDate(new Date(), lhTz_(), "yyyy-MM-dd'T'HH:mm"); }
 function lhStamp_() { return Utilities.formatDate(new Date(), lhTz_(), 'yyyy-MM-dd HH:mm'); }
 function lhLocked_(fn) { var l = LockService.getScriptLock(); l.waitLock(20000); try { return fn(); } finally { l.releaseLock(); } }
-function lhKeyMatch_(cell, tripKey) { return tripKeyMatches_(cell, tripKey); }   // Trips.js: the trip's current key or any it had
+function lhRunIs_(r, tripKey) { return tripRowIs_(r.tripKey, r.tripId, tripKey); }   // #239: its Trip ID decides when it has one
 function lhHousehold_() {
   return [typeof TE_OWNER_ !== 'undefined' ? TE_OWNER_ : 'Ahmed', typeof TE_PARTNER_ !== 'undefined' ? TE_PARTNER_ : 'Victoria'];
 }
@@ -201,7 +201,7 @@ function lhFirstFlight_(tripKey) {
   if (!sh || sh.getLastRow() < 2) return null;
   var tz = lhTz_(), best = null;
   sh.getRange(2, 1, sh.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
-    if (String(r[2] || '').toLowerCase() !== 'flight' || !lhKeyMatch_(r[1], tripKey)) return;
+    if (String(r[2] || '').toLowerCase() !== 'flight' || !tripRowIs_(r[1], r[ITINERARY_HEADERS.length - 1], tripKey)) return;
     var d = r[4] instanceof Date ? Utilities.formatDate(r[4], tz, 'yyyy-MM-dd') : String(r[4] || '').trim().slice(0, 10);
     var t = r[5] instanceof Date ? Utilities.formatDate(r[5], tz, 'HH:mm') : String(r[5] || '').trim();
     var tm = t.match(/^(\d{1,2}):(\d{2})\s*([ap]\.?m\.?)?/i);
@@ -220,7 +220,7 @@ function lhNights_(a, b) {
 
 /** A trip's run: its row if it has one, else the defaults (not written until something changes). */
 function lhTripRun_(tripKey, startDate, endDate, runs, homes) {
-  var row = (runs || lhRuns_()).filter(function(r) { return r.kind === 'trip' && lhKeyMatch_(r.tripKey, tripKey); })[0];
+  var row = (runs || lhRuns_()).filter(function(r) { return r.kind === 'trip' && lhRunIs_(r, tripKey); })[0];
   if (row) { row.defaultLeave = false; return row; }
   var hh = lhHousehold_(), going = [];
   try { going = typeof teTravellersForKey_ === 'function' ? teTravellersForKey_(tripKey) : []; } catch (e) {}
@@ -401,7 +401,7 @@ function lhMorningCheck_() {
   var template = null, sent = 0;
   trips.forEach(function(t) {
     var key = t.startDate + '|' + t.label;
-    var row = runs.filter(function(r) { return r.kind === 'trip' && lhKeyMatch_(r.tripKey, key); })[0];
+    var row = runs.filter(function(r) { return r.kind === 'trip' && lhRunIs_(r, key); })[0];
     if (row) cands.push(row);
     else { template = template || lhTemplate_(true); cands.push(lhTripRun_(key, t.startDate, t.endDate || t.startDate, runs, lhHomes_(template))); }
   });

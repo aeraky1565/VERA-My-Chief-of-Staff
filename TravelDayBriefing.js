@@ -399,14 +399,14 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
   // the narrative, the per-stop details and the subject all depend on it. Every
   // day of a trip gets this email, and a port day on a cruise is not a day you
   // fly anywhere.
-  var _allRows = [], _tripKeys = tripKeysFor_(tripKey);
+  var _allRows = [];
   try {
     var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
     if (_itSheet && _itSheet.getLastRow() >= 2) {
       _allRows = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
     }
   } catch (itErr) { Logger.log('TravelDay: itinerary read failed (non-fatal) — ' + itErr.message); }
-  var _tripRows = _allRows.filter(function(row) { return tripRowMatches_(row[1], _tripKeys); });
+  var _tripRows = _allRows.filter(function(row) { return tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey); });
   // The caller's range is the better answer (it includes the calendar); without
   // one, the sheet's own, checkouts included — never the last row someone added.
   var _firstDay = String(opts.firstDay || ''), _lastDay = String(opts.lastDay || '');
@@ -468,7 +468,7 @@ function sendTravelDayBriefing_(tripKey, todayItems, opts) {
         var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
           ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
           : String(row[4] || '').trim();
-        return tripRowMatches_(row[1], _tripKeys) &&
+        return tripRowIs_(row[1], row[ITINERARY_HEADERS.length - 1], tripKey) &&
                rowDate === _tomorrow &&
                String(row[2] || '').trim().toLowerCase() === 'flight';
       }).sort(function(a, b) {
@@ -2879,11 +2879,10 @@ function getTripToneMode_(tripKey) {
     var ss    = getSpreadsheet();
     var sheet = ss.getSheetByName(TABS.TRIP_META);
     if (!sheet || sheet.getLastRow() < 2) return 'professional';
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
-    var keys = tripKeysFor_(tripKey);
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
     for (var i = 0; i < data.length; i++) {
       var context = String(data[i][1] || '').trim().toLowerCase();
-      if (tripRowMatches_(data[i][0], keys) &&
+      if (tripRowIs_(data[i][0], data[i][TRIP_META_HEADERS.length - 1], tripKey) &&
           (context.indexOf('anniversary trip') !== -1 ||
            context.indexOf('romantic couples getaway') !== -1)) {
         return 'personal';

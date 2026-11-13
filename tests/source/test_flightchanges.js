@@ -174,6 +174,8 @@ console.log('\nthe real itinerary read, end to end');
     dedupeItineraryCalendarItems_: x => x,
     annotateOptionGroups_: () => {}, applyTripDecisions_: () => {}, tdReadMeta_: () => ({}),
     tripKeyMatches_: (a, b) => String(a).trim() === String(b).trim(),
+    tripRowIs_: (a, id, b) => String(a).trim() === String(b).trim(),   // #239: no Trip IDs in these rows
+    tripIdCellOf_: () => '',
     dedupeStoredRowsAcrossKeys_: x => x.slice(),   // the real one returns a new array
   };
   vm.createContext(W);

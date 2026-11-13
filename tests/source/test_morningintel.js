@@ -20,6 +20,7 @@
 // restores 12.6s on the one path where the budget has already said there is no time.
 // See ctl_morningintel.js, where that exact mutation is the most important control.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const CODE  = fs.readFileSync(ROOT + '/Code.js', 'utf8');

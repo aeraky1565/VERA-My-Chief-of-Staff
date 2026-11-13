@@ -97,7 +97,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
-| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Trip IDs) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
@@ -368,6 +368,19 @@ makes "the tabs still show old keys" hard to read.
 > end date from the calendar. Adoption restores the *rows* — the itinerary, the
 > recap contents, packing counts — and becomes the only protection when a trip has
 > no registry end date.
+
+**Readers prefer the Trip ID (#239 phase 2).** Every trip tab carries a Trip ID as
+its last column (`TripIds.js`). Readers ask `tripRowIs_(keyCell, idCell, tripKey)`:
+when a row has a Trip ID and the trip resolves to one, the IDs decide, so a moved or
+renamed trip keeps every row, even one under a key the registry never adopted, and a
+row carrying another trip's ID is never read as this trip's. A row with no ID, or a
+trip that doesn't resolve, matches by key exactly as before. One-pass tallies bucket
+rows with `tripTallyKey_` (the ID when there is one), and TripMeta's one-row lookup
+takes the ID column (`tripKeyRowIndex_(keys, tripKey, ids)`). Writers still find
+rows by key: switching them (step 3) waits until **System › Checks › Trip IDs**
+(`trip_id_check`, read only) has shown no row without an ID and no mismatch for a
+week of nights, and VERA makes a dated copy of the sheet first. The Trip Key column
+stays filled on every tab; ARIA reads it.
 
 **Repairing a trip that already split.** `repairOrphanTripKeysDryRun()` from the
 editor lists every trip key across all eight tabs that resolves to no live trip,
@@ -2454,6 +2467,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `whoami` | — | Who the code belongs to: name, owner, view (full or lite), first tab, hidden tabs (#218) |
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
+| `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
 | `health_appointments` | — | All tracked health appointments with next-due dates |
@@ -2532,7 +2546,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `TestBench.js` | **The index of manual test entry points.** One `tb*` callout per user-facing feature, grouped into four sections, with knobs at the top because the Run menu cannot pass arguments. Clears the relevant dedup guard before anything that would otherwise silently no-op |
 | `MyTrips.js` | Travel › My Trips: calendar trips, pencilled-in trips, a 15-month strip and past trips (#220) |
 | `TripEmails.js` | Who's travelling, and per-trip Travel Day email recipients (`teResolve_`) (#233) |
-| `TripIds.js` | A Trip ID column on the ten trip-keyed tabs (#239 phase 1): `tripIdStampAll_` fills blanks nightly, `backfillTripIds()` once by hand; never overwrites an ID |
+| `TripIds.js` | A Trip ID column on the ten trip-keyed tabs (#239): `tripIdStampAll_` fills blanks nightly and records a clean night, `backfillTripIds()` once by hand, never overwrites an ID; `webTripIdCheck_` is the read-only System › Checks › Trip IDs panel |
 | `SheetStyle.js` | The VERA sheet's look as a script (#235): `styleVeraSheet()`, run by hand from the editor, re-applies headers, banding, tab colours and order, column formats and colour rules; never writes a value or moves a column; new tabs get it from `ensureSheet` |
 | `TravelerProfiles.js` · `TripReadiness.js` | Traveller documents, trusted traveller, memberships, preferences, health (last 4 digits only); per-traveller trip readiness (`trdReadiness_`) (#227) |
 | `Luggage.js` · `LeavingHome.js` · `PackPlus.js` | Bag advice and Our bags (#230); leaving-home checklists and Heading out (#231); enriched packing: statuses, staples, outfits, buy list, checkout, review (#234) |

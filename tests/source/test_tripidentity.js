@@ -12,6 +12,7 @@
 //   - two travel-day emails went out, one per key;
 //   - every itinerary read returned half a trip.
 const fs = require('fs'), vm = require('vm');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = {
@@ -604,11 +605,11 @@ console.log('\nThe call sites actually moved');
   // Reads match the key set.
   check('post-trip groups by Trip ID, not the key string',
         /tripIdForKey_\(tripKey\) \|\| tripKey/.test(SRC.PostTrip));
-  check('readTripRows_ matches the key set', /tripRowMatches_\(row\[1\], keys\)/.test(SRC.PostTrip));
+  check('readTripRows_ matches the key set (by Trip ID first, #239)', /tripRowIs_\(row\[1\], row\[ITINERARY_HEADERS\.length - 1\], tripKey\)/.test(SRC.PostTrip));
   // The dashboard's old sheet-only sender was removed; the travel-day email's
   // own sheet read (tomorrow's flights) is the one that must match every key.
   check('the travel-day itinerary read does too',
-        /return tripRowMatches_\(row\[1\], _tripKeys\) &&\s*rowDate === _tomorrow/.test(SRC.TravelDay));
+        /return tripRowIs_\(row\[1\], row\[ITINERARY_HEADERS\.length - 1\], tripKey\) &&\s*rowDate === _tomorrow/.test(SRC.TravelDay));
   check('post-trip seeds its bounds from the registry',
         /tripDateRangeFor_/.test(SRC.PostTrip));
 

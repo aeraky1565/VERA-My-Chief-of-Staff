@@ -56,6 +56,7 @@ var LockService = { getScriptLock: function() { return { waitLock: function() {}
 var Session = { getScriptTimeZone: function() { return 'UTC'; } }, Logger = { log: function() {} };
 var Utilities = { formatDate: function(d, tz, f) { return f === 'yyyy-MM-dd HH:mm' ? NOW.replace('T', ' ') : f === 'yyyy-MM-dd' ? NOW.slice(0, 10) : NOW; } };
 function tripKeyMatches_(a, b) { var v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); }
+function tripRowIs_(a, id, b) { return tripKeyMatches_(a, b); }   // #239: no Trip IDs in these rows
 function getSpreadsheet() { return { getSheetByName: function(n) { return SHEETS[n] || null; } }; }
 function ensureSheet(ss, n) { return SHEETS[n] || (SHEETS[n] = mk(n)); }
 var META = ${JSON.stringify(o.meta || {})};

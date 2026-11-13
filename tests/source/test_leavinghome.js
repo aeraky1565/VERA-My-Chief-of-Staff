@@ -49,6 +49,7 @@ function ctx(o) {
     Utilities: { formatDate: (d, tz, f) => { const n = o.now || '2027-07-09T21:00'; return f === 'yyyy-MM-dd HH:mm' ? n.replace('T', ' ') : n; } },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     tripKeyMatches_: (a, b) => { const v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); },
+    tripRowIs_: (a, id, b) => { const v = String(a == null ? '' : a).trim(); return !!v && v === String(b).trim(); },   // #239: no Trip IDs here
     getSpreadsheet: () => ({ getSheetByName: n => sheets[n] || null }),
     ensureSheet: (ss, n) => sheets[n],
     teTravellersForKey_: () => o.travellers || [],

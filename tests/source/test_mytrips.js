@@ -3,6 +3,7 @@
 // MyTrips.js and the Trip Ideas columns it adds run in a vm over a fake sheet.
 // Today is fixed at Nov 1, 2026. Every trip, place and date is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const TI = fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8');
@@ -34,7 +35,7 @@ let uuid = 0;
 const S = vm.createContext({
   console, JSON, Math, Number, String, Array, Date, isFinite, Object,
   TABS: { TRIP_IDEAS: 'Trip Ideas', TRIP_IDEA_OPTIONS: 'Trip Idea Options', FLAGS: 'Flags', TRIP_META: 'TripMeta' },
-  TRIP_IDEAS_HEADERS: headers('TRIP_IDEAS_HEADERS'), TRIP_IDEA_OPTIONS_HEADERS: headers('TRIP_IDEA_OPTIONS_HEADERS'),
+  TRIP_META_HEADERS: headers('TRIP_META_HEADERS'), TRIP_IDEAS_HEADERS: headers('TRIP_IDEAS_HEADERS'), TRIP_IDEA_OPTIONS_HEADERS: headers('TRIP_IDEA_OPTIONS_HEADERS'),
   Utilities: { getUuid: () => (++uuid).toString(16).padStart(12, 'a') + '-0000-0000-0000-000000000000', sleep: () => {},
                formatDate: () => S.TODAY },
   Session: { getScriptTimeZone: () => 'UTC' },

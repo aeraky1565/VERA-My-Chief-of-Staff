@@ -266,9 +266,9 @@ function tgLocked_(fn) {
 function tgReadBudget_(tripKey) {
   var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_BUDGET);
   if (!sheet || sheet.getLastRow() < 2) return null;
-  var keys = tripKeysFor_(tripKey), total = 0, any = false;
+  var total = 0, any = false;
   sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_BUDGET_HEADERS.length).getValues().forEach(function(r) {
-    if (!r[0] || !tripRowMatches_(r[1], keys) || String(r[2]).trim().toLowerCase() !== 'gifts') return;
+    if (!r[0] || !tripRowIs_(r[1], r[TRIP_BUDGET_HEADERS.length - 1], tripKey) || String(r[2]).trim().toLowerCase() !== 'gifts') return;
     var n = Number(r[4]); if (isFinite(n)) { total += n; any = true; }
   });
   return any ? total : null;
@@ -295,9 +295,8 @@ function tgLabelOf_(tripKey) {
 function webGetTripGifts_(e) {
   var tripKey = ((e.parameter || {}).tripKey || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
-  var keys = tripKeysFor_(tripKey);
   var gifts = tgAllRows_(getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS))
-    .filter(function(r) { return String(r[0]).trim() && tripRowMatches_(r[1], keys); })
+    .filter(function(r) { return String(r[0]).trim() && tripRowIs_(r[1], r[TRIP_GIFT_HEADERS.length - 1], tripKey); })
     .map(tgRowToGift_);
   return { ok: true, gifts: gifts, budget: tgBudget_(tgReadBudget_(tripKey), gifts),
            home: tgHomeCheck_(gifts, tgHome_(), tgTravellers_(tripKey)) };
