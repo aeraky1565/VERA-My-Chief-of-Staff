@@ -47,8 +47,10 @@ var PTS_DEFAULTS_ = { preset: 'fill321', scope: 'joint_each', skips: 'hidden', r
 
 // ---- pure: dates ------------------------------------------------------------------
 
-function ptsAdd_(iso, n) { var p = iso.split('-').map(Number); var d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)); return d.toISOString().slice(0, 10); }
-function ptsDow_(iso) { var p = iso.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
+// Memoised: the planner walks every day of a year many times over.
+var _ptsAddMemo_ = {}, _ptsDowMemo_ = {};
+function ptsAdd_(iso, n) { var k = iso + '|' + n, v = _ptsAddMemo_[k]; if (v) return v; var p = iso.split('-').map(Number); v = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); _ptsAddMemo_[k] = v; return v; }
+function ptsDow_(iso) { var v = _ptsDowMemo_[iso]; if (v !== undefined) return v; var p = iso.split('-').map(Number); v = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); _ptsDowMemo_[iso] = v; return v; }
 function ptsDays_(a, b) { return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5); }
 function ptsIsIso_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && new Date(String(s) + 'T00:00:00Z').toISOString().slice(0, 10) === String(s); }
 function ptsYmd_(y, m, d) { return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }

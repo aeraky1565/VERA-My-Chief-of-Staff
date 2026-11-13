@@ -59,7 +59,7 @@ ReactDOM.render(React.createElement(SysTripIds, { apiUrl: 'x', apiToken: 'y' }),
 
 (async () => {
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
-  for (const width of [390, 1280]) {
+  for (const width of (process.env.VERA_CTL_FAST ? [390] : [390, 1280])   /* a control checks one width */) {
     console.log('\n@' + width);
     for (const state of Object.keys(STATES)) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });

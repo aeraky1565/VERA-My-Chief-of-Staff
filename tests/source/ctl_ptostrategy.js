@@ -41,13 +41,20 @@ const CONTROLS = [
   ['an accepted break has no request date', ui("h('div',null,'🏢 Request it at work by ',h('b',null,psNice_(psRequestBy_(c,st)))", "h('div',null,'🏢 Request it at work'"), UI],
 ];
 let allBit = true;
+// The dashboard controls drive a real browser. The CI job that runs controls has none (the
+// browser job runs the screens themselves), so there they are skipped and said so; locally they run.
+const HAS_BROWSER = (() => {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true;
+  try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; }
+})();
 CONTROLS.forEach(([name, mut, test]) => {
+  if (test === UI && !HAS_BROWSER) { console.log('\n=== CONTROL: ' + name + '  (skipped: no browser here)'); return; }
   fs.rmSync(OUT, { recursive: true, force: true });
   let patch; try { patch = mut(BASE); } catch (e) { console.log('\n=== CONTROL: ' + name + '\n  !! MUTATION THREW: ' + e.message); allBit = false; return; }
   const files = Object.assign({}, BASE, patch);
   Object.keys(files).forEach(f => { const d = path.join(OUT, f); fs.mkdirSync(path.dirname(d), { recursive: true }); fs.writeFileSync(d, files[f]); });
   fs.readdirSync(path.join(SRC_DIR, 'docs')).forEach(f => { const s = path.join(SRC_DIR, 'docs', f), d = path.join(OUT, 'docs', f); if (!fs.existsSync(d) && fs.statSync(s).isFile()) fs.copyFileSync(s, d); });
-  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', timeout: 900000, env: Object.assign({}, process.env, { VERA_ROOT: OUT }) });
+  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', timeout: 900000, env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_CTL_FAST: '1' }) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).length;
   console.log('\n=== CONTROL: ' + name + '  (' + test + ')');

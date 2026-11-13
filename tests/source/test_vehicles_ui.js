@@ -53,7 +53,7 @@ async function mount(browser, file, width) {
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
-  for (const file of ['index.html', 'dashboard-lite.html']) for (const width of [390, 1280]) {
+  for (const file of ['index.html', 'dashboard-lite.html']) for (const width of (process.env.VERA_CTL_FAST ? [390] : [390, 1280])   /* a control checks one width */) {
     const L = (file === 'index.html' ? 'Full ' : 'Lite ') + width;
     console.log('\n' + L);
     const { page, errs } = await mount(browser, file, width);

@@ -42,7 +42,14 @@ const CONTROLS = [
   ['the panel isn\'t in System', ui(",cur==='trip_ids'&&h(SysTripIds,{apiUrl:apiUrl,apiToken:apiToken})", ''), UI],
 ];
 let allBit = true;
+// The dashboard controls drive a real browser. The CI job that runs controls has none (the
+// browser job runs the screens themselves), so there they are skipped and said so; locally they run.
+const HAS_BROWSER = (() => {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true;
+  try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; }
+})();
 CONTROLS.forEach(([name, mut, test]) => {
+  if (test === UI && !HAS_BROWSER) { console.log('\n=== CONTROL: ' + name + '  (skipped: no browser here)'); return; }
   fs.rmSync(OUT, { recursive: true, force: true });
   let patch; try { patch = mut(BASE); } catch (e) { console.log('\n=== CONTROL: ' + name + '\n  !! MUTATION THREW: ' + e.message); allBit = false; return; }
   const files = Object.assign({}, BASE, patch);
@@ -50,7 +57,7 @@ CONTROLS.forEach(([name, mut, test]) => {
   ['docs/react.min.js', 'docs/react-dom.min.js'].forEach(f => fs.copyFileSync(path.join(SRC_DIR, f), path.join(OUT, f)));
   // test_tripids2 lists every .js at the root (the key-only scan), so the rest come along unchanged.
   fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js') && !files[f]).forEach(f => fs.copyFileSync(path.join(SRC_DIR, f), path.join(OUT, f)));
-  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', timeout: 600000, env: Object.assign({}, process.env, { VERA_ROOT: OUT }) });
+  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', timeout: 600000, env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_CTL_FAST: '1' }) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).length;
   console.log('\n=== CONTROL: ' + name + '  (' + test + ')');

@@ -11,7 +11,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
-  for (const width of [390, 1280]) {
+  for (const width of (process.env.VERA_CTL_FAST ? [390] : [390, 1280])   /* a control checks one width */) {
     const L = 'People ' + width;
     console.log('\nPeople @ ' + width + 'px');
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
