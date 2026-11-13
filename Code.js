@@ -171,6 +171,7 @@ const NOTIF_REGISTRY = [
   { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false, whileAway: 'hold' },
   { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false, whileAway: 'hold' },
   { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false, whileAway: 'send' },
+  { key: 'vehicle_renewals',    label: 'Vehicle Renewals',      emoji: '🚗', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Registration, insurance, inspections, service and warranties from the Vehicles tab, from 30 days ahead; stale miles once a month', locked: false, whileAway: 'due' },
   { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false, whileAway: 'hold' },
   { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false, whileAway: 'due' },
   { key: 'coupon_expiry',       label: 'Coupon Expiry',         emoji: '🎟️',  category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Coupon or deal expiring soon', locked: false, whileAway: 'due' },
@@ -346,7 +347,7 @@ const TRAVELER_ITEM_HEADERS      = ['ID', 'Person', 'Section', 'Kind', 'Label', 
 const TRIP_HEALTH_NOTE_HEADERS  = ['Key', 'Notes', 'Updated'];
 const PLACE_FACT_HEADERS        = ['Place', 'Best Months', 'Flights', 'Updated', 'Edited'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
-const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
+const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes', 'Mileage Updated', 'Body Type'];   // #245: Mileage Updated is stamped whenever the miles change; Body Type picks the card's icon
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
 var HEALTH_ACCOUNT_HEADERS = ['ID', 'Type', 'Plan Year', 'Provider', 'Election', 'Coverage', 'Contributed', 'Employer Contribution', 'Employer Name', 'Balance', 'Balance As Of', 'Rule', 'Use By', 'Carryover', 'Notes'];
@@ -1656,6 +1657,8 @@ function nightlyRunTail() {
     nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);
     // Agent health (#247): did ARIA, TESS, HAILEY and VERA's own jobs run on time?
     nightlyStep_(ctx, 'checkAgentHealth_', checkAgentHealth_);
+    // Vehicle renewals (#245): the Vehicles tab's dates, 30 days ahead, and stale miles.
+    nightlyStep_(ctx, 'checkVehicleRenewals_', checkVehicleRenewals_);
     nightlyStep_(ctx, 'carMonthlyWinsBank_', carMonthlyWinsBank_);
     nightlyStep_(ctx, 'carSuggestCriteria_', carSuggestCriteria_);
     // Phase 3: a track with no sponsor, a PIES brief that hasn't arrived, and

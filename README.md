@@ -1936,6 +1936,10 @@ The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Mon
 
 The `Vehicles` tab tracks cars/bikes with: nickname, year, make, model, VIN, license plate, driver, current mileage, oil change interval and history, registration/insurance/warranty expiry dates, emission and safety inspection expiry, tyre replacement history and interval, and service schedule. The dashboard can log oil changes, service visits, mileage updates, tyre changes, and inspection events.
 
+**The card and renewals (#245, `Renewals.js`).** Each vehicle's card (Home Front › Vehicles, both dashboards) shows **Coming up**: every dated item and the oil and tire estimates, most urgent and soonest first. **Renewed…** writes a new expiry date to the tab, **Done…** logs a service (Last Service, and Next Service one interval on), an oil or tire change, and **📅 Remind me** downloads a calendar event a week before the deadline. History and Details fold away. A card folds to one row (our own drawn body-shape icon, the name, its most urgent item) and opens by itself when something needs you; the choice is remembered on that device. Pick the icon in Details (sedan, SUV, pickup truck, van, coupe), else VERA guesses from the model.
+
+The nightly run raises one flag per vehicle per dated item (Registration, Insurance, both warranties, Next Service, Emission and Safety inspections) from 30 days ahead: 30–15 days Low, 14–8 Medium, 7 or fewer High, and passed High ("renewed? update the tab"). Warranties stay Low, flag only in the 30 days either side of their end, then move to History. A flag resolves once its date changes. Stale miles (over 30 days, or never dated) get a note on the card and one Low flag a month. Renewal flags carry a 📅 button in the Flags tab too. The tab gains two columns at the end: `Mileage Updated` (stamped whenever the miles change) and `Body Type`.
+
 ### Pantry + Auto-Restock
 
 The `Purchase History` tab logs grocery and household purchases with item name, normalised name, category, quantity, unit, store, and price. When `pantry_enabled=true`, VERA uses an exponential moving average model (`pantry_ema_alpha` default 0.3) to predict when items will run out and auto-adds them to the shopping list `pantry_restock_days_ahead` days before predicted depletion.
@@ -2422,7 +2426,10 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `add_vehicle` / `delete_vehicle` | (vehicle fields) | Manage vehicles |
 | `vehicle_oil_change` | `id`, `date`, `mileage` | Log oil change |
 | `vehicle_service` / `vehicle_mileage` / `vehicle_tire_change` | `id`, (fields) | Log vehicle events |
-| `vehicle_emission_inspect` / `vehicle_safety_inspect` | `id`, `date` | Log inspection events |
+| `vehicle_emission_inspect` / `vehicle_safety_inspect` | `id`, `expiryDate` | Log inspection events |
+| `vehicle_renew` | `id`, `item`, `date` | Renewed…: a new expiry date for registration, insurance, a warranty or an inspection (#245) |
+| `vehicle_renewal_ics` | `id`, `item` | The calendar reminder for one item (#245) |
+| `vehicle_body` | `id`, `body` | The card's icon: sedan, suv, truck, van or coupe (#245) |
 | `get_contracts` | — | All contracts with expiry status |
 | `add_contract` / `update_contract` / `delete_contract` | (contract fields) | Manage contracts |
 | `log_contract_action` | `id`, `action` | Log an action against a contract |
@@ -2495,6 +2502,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
 | `People.js` | Sign-in codes per person (fingerprints only), the Access tab, whoami, the owner's People & access endpoints, Slack's verification token |
+| `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |

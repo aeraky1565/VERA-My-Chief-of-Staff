@@ -367,6 +367,9 @@ function doGet(e) {
       case 'vehicle_tire_change':       return jsonOut_(webVehicleTireChange_(e));
       case 'vehicle_emission_inspect':  return jsonOut_(webVehicleEmissionInspect_(e));
       case 'vehicle_safety_inspect':    return jsonOut_(webVehicleSafetyInspect_(e));
+      case 'vehicle_renew':             return jsonOut_(webVehicleRenew_(e.parameter || {}));        // Renewals.js (#245)
+      case 'vehicle_body':              return jsonOut_(webVehicleBody_(e.parameter || {}));         // Renewals.js (#245)
+      case 'vehicle_renewal_ics':       return jsonOut_(webVehicleRenewalIcs_(e.parameter || {}));   // Renewals.js (#245)
       // Contracts (Issue #146)
       case 'get_contracts':       return jsonOut_(webGetContracts_());
       case 'add_contract':        return jsonOut_(webAddContract_(e));
@@ -9206,8 +9209,11 @@ function webGetVehicles_() {
   var sheet = ss.getSheetByName(TABS.VEHICLES);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, vehicles: [] };
   var hdrs  = VEHICLE_HEADERS;
-  var rows  = sheet.getRange(2, 1, sheet.getLastRow() - 1, hdrs.length).getValues();
+  // A tab made before a column was added has fewer columns: read what it has (#245).
+  var width = Math.min(hdrs.length, sheet.getMaxColumns ? sheet.getMaxColumns() : hdrs.length);
+  var rows  = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues();
   var today = new Date(); today.setHours(0, 0, 0, 0);
+  var todayIso = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
   var vehicles = rows.map(function(row) {
     var v = {};
@@ -9239,6 +9245,11 @@ function webGetVehicles_() {
     v.milesUntilTireChange = (curMi !== null && tireLastMi !== null)
       ? (tireLastMi + tireInterval) - curMi : null;
 
+    // What's coming up, by the same rules as the renewal flags (Renewals.js, #245).
+    var r = renewalItems_(v, todayIso);
+    v.comingUp = r.coming; v.history = r.history; v.milesAge = r.milesAge; v.milesStale = r.milesStale; v.name = renewalVehicleName_(v); v.body = renewalBodyOf_(v);
+    hdrs.forEach(function(h) { if (v[h] instanceof Date) v[h] = renewalIso_(v[h]); });
+
     return v;
   }).filter(function(v) { return v !== null; });
 
@@ -9250,6 +9261,7 @@ function webAddVehicle_(e) {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.VEHICLES);
   var id    = 'veh_' + Date.now();
+  if (p['Current Mileage'] && !p['Mileage Updated']) p['Mileage Updated'] = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');   // #245
   var row   = VEHICLE_HEADERS.map(function(h) {
     if (h === 'ID') return id;
     return p[h] !== undefined ? p[h] : '';
@@ -9298,7 +9310,14 @@ function webVehicleService_(e) {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.VEHICLES);
   var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  _vehicleSetFields_(sheet, id, { 'Last Service': today });
+  var on = /^\d{4}-\d{2}-\d{2}$/.test(String(p.date || '')) ? String(p.date) : today;
+  if (on > today) return { ok: false, error: 'The service date can\'t be in the future' };
+  // Done… (#245): Last Service, and Next Service one interval on (Service Interval (mo), else 6).
+  var v = webGetVehicleById_(ss, id);
+  var months = (v && parseInt(v['Service Interval (mo)'], 10)) || 6;
+  var fields = { 'Last Service': on, 'Next Service': renewalAddMonths_(on, months) };
+  if (p.currentMileage) fields['Current Mileage'] = p.currentMileage;
+  _vehicleSetFields_(sheet, id, fields);
   return { ok: true, vehicle: webGetVehicleById_(ss, id) };
 }
 
@@ -9348,19 +9367,35 @@ function webVehicleSafetyInspect_(e) {
   return { ok: true, vehicle: webGetVehicleById_(ss, id) };
 }
 
+/**
+ * Sets cells on one vehicle's row, by header. → true when the vehicle was found.
+ * New miles stamp Mileage Updated (#245); a tab made before that column existed gets
+ * it at the end (the header is labelled, no column moves).
+ */
 function _vehicleSetFields_(sheet, id, fields) {
-  if (!sheet || sheet.getLastRow() < 2) return;
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, VEHICLE_HEADERS.length).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === id) {
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  if (fields['Current Mileage'] !== undefined && fields['Current Mileage'] !== '' && fields['Mileage Updated'] === undefined) {
+    fields['Mileage Updated'] = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  var need = 0;
+  Object.keys(fields).forEach(function(h) { need = Math.max(need, VEHICLE_HEADERS.indexOf(h) + 1); });
+  if (sheet.getMaxColumns && need > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  if (need) {
+    var head = sheet.getRange(1, need);
+    if (!String(head.getValue() || '').trim()) head.setValue(VEHICLE_HEADERS[need - 1]);
+  }
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) {
       var rowNum = i + 2;
       Object.keys(fields).forEach(function(hdr) {
         var col = VEHICLE_HEADERS.indexOf(hdr);
         if (col !== -1) sheet.getRange(rowNum, col + 1).setValue(fields[hdr]);
       });
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 function webGetVehicleById_(ss, id) {
