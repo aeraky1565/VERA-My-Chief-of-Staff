@@ -11915,18 +11915,7 @@ function webSetNotifEnabled_(e) {
   if (!sheet) return { ok: false, error: 'Config sheet not found' };
   var configKey = 'notif_' + key + '_enabled';
   var value = (enabled === 'true' || enabled === true) ? 'TRUE' : 'FALSE';
-  var data = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 2).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === configKey) {
-      sheet.getRange(i + 2, 2).setValue(value);
-      _configCache_ = null;
-      invalidatePTOConfigRows_();
-      return { ok: true };
-    }
-  }
-  sheet.appendRow([configKey, value]);
-  _configCache_ = null;
-  invalidatePTOConfigRows_();
+  setConfigRow_(configKey, value);   // locked, Settings.js (#242)
   return { ok: true };
 }
 
@@ -11946,18 +11935,7 @@ function webSetNotifChannel_(e) {
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return { ok: false, error: 'Config sheet not found' };
   var configKey = 'notif_' + key + '_channel';
-  var data = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 2).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === configKey) {
-      sheet.getRange(i + 2, 2).setValue(channel);
-      _configCache_ = null;
-      invalidatePTOConfigRows_();
-      return { ok: true };
-    }
-  }
-  sheet.appendRow([configKey, channel]);
-  _configCache_ = null;
-  invalidatePTOConfigRows_();
+  setConfigRow_(configKey, channel);   // locked, Settings.js (#242)
   return { ok: true };
 }
 

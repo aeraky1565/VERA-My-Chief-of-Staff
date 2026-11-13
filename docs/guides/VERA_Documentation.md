@@ -820,6 +820,15 @@ to the Script Property if the tab can't be written. A value not yet moved is sti
 from its old property, and `moveSettingsToConfig()` moves them all. What's left in the
 store is secrets and run stamps.
 
+**Writes that two runs could make at once (#242).** VERA's triggers and the dashboard can run
+together, so a read-modify-write goes through `veraLocked_` (Settings.js): the per-user lock, which
+never nests with the script locks modules take themselves, and goes ahead (logging it) if it stays
+busy. Every Config row is written by `setConfigRow_` under that lock: the PTO values, notification
+switches and channels, the grocery stores, and dashboard settings. Habit and memory IDs come from
+`veraNextSeqId_`, the highest number in use plus one, minted and appended under the lock, so a
+deleted row or two writers at once can't repeat an ID. The SignalLearning counters update under
+the lock too.
+
 ### Decision rule for where a value lives
 
 - **Secret or credential** (API key, sensitive token, who may talk to VERA) → Script Property. Never in the sheet, never in source control.

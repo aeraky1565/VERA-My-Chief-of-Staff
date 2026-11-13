@@ -15,7 +15,7 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const APP = read('docs/app.js'), LITE = read('docs/dashboard-lite.html'), CODE = read('Code.js');
-const SRV = ['Pantry.js', 'Groceries.js', 'GroceryRun.js'].map(read).join('\n');
+const SRV = [(fs.existsSync(path.join(ROOT, 'Settings.js')) ? read('Settings.js') : fs.readFileSync(path.join(__dirname, '..', '..', 'Settings.js'), 'utf8'))].concat(['Pantry.js', 'Groceries.js', 'GroceryRun.js'].map(read)).join('\n');
 const PERISH = (read('OnHand.js').match(/var OH_PERISHABLE_\s*=[^\n]*\n/) || [''])[0];
 const START = '// ---- GroceryRun (', END = '// ---- /GroceryRun ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };

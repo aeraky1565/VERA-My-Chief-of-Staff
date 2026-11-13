@@ -84,12 +84,7 @@ function veraSetting_(key) {
  */
 function veraSetSetting_(key, value) {
   var k = String(key || ''), row = veraSettingRow_(k), v = String(value == null ? '' : value).trim();
-  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
-  if (!sheet) return false;
-  var n = Math.max(sheet.getLastRow() - 1, 0), at = 0;
-  if (n) sheet.getRange(2, 1, n, 1).getValues().some(function(r, i) { if (String(r[0] || '').trim() === row) { at = i + 2; return true; } return false; });
-  if (at) sheet.getRange(at, 2).setValue(v); else sheet.appendRow([row, v]);
-  try { _configCache_ = null; } catch (e) {}
+  if (!setConfigRow_(row, v)) return false;
   try { var props = PropertiesService.getScriptProperties(); if (props.getProperty(k) != null) props.deleteProperty(k); } catch (e) {}
   return true;
 }
@@ -285,6 +280,75 @@ function veraStoreSet_(key, value) {
   }
   try { if (props.getProperty(key) != null) props.deleteProperty(key); } catch (e) {}
   return true;
+}
+
+// ---- one writer at a time (#242) ------------------------------------------------
+//
+// VERA's triggers (every 15 minutes, hourly, nightly) and the dashboard can run at
+// the same moment, and a read-modify-write that two of them do together loses one
+// of the writes (a counter bumped once instead of twice; two Config rows appended
+// for one key). veraLocked_ runs fn holding a lock so they take turns.
+//
+// It's the USER lock, not the script lock: about fifteen modules already hold the
+// script lock around their own work and may call in here, and nesting a second
+// script-lock acquire inside one of them risks waiting on itself or releasing the
+// outer lock early. Every VERA execution runs as its owner, so the user lock still
+// serialises them. A nested veraLocked_ just runs (the depth counter). If the lock
+// stays busy past the wait, fn runs anyway and says so: never worse than before.
+
+var _veraLockDepth_ = 0;
+
+function veraLocked_(fn, waitMs) {
+  if (_veraLockDepth_ > 0) return fn();
+  var lock = null, got = false;
+  try { lock = LockService.getUserLock(); got = lock.tryLock(waitMs || 10000); } catch (e) { got = false; }
+  if (!got) { try { Logger.log('veraLocked_: the lock stayed busy; going ahead without it'); } catch (e) {} }
+  _veraLockDepth_++;
+  try { return fn(); }
+  finally { _veraLockDepth_--; if (got) { try { lock.releaseLock(); } catch (e) {} } }
+}
+
+/**
+ * Pure: the next ID for prefix (e.g. 'HAB-20261113-'), from the IDs already in the
+ * column: the highest number after the prefix, plus one, zero-padded to width.
+ * Counting rows instead (as Habits and Memory did) repeats an ID after a delete,
+ * and two writers counting at once mint the same one (#242).
+ */
+function veraNextSeqId_(prefix, ids, width) {
+  var max = 0, p = String(prefix);
+  (ids || []).forEach(function(v) {
+    var s = String(Array.isArray(v) ? v[0] : v || '').trim();
+    if (s.indexOf(p) !== 0) return;
+    var n = parseInt(s.slice(p.length), 10);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  var next = String(max + 1);
+  while (next.length < (width || 2)) next = '0' + next;
+  return p + next;
+}
+
+/**
+ * Writes one Config row by key: updates it in place, or appends [key, value, note]
+ * when there's none. Under veraLocked_, so two writers can't both append the same
+ * key. Clears the Config caches. → true when written.
+ */
+function setConfigRow_(key, value, note) {
+  var k = String(key || '').trim();
+  if (!k) return false;
+  return veraLocked_(function() {
+    var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+    if (!sheet) return false;
+    var n = Math.max(sheet.getLastRow() - 1, 0), at = 0;
+    if (n) {
+      var keys = sheet.getRange(2, 1, n, 1).getValues();
+      for (var i = 0; i < keys.length; i++) if (String(keys[i][0]).trim() === k) { at = i + 2; break; }
+    }
+    if (at) sheet.getRange(at, 2).setValue(value);
+    else sheet.appendRow(note == null ? [k, value] : [k, value, note]);
+    try { _configCache_ = null; } catch (e) {}
+    try { if (typeof invalidatePTOConfigRows_ === 'function') invalidatePTOConfigRows_(); } catch (e) {}
+    return true;
+  });
 }
 
 // ---- the one-time move -----------------------------------------------------------

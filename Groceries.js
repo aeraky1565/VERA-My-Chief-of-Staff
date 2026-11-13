@@ -168,13 +168,7 @@ function grStoreSetting_() {
   return seed;
 }
 function grWriteConfig_(setting) {
-  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
-  if (!sheet) return;
-  var json = JSON.stringify(setting), n = sheet.getLastRow();
-  var keys = n >= 2 ? sheet.getRange(2, 1, n - 1, 1).getValues() : [];
-  for (var k = 0; k < keys.length; k++) if (String(keys[k][0]).trim() === GR_STORES_KEY_) { sheet.getRange(k + 2, 2).setValue(json); _configCache_ = null; return; }
-  sheet.appendRow([GR_STORES_KEY_, json, 'Which Shopping stores count as groceries (Done shopping asks at the rest).']);
-  _configCache_ = null;
+  setConfigRow_(GR_STORES_KEY_, JSON.stringify(setting), 'Which Shopping stores count as groceries (Done shopping asks at the rest).');   // locked (#242)
 }
 
 /** Cards and their grocery rates. */

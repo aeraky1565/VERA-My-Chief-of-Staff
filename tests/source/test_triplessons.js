@@ -107,7 +107,7 @@ function loadCtx(sheet, opts) {
     getConfigValues: () => o.cfg || {},
     getSpreadsheet: () => ({ getSheetByName: n => (n === 'Memory Log' ? sheet : null) }),
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   // The real constants, not copies — renaming a scope or a category must break this.
   vm.runInContext([
     extractDecl(SRC.Code, 'MEMORY_LOG_HEADERS'),
@@ -462,7 +462,7 @@ console.log('\nTrip characteristics: the field a trait scope matches against');
 
   // Run the real normaliser.
   const ctx = { String, Array, Object, console };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(extractDecl(SRC.Code, 'TRIP_CHARACTERISTICS') + '\n' + norm, ctx);
   check('it lowercases and trims', ctx.normaliseTripCharacteristics_(' Beach , CITY ') === 'beach, city');
   check('it de-duplicates',        ctx.normaliseTripCharacteristics_('beach,beach') === 'beach');
@@ -478,7 +478,7 @@ console.log('\nSeeding characteristics from the briefing');
 {
   const fn  = extractFn(SRC.Web, 'suggestTripCharacteristics_');
   const ctx = { String, Array, Object, RegExp, console };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(extractDecl(SRC.Code, 'TRIP_CHARACTERISTICS') + '\n' + fn, ctx);
   const sug = (b, a) => ctx.suggestTripCharacteristics_(b, a || {});
 
@@ -612,3 +612,13 @@ console.log('\nThe beach hint names the two things that were missed');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraLocked_, setConfigRow_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

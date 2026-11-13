@@ -48,6 +48,7 @@ S.getConfigValues = () => { const o = {}; S.sheets.Config.rows.slice(1).forEach(
 S.budgetRows = [{ label: 'Rent', value: '$3,500.00' }, { label: 'Groceries', value: '$800.00' }];
 S.webGetBudget_ = () => ({ ok: true, rows: S.budgetRows, configured: true });
 S.getShoppingList_ = () => ['Wegmans', 'Costco', 'Lidl', 'Whole Foods', "MOM's", "Trader Joe's", 'Giant', 'Target', 'Egyptian/Greek', 'Recipe', 'Wish List', 'Home Supplies', 'Egypt'].map(n => ({ storeName: n }));
+loadSettings_(S);
 vm.runInContext(GR, S);
 const run = c => vm.runInContext(c, S);
 const J = x => JSON.stringify(x);
@@ -141,3 +142,13 @@ console.log('\nwiring');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraLocked_, setConfigRow_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

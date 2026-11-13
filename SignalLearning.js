@@ -112,6 +112,10 @@ function extractKeyPattern_(flagKey) {
  * @param {string} outcome - 'acknowledged' | 'snoozed' | 'resolved' | 'expired'
  */
 function recordFlagOutcome_(flagKey, outcome) {
+  // One at a time (#242): a read-modify-write of the counters, and a row that may be created.
+  return veraLocked_(function() { return slRecordFlagOutcome_(flagKey, outcome); });
+}
+function slRecordFlagOutcome_(flagKey, outcome) {
   if (!flagKey) return;
   var pattern = extractKeyPattern_(flagKey);
   if (!pattern) return;
@@ -168,6 +172,9 @@ function recordFlagOutcome_(flagKey, outcome) {
  * @param {Array<string>} flagKeys - Array of flag keys from the newly written flags
  */
 function recordFlagsGenerated_(flagKeys) {
+  return veraLocked_(function() { return slRecordFlagsGenerated_(flagKeys); });
+}
+function slRecordFlagsGenerated_(flagKeys) {
   if (!flagKeys || flagKeys.length === 0) return;
 
   try {

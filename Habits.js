@@ -115,14 +115,13 @@ function addHabit_(name, cadence, color, notes) {
 
   var today   = new Date();
   var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
-  var existing = sheet.getLastRow() >= 2
-    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-        .filter(function(r) { return String(r[0]).indexOf('HAB-' + dateStr) === 0; }).length
-    : 0;
-  var id = 'HAB-' + dateStr + '-' + String(existing + 1).padStart(2, '0');
-
-  sheet.appendRow([id, name || '', cadence || 'Daily', color || '#4fc3f7', 'Yes', notes || '']);
-  return { ok: true, id: id };
+  // Minted and appended under one lock, from the highest number in use (#242).
+  return veraLocked_(function() {
+    var ids = sheet.getLastRow() >= 2 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues() : [];
+    var id = veraNextSeqId_('HAB-' + dateStr + '-', ids, 2);
+    sheet.appendRow([id, name || '', cadence || 'Daily', color || '#4fc3f7', 'Yes', notes || '']);
+    return { ok: true, id: id };
+  });
 }
 
 function updateHabit_(id, fields) {

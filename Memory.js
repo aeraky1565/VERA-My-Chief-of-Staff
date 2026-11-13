@@ -118,21 +118,16 @@ function appendMemoryEvent_(type, who, title, detail, context, opts) {
     var sheet = ss.getSheetByName(TABS.MEMORY_LOG);
     if (!sheet) return; // tab not set up — skip silently
 
+    // Minted and appended under one lock, from the highest number in use (#242).
+    veraLocked_(function() {
     var tz        = Session.getScriptTimeZone();
     var now       = new Date();
     var ts        = Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm');
     var dateKey   = Utilities.formatDate(now, tz, 'yyyyMMdd');
     var lastRow   = sheet.getLastRow();
 
-    // Generate a lightweight sequential ID
-    var seq = 1;
-    if (lastRow >= 2) {
-      var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-      ids.forEach(function(r) {
-        if (String(r[0] || '').indexOf('MEM-' + dateKey) === 0) seq++;
-      });
-    }
-    var id = 'MEM-' + dateKey + '-' + String(seq).padStart(3, '0');
+    var ids = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, 1).getValues() : [];
+    var id  = veraNextSeqId_('MEM-' + dateKey + '-', ids, 3);
 
     // Written by header name rather than by position: a sheet seeded before Scope
     // and Category existed has seven columns, and a fixed-length array would put
@@ -153,6 +148,7 @@ function appendMemoryEvent_(type, who, title, detail, context, opts) {
     put('Category',  (opts && opts.category) || '');
 
     sheet.appendRow(values);
+    });
   } catch (e) {
     Logger.log('appendMemoryEvent_ error (non-fatal): ' + e.message);
   }

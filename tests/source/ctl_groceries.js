@@ -32,7 +32,7 @@ const CONTROLS = [
   [SRV, 'a zero total is logged', b => ({ [G]: swap(b[G], "  if (x.total == null || x.total <= 0) return { ok: false, error: 'Enter the total' };\n", "") })],
   [SRV, 'an edit wipes the fields it did not send', b => ({ [G]: swap(b[G], "merged = Object.assign({}, stored);", "merged = {id: stored.id};") })],
   [SRV, 'switching a store off leaves it on', b => ({ [G]: swap(b[G], "if (raw[s] === true) setting[name] = true; else delete setting[name];", "if (raw[s] === true) setting[name] = true;") })],
-  [SRV, 'a stale config is read after saving the stores', b => ({ [G]: swap(b[G], "sheet.getRange(k + 2, 2).setValue(json); _configCache_ = null; return; }", "sheet.getRange(k + 2, 2).setValue(json); return; }") })],
+  [SRV, 'a stale config is read after saving the stores', b => ({ 'Settings.js': swap(fs.readFileSync(path.join(SRC_DIR, 'Settings.js'), 'utf8'), "    try { _configCache_ = null; } catch (e) {}\n    try { if (typeof invalidatePTOConfigRows_", "    try { if (typeof invalidatePTOConfigRows_") })],
   [UI, 'lite logs runs as Ahmed', b => ({ [L]: swap(b[L], "grocery={{ apiUrl, apiToken, who: 'Victoria' }}", "grocery={{ apiUrl, apiToken, who: 'Ahmed' }}") })],
   [UI, 'the run total only sums the pantry picks', b => both(b, "return mode==='food'&&l.food===false?n:n+v;},0)", "return l.food===false?n:n+v;},0)")],
   [UI, 'switching who keeps the first person\'s card', b => both(b, "onClick:function(){setR({who:w,cardTouched:false});}", "onClick:function(){setR({who:w,cardTouched:true,card:grCard});}")],

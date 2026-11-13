@@ -189,7 +189,7 @@ function harness(opts) {
   };
   if (opts.override) opts.override(ctx, calls);
 
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   [extractFn(CODE, 'escapeHtml_'),
    // Real, not a fake: summing a tally across the alias set is the whole of what the
    // packing lookup now does, so a stub here would leave the count untested.
@@ -590,7 +590,7 @@ console.log('\nOne forecast per location per execution');
       return { getContentText: () => JSON.stringify({ list: [], city: { timezone: 0 } }) };
     },
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(/^var _weatherForecastCache_\s*=.*?;/m.exec(WX)[0], ctx);
   vm.runInContext(extractFn(WX, 'geocodeLocation_'), ctx);
   vm.runInContext(extractFn(WX, 'fetchWeatherForecast_'), ctx);
@@ -623,7 +623,7 @@ console.log('\nA failed forecast is retried, not memoised as a failure');
                      : { getContentText: () => JSON.stringify({ list: [], city: { timezone: 0 } }) };
     },
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(/^var _weatherForecastCache_\s*=.*?;/m.exec(WX)[0], ctx);
   vm.runInContext(extractFn(WX, 'geocodeLocation_'), ctx);
   vm.runInContext(extractFn(WX, 'fetchWeatherForecast_'), ctx);
@@ -656,7 +656,7 @@ console.log('\nThe geocode is cached across executions, successes only');
         return { getContentText: () => JSON.stringify({ list: [], city: { timezone: 0 } }) };
       },
     };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext(/^var _weatherForecastCache_\s*=.*?;/m.exec(WX)[0], ctx);
     vm.runInContext(extractFn(WX, 'geocodeLocation_'), ctx);
     vm.runInContext(extractFn(WX, 'fetchWeatherForecast_'), ctx);
@@ -690,7 +690,7 @@ console.log('\nThe geocode is cached across executions, successes only');
         return { getContentText: () => JSON.stringify([]) };   // no results
       },
     };
-    vm.createContext(ctx);
+    vm.createContext(ctx); loadSettings_(ctx);
     vm.runInContext(extractFn(WX, 'geocodeLocation_'), ctx);
     return ctx;
   };
@@ -720,7 +720,7 @@ console.log('\nThe Config tab is read once per execution');
       getDataRange: () => ({ getValues: () => { dataRangeReads++; return rows; } }),
     }) }),
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(/^var _ptoConfigRows_\s*=.*?;/m.exec(PTO)[0], ctx);
   vm.runInContext(extractFn(PTO, 'invalidatePTOConfigRows_'), ctx);
   vm.runInContext(extractFn(PTO, 'readPTOConfigRows_'), ctx);
@@ -754,11 +754,12 @@ console.log('\nThe Config tab is read once per execution');
       Logger: { log: () => {} }, TABS: { CONFIG: 'Config' },
       getSpreadsheet: () => ({ getSheetByName: () => ({
         getDataRange: () => ({ getValues: () => { reads++; return [['pto_buffer_remaining', 2]]; } }),
-        getLastRow: () => 1,
-        getRange: () => ({ setValue: () => { writes++; }, setValues: () => { writes++; } }),
+        getLastRow: () => 2,   // a header row and the pto_buffer_remaining row
+        getRange: () => ({ getValues: () => { reads++; return [['pto_buffer_remaining']]; }, setValue: () => { writes++; }, setValues: () => { writes++; } }),
+        appendRow: () => { writes++; },
       }) }),
     };
-    vm.createContext(wctx);
+    vm.createContext(wctx); loadSettings_(wctx);
     vm.runInContext(/^var _ptoConfigRows_\s*=.*?;/m.exec(PTO)[0], wctx);
     vm.runInContext(extractFn(PTO, 'invalidatePTOConfigRows_'), wctx);
     vm.runInContext(extractFn(PTO, 'readPTOConfigRows_'), wctx);
@@ -779,7 +780,7 @@ console.log('\nThe Config tab is read once per execution');
     Logger: { log: () => {} }, TABS: { CONFIG: 'Config' },
     getSpreadsheet: () => ({ getSheetByName: () => null }),
   };
-  vm.createContext(ctx2);
+  vm.createContext(ctx2); loadSettings_(ctx2);
   vm.runInContext(/^var _ptoConfigRows_\s*=.*?;/m.exec(PTO)[0], ctx2);
   vm.runInContext(extractFn(PTO, 'readPTOConfigRows_'), ctx2);
   vm.runInContext(/^var PTO_DEFAULT_ACCRUAL_DAY_ = \d+;/m.exec(PTO)[0], ctx2);
@@ -806,7 +807,7 @@ console.log('\nThe spreadsheet handle is memoised per execution');
     CONFIG: { SHEET_ID: 'abc' },
     SpreadsheetApp: { openById: () => { opens++; return { id: 'handle' }; } },
   };
-  vm.createContext(ctx);
+  vm.createContext(ctx); loadSettings_(ctx);
   vm.runInContext(/^var _spreadsheet_\s*=.*?;/m.exec(CODE)[0], ctx);
   vm.runInContext(extractFn(CODE, 'invalidateSpreadsheet_'), ctx);
   vm.runInContext(extractFn(CODE, 'getSpreadsheet'), ctx);
@@ -827,7 +828,7 @@ console.log('\nThe spreadsheet handle is memoised per execution');
     console, Error, CONFIG: { SHEET_ID: 'YOUR_SHEET_ID_HERE' },
     SpreadsheetApp: { openById: () => ({}) },
   };
-  vm.createContext(ctx2);
+  vm.createContext(ctx2); loadSettings_(ctx2);
   vm.runInContext(/^var _spreadsheet_\s*=.*?;/m.exec(CODE)[0], ctx2);
   vm.runInContext(extractFn(CODE, 'getSpreadsheet'), ctx2);
   let msg = '';
@@ -838,3 +839,13 @@ console.log('\nThe spreadsheet handle is memoised per execution');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// Settings.js (veraLocked_, setConfigRow_ …) into a test context: from VERA_ROOT when a
+// control copied it there, else from the repo.
+function loadSettings_(c) {
+  const fs_ = require('fs'), p_ = require('path');
+  const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');
+  require('vm').runInContext(fs_.readFileSync(fs_.existsSync(at) ? at : p_.join(repo, 'Settings.js'), 'utf8'), c);
+  return c;
+}

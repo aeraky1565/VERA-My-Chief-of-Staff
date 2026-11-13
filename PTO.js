@@ -203,20 +203,7 @@ function readPTOBufferRemaining_(cfg) {
  * Writes pto_buffer_remaining to Config tab (creates row if missing).
  */
 function setPTOBufferRemaining_(newVal) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) return;
-  var data = sheet.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === 'pto_buffer_remaining') {
-      sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));
-      invalidatePTOConfigRows_();
-      return;
-    }
-  }
-  // Not found — append
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['pto_buffer_remaining', Math.max(0, newVal)]]);
-  invalidatePTOConfigRows_();
+  setConfigRow_('pto_buffer_remaining', Math.max(0, newVal));   // locked, Settings.js (#242)
 }
 
 /**
@@ -238,20 +225,7 @@ function readVictoriaPTOBufferRemaining_(cfg) {
  * Writes victoria_pto_buffer_remaining to Config tab (creates row if missing).
  */
 function setVictoriaPTOBufferRemaining_(newVal) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) return;
-  var data = sheet.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === 'victoria_pto_buffer_remaining') {
-      sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));
-      invalidatePTOConfigRows_();
-      return;
-    }
-  }
-  // Not found — append
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['victoria_pto_buffer_remaining', Math.max(0, newVal)]]);
-  invalidatePTOConfigRows_();
+  setConfigRow_('victoria_pto_buffer_remaining', Math.max(0, newVal));   // locked, Settings.js (#242)
 }
 
 /**
@@ -261,20 +235,7 @@ function setVictoriaPTOBufferRemaining_(newVal) {
  * pto_rollover_days without a dedicated function per key.
  */
 function setPTOConfigValue_(key, value) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) return;
-  var data = sheet.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === key) {
-      sheet.getRange(i + 1, 2).setValue(value);
-      invalidatePTOConfigRows_();
-      return;
-    }
-  }
-  // Not found — append
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([[key, value]]);
-  invalidatePTOConfigRows_();
+  setConfigRow_(key, value);   // locked, Settings.js (#242)
 }
 
 // ---- Calendar helpers -------------------------------------------------------

@@ -211,10 +211,11 @@ const CONTROLS = {
       "  var data = readPTOConfigRows_();\n" +
       "  for (var i = 0; i < data.length; i++) {\n    if (String(data[i][0]).trim() === 'pto_buffer_remaining') {"),
   }),
+  // Config writes go through setConfigRow_ (Settings.js, #242), which busts the memo.
   'a Config writer stops invalidating the row memo': b => ({
-    'PTO.js': b['PTO.js'].replace(
-      "      sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));\n      invalidatePTOConfigRows_();",
-      '      sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));'),
+    'Settings.js': fs.readFileSync(path.join(SRC_DIR, 'Settings.js'), 'utf8').replace(
+      "    try { if (typeof invalidatePTOConfigRows_ === 'function') invalidatePTOConfigRows_(); } catch (e) {}\n",
+      ''),
   }),
 
   // ---- the wiring in morningNudge -----------------------------------------
