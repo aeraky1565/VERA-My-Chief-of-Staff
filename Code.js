@@ -504,6 +504,7 @@ function createSheetTabs(ss) {
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
     ['system_log_retention_days', '45'],
+    ['owner_name',            ''],        // People & access (#218): the owner's name, as its column in the Access tab (blank = "Owner")
     // Agent health (#247): when each Claude agent is scheduled, since VERA can't read Claude's schedules.
     // "<daily|weekdays|mon,wed,…> HH:MM <time zone> [eod]"; eod = late only once the day is over.
     ['agent_schedule_aria',          'daily 06:52 America/New_York'],

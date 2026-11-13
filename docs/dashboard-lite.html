@@ -340,7 +340,7 @@ function SettingsModal({ initial, onSave, onClose }) {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose && onClose()}>
       <div className="modal">
         <h2>⚙️ Connect to VERA API</h2>
-        <p>Enter your Apps Script Web App URL and the token from Script Properties.</p>
+        <p>Enter your Apps Script Web App URL and your sign-in code.</p>
 
         <div className="form-group">
           <label className="form-label">Web App URL</label>
@@ -353,10 +353,10 @@ function SettingsModal({ initial, onSave, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">VERA_WEB_TOKEN</label>
+          <label className="form-label">Your sign-in code</label>
           <input
             className="form-input"
-            placeholder="vera-b479..."
+            placeholder="XXXX-XXXX-XXXX-XXXX"
             type="password"
             value={token}
             onChange={e => setToken(e.target.value)}
@@ -13737,7 +13737,7 @@ var VN_GROUPS={
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
   system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents','guides']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health','agent_health']},
-    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags']}],
+    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags','people']}],
   life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
   // dashboard-lite (Victoria): only what she uses, one tap down
@@ -13745,9 +13745,17 @@ var VN_GROUPS={
   lite_travel:[{id:'trips',label:'My Trips',icon:'✈️',items:['trips']},{id:'bucketlist',label:'Bucket List',icon:'🪣',items:['bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags']},{id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']}],
   lite_family:[{id:'planning',label:'Planning',icon:'👶',items:['planning']},{id:'health',label:'Health',icon:'💊',items:['prescriptions']},
     {id:'gifts',label:'Gifts',icon:'🎄',items:['wishlists']},{id:'contacts',label:'Contacts',icon:'📒',items:['contacts']}]};
+// What this person may see (#218): set from whoami as {dash:'full'|'lite',hidden:{id:true}}; unset = everything.
+// Ids are '<dash>:<tab>' for a main tab and '<dash>:<menu>/<subtab>' for a subtab (the Access tab's Id column).
+var VERA_ACCESS=null;
+function veraCan_(id){var a=VERA_ACCESS;return !(a&&a.hidden&&a.hidden[a.dash+':'+id]);}
+// The tabs this dashboard has, for the Access tab: mains [{id,label}] plus every menu's subtabs.
+function veraAccessCatalog_(dash,mains){var out=[],lab={};(mains||[]).forEach(function(m){lab[m.id]=m.label;out.push({id:dash+':'+m.id,area:m.label,tab:'(main tab)'});});
+  Object.keys(VN_GROUPS).forEach(function(name){if((name.indexOf('lite_')===0)!==(dash==='lite'))return;var area=lab[name.replace(/^lite_/,'')]||name.replace(/^lite_/,'');
+    VN_GROUPS[name].forEach(function(g){g.items.forEach(function(id){out.push({id:dash+':'+name+'/'+id,area:area,tab:g.label+' › '+id.replace(/_/g,' ')});});});});return out;}
 // Pure: the groups that have subtabs on offer, each with those subtabs in group order ({id,label} from tabs).
 function vnGroupsFor_(name,tabs){var by={};(tabs||[]).forEach(function(t){by[t.id]=t;});
-  return (VN_GROUPS[name]||[]).map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id];}).map(function(id){return by[id];})};})
+  return (VN_GROUPS[name]||[]).map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id]&&veraCan_(name+'/'+id);}).map(function(id){return by[id];})};})
     .filter(function(g){return g.tabs.length>0;});}
 // Pure: the group a subtab is in ('' when none).
 function vnGroupOf_(name,id){var g=(VN_GROUPS[name]||[]).filter(function(x){return x.items.indexOf(id)!==-1;})[0];return g?g.id:'';}
@@ -13757,6 +13765,9 @@ function VeraTileNav(props){var h=React.createElement;var name=props.name;var gr
   var _l=React.useState(function(){return vnLastRead_(name);}),last=_l[0],setLast=_l[1];
   var gid=vnGroupOf_(name,props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
   React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;vnLastWrite_(name,n);return n;});},[props.sub]);
+  // A subtab this person can't see (#218): open the first one they can.
+  var subHidden=props.sub&&vnGroupOf_(name,props.sub)&&!veraCan_(name+'/'+props.sub);
+  React.useEffect(function(){if(subHidden&&groups[0]&&!props.none)props.onPick(groups[0].tabs[0].id);},[subHidden]);
   if(!cur)return null;
   var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
   return h('div',{className:'vn-nav vn-'+name,style:{display:'flex',flexDirection:'column',gap:10,marginBottom:14}},
@@ -14807,6 +14818,31 @@ function App() {
     if (to[0] === 'family') setFamilySub(to[1]);
   };
   const [activeFinanceTab, setActiveFinanceTab] = useState('fin_summary');
+  // Who's signed in (#218): their hidden tabs and first tab. Before whoami answers, everything shows.
+  const [who, setWho] = useState(null);
+  useEffect(() => {
+    if (!apiUrl || !apiToken) return;
+    let live = true;
+    apiGet(apiUrl, apiToken, { action: 'whoami' }, { noRetry: true }).then(d => {
+      if (!live) return;
+      const hid = {};
+      (d.hidden || []).forEach(id => { hid[id] = true; });
+      VERA_ACCESS = { dash: 'lite', hidden: hid };
+      setWho(d);
+    }).catch(() => { VERA_ACCESS = null; });
+    return () => { live = false; };
+  }, [apiUrl, apiToken]);
+  // Their first tab once, then never a hidden one.
+  const whoLanded = useRef(false);
+  useEffect(() => {
+    if (!who) return;
+    const ok = TOP_TABS.map(t => t.id).filter(id => veraCan_(id));
+    if (!whoLanded.current) {
+      whoLanded.current = true;
+      if (who.opensOn && ok.indexOf(who.opensOn) !== -1) { setActiveTabRaw(who.opensOn); return; }
+    }
+    if (ok.length && ok.indexOf(activeTab) === -1) setActiveTabRaw(ok[0]);
+  }, [who, activeTab]);
   const [shopping,     setShopping]     = useState([]);
   const [busy,         setBusy]         = useState(false);
   const [error,        setError]        = useState(null);
@@ -14980,7 +15016,7 @@ function App() {
         overflowX: 'auto',
         padding: '0 28px',
       }}>
-        {TOP_TABS.map(tab => (
+        {TOP_TABS.filter(tab => veraCan_(tab.id)).map(tab => (
           <button
             key={tab.id}
             disabled={!!tab.disabled}

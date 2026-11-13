@@ -16,7 +16,7 @@ const ONLY = process.env.LIFE_ONLY || '';   // controls run one part
 const part = p => !ONLY || ONLY === p;
 
 console.log('\nthe wiring');
-check('Life replaces Growth and Explore in the top tabs', /'career','life','system'\]\.map\(tab=>/.test(APP) && /tab==='life'\?`🌿 Life`/.test(APP) && !/tab==='growth'\?`🌱 Growth`/.test(APP) && !/tab==='explore'\?`🔭 Explore`/.test(APP));
+check('Life replaces Growth and Explore in the top tabs', /\{id:'career',label:'Career'\},\{id:'life',label:'Life'\},\{id:'system',label:'System'\}\]/.test(APP) && !/\{id:'growth'|\{id:'explore'/.test(APP.slice(APP.indexOf('var VERA_MAIN_TABS='), APP.indexOf('var VERA_LITE_MAIN_TABS='))) && /tab==='life'\?`🌿 Life`/.test(APP) && !/tab==='growth'\?`🌱 Growth`/.test(APP) && !/tab==='explore'\?`🔭 Explore`/.test(APP));
 check('anything still sending you to Growth or Explore lands on Life', /if\(activeTab==='growth'\|\|activeTab==='explore'\)setActiveTab\('life'\);/.test(APP));
 check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,onNavigate:setActiveTab,initialSub:lifeDeepLink&&lifeDeepLink\.sub,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
 check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(props\.initialSub&&LF_SUBS\.some\(function\(x\)\{return x\.id===props\.initialSub;\}\)\)return props\.initialSub;/.test(APP));

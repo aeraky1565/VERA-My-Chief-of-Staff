@@ -34,10 +34,14 @@ function getWebToken_() {
   return PropertiesService.getScriptProperties().getProperty('VERA_WEB_TOKEN') || '';
 }
 
+/**
+ * A request is allowed when its token is the owner's shared token (VERA_WEB_TOKEN) or
+ * one of a person's sign-in codes (People.js, #218). Sets who is asking (_veraWho_).
+ */
 function isAuthorized_(e) {
-  const token = getWebToken_();
+  var token = (e && e.parameter && e.parameter.token) || '';
   if (!token) return false;                               // No token = locked
-  return (e && e.parameter && e.parameter.token) === token;
+  return !!veraIdentify_(token);
 }
 
 // ---- Response helpers ------------------------------------------------------
@@ -140,6 +144,8 @@ function doGet(e) {
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
       case 'system_documents':      return jsonOut_(webSystemDocuments_());  // System.js
       case 'system_api_health':     return jsonOut_(webSystemApiHealth_());  // System.js
+      case 'whoami':                return jsonOut_(webWhoami_());          // People.js (#218)
+      case 'people_list':           return jsonOut_(webPeopleList_());      // People.js (#218), owner only
       case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
@@ -551,6 +557,8 @@ function doPost(e) {
     (e.postData.type && e.postData.type.indexOf('x-www-form-urlencoded') !== -1)
   );
   if (isFormEncoded) {
+    // Slack's posts carry no VERA token; when SLACK_VERIFICATION_TOKEN is set, theirs must match (#218).
+    if (!slackPostOk_(e, null)) return errOut_('Unauthorized', 401);
     return handleSlackFormPost_(e);
   }
 
@@ -563,6 +571,7 @@ function doPost(e) {
 
   // ── Slack Events API (JSON body: event_callback or url_verification) ──────
   if (body && (body.type === 'event_callback' || body.type === 'url_verification')) {
+    if (!slackPostOk_(e, body)) return errOut_('Unauthorized', 401);   // #218
     if (body.type === 'url_verification') {
       return ContentService.createTextOutput(body.challenge || '')
         .setMimeType(ContentService.MimeType.TEXT);
@@ -589,6 +598,12 @@ function doPost(e) {
   try {
     switch (action) {
       case 'chat':                       return jsonOut_(webProcessChat_(body));
+      // People & access (#218, People.js): owner only, checked inside.
+      case 'people_add':                 return jsonOut_(webPeopleAdd_(body));
+      case 'people_code':                return jsonOut_(webPeopleNewCode_(body));
+      case 'people_signout':             return jsonOut_(webPeopleSignOut_(body));
+      case 'people_view':                return jsonOut_(webPeopleSetView_(body));
+      case 'access_sync':                return jsonOut_(webAccessSync_(body));
 
       // Projects — POST because the context is free-form prose, which a query
       // string mangles. These handlers read `e.parameter` when present and the

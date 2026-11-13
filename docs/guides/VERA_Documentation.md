@@ -799,7 +799,9 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 |---|---|---|
 | `VERA_SHEET_ID` | `Code.js` (`CONFIG.SHEET_ID`) | The Life OS Google Sheet ID (needed before the Config tab can be read) |
 | `CLAUDE_API_KEY` | `Claude.js` | Anthropic API key |
-| `VERA_WEB_TOKEN` | `WebApp.js` | Token on every dashboard request |
+| `VERA_WEB_TOKEN` | `WebApp.js` | The owner's token; a dashboard request carries it or a person's sign-in code |
+| `VERA_USER_TOKENS` | `People.js` | Everyone's sign-in codes as fingerprints only, and each person's view (System › People & access) |
+| `SLACK_VERIFICATION_TOKEN` | `People.js` | Optional: once set, Slack's own posts to VERA must carry it |
 | `SLACK_BOT_TOKEN` | `Slack.js` | Slack bot OAuth token |
 | `SLACK_ALLOWED_USER_IDS` | `Slack.js` | Comma-separated allowlist of Slack user IDs (who may talk to VERA) |
 | `AVIATIONSTACK_KEY` | `FlightStatus.js` | AviationStack API access key |
@@ -923,6 +925,9 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 - **Two dashboards:** `docs/index.html` (built from `docs/app.js` by `docs/build.js`, React inlined) and `docs/dashboard-lite.html` (Victoria's, compiled in the browser). Shared blocks are copied byte-for-byte between them and tests enforce it.
 - **Tile navigation:** each area groups its sub-tabs into tiles (`VN_GROUPS`, `FIN_GROUPS`, `HF_GROUPS`, `LF_GROUPS`, `SYS_SUBS`). The lite dashboard has eight tabs: Today, Chat, Shopping, Home, Travel, Money, Family, Projects.
+- **People & access (`People.js`, #218):** each person signs in with their own code, typed once per device in ⚙ settings where the token used to go. VERA stores only a fingerprint (SHA-256) of each code in `VERA_USER_TOKENS` and shows a new code once; the owner's `VERA_WEB_TOKEN` keeps working. System › Settings › **People & access** (owner only) adds a person, makes a new code (old ones keep working), sets which dashboard they open (full or lite), and signs a person out everywhere (deletes their fingerprints). The owner's name comes from Config `owner_name`.
+- **The Access tab:** VERA fills it when the owner opens a dashboard (once a day): one row per main tab and per menu subtab of both dashboards (Id `full:travel`, `full:travel/aria`, `lite:shopping`, …), a checkbox column per person (a new person and a new tab start ticked), and an **Opens on** row naming each person's first tab. `whoami` returns the person, their view, first tab and hidden tabs; the shared menu (`veraCan_` in the VeraTileNav block) and both tab bars leave out what's unticked, and a person whose view is lite is sent from the full dashboard to the lite one. This changes what a person sees; the server doesn't refuse a hidden tab's data yet (#218 piece 4). Coming up, chat, Slack and emails aren't filtered. The owner always keeps System and People & access.
+- **Slack's posts:** Apps Script can't read Slack's signature header, so once `SLACK_VERIFICATION_TOKEN` is set, Slack's form posts and events must carry Slack's verification token. Dashboard posts need a sign-in, as before.
 - **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel`, `notif_<key>_enabled` and `notif_<key>_while_away` override it, and System › Notifications edits them.
 
 
@@ -1227,7 +1232,9 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 |---|---|---|---|
 | CLAUDE_API_KEY | Required | Claude.js | Anthropic API key for claude-sonnet-4-6 |
 | VERA_SHEET_ID | Required | Code.js (CONFIG) | Google Sheet ID of the Life OS sheet |
-| VERA_WEB_TOKEN | Required | WebApp.js | Auth token for all WebApp GET/POST requests (`?token=...`) |
+| VERA_WEB_TOKEN | Required | WebApp.js | The owner's token for WebApp GET/POST requests (`?token=...`); people use their own sign-in codes |
+| VERA_USER_TOKENS | Auto | People.js | Sign-in code fingerprints and views, per person |
+| SLACK_VERIFICATION_TOKEN | Optional | People.js | Slack's verification token, checked on Slack's posts once set |
 | SLACK_BOT_TOKEN | Optional | Slack.js | Slack bot OAuth token (xoxb-...) |
 | SLACK_ALLOWED_USER_IDS | Optional | Slack.js | Comma-separated Slack member IDs authorized to chat with VERA |
 | AVIATIONSTACK_KEY | Optional | FlightStatus.js | AviationStack API key for flight status monitoring |
@@ -1314,7 +1321,7 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `#vera-logs` | Config `slack_logs_channel_id` | Outbound only | Nightly run summaries (flag counts, step warnings, elapsed time). WebApp errors. Flight status updates. Feature fire confirmations. |
 
 
-### WebApp GET Actions doGet() in WebApp.js — all require ?token=VERA_WEB_TOKEN
+### WebApp GET Actions doGet() in WebApp.js — all require ?token= (VERA_WEB_TOKEN or a person's sign-in code)
 
 | action param | Additional params | Description |
 |---|---|---|
@@ -1387,6 +1394,8 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `get_pacing_status` | — | Current pacing + Away mode status |
 | `away_status` | — | Away mode, and what it has held |
 | `agent_health` | `refresh=1` (optional) | Agent health: each agent's level, last run, strip and source |
+| `whoami` | — | The signed-in person: name, owner, view, first tab, hidden tabs |
+| `people_list` | — | Owner only: everyone, their view, codes, last seen, tab count |
 | `set_notif_while_away` | `key`, `value` | A notification's While away setting (send / hold / due) |
 | `get_visa_requirements` | origin, destination | Visa requirements for a traveler profile |
 | `dest_weather` | location | Weather forecast for destination |

@@ -97,7 +97,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
-| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health) · Settings (Notifications, Trip emails, Config, Feature flags) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
 **Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, Card cheat sheet, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
 
@@ -2143,7 +2143,9 @@ properties and turns read-only past that.
 |-------------|----------|---------|-------------|
 | `VERA_SHEET_ID` | Yes | Code.js | Google Sheet ID for the Life OS sheet (VERA needs it to find the Config tab) |
 | `CLAUDE_API_KEY` | Yes | Claude.js | Anthropic API key |
-| `VERA_WEB_TOKEN` | Yes | WebApp.js | Secret token required on all dashboard API requests (`?token=...`) |
+| `VERA_WEB_TOKEN` | Yes | WebApp.js | The owner's token: every dashboard request carries it, or a person's sign-in code (`?token=...`) |
+| `VERA_USER_TOKENS` | Auto | People.js | Everyone's sign-in codes, as fingerprints (SHA-256) only, with their view (#218). Written from System › People & access |
+| `SLACK_VERIFICATION_TOKEN` | Optional | People.js | Slack's verification token (Slack app › Basic Information). Once set, Slack's posts to VERA must carry it |
 | `SLACK_BOT_TOKEN` | No | Slack.js | Slack bot OAuth token (`xoxb-...`) |
 | `SLACK_ALLOWED_USER_IDS` | No | Slack.js | Comma-separated Slack user IDs allowed to chat with VERA. Kept here on purpose: it decides who may talk to VERA |
 | `AVIATIONSTACK_KEY` | No | FlightStatus.js | AviationStack API key for flight status polling |
@@ -2271,7 +2273,7 @@ VERA detects special prefixes in Google Calendar event titles to trigger specifi
 
 ## Dashboard API Reference
 
-All requests must include `?token=YOUR_VERA_WEB_TOKEN`. All mutations use GET to avoid CORS preflight.
+All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a person's sign-in code (#218). All mutations use GET to avoid CORS preflight.
 
 ### GET Actions
 
@@ -2440,6 +2442,8 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `add_bucket_activity` / `toggle_bucket_activity` / `delete_bucket_activity` | `bucketId`, `activity` | Manage bucket list activities |
 | `get_pacing_status` | — | Current pacing / Away mode status |
 | `away_status` | — | Away mode, and what it has held (Home banner) |
+| `whoami` | — | Who the code belongs to: name, owner, view (full or lite), first tab, hidden tabs (#218) |
+| `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
@@ -2488,6 +2492,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
+| `People.js` | Sign-in codes per person (fingerprints only), the Access tab, whoami, the owner's People & access endpoints, Slack's verification token |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
@@ -2591,7 +2596,7 @@ mechanical and `--check` makes drift detectable.
 | A change to `app.js` isn't visible on the dashboard | `index.html` wasn't rebuilt | Run `node docs/build.js`, commit both files |
 | Not sure whether the two files match | — | `node docs/build.js --check` |
 | Blank dark-blue page, no console errors | The app block failed to parse | Open the console; check `index.html`'s last `<script>` block is intact |
-| 401 Unauthorized JSON response | `VERA_WEB_TOKEN` in Script Properties doesn't match browser localStorage | Re-enter credentials via the ⚙ icon in the dashboard |
+| 401 Unauthorized JSON response | The browser's saved code isn't `VERA_WEB_TOKEN` or a current sign-in code ("Sign out everywhere" stops a person's codes) | Re-enter the code via the ⚙ icon, or make a new one in System › People & access |
 | Dashboard works locally but not on GitHub Pages | GitHub Pages hasn't redeployed yet | Wait 2–5 min, or check the Actions tab for deploy status |
 
 ---
