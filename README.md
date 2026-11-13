@@ -99,6 +99,8 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
 | **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
+**On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
+
 **Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, Card cheat sheet, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
 
 **Guides** (in `docs/guides/`, served by GitHub Pages):

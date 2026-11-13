@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VERA — Shopping</title>
+  <!-- Home-screen app (#243): the manifest for Android and Chrome, the apple- tags for iPhone. -->
+  <link rel="manifest" href="manifest-lite.webmanifest" />
+  <meta name="theme-color" content="#0d1b3e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="VERA Lite" />
+  <link rel="apple-touch-icon" href="icons/vera-lite-180.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/vera-lite-192.png" />
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13782,6 +13791,35 @@ function VeraTileNav(props){var h=React.createElement;var name=props.name;var gr
         return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),style:{minHeight:36},onClick:function(){props.onPick(t.id);}},t.label);}):null,
       props.after||null):null);}
 // ---- /VeraTileNav ----
+// ---- VeraInstallTip — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html (#243) ----
+// A one-time tip on phones: put VERA on the home screen. iPhone installs from Safari's Share menu; Android's
+// Chrome offers its own Install prompt, which the tip's button opens when Chrome has made it available.
+// Hidden once installed (opened from the icon), on computers, and for good after "Got it".
+// Also registers the service worker (sw.js): a "No connection" page offline, nothing else cached.
+var VERA_INSTALL_EVT=null;
+try{window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();VERA_INSTALL_EVT=e;});
+  if('serviceWorker' in navigator&&location.protocol==='https:')window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}catch(e){}
+// Pure: which phone, from the user agent (iPads report a Mac with a touch screen).
+function veraPhoneOf_(ua,platform,touch){if(/iPhone|iPad|iPod/.test(ua)||(platform==='MacIntel'&&touch>1))return 'ios';if(/Android/.test(ua))return 'android';return '';}
+function veraInstalled_(){try{return !!(window.navigator.standalone||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches));}catch(e){return false;}}
+function VeraInstallTip(){var h=React.createElement;var phone=veraPhoneOf_(navigator.userAgent||'',navigator.platform||'',navigator.maxTouchPoints||0);
+  var _d=React.useState(function(){try{return localStorage.getItem('vera_install_tip_done')==='1';}catch(e){return false;}}),done=_d[0],setDone=_d[1];
+  var _t=React.useState(0),bump=_t[1];   // Chrome's Install offer can arrive after the tip is drawn
+  React.useEffect(function(){function on(){setTimeout(function(){bump(function(x){return x+1;});},0);}window.addEventListener('beforeinstallprompt',on);return function(){window.removeEventListener('beforeinstallprompt',on);};},[]);
+  if(!phone||done||veraInstalled_())return null;
+  function close(){try{localStorage.setItem('vera_install_tip_done','1');}catch(e){}setDone(true);}
+  function install(){var ev=VERA_INSTALL_EVT;if(!ev)return;ev.prompt();(ev.userChoice||Promise.resolve()).then(function(){VERA_INSTALL_EVT=null;close();});}
+  var btn={minHeight:36,padding:'6px 14px',borderRadius:8,border:'1px solid #2a4080',background:'#0a1220',color:'#8ab4f8',fontSize:13,cursor:'pointer'};
+  var b={color:'#dde1f0'};
+  var steps=phone==='ios'?[h('li',{key:1},'Tap ',h('b',{style:b},'Share'),' (the square with the arrow) in Safari'),h('li',{key:2},'Tap ',h('b',{style:b},'Add to Home Screen')),h('li',{key:3},'Open VERA from the new icon and enter your sign-in code once')]
+    :[h('li',{key:1},VERA_INSTALL_EVT?'Tap Install below':h(React.Fragment,null,'In Chrome, tap ',h('b',{style:b},'⋮'),' then ',h('b',{style:b},'Install app'),' (or Add to Home screen)')),h('li',{key:2},'Open VERA from the new icon')];
+  return h('div',{role:'note',className:'vera-install-tip',style:{display:'flex',gap:12,alignItems:'flex-start',background:'#0d1b3e',border:'1px solid #2a4080',borderRadius:12,padding:'12px 14px',marginBottom:14}},
+    h('div',{'aria-hidden':'true',style:{fontSize:22,lineHeight:1}},'📲'),
+    h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontWeight:700,fontSize:14,color:'#dde1f0'}},'Put VERA on your home screen'),
+      h('div',{style:{fontSize:12.5,color:'#8a9abf',marginTop:2}},'Opens like an app, full screen.'),
+      h('ol',{style:{fontSize:12.5,color:'#8a9abf',margin:'6px 0 0',paddingLeft:18}},steps),
+      h('div',{style:{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}},phone==='android'&&VERA_INSTALL_EVT&&h('button',{type:'button',onClick:install,style:Object.assign({},btn,{background:'#8ab4f8',color:'#060e24',borderColor:'#8ab4f8',fontWeight:700})},'Install'),h('button',{type:'button',onClick:close,style:btn},'Got it'))));}
+// ---- /VeraInstallTip ----
 // Victoria's tabs (dashboard-lite): what she opens VERA for, the rest one tap down. Old tab ids
 // still land in the right place (LITE_OLD_TABS) — Cards is in Money, Coupons and the card cheat sheet in
 // Shopping, Prescriptions, Family Planning, Wish Lists and the Address Book in Family, and the house book
@@ -14723,6 +14761,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
 
   return (
     <div>
+      <VeraInstallTip />
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>

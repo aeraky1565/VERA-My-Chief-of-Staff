@@ -24,7 +24,7 @@ const TS = s => { const a = s.indexOf('// ---- TripSummaryView (itinerary redesi
 console.log('\nthe source');
 check('the pieces sit in the shared trip summary block, word for word in both dashboards', cut(APP).length > 8000 && cut(APP) === cut(LITE) && TS(APP).indexOf(cut(APP)) !== -1 && TS(APP) === TS(LITE));
 check('every trip summary shows the box, before Readiness', /h\(TsTripPeople,\{trip:trip,apiUrl:props\.apiUrl,apiToken:props\.apiToken,card:card,label:label\}\),\n    h\(TsReadinessSection,/.test(TS(APP)));
-check('System › Settings › Trip emails', /\{id:'trip_emails',label:'✉️ Trip emails'\}/.test(APP) && /items:\['notifications','trip_emails','config','flags'\]/.test(APP) && /cur==='trip_emails'&&h\(TripEmailsPanel,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
+check('System › Settings › Trip emails', /\{id:'trip_emails',label:'✉️ Trip emails'\}/.test(APP) && /items:\['notifications','trip_emails','config','flags','people'\]/.test(APP) && /cur==='trip_emails'&&h\(TripEmailsPanel,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
 check('the Test tab says a test is yours only', /"A test goes to you only\."/.test(APP) && APP.indexOf('test-to-all') === -1);
 
 const THEAD = (CODE.match(/const TRIPS_HEADERS\s*=\s*(\[[^\]]*\])/) || [])[1];

@@ -1,0 +1,16 @@
+{
+  "id": "./index.html",
+  "name": "VERA",
+  "short_name": "VERA",
+  "description": "Your chief of staff: the full dashboard.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1b3e",
+  "theme_color": "#0d1b3e",
+  "icons": [
+    { "src": "icons/vera-full-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/vera-full-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/vera-full-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
