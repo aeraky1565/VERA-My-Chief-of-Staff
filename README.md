@@ -199,6 +199,7 @@ Tracks flag engagement over time in the `SignalLearning` tab. Each flag key patt
 - The morning email becomes the short **away edition**: today's plan, your flights, and only what got through. A flag gets through when it is High, comes from a source with a deadline (bills, contracts, coupons, card perks, travel documents), and its **Due** date (Flags tab column L) falls before you're back.
 - Home shows a banner with what's held, and the capacity mode for trip days is `busy`.
 - Fitness consistency checks, goal check-ins and pacing escalation are paused, as before.
+- When Away mode ends (a trip of yours ends, the switch's date passes, or you tap "End away mode"), the first morning email after starts with **While you were away** (#244), once: the flags raised in those days (the 5 most urgent open ones listed, the rest counted), the tasks that went overdue (up to 5), what was held (one line, by kind), and the mail waiting. A part with nothing in it is left out, and with nothing at all there's no section. On a morning with no flags, when the briefing isn't sent, it goes on its own.
 
 **Pacing mode** is activated by the miss-rate checker. If 2+ domains show missed targets (gym sessions, overdue tasks, unacknowledged flags, overdue chores) within a 48-hour window, VERA fires a Medium deferral-offer flag. If the offer is not responded to within another 48 hours and the pattern persists, VERA auto-activates pacing mode for 7 days: defers upcoming non-recurring tasks to next Monday and pauses routine Anticipator reminders.
 
@@ -2245,7 +2246,7 @@ Config tab can't be read at all.
 > the `googlecalendar-advanced` health source, once per scan, so it reaches the morning
 > banner instead of only the execution log. `tbCalendarAccess()` prints the verdict
 > directly, alongside what a cold scan costs against a warm one.
-| `VERA_STATE_PACING` | Auto | Pacing.js | One record for pacing and Away mode: `VACATION_MODE_ACTIVE`/`_ENDS`, `VACATION_TRIP_NAME`, `PACING_MODE_ACTIVE`/`_ENDS`, `PACING_FIRST_DETECTED`, `PACING_OFFER_FLAG_KEY`, and the Away switch and counts (`AWAY_MANUAL`, `AWAY_UNTIL`, `AWAY_TRIP`, `AWAY_ENDED_TRIP`, `AWAY_STARTED`, `AWAY_HELD`) |
+| `VERA_STATE_PACING` | Auto | Pacing.js | One record for pacing and Away mode: `VACATION_MODE_ACTIVE`/`_ENDS`, `VACATION_TRIP_NAME`, `PACING_MODE_ACTIVE`/`_ENDS`, `PACING_FIRST_DETECTED`, `PACING_OFFER_FLAG_KEY`, and the Away switch and counts (`AWAY_MANUAL`, `AWAY_UNTIL`, `AWAY_TRIP`, `AWAY_ENDED_TRIP`, `AWAY_STARTED`, `AWAY_HELD`), and `AWAY_BACK` (an ended period waiting for the "While you were away" catch-up) |
 | `VERA_STATE_PTO_BUFFER` | Auto | PTO.js | The buffer-day suggestion: event id, its date, declined-until |
 | `VERA_STATE_MAIL` | Auto | MailCounter.js | The mail counter: pieces, packages, last scan, last reset |
 | `VERA_STATE_CAPACITY_OVERRIDE` / `VERA_STATE_CAPACITY_INFERRED` | Auto | Chat.js, Slack.js / Code.js | Your busy/light override, and the nightly run's guess, kept apart so one never undoes the other |

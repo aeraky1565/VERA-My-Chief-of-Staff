@@ -125,6 +125,8 @@ function checkVacationMode_() {
     props.deleteProperty('VACATION_TRIP_NAME');
     // The trip is over, so a trip ended early by hand needs no remembering (#246).
     props.deleteProperty('AWAY_ENDED_TRIP');
+    // The trip is over: record "While you were away" for the next morning email (#244).
+    if (wasActiveEnd && typeof awayCloseIfEnded_ === 'function') awayCloseIfEnded_('', endedTrip);
     Logger.log('checkVacationMode_: inactive');
     // Memory Log: record vacation end (only on transition from active → inactive)
     if (wasActiveEnd && endedTrip) {

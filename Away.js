@@ -20,9 +20,15 @@
 //     a deadline (bills, contracts, coupons, card perks, travel documents), and its
 //     Due date (the Flags tab's Due column) falls before you're back.
 //
+// When it ends (#244), the first morning email after carries "While you were away":
+// the flags raised and tasks that went overdue in those days, what was held, and
+// the mail waiting. awayCloseIfEnded_ records the period in AWAY_BACK; the email
+// shows it once, then clears it.
+//
 // State lives in VERA_STATE_PACING (Settings.js): AWAY_MANUAL / AWAY_UNTIL /
 // AWAY_TRIP for the switch, AWAY_ENDED_TRIP when a trip's automatic mode was
-// ended early, AWAY_STARTED (the day it began), AWAY_HELD ({notif key: count}).
+// ended early, AWAY_STARTED (the day it began), AWAY_HELD ({notif key: count}),
+// AWAY_BACK (the ended period, waiting for the catch-up).
 //
 // Two layers: pure deciders (awayDecide_, awayHoldsDecide_, awayFlagGetsThrough_,
 // awayEditionHtml_) and the reads and writes around them.
@@ -72,6 +78,7 @@ function awaySet_(on, until, trip) {
       AWAY_HELD: was ? (st.AWAY_HELD || null) : null,
     });
   } else {
+    awayCloseIfEnded_(today);   // the catch-up for the days it was on (#244)
     veraStateSet_('PACING', {
       AWAY_MANUAL: null, AWAY_UNTIL: null, AWAY_TRIP: null,
       AWAY_ENDED_TRIP: st.VACATION_MODE_ACTIVE === 'true' ? (st.VACATION_TRIP_NAME || null) : null,
@@ -291,4 +298,200 @@ function sendAwayEditionEmail_() {
   sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, e.subject, e.text, { name: 'VERA', htmlBody: e.html }, 'morning_briefing');
   Logger.log('morningNudge: away edition sent');
   return e;
+}
+
+// ---- "While you were away" (#244) ------------------------------------------------
+
+function awayAddDays_(iso, n) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m) return '';
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n));
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+function awayHeldParse_(s) { try { var m = JSON.parse(s || '{}'); return (m && typeof m === 'object') ? m : {}; } catch (e) { return {}; } }
+
+/**
+ * Pure: has an Away period ended, and what does it leave for the catch-up?
+ * st: the pacing state; today: 'yyyy-MM-dd'; endHint: the day it ended when known
+ * (the switch: today); tripHint: the trip, when the caller knows it better.
+ * → null, or { back: { start, end, trip, held }, patch } — the patch records AWAY_BACK
+ * (merged with one not yet shown) and clears the period, so it closes once.
+ */
+function awayCloseDecide_(st, today, endHint, tripHint) {
+  st = st || {};
+  var start = awayIso_(st.AWAY_STARTED);
+  if (!start) return null;
+  if (!endHint && awayDecide_(st, today).on) return null;
+  var until = awayIso_(st.AWAY_UNTIL);
+  var end = awayIso_(endHint) || (st.AWAY_MANUAL === 'on' && until && until < today ? until : awayAddDays_(today, -1));
+  if (end < start) end = start;
+  var trip = awayTripLabel_(tripHint || st.AWAY_TRIP || (st.VACATION_MODE_ACTIVE === 'true' ? st.VACATION_TRIP_NAME : '') || '');
+  var held = awayHeldParse_(st.AWAY_HELD);
+  var prev = awayHeldParse_(st.AWAY_BACK);
+  if (prev.start) {   // two periods before a morning email: one catch-up covers both
+    var ph = prev.held || {};
+    Object.keys(ph).forEach(function(k) { held[k] = (Number(held[k]) || 0) + (Number(ph[k]) || 0); });
+    if (prev.start < start) start = prev.start;
+    if (prev.end > end) end = prev.end;
+    if (!trip) trip = prev.trip || '';
+  }
+  var back = { start: start, end: end, trip: trip, held: held };
+  var patch = { AWAY_BACK: JSON.stringify(back), AWAY_STARTED: null, AWAY_HELD: null };
+  if (st.AWAY_MANUAL === 'on' && until && until < today) { patch.AWAY_MANUAL = null; patch.AWAY_UNTIL = null; patch.AWAY_TRIP = null; }
+  return { back: back, patch: patch };
+}
+
+/** Records the catch-up when an Away period has ended. Never throws. → the record, or null. */
+function awayCloseIfEnded_(endHint, tripHint) {
+  try {
+    var r = awayCloseDecide_(veraStateGet_('PACING'), awayToday_(), endHint, tripHint);
+    if (!r) return null;
+    veraStateSet_('PACING', r.patch);
+    Logger.log('Away mode ended: catch-up recorded for ' + r.back.start + ' – ' + r.back.end);
+    return r.back;
+  } catch (e) { Logger.log('awayCloseIfEnded_ (non-fatal): ' + e.message); return null; }
+}
+
+function awayBackGet_() { try { var b = awayHeldParse_(veraStateGet_('PACING').AWAY_BACK); return b.start ? b : null; } catch (e) { return null; } }
+function awayBackClear_() { try { veraStateSet_('PACING', { AWAY_BACK: null }); } catch (e) {} }
+
+/** How a held notification reads in the catch-up: [one, many]. */
+var AWAY_HELD_NOUNS_ = {
+  bill_due: ['bill reminder', 'bill reminders'], water_break: ['water break', 'water breaks'], desk_break: ['desk break', 'desk breaks'],
+  evening_mobility: ['mobility nudge', 'mobility nudges'], gym_checkin: ['gym check-in', 'gym check-ins'],
+  monthly_review: ['monthly review', 'monthly reviews'], weekly_trend_review: ['weekly trend review', 'weekly trend reviews'],
+  health_performance_insight: ['health insight', 'health insights'], daily_discovery: ['daily discovery', 'daily discoveries'],
+  calendar_opportunity: ['calendar suggestion', 'calendar suggestions'], goal_checkin: ['goal check-in', 'goal check-ins'],
+  home_service: ['home service reminder', 'home service reminders'], contract_expiry: ['contract reminder', 'contract reminders'],
+  coupon_expiry: ['coupon reminder', 'coupon reminders'], career_cert_expiry: ['certification reminder', 'certification reminders'],
+  cycle_reminders: ['cycle reminder', 'cycle reminders'], growth_nudge: ['growth nudge', 'growth nudges'],
+  quarterly_checkin: ['quarterly check-in', 'quarterly check-ins'], usps_mail: ['mail notice', 'mail notices'],
+  email_admin: ['email cleanup summary', 'email cleanup summaries'],
+};
+var AWAY_URGENCY_RANK_ = { High: 0, Medium: 1, Low: 2 };
+
+/**
+ * Pure: the catch-up's content. back: AWAY_BACK; flags: flag rows as objects
+ * { date, flag, urgency, resolved, acknowledged }; tasks: open tasks { task, dueDate };
+ * mail: { pieces, packages }; today: 'yyyy-MM-dd'.
+ * → { start, end, trip, flags: {raised, open, list, more}, tasks: {count, list, more},
+ *     held: {total, line}, mail: {pieces, packages}, empty }
+ */
+function awayBackSummary_(back, flags, tasks, mail, today) {
+  var s = back.start, e = back.end;
+  var inRange = function(d) { d = awayIso_(d); return !!d && d >= s && d <= e; };
+  var raised = (flags || []).filter(function(f) { return inRange(f.date); });
+  var open = raised.filter(function(f) { return !f.resolved && !f.acknowledged; });
+  open.sort(function(a, b) {
+    var ra = AWAY_URGENCY_RANK_[a.urgency], rb = AWAY_URGENCY_RANK_[b.urgency];
+    ra = ra == null ? 3 : ra; rb = rb == null ? 3 : rb;
+    return ra - rb || (awayIso_(a.date) < awayIso_(b.date) ? -1 : awayIso_(a.date) > awayIso_(b.date) ? 1 : 0);
+  });
+  var overdue = (tasks || []).filter(function(t) { var d = awayIso_(t.dueDate); return inRange(d) && d < today; });
+  overdue.sort(function(a, b) { return awayIso_(a.dueDate) < awayIso_(b.dueDate) ? -1 : awayIso_(a.dueDate) > awayIso_(b.dueDate) ? 1 : 0; });
+  var h = back.held || {}, total = 0, bits = [];
+  Object.keys(h).forEach(function(k) {
+    var n = Number(h[k]) || 0;
+    if (n <= 0) return;
+    total += n;
+    var nn = AWAY_HELD_NOUNS_[k] || [k.replace(/_/g, ' '), k.replace(/_/g, ' ')];
+    bits.push(n + ' ' + (n === 1 ? nn[0] : nn[1]));
+  });
+  var m = { pieces: Number(mail && mail.pieces) || 0, packages: Number(mail && mail.packages) || 0 };
+  var out = {
+    start: s, end: e, trip: back.trip || '',
+    flags: { raised: raised.length, open: open.length, list: open.slice(0, 5), more: Math.max(0, open.length - 5) },
+    tasks: { count: overdue.length, list: overdue.slice(0, 5), more: Math.max(0, overdue.length - 5) },
+    held: { total: total, line: bits.join(' · ') },
+    mail: m,
+  };
+  out.empty = !out.flags.raised && !out.tasks.count && !total && !m.pieces && !m.packages;
+  return out;
+}
+
+/** Pure: the "While you were away" box for the morning email. → { html, text }, or null when empty. */
+function awayBackSectionHtml_(d, dashboardUrl) {
+  if (!d || d.empty) return null;
+  var range = awayEsc_(awayNiceDate_(d.start).replace(/^\w+, /, '')) + (d.end !== d.start ? ' – ' + awayEsc_(awayNiceDate_(d.end).replace(/^\w+, /, '')) : '') + (d.trip ? ' (' + awayEsc_(d.trip) + ')' : '');
+  var h4 = function(t) { return '<p style="margin:0 0 6px;font-size:14px;font-weight:600;color:#0d1b3e;">' + t + '</p>'; };
+  var pill = { High: 'background:#fde8e8;color:#9b1c1c;', Medium: 'background:#fff4d6;color:#7a5a00;', Low: 'background:#e6f4ea;color:#1e6b34;' };
+  var li = function(t) { return '<li style="margin:2px 0;">' + t + '</li>'; };
+  var ul = function(items) { return '<ul style="margin:0 0 14px;padding-left:18px;font-size:14px;color:#444444;">' + items.join('') + '</ul>'; };
+  var more = function(n) { return n ? li('<span style="color:#777777;">… and ' + n + ' more</span>') : ''; };
+  var parts = [], text = ['WELCOME BACK · while you were away (' + range.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"') + ')'];
+  if (d.flags.raised) {
+    parts.push(h4('Flags raised: <strong>' + d.flags.raised + '</strong>' + (d.flags.open ? ', <strong>' + d.flags.open + '</strong> still open' : ', all handled')) +
+      (d.flags.list.length ? ul(d.flags.list.map(function(f) {
+        return li('<span style="display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:0 5px;margin-right:4px;' + (pill[f.urgency] || pill.Low) + '">' + awayEsc_(f.urgency || 'Low') + '</span>' + awayEsc_(f.flag));
+      }).concat([more(d.flags.more)])) : '<div style="height:8px"></div>'));
+    text.push('Flags raised: ' + d.flags.raised + (d.flags.open ? ', ' + d.flags.open + ' still open' : ', all handled'));
+    d.flags.list.forEach(function(f) { text.push('  • ' + (f.urgency || 'Low') + ' · ' + f.flag); });
+    if (d.flags.more) text.push('  … and ' + d.flags.more + ' more');
+  }
+  if (d.tasks.count) {
+    parts.push(h4('Tasks that went overdue: <strong>' + d.tasks.count + '</strong>') +
+      ul(d.tasks.list.map(function(t) { return li(awayEsc_(t.task) + ' <span style="color:#777777;">(was due ' + awayEsc_(awayNiceDate_(t.dueDate).replace(/^\w+, /, '')) + ')</span>'); }).concat([more(d.tasks.more)])));
+    text.push('Tasks that went overdue: ' + d.tasks.count);
+    d.tasks.list.forEach(function(t) { text.push('  • ' + t.task + ' (was due ' + awayNiceDate_(t.dueDate).replace(/^\w+, /, '') + ')'); });
+    if (d.tasks.more) text.push('  … and ' + d.tasks.more + ' more');
+  }
+  if (d.held.total) {
+    parts.push(h4('Held while you were away: <strong>' + d.held.total + '</strong>') + '<p style="margin:0 0 14px;font-size:14px;color:#444444;">' + awayEsc_(d.held.line) + '</p>');
+    text.push('Held while you were away: ' + d.held.total + ' (' + d.held.line + ')');
+  }
+  if (d.mail.pieces || d.mail.packages) {
+    var ml = 'Mail waiting: <strong>' + d.mail.pieces + '</strong> piece' + (d.mail.pieces === 1 ? '' : 's') + (d.mail.packages ? ', <strong>' + d.mail.packages + '</strong> package' + (d.mail.packages === 1 ? '' : 's') : '');
+    parts.push(h4(ml) + '<div style="height:6px"></div>');
+    text.push(ml.replace(/<[^>]+>/g, ''));
+  }
+  var btn = dashboardUrl ? '<table cellpadding="0" cellspacing="0" style="margin:2px 0 14px;"><tr><td style="background:#0d1b3e;border-radius:6px;padding:8px 14px;"><a href="' + awayEsc_(dashboardUrl) + '" style="color:#ffffff;font-size:14px;text-decoration:none;font-weight:600;">Open the dashboard →</a></td></tr></table>' : '';
+  var html = '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px;border:1px solid #d9e2f5;border-radius:8px;border-collapse:separate;overflow:hidden;">' +
+    '<tr><td style="background:#0d1b3e;padding:10px 14px;font-size:12px;font-weight:700;letter-spacing:1.5px;color:#ffffff;">WELCOME BACK <span style="color:#c9a84c;font-weight:600;letter-spacing:0.5px;">while you were away · ' + range + '</span></td></tr>' +
+    '<tr><td style="background:#f7f9ff;padding:14px 14px 4px;">' + parts.join('') + btn + '</td></tr></table>';
+  return { html: html, text: text.join('\n') };
+}
+
+/** The catch-up from the sheet: open tasks may be handed in (the morning run has them). Never throws. */
+function awayBackSection_(openTasks) {
+  try {
+    var back = awayBackGet_();
+    if (!back) return null;
+    var tz = Session.getScriptTimeZone(), flags = [];
+    var sh = getSpreadsheet().getSheetByName(TABS.FLAGS);
+    if (sh && sh.getLastRow() >= 2) {
+      flags = sh.getRange(2, 1, sh.getLastRow() - 1, FLAG_HEADERS.length).getValues().map(function(r) {
+        return { date: r[1] instanceof Date ? Utilities.formatDate(r[1], tz, 'yyyy-MM-dd') : String(r[1] || ''), flag: String(r[3] || ''), urgency: String(r[5] || ''),
+                 acknowledged: String(r[6]).toLowerCase() === 'yes', resolved: String(r[8]).toLowerCase() === 'yes' };
+      });
+    }
+    var tasks = openTasks || getOpenTasks();
+    var mail = { pieces: 0, packages: 0 };
+    try { mail = getMailCounter_(); } catch (e) {}
+    var url = '';
+    try { url = veraSetting_('VERA_DASHBOARD_URL'); } catch (e) { url = ''; }
+    var d = awayBackSummary_(back, flags, tasks, mail, awayToday_());
+    if (d.empty) { awayBackClear_(); return null; }
+    return awayBackSectionHtml_(d, url);
+  } catch (e) { Logger.log('awayBackSection_ (non-fatal): ' + e.message); return null; }
+}
+
+/**
+ * On a morning with no flags the briefing isn't sent, so the catch-up goes on its own.
+ * → true when it was sent.
+ */
+function sendAwayBackAlone_() {
+  var sec = awayBackSection_(null);
+  if (!sec) return false;
+  var html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f5;padding:24px 0;"><tr><td align="center">' +
+    '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;">' +
+    '<tr><td style="padding:22px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:26px;font-weight:bold;letter-spacing:4px;">VERA</span><br><span style="color:#c9a84c;font-size:11px;letter-spacing:2px;">WELCOME BACK</span></td></tr>' +
+    '<tr><td style="padding:30px 40px 8px;"><p style="margin:0 0 6px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
+    '<p style="margin:0 0 18px;font-size:15px;color:#555555;">Welcome home. Here’s what piled up.</p>' + sec.html + '</td></tr></table></td></tr></table></body></html>';
+  var ch = getNotifChannel_('morning_briefing');
+  if (ch === 'email') sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, '🏠 VERA · While you were away', sec.text, { name: 'VERA', htmlBody: html }, 'morning_briefing');
+  else sendSlack_(ch, 'Good morning, Ahmed. Welcome home.\n\n' + sec.text);
+  awayBackClear_();
+  Logger.log('morningNudge: welcome-back catch-up sent on its own');
+  return true;
 }

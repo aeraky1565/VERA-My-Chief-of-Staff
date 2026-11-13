@@ -178,7 +178,9 @@ console.log('\nthe call sites');
   files.forEach(f => { const s = src(f).replace(/\s*\n\s*\./g, '.'); if (/PropertiesService\.getScriptProperties\(\)\.(?:getProperty|setProperty|deleteProperty)\(\s*'(?:PACING_|VACATION_|PTO_BUFFER_|MAIL_COUNTER_|capacity_|FLIGHT_STATUS_CACHE|EXPLORER_HISTORY|WKND_PLAN_HISTORY)/.test(s)) direct.push(f); });
   check('nothing reads or writes them as their own Script Property any more', direct.length === 0, J(direct));
   const pac = src('Pacing.js');
-  check('pacing and vacation mode read and write only their bundle', !/PropertiesService\.getScriptProperties\(\)/.test(pac) && (pac.match(/veraStateProps_\('PACING'\)/g) || []).length >= 5);
+  // Away mode (#246): isInVacationMode_ asks Away.js, which reads the same bundle.
+  check('pacing and vacation mode read and write only their bundle', !/PropertiesService\.getScriptProperties\(\)/.test(pac) && (pac.match(/veraStateProps_\('PACING'\)/g) || []).length >= 4
+        && !/PropertiesService\.getScriptProperties\(\)/.test(read('Away.js')) && /veraStateGet_\('PACING'\)/.test(read('Away.js')));
   check('the PTO buffer', /var bProps\s*=\s*veraStateProps_\('PTO_BUFFER'\);/.test(src('PTO.js')));
   const mc = src('MailCounter.js');
   check('the mail counter (scan, status, reset), while the watchdog\'s start stamp stays a property',

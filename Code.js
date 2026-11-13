@@ -4284,6 +4284,9 @@ function morningNudge() {
       return;
     }
 
+    // A switch whose date has passed ends here, so this morning gets the catch-up (#244).
+    if (typeof awayCloseIfEnded_ === 'function') awayCloseIfEnded_();
+
     // Away mode (Away.js, #246): the away edition instead — today's plan, your
     // flights, and only what got through. Inside the try, so the heartbeat records.
     if (typeof awayStatus_ === 'function' && awayStatus_().on) {
@@ -4296,6 +4299,7 @@ function morningNudge() {
 
     if (!sheet || sheet.getLastRow() < 2) {
       Logger.log('Morning nudge: no flags found, skipping email.');
+      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();   // #244
       return;
     }
 
@@ -4311,6 +4315,7 @@ function morningNudge() {
 
     if (active.length === 0) {
       Logger.log('Morning nudge: no active flags, skipping email.');
+      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();   // #244
       return;
     }
 
@@ -4536,6 +4541,12 @@ function morningNudge() {
       gOverdueCount  = gTasks.filter(function(t) { return t.isOverdue; }).length;
       gDueTodayCount = gTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
     });
+    // "While you were away" (#244): once, the first morning after Away mode ends.
+    var welcomeBack = null;
+    nightlyStep_(ctx, 'awayBackSection_', function() {
+      if (typeof awayBackSection_ === 'function') welcomeBack = awayBackSection_(openTasks);
+    });
+
     const totalOverdue   = overdueCount  + gOverdueCount;
     const totalDueToday  = dueTodayCount + gDueTodayCount;
 
@@ -4634,6 +4645,7 @@ function morningNudge() {
       // Body
       '<tr><td style="padding:36px 40px;">' +
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
+      (welcomeBack ? '<p style="margin:0 0 16px;font-size:15px;color:#555555;">Welcome home. Here’s what piled up.</p>' + welcomeBack.html : '') +
       '<p style="margin:0 0 16px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       capacityTicker +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
@@ -4674,6 +4686,7 @@ function morningNudge() {
     const plainText = [
       'Good morning, Ahmed.',
       '',
+      welcomeBack ? welcomeBack.text + '\n' : false,
       capPlainLine,
       '',
       'VERA flagged ' + total + (total === 1 ? ' item' : ' items') + ' overnight:',
@@ -4706,6 +4719,8 @@ function morningNudge() {
       sendSlack_(morningCh, plainText);
       Logger.log('Morning nudge sent (Slack/' + morningCh + '): ' + total + ' active flags.');
     }
+    // Shown once: the catch-up is cleared only after the briefing went out (#244).
+    if (welcomeBack && typeof awayBackClear_ === 'function') awayBackClear_();
 
     // Recorded after delivery and deliberately channel-agnostic: this answers
     // "did the briefing actually go out", which the morningNudge heartbeat
