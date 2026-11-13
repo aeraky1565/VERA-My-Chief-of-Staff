@@ -98,3 +98,75 @@ function tripIdStampAll_() {
 function backfillTripIds() {
   return tripIdStampAll_();
 }
+
+// ---- one-time repair: TripMeta's header row (Nov 13) ---------------------------
+//
+// The live TripMeta header row had drifted from TRIP_META_HEADERS: columns 6–10
+// blank, "Trip Budget" and "Trip Travellers" in 11–12, and a second set of labels
+// in 13–17 that ensureTripMetaColumns_ used to append. Everything reads TripMeta by
+// position, except the budget writer, which looked columns up by name. So a
+// traveller count could land in column 12 (where the Trip ID belongs) and a budget
+// in column 11 (over Characteristics). The backfill then rightly refused to write
+// Trip IDs into a column that didn't say "Trip ID".
+
+/**
+ * Pure: what the repair would do. header: row 1; rows: rows 2+ (any width).
+ * → { ok, why, header, moves: [{row, from, to}], clears: [{row, col}], extraCols }
+ * Columns are 1-based. Refuses (ok: false) if any row has data past column 12,
+ * since that would be data the repair doesn't understand.
+ */
+function tmRepairPlan_(header, rows) {
+  var W = TRIP_META_HEADERS.length, BUDGET = 6, TRAV = 7, CHAR = 11, TID = W;
+  var out = { ok: true, why: '', header: TRIP_META_HEADERS.slice(), moves: [], clears: [], extraCols: 0 };
+  var isNum = function(v) { return v !== '' && v != null && !isNaN(Number(v)) && String(v).trim() !== ''; };
+  out.extraCols = Math.max(0, (header || []).length - W);
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i] || [];
+    for (var c = W; c < r.length; c++) {
+      if (String(r[c] == null ? '' : r[c]).trim() !== '') {
+        return { ok: false, why: 'row ' + (i + 2) + ' has data in column ' + (c + 1) + ', past Trip ID; nothing changed', moves: [], clears: [], header: out.header, extraCols: out.extraCols };
+      }
+    }
+    var at = function(col) { var v = r[col - 1]; return v == null ? '' : v; };
+    // A traveller count written by name into the Trip ID column.
+    if (isNum(at(TID))) {
+      if (String(at(TRAV)).trim() === '') out.moves.push({ row: i + 2, from: TID, to: TRAV });
+      else out.clears.push({ row: i + 2, col: TID });
+    }
+    // A budget written by name over Characteristics (which holds words, never a number).
+    if (isNum(at(CHAR))) {
+      if (String(at(BUDGET)).trim() === '') out.moves.push({ row: i + 2, from: CHAR, to: BUDGET });
+      else out.clears.push({ row: i + 2, col: CHAR });
+    }
+  }
+  return out;
+}
+
+/**
+ * Run once by hand from the Apps Script editor (after a backup copy of the sheet).
+ * Puts TripMeta's header row back to TRIP_META_HEADERS, moves a traveller count or
+ * budget that was written into the wrong column back to its own, clears the extra
+ * labels past column 12, then fills the Trip IDs. Changes nothing if any row has
+ * data past column 12. Logs counts only. Safe to run again.
+ */
+function repairTripMeta() {
+  var sh = getSpreadsheet().getSheetByName(TABS.TRIP_META);
+  if (!sh) { Logger.log('repairTripMeta: no TripMeta tab'); return null; }
+  var lastCol = Math.max(sh.getLastColumn(), TRIP_META_HEADERS.length), lastRow = sh.getLastRow();
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+  var plan = tmRepairPlan_(header, rows);
+  if (!plan.ok) { Logger.log('repairTripMeta: ' + plan.why); return plan; }
+  plan.moves.forEach(function(m) {
+    var v = rows[m.row - 2][m.from - 1];
+    sh.getRange(m.row, m.to).setValue(v);
+    sh.getRange(m.row, m.from).clearContent();
+  });
+  plan.clears.forEach(function(c) { sh.getRange(c.row, c.col).clearContent(); });
+  sh.getRange(1, 1, 1, plan.header.length).setValues([plan.header]);
+  if (plan.extraCols) sh.getRange(1, plan.header.length + 1, 1, plan.extraCols).clearContent();
+  var filled = tripIdStampAll_();
+  Logger.log('repairTripMeta: header row reset; ' + plan.moves.length + ' value(s) moved back to their column, ' +
+    plan.clears.length + ' duplicate(s) cleared, ' + plan.extraCols + ' extra label(s) removed; Trip IDs filled: ' + (filled ? filled.filled : 0));
+  return plan;
+}

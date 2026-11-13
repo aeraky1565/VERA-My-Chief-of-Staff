@@ -20,8 +20,8 @@ const TEST = 'test_sheetstyle.js';
 const CONTROLS = [
   ['a data column is reordered', ss("    } else if (op.op === 'tabColor') {", "    } else if (op.op === 'tabColor') {\n      sheet.moveColumns(sheet.getRange(1, 1), 3);")],
   ['the header is written, not formatted', ss("sheet.getRange(1, 1, 1, op.cols).setBackground(SS_NAVY_)", "sheet.getRange(1, 1, 1, op.cols).setValue('').setBackground(SS_NAVY_)")],
-  ['Config gets formatted', ss("    if (SS_SKIP_.indexOf(t.name) !== -1) return;\n", "")],
-  ['Access moves out of position 14', ss("  if ((names || []).indexOf('Access') !== -1) out.splice(Math.min(SS_FIXED_.Access, out.length), 0, 'Access');", "  if ((names || []).indexOf('Access') !== -1) out.push('Access');")],
+  ['Config gets formatted', ss("    if (ssSkip_(t.name)) return;\n", "")],
+  ['Access moves out of position 14', ss("  if (access) out.splice(Math.min(SS_FIXED_.Access, out.length), 0, access);", "  if (access) out.push(access);")],
   ['unknown tabs go after the internal ones', ss("    if (!a) return SS_AREAS_.length - 1.5;   // before internal", "    if (!a) return SS_AREAS_.length;")],
   ['a re-run wipes hand-made rules', ss("    return !(c && ssIsOurFill_(c.getBackground && c.getBackground()));", "    return false;")],
   ['old banding is left in place', ss("  sheet.getBandings().forEach(function(band) { band.remove(); });\n", "")],

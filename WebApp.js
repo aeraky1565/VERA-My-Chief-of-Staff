@@ -5045,13 +5045,16 @@ function webGetTripMeta_(e) {
  * writes headers into a BLANK sheet. Same self-heal as ensureCardPerkColumns_.
  */
 function ensureTripMetaColumns_(sheet) {
-  var lastCol = Math.max(sheet.getLastColumn(), 1);
-  var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
-                  .map(function(h) { return String(h || '').trim(); });
-  TRIP_META_HEADERS.forEach(function(name) {
-    if (header.indexOf(name) !== -1) return;
-    header.push(name);
-    sheet.getRange(1, header.length).setValue(name);
+  // TripMeta is read and written BY POSITION (TRIP_META_HEADERS). This used to look
+  // each header up by name and append any it couldn't find at the end, so a header
+  // row with blank or differently spelled cells grew a second set of labels past
+  // column 12 (and the budget writer then wrote into them). Now it only labels a
+  // BLANK header cell in its own position, and never adds columns.
+  var width  = TRIP_META_HEADERS.length;
+  var header = sheet.getRange(1, 1, 1, width).getValues()[0]
+                 .map(function(h) { return String(h == null ? '' : h).trim(); });
+  TRIP_META_HEADERS.forEach(function(name, i) {
+    if (!header[i]) { sheet.getRange(1, i + 1).setValue(name); header[i] = name; }
   });
   return header;
 }
@@ -10946,19 +10949,13 @@ function webSetTripBudgetSettings_(e) {
   var sheet = ss.getSheetByName(TABS.TRIP_META);
   if (!sheet) throw new Error('TripMeta tab not found. Run setupVERA() to create it.');
 
-  var hdrsRow   = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var budgetCol = hdrsRow.indexOf('Trip Budget')     + 1;
-  var travCol   = hdrsRow.indexOf('Trip Travellers') + 1;
-
-  // If columns don't exist yet (old sheet), append header cells
-  if (budgetCol <= 0) {
-    budgetCol = sheet.getLastColumn() + 1;
-    sheet.getRange(1, budgetCol).setValue('Trip Budget');
-  }
-  if (travCol <= 0) {
-    travCol = sheet.getLastColumn() + 1;
-    sheet.getRange(1, travCol).setValue('Trip Travellers');
-  }
+  // By POSITION, the way webGetTripMeta_ reads them back (columns 6 and 7). This
+  // used to find the columns by header name, and on a header row whose labels had
+  // drifted it wrote the budget over Characteristics and the traveller count into
+  // the Trip ID column, where nothing ever read them.
+  ensureTripMetaColumns_(sheet);
+  var budgetCol = TRIP_META_HEADERS.indexOf('Trip Budget')     + 1;
+  var travCol   = TRIP_META_HEADERS.indexOf('Trip Travellers') + 1;
 
   if (sheet.getLastRow() >= 2) {
     var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
@@ -10977,9 +10974,12 @@ function webSetTripBudgetSettings_(e) {
   // No existing TripMeta row — create one with minimal data
   var tz    = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  sheet.appendRow([tripKey, '', '', today, '',
-                   p.tripBudget     !== undefined ? (Number(p.tripBudget)     || '') : '',
-                   p.tripTravellers !== undefined ? (Number(p.tripTravellers) || 2)  : 2]);
+  var row = TRIP_META_HEADERS.map(function() { return ''; });
+  row[0] = tripKey; row[3] = today;
+  row[budgetCol - 1] = p.tripBudget !== undefined ? (Number(p.tripBudget) || '') : '';
+  row[travCol - 1]   = p.tripTravellers !== undefined ? (Number(p.tripTravellers) || 2) : 2;
+  row[TRIP_META_HEADERS.length - 1] = (typeof tripIdCell_ === 'function' ? tripIdCell_(tripKey) : '');   // Trip ID
+  sheet.appendRow(row);
   return { ok: true };
 }
 

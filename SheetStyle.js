@@ -42,6 +42,18 @@ var SS_BAND_  = '#f3f6fb';
 var SS_SKIP_  = ['Config', 'Access'];
 var SS_FIXED_ = { Config: 0, Access: 13 };   // zero-based tab positions that never change
 
+// Tab names are matched without regard to case, the way Google's getSheetByName
+// matches them: the live sheet calls its Config tab "CONFIG", and an exact match
+// once styled it and moved it to the end.
+function ssSkip_(name) {
+  var l = String(name || '').toLowerCase();
+  return SS_SKIP_.some(function(s) { return s.toLowerCase() === l; });
+}
+function ssFind_(names, want) {
+  var l = String(want).toLowerCase();
+  return (names || []).filter(function(n) { return String(n).toLowerCase() === l; })[0] || null;
+}
+
 // Areas in tab order. A tab is matched by exact name, then by prefix.
 var SS_AREAS_ = [
   { id: 'today',    color: '#c9a84c', tabs: ['Flags', 'Tasks', 'Projects', 'Summaries', 'Metrics', 'Morning Routine', 'Chores',
@@ -106,7 +118,7 @@ function ssAreaOf_(name) {
  * back at position 14. names: the current order.
  */
 function ssOrder_(names) {
-  var rest = (names || []).filter(function(n) { return SS_SKIP_.indexOf(n) === -1; });
+  var rest = (names || []).filter(function(n) { return !ssSkip_(n); });
   var rank = function(n) {
     var a = ssAreaOf_(n);
     if (!a) return SS_AREAS_.length - 1.5;   // before internal
@@ -116,8 +128,9 @@ function ssOrder_(names) {
     .sort(function(x, y) { return x.r - y.r || x.i - y.i; })
     .map(function(x) { return x.n; });
   var out = sorted.slice();
-  if ((names || []).indexOf('Config') !== -1) out.unshift('Config');
-  if ((names || []).indexOf('Access') !== -1) out.splice(Math.min(SS_FIXED_.Access, out.length), 0, 'Access');
+  var config = ssFind_(names, 'Config'), access = ssFind_(names, 'Access');
+  if (config) out.unshift(config);
+  if (access) out.splice(Math.min(SS_FIXED_.Access, out.length), 0, access);
   return out;
 }
 
@@ -155,7 +168,7 @@ function ssStatusFormula_(col, words) {
 function ssPlan_(tabs) {
   var ops = [];
   (tabs || []).forEach(function(t) {
-    if (SS_SKIP_.indexOf(t.name) !== -1) return;
+    if (ssSkip_(t.name)) return;
     var headers = (t.headers || []).map(function(h) { return String(h == null ? '' : h).trim(); });
     while (headers.length && !headers[headers.length - 1]) headers.pop();
     var cols = headers.length;
@@ -299,7 +312,7 @@ function ssApply_(ss) {
 function ssStyleNewTab_(sheet, cols) {
   try {
     var name = sheet.getName();
-    if (SS_SKIP_.indexOf(name) !== -1 || !cols) return;
+    if (ssSkip_(name) || !cols) return;
     if (!sheet.getBandings().length) {
       sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 2), cols)
         .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false)
@@ -312,10 +325,27 @@ function ssStyleNewTab_(sheet, cols) {
 }
 
 /**
+ * Puts the Config tab back the way it was before a styling run treated "CONFIG" as
+ * a data tab (Nov 13): its first column frozen again. Its banding colours are the
+ * same as the styling's, so they're left. Safe to run any number of times; the tab
+ * order is fixed by the run itself, which now puts Config first.
+ */
+function restoreConfigTab_() {
+  try {
+    var ss = getSpreadsheet(), sh = ss.getSheetByName(TABS.CONFIG);
+    if (!sh) return false;
+    if (sh.getFrozenRows() !== 1) sh.setFrozenRows(1);
+    if (sh.getFrozenColumns() !== 1) sh.setFrozenColumns(1);
+    return true;
+  } catch (e) { Logger.log('restoreConfigTab_: ' + e.message); return false; }
+}
+
+/**
  * Run by hand from the Apps Script editor. Styles every data tab, then puts the
  * tabs in order. If it stops at the time limit, run it again to finish.
  */
 function styleVeraSheet() {
+  restoreConfigTab_();
   var r = ssApply_(getSpreadsheet());
   var msg = 'styleVeraSheet: ' + r.styled + ' tab(s) styled' +
     (r.remaining.length ? '; ' + r.remaining.length + ' left — run styleVeraSheet() again to finish' : '; tabs in order');
