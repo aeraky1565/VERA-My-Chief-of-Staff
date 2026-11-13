@@ -105,11 +105,13 @@ function doGet(e) {
       case 'complete_google_task': return jsonOut_(webCompleteGoogleTask_(e));
       case 'summaries':   return jsonOut_(webGetSummaries_());
       case 'acknowledge':    return jsonOut_(webAcknowledge_(id));
-      case 'snooze':         return jsonOut_(webSnooze_(id, days));
+      case 'snooze':         return jsonOut_(webSnooze_(id, days, e.parameter.until));
       case 'resolve':        return jsonOut_(webResolve_(id));
       case 'complete_task':         return jsonOut_(webCompleteTask_(id));
       case 'add_task':              return jsonOut_(webAddTask_(e));
       case 'update_task':           return jsonOut_(webUpdateTask_(e));
+      case 'flag_to_task':          return jsonOut_(webFlagToTask_(e.parameter));   // FlagsTasks.js
+      case 'reopen_task':           return jsonOut_(webReopenTask_(id));            // FlagsTasks.js
       case 'shopping':        return jsonOut_(webGetShopping_());
       case 'shopping_toggle': return jsonOut_(webToggleShoppingItem_(e));
       case 'shopping_add':    return jsonOut_(webAddShoppingItem_(e));
@@ -618,7 +620,7 @@ function doPost(e) {
       case 'set_project_context':        return jsonOut_(webSetProjectContext_(body));
 
       case 'acknowledge':                return jsonOut_(webAcknowledge_(body.id));
-      case 'snooze':                     return jsonOut_(webSnooze_(body.id, body.days));
+      case 'snooze':                     return jsonOut_(webSnooze_(body.id, body.days, body.until));
       case 'resolve':                    return jsonOut_(webResolve_(body.id));
       // Takeouts (Issue #112)
       case 'add_takeout_restaurant':     return jsonOut_(webAddTakeoutRestaurant_(body));
@@ -927,6 +929,10 @@ function webGetFlags_(e) {
       snoozedUntil: formatDateVal_(r[7]),
       resolved:     String(r[8]).toLowerCase() === 'yes',
       key:          String(r[9] || ''),
+      escalated:    String(r[10] || ''),
+      due:          flagDueCell_(r[11]),
+      auto:         !!flagAutoOf_(r[9]),
+      clears:       (flagAutoOf_(r[9]) || {}).clears || '',
     };
   });
 
@@ -1068,7 +1074,19 @@ function webCompleteGoogleTask_(e) {
 
 function webGetTasks_() {
   const tasks = getOpenTasks(); // reuse Tasks.js
-  return { ok: true, count: tasks.length, tasks: tasks };
+  // The flag each task was made from (its text, and whether it's still open), and
+  // what was checked off this week (FlagsTasks.js).
+  let doneThisWeek = [];
+  try {
+    const idx = tasks.some(function(t) { return t.flagId; }) ? ftFlagIndex_() : {};
+    tasks.forEach(function(t) { const f = t.flagId && idx[t.flagId]; if (f) t.flag = { id: t.flagId, flag: f.flag, resolved: f.resolved, auto: f.auto }; });
+    const sheet = getSpreadsheet().getSheetByName(TABS.TASKS);
+    if (sheet && sheet.getLastRow() >= 2) {
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(TASK_HEADERS.length, sheet.getMaxColumns ? sheet.getMaxColumns() : TASK_HEADERS.length)).getValues();
+      doneThisWeek = tasksDoneRecent_(rows, ftToday_(), 7, TASK_HEADERS.indexOf('Completed'));
+    }
+  } catch (e) { Logger.log('webGetTasks_: ' + e.message); }
+  return { ok: true, count: tasks.length, tasks: tasks, doneThisWeek: doneThisWeek };
 }
 
 // ---- Summaries -------------------------------------------------------------
@@ -1124,12 +1142,12 @@ function webAcknowledge_(id) {
 
 // ---- Snooze ----------------------------------------------------------------
 
-function webSnooze_(id, days) {
+function webSnooze_(id, days, until) {
   const found     = findFlagRow_(id);
-  const snoozeFor = Math.max(1, parseInt(days, 10) || 2);
-  const until     = new Date();
-  until.setDate(until.getDate() + snoozeFor);
-  const untilStr  = Utilities.formatDate(until, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  // Until a date (Tomorrow, Monday, Pick a date…) or for a number of days (FlagsTasks.js).
+  const when      = flagSnoozeUntil_(until, days, ftToday_());
+  if (!when.ok) return { ok: false, error: when.error };
+  const untilStr  = when.until;
 
   found.sheet.getRange(found.rowNum, 8).setValue(untilStr); // Column H
 
@@ -1148,6 +1166,9 @@ function webSnooze_(id, days) {
 
 function webResolve_(id) {
   const found = findFlagRow_(id);
+  // A flag a nightly check keeps would only come back: it clears itself once its cause is fixed.
+  const auto = flagAutoOf_(found.sheet.getRange(found.rowNum, 10).getValue());
+  if (auto) return { ok: false, id: id, auto: true, error: 'This flag clears itself. ' + auto.clears };
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
 
   // Signal Learning: record outcome
@@ -1274,6 +1295,11 @@ function computeNextDueDate_(fromDate, recurringStr) {
 function webCompleteTask_(id) {
   const found = findTaskRow_(id);
   found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
+  // The day it was checked off, for "Done this week"; and the flag it was made from (FlagsTasks.js).
+  ftCompletedHeader_(found.sheet);
+  found.sheet.getRange(found.rowNum, ftCompletedCol_()).setValue(ftToday_());
+  const flagged = String(found.sheet.getRange(found.rowNum, ftFlaggedCol_()).getValue() || '').trim();
+  const flag = flagged ? ftSettleFlagFor_(flagged) : '';
 
   // ---- Auto-regenerate if recurring --------------------------------------
   // TASK_HEADERS: ID(1) | Task(2) | Added Date(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
@@ -1289,7 +1315,7 @@ function webCompleteTask_(id) {
     recurringVal !== '0';
 
   if (!isRecurring || !taskText) {
-    return { ok: true, id: id, action: 'completed' };
+    return { ok: true, id: id, action: 'completed', flag: flag };
   }
 
   const tz      = Session.getScriptTimeZone();
@@ -1316,7 +1342,7 @@ function webCompleteTask_(id) {
   const nextDate = computeNextDueDate_(fromDate, recurringVal);
 
   if (!nextDate) {
-    return { ok: true, id: id, action: 'completed' };
+    return { ok: true, id: id, action: 'completed', flag: flag };
   }
 
   const nextDateStr = Utilities.formatDate(nextDate, tz, 'yyyy-MM-dd');
@@ -1336,10 +1362,10 @@ function webCompleteTask_(id) {
 
   // Append the regenerated task
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
-    newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, ''
+    newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, '', ''
   ]]);
 
-  return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr };
+  return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr, flag: flag };
 }
 
 function webDeleteTask_(id) {
@@ -1376,8 +1402,8 @@ function webAddTask_(e) {
   }
   const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
 
-  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
-  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, ''];
+  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged | Completed
+  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, '', ''];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([row]);
 
   return { ok: true, id: taskId, action: 'created' };
@@ -6975,9 +7001,9 @@ function webPromoteIdea_(e) {
   }
   const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
 
-  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
+  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged | Completed
   taskSheet.getRange(taskSheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length)
-    .setValues([[taskId, ideaText, addedStr, '', 'Open', '', ideaNotes, '']]);
+    .setValues([[taskId, ideaText, addedStr, '', 'Open', '', ideaNotes, '', '']]);
 
   // 3. Mark idea as Promoted
   found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status

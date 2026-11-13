@@ -30,7 +30,7 @@ check('every section belongs to one group, and an unknown one to none',
   vm.runInContext('hfGroupOf_("guests")', C) === 'hosting' && vm.runInContext('hfGroupOf_("nope")', C) === ''
   && vm.runInContext('HF_GROUPS.reduce(function(a,g){return a.concat(g.items);},[]).length', C) === vm.runInContext('Object.keys(HF_GROUPS.reduce(function(a,g){g.items.forEach(function(i){a[i]=1;});return a;},{})).length', C));
 check('Household is first, and where Home Front opens; Victoria’s opens on the Meal Plan, Kitchen first',
-  /const allSubTabs=\[\{id:'household',label:'🏡 Household'\}/.test(APP) && /const\[sub,setSub\]=React\.useState\('household'\);/.test(APP)
+  /const allSubTabs=\[\{id:'household',label:'🏡 Household'\}/.test(APP) && /const\[sub,setSub\]=React\.useState\(function\(\)\{return veraTakeGoto_\('home_front','household'\);\}\);/.test(APP)
   && /const ALL_SUBTABS = \[\n    \{ id:'household', label:'🏡 Household' \},/.test(LITE) && /React\.useState\('meal_plan'\);/.test(LITE)
   && /<HfNav tabs=\{SUBTABS\} groups=\{HF_GROUPS_LITE\} sub=\{sub\} onPick=\{setSub\} \/>/.test(LITE));
 check('the lite Home Front shows Household too, under Coming up', /\{sub === 'household' && \(\n        <>\n          <HfComingUp apiUrl=\{apiUrl\} apiToken=\{apiToken\} onPick=\{setSub\} onOpenProjects=\{onOpenProjects\} \/>\n          <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));

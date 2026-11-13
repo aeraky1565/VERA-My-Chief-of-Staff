@@ -66,7 +66,7 @@ const CONTROLS = [
   ['Done does not update the row', both("function(r){merge([r.chore]);});},style:btn(false)},busy==='done'+c.ID", "function(r){});},style:btn(false)},busy==='done'+c.ID"), UI],
   ['the merge appends instead of replacing', both("if(i===-1)out.push(c);else out[i]=c;", "out.push(c);"), UI],
   ['a group forgets its last section', both("var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;", "var to=g.tabs[0].id;"), UI],
-  ['Home Front opens on Warranties again', b => ({ [A]: swap(b[A], "const[sub,setSub]=React.useState('household');", "const[sub,setSub]=React.useState('steward');"), [I]: swap(b[I], "const[sub,setSub]=React.useState('household');", "const[sub,setSub]=React.useState('steward');") }), UI],
+  ['Home Front opens on Warranties again', b => ({ [A]: swap(b[A], "veraTakeGoto_('home_front','household')", "veraTakeGoto_('home_front','steward')"), [I]: swap(b[I], "veraTakeGoto_('home_front','household')", "veraTakeGoto_('home_front','steward')") }), UI],
 ];
 
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the

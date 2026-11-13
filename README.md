@@ -173,6 +173,8 @@ VERA's chat system supports the following action categories, each backed by a li
 
 The core intelligence engine. After collecting events, tasks, summaries, PTO stats, and the Shared Interest Ledger, `Code.js` packages a single structured prompt for `Claude.js` and calls `claude-sonnet-4-6`. Claude returns up to 8 flags per night (configurable via `max_flags_per_night`) with urgency ratings (High/Medium/Low), a machine-readable `key`, and a plain-text `reason`. Flags are written to the Flags tab with deduplication (exact fingerprint + 60% token-overlap fuzzy match) to prevent nightly repeats for ongoing issues.
 
+**The Flags and Tasks tabs.** Flags are grouped by area (from their Source: Finances, Vehicles, Home, Travel, Health, Career, Projects, People, Life, System, Other), High first, then by Due; a group starts open when it holds a High, and snoozed flags sit in their own group at the end. Filters by area and urgency. Each card shows its Due date ("due Fri", "overdue 2d"), a snooze menu (Tomorrow, 2 days, Monday, A week, or a date), **Go to it** (the vehicle's card, Bills, the trip, Agent health…) and **＋ Task**. Flags kept by a nightly check (`upsertKeyedFlags_`) are marked *automatic*: they have no Resolve, since the check would reopen them, and say what clears them (`FlagsTasks.js`). On Tasks: Tomorrow / Next week / a date on each card, Undo for 5 seconds after a check-off (the write waits), Delete with a confirm in the edit form, the flag a task came from, and a folded **Done this week** with Reopen. The Tasks tab gains a `Completed` column (the day a task was checked off).
+
 ### Cross-Domain Pattern Recognition (`PatternRecognition.js`)
 
 Runs nightly as Step 0q. Assembles a lightweight cross-domain snapshot and evaluates seven compound rule-based patterns that span multiple life domains. Single-domain flags are handled by their own checkers; this module only fires when two or more domains signal together.
@@ -2305,9 +2307,11 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `complete_google_task` | `id` | Completes a Google Task by ID |
 | `summaries` | — | Summaries tab rows |
 | `acknowledge` | `id` | Sets Acknowledged=Yes on flag |
-| `snooze` | `id`, `days` | Sets Snoozed Until = today + days |
-| `resolve` | `id` | Sets Resolved=Yes on flag |
-| `complete_task` | `id` | Marks task Done; auto-creates next recurrence |
+| `snooze` | `id`, `days` or `until` (yyyy-MM-dd) | Sets Snoozed Until: a date from tomorrow to a year out, or today + days |
+| `resolve` | `id` | Sets Resolved=Yes on a one-off flag; refused on an automatic flag (a nightly check keeps it), with what clears it |
+| `complete_task` | `id` | Marks task Done and stamps Completed; resolves the one-off flag it was made from; auto-creates next recurrence |
+| `flag_to_task` | `id` (a flag), `task`, `dueDate` (optional) | A task from a flag (its text and Due), linked in Flagged; the same open task if it has one |
+| `reopen_task` | `id` | A done task back to Open (Tasks › Done this week) |
 | `add_task` | `task`, `dueDate`, `recurring` | Appends new task row |
 | `update_task` | `id`, `field`, `value` | Updates a single field on a task |
 | `delete_task` | `id` | Removes task row |
@@ -2483,7 +2487,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 |--------|----------------|-------------|
 | `chat` | `message`, `session` | Send chat message (same as GET chat but supports longer payloads) |
 | `acknowledge` | `id` | Acknowledge a flag |
-| `snooze` | `id`, `days` | Snooze a flag |
+| `snooze` | `id`, `days` or `until` | Snooze a flag |
 | `resolve` | `id` | Resolve a flag |
 | `add_takeout_restaurant` | `name`, `cuisine`, `phone`, `website`, `rating`, `notes` | Add takeout restaurant |
 | `delete_takeout_restaurant` | `name` | Remove takeout restaurant and all its items |
@@ -2505,6 +2509,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Claude.js` | `getApiKey()`, `buildPrompt()`, `generateFlags()`, `parseFlags()` |
 | `Calendar.js` | `getUpcomingEvents()` — reads all Google Calendars with label/color/status |
 | `Tasks.js` | `getOpenTasks()`, `parseFlexibleDate()`, `suggestDueDates()` |
+| `FlagsTasks.js` | Automatic flags (the prefixes a nightly check keeps, and what clears each), snooze to a date, a task made from a flag, Done this week, Reopen |
 | `Slack.js` | Slack bot — send/receive messages, Block Kit builders, App Home, event/interaction handlers |
 | `Summaries.js` | `writeSummarySnapshot()` — Metrics + Summaries tab auto-population |
 | `Finance.js` | SAT budget reader + Transactions reader; `getFinanceSummaries()` |

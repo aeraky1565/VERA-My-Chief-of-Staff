@@ -42,6 +42,7 @@ function getOpenTasks() {
       const status    = String(row[4] || 'Open');
       const recurring = row[5];
       const notes     = row[6];
+      const flagId    = String(row[7] == null ? '' : row[7]).trim();   // Flagged: the flag it was made from
 
       // Skip blank rows
       if (!taskText || String(taskText).trim() === '') return;
@@ -88,6 +89,7 @@ function getOpenTasks() {
         status:      status,
         recurring:   isRecurring ? String(recurring) : '',
         notes:       String(notes || ''),
+        flagId:      flagId,
         ageInDays:   ageInDays,
         isOverdue:   isOverdue,
         daysUntilDue: daysUntilDue,

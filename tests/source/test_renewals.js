@@ -175,7 +175,7 @@ console.log('\nWiring');
   check('the routes', /case 'vehicle_renew':\s+return jsonOut_\(webVehicleRenew_\(e\.parameter \|\| \{\}\)\);/.test(WEB) && /case 'vehicle_renewal_ics':\s+return jsonOut_\(webVehicleRenewalIcs_\(e\.parameter \|\| \{\}\)\);/.test(WEB));
   const c = {}; vm.createContext(c); vm.runInContext(fnSrc(APP, 'flagRenewalOf_'), c);
   check('Flags: the reminder button only on renewal flags (ids with underscores read right)', J(c.flagRenewalOf_('vehicle_renewal_veh_17_warranty_pt_2027-01-13')) === J({ id: 'veh_17', item: 'warranty_pt', date: '2027-01-13' }) && c.flagRenewalOf_('bill_due_power') === null && c.flagRenewalOf_('vehicle_miles_veh_1_2026-11') === null);
-  check('…next to the flag’s usual buttons', /"✅ Resolve"\),flagRenewalOf_\(flag\.key\)&&React\.createElement\("button",\{className:"btn btn-remind"/.test(APP));
+  check('…next to the flag’s usual buttons', /flagRenewalOf_\(flag\.key\)&&h\("button",\{className:"btn btn-remind"/.test(APP) && /"✓ Acknowledge"\),/.test(APP));
   const block = s => { const a = s.indexOf('// ---- VehiclesView — SHARED VERBATIM'), b = s.indexOf('// ---- /VehiclesView ----'); return a === -1 || b === -1 ? '' : s.slice(a, b); };
   check('one card, the same in both dashboards', block(APP) && block(APP) === block(LITE));
   check('…both hand it the API and a reload', /React\.createElement\(VehiclesView,\{vehicles:vehicles,loading:vehiclesLoading,apiUrl:apiUrl,apiToken:apiToken,onChanged:function\(\)\{loadVehicles\(apiUrl,apiToken\);\}\}\)/.test(APP) && /<VehiclesView\s+vehicles=\{vehicles\}\s+loading=\{vehiclesLoading\}\s+apiUrl=\{apiUrl\}\s+apiToken=\{apiToken\}\s+onChanged=\{loadVehicles\}\s+\/>/.test(LITE));

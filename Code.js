@@ -213,7 +213,7 @@ function getNotifChannel_(key) {
 // Due: a deadline, when the source knows one (#246).
 const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated', 'Due'];
 const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner', 'Completed On', 'Target Date', 'Phase', 'Sequence', 'Context', 'Days Before', 'Waiting On'];
-const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
+const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged', 'Completed']; // Flagged: the flag a task was made from; Completed: the day it was checked off (FlagsTasks.js)
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
 const CONFIG_HEADERS      = ['Setting', 'Value'];

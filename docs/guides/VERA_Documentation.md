@@ -266,6 +266,8 @@ Keys serve as the cross-run dedup anchor. When Claude generates the same concept
 
 Escalation runs at the very start of `nightlyRun()` (Step -1) so the urgency of aged flags is correct before the morning nudge reads them. The `Escalated` column (col K, index 10) stores `'3d'` and `'7d'` as watermarks so each threshold fires exactly once per flag lifetime. Snoozed flags are excluded from escalation while the snooze date is in the future. Nothing escalates while Away mode is on; a flag's age keeps counting, so anything still open escalates on the first night back. Column L, **Due**, holds a flag's deadline (`yyyy-MM-dd`) when its source knows one: bills (from Claude), contracts, coupons, card perks and travel documents. Away mode uses it.
 
+**Automatic flags and the Flags tab (`FlagsTasks.js`).** A flag kept by a nightly check through `upsertKeyedFlags_` reopens if it's resolved while its cause is still there, so the dashboard marks it *automatic*, offers no Resolve, and says what clears it; `resolve` refuses it. `AUTO_FLAG_KINDS_` lists every such prefix (a test checks each call site's prefix is there). The Flags tab groups flags by area, shows each one's Due date, snoozes to a chosen day, opens where a flag came from (Go to it) and makes a task from it. A task made from a flag keeps the flag's ID in the Tasks tab's *Flagged* column; checking it off resolves a one-off flag and leaves an automatic one to its check. The Tasks tab's *Completed* column feeds Done this week.
+
 ### Flag lifecycle
 
 ```
@@ -1336,9 +1338,11 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `complete_google_task` | `id` | Mark a Google Task as complete |
 | `summaries` | — | Summaries tab data |
 | `acknowledge` | `id` | Acknowledge a flag by ID |
-| `snooze` | `id`, `days` | Snooze a flag for N days |
-| `resolve` | `id` | Resolve a flag by ID |
-| `complete_task` | `id` | Mark a task as Done |
+| `snooze` | `id`, `days` or `until` | Snooze a flag for N days, or until a date (tomorrow to a year out) |
+| `resolve` | `id` | Resolve a one-off flag; refused on an automatic one, with what clears it |
+| `complete_task` | `id` | Mark a task as Done (stamps Completed; resolves the one-off flag it came from) |
+| `flag_to_task` | `id` | Make a task from a flag, linked to it |
+| `reopen_task` | `id` | Reopen a done task |
 | `add_task` | `task`, `dueDate`, `recurring` | Add a new task |
 | `update_task` | `id`, `field`, `value` | Update a task field |
 | `delete_task` | `id` | Delete a task by ID |
@@ -1416,8 +1420,8 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 |---|---|---|
 | `chat` | `message`, `session` | Process a chat message (same as GET chat) |
 | `acknowledge` | `id` | Acknowledge a flag by ID |
-| `snooze` | `id`, `days` | Snooze a flag for N days |
-| `resolve` | `id` | Resolve a flag by ID |
+| `snooze` | `id`, `days` or `until` | Snooze a flag for N days, or until a date (tomorrow to a year out) |
+| `resolve` | `id` | Resolve a one-off flag; refused on an automatic one, with what clears it |
 | `add_takeout_restaurant` | name, cuisine, phone, website, rating, notes | Add a takeout restaurant |
 | `delete_takeout_restaurant` | name | Delete a takeout restaurant |
 | `add_takeout_item` | restaurant, item, description, rating, notes | Add a menu item to a restaurant |
