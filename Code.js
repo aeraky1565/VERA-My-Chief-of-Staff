@@ -504,6 +504,12 @@ function createSheetTabs(ss) {
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
     ['system_log_retention_days', '45'],
+    // Agent health (#247): when each Claude agent is scheduled, since VERA can't read Claude's schedules.
+    // "<daily|weekdays|mon,wed,…> HH:MM <time zone> [eod]"; eod = late only once the day is over.
+    ['agent_schedule_aria',          'daily 06:52 America/New_York'],
+    ['agent_schedule_tess',          'weekdays 06:36 America/New_York eod'],
+    ['agent_schedule_hailey',        'weekdays 06:38 America/Chicago'],
+    ['agent_schedule_hailey_digest', 'fri 18:00 America/Chicago'],
     ['upkeep_reminders',      'flag'],    // overdue upkeep in Home Front → Chores: 'flag' (Low flag), 'task' (a task in Tasks) or 'off'  // How long the System Log tab keeps entries before the nightly prune
   ];
 
@@ -1647,6 +1653,8 @@ function nightlyRunTail() {
     // finding matches, append this month's Wins bank tab once there is new
     // evidence, and once a quarter suggest criteria from the matches (Claude).
     nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);
+    // Agent health (#247): did ARIA, TESS, HAILEY and VERA's own jobs run on time?
+    nightlyStep_(ctx, 'checkAgentHealth_', checkAgentHealth_);
     nightlyStep_(ctx, 'carMonthlyWinsBank_', carMonthlyWinsBank_);
     nightlyStep_(ctx, 'carSuggestCriteria_', carSuggestCriteria_);
     // Phase 3: a track with no sponsor, a PIES brief that hasn't arrived, and

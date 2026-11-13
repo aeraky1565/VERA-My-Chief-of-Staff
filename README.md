@@ -97,7 +97,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
-| **System** | Reference (Assistants, Documents) · Checks (Test, API health) · Settings (Notifications, Trip emails, Config, Feature flags) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health) · Settings (Notifications, Trip emails, Config, Feature flags) |
 
 **Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, Card cheat sheet, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
 
@@ -2440,6 +2440,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `add_bucket_activity` / `toggle_bucket_activity` / `delete_bucket_activity` | `bucketId`, `activity` | Manage bucket list activities |
 | `get_pacing_status` | — | Current pacing / Away mode status |
 | `away_status` | — | Away mode, and what it has held (Home banner) |
+| `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
 | `health_appointments` | — | All tracked health appointments with next-due dates |
@@ -2487,6 +2488,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
+| `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
 | `WeekendPlanner.js` | Weekend Decision Memo — Wednesday 8am delivery; `testWeekendMemo()` dry-runs it on demand |

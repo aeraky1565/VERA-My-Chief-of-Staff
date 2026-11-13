@@ -1363,6 +1363,11 @@ function carMonthlyWinsBank_() {
 function carCheckAgentHealth_() {
   var sheetId = carAgentSheetId_();
   if (!sheetId) return 'not configured';
+  // Once TESS keeps a Run Log, Agent health judges it from that (#247); this guess steps aside.
+  if (typeof agentTessHasRunLog_ === 'function' && agentTessHasRunLog_(sheetId)) {
+    resolveFlagsWithPrefix_(getSpreadsheet().getSheetByName(TABS.FLAGS), CAR_AGENT_STALE_KEY_);
+    return 'judged from its Run Log';
+  }
   var res = carReadTracker_(sheetId);
   if (res.status !== 'ok') return res.reason;
   var tz = Session.getScriptTimeZone();

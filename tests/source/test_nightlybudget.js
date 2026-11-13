@@ -572,7 +572,7 @@ console.log('\nEvery step belongs to exactly one half');
     'carNightly_',
     // The job agent link (phase 2): the health flag, this month's Wins bank tab and
     // the quarterly criteria suggestions — each a no-op until configured or due.
-    'carCheckAgentHealth_', 'carMonthlyWinsBank_', 'carSuggestCriteria_',
+    'carCheckAgentHealth_', 'checkAgentHealth_', 'carMonthlyWinsBank_', 'carSuggestCriteria_',
     // Phase 3: no-sponsor, overdue-brief and unsent-intents flags.
     'carCareerFlags_',
     'runExplorer_',

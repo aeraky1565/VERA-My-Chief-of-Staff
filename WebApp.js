@@ -140,6 +140,7 @@ function doGet(e) {
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
       case 'system_documents':      return jsonOut_(webSystemDocuments_());  // System.js
       case 'system_api_health':     return jsonOut_(webSystemApiHealth_());  // System.js
+      case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));

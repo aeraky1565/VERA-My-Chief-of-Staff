@@ -56,7 +56,7 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     await wait(300);
     const txt = sel => page.$eval('#sysprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
     const tiles = await page.$$eval('#sysprobe .vn-tile', ns => ns.map(n => n.textContent + ': ' + n.title));
-    check(L + ': three groups: Reference, Checks, Settings', JSON.stringify(tiles) === JSON.stringify(['📖Reference: 🤖 Assistants · 📚 Documents · 📘 Guides', '🧪Checks: 🧪 Test · 🩺 API health', '⚙️Settings: 🔔 Notifications · ✉️ Trip emails · ⚙️ Config · 🚩 Feature Flags']), JSON.stringify(tiles));
+    check(L + ': three groups: Reference, Checks, Settings', JSON.stringify(tiles) === JSON.stringify(['📖Reference: 🤖 Assistants · 📚 Documents · 📘 Guides', '🧪Checks: 🧪 Test · 🩺 API health · 🤖 Agent health', '⚙️Settings: 🔔 Notifications · ✉️ Trip emails · ⚙️ Config · 🚩 Feature Flags']), JSON.stringify(tiles));
     check(L + ': opens on Assistants, in Reference', (await txt('.vn-chips .subtab-btn.active')) === '🤖 Assistants' && (await txt('.vn-tile.on')) === '📖 Reference');
     await clickTab0('📚 Documents'); await wait(150);
     const used = await page.$$eval('#sysprobe .sys-used-by', ns => ns.map(n => n.textContent));

@@ -876,7 +876,7 @@ Change only column B. The full list of keys is in the appendix (§22).
 | Home | `shop_grocery_stores` | Which stores count as groceries |
 | Fitness | `fitness_weekly_target` | Workouts a week you aim for |
 | Life | `coming_up_days`, `home_address` | How far ahead Coming up looks; where leave-by times start |
-| Assistants | see §21.5 | Links to WILLA, TESS and ARIA |
+| Assistants | see §21.6 | Links to WILLA, TESS and ARIA |
 
 ---
 
@@ -955,7 +955,7 @@ Times are Eastern. VERA's jobs are Apps Script triggers (`veraTriggerSpecs_` in 
 
 | Assistant | Task | When | What it does | Results go to |
 |---|---|---|---|---|
-| TESS | **TESS** | Weekdays 6:36 AM | Reads LinkedIn alerts and the Companies careers pages, filters, scores, writes tailored resume, cover letter and fit note | New Tracker rows; Docs in the Applications folder; the digest email |
+| TESS | **TESS** | Weekdays 6:36 AM | Reads LinkedIn alerts and the Companies careers pages, filters, scores, writes tailored resume, cover letter and fit note | New Tracker rows; Docs in the Applications folder; the digest email; one Run Log row per run (read by Agent health, 21.5) |
 | ARIA | **ARIA daily travel check** | Daily 6:52 AM | Reads VERA's trips and requests, prices flights, judges Book now | ARIA Travel Tracker (Watchlist, Fare Log, Run Log); a Book now email |
 | VERA | `morningNudge` | Daily 7:00 AM | The morning briefing, sent only when something needs you | Email |
 | HAILEY | **HAILEY daily sweep** | Weekdays 7:38 AM (6:38 Central) | Searches Zillow per market, updates listings, prices and estimated monthly cost | HAILEY's tracker; an alert email only when a home crosses an alert line |
@@ -1030,9 +1030,28 @@ Code: `Career.js` (VERA's own Settings cells are `CAR_AGENT_OWNED_LABELS_`), `Ca
 
 ### 21.4 HAILEY (home search)
 
-Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:38 AM Central) searches Zillow per market, keeps its own tracker and emails only when a listing crosses an alert line; a weekly digest goes out on Fridays at 6 PM Central. VERA only links to it from the roster (`roster_link_hailey`). If a link is ever added, it follows the same rules: VERA reads HAILEY's sheet by header, raises flags, and never writes it.
+Nothing crosses between HAILEY and VERA except Agent health. A daily sweep (weekdays, 6:38 AM Central) searches Zillow per market, keeps its own tracker and emails only when a listing crosses an alert line; a weekly digest goes out on Fridays at 6 PM Central. VERA links to it from the roster (`roster_link_hailey`) and, for Agent health (21.5), reads its Run Log, Settings "Last run status" and Weekly Digest tabs by header. It never writes HAILEY's sheet.
 
-### 21.5 Config rows for the assistants
+### 21.5 Agent health (`AgentHealth.js`, #247)
+
+System › Checks › **Agent health**, next to API health: whether each Claude agent ran when it should have, and what it last reported. VERA can't query Claude scheduled tasks, so each agent's health comes from what it writes to **its own** sheet, which VERA only reads.
+
+| Agent | Where VERA looks | Flag |
+|---|---|---|
+| ARIA | The Run Log tab in the ARIA Travel Tracker | Its own `ARIA|RUN_HEALTH` (Aria.js), not a second one |
+| TESS | The Run Log tab in the Job Agent Settings sheet (Run Time (UTC), Status, Summary), written by step 11 of TESS's task. Until that tab exists, its job finds (`carAgentHealth_`), which `carCheckAgentHealth_` flags as before | `AGENT_HEALTH|TESS` |
+| HAILEY | The sweep's Run Log (no Status column: errors in Notes make a run Partial; "Failed" in Settings "Last run status" fails the latest), and the Friday digest's Weekly Digest tab | `AGENT_HEALTH|HAILEY` |
+| VERA | Its watchdog and heartbeats (Watchdog.js) | The watchdog's own |
+| PIES | Not visible to VERA: always No signal, never flagged | — |
+
+- **Late:** no run logged for the latest scheduled run once it's due: 2 hours after the scheduled time, or the end of that day for TESS (`eod`).
+- **Failed:** the latest run says Failed. **Partial** shows amber in the strip and counts as OK.
+- **No signal:** nothing logged yet (not flagged), or a sheet VERA can't open (flagged).
+- Each card shows the schedule, the last run, what it said, a strip of the last 7 scheduled runs (gray = expected, not logged) and a link to the sheet; the roster in System › Assistants gets a dot and a short line per agent.
+- The nightly run (`checkAgentHealth_`) holds one flag per agent with `upsertKeyedFlags_`, reworded as things change and resolved on the next good run, and posts each change of level to #vera-logs. `agent_health` (GET, cached ten minutes; `refresh=1` for Check again) serves the panel.
+- Schedules are Config rows, since VERA can't read Claude's: `agent_schedule_aria`, `agent_schedule_tess`, `agent_schedule_hailey`, `agent_schedule_hailey_digest`, written as `<daily|weekdays|mon,wed,…> HH:MM <time zone> [eod]`. Change them here when a task's schedule changes.
+
+### 21.6 Config rows for the assistants
 
 | Row | Used for |
 |---|---|
@@ -1043,6 +1062,7 @@ Standalone: nothing crosses between HAILEY and VERA. A daily sweep (weekdays, 6:
 | `career_agent_stale_weekdays` | Days without a TESS match before the stale flag |
 | `aria_airline_pref`, `aria_airline_premium` | The airline rule sent with ARIA requests |
 | `home_airports` | Origins for ARIA watch requests |
+| `agent_schedule_aria`, `agent_schedule_tess`, `agent_schedule_hailey`, `agent_schedule_hailey_digest` | When each agent is scheduled, for Agent health (21.5) |
 
 ---
 
@@ -1366,6 +1386,7 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `get_wish_list` | — | Aspirational wish list |
 | `get_pacing_status` | — | Current pacing + Away mode status |
 | `away_status` | — | Away mode, and what it has held |
+| `agent_health` | `refresh=1` (optional) | Agent health: each agent's level, last run, strip and source |
 | `set_notif_while_away` | `key`, `value` | A notification's While away setting (send / hold / due) |
 | `get_visa_requirements` | origin, destination | Visa requirements for a traveler profile |
 | `dest_weather` | location | Weather forecast for destination |

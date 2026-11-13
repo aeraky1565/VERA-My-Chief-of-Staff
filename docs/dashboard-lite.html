@@ -13736,7 +13736,7 @@ var VN_GROUPS={
     {id:'family',label:'Family',icon:'👶',items:['family_planning']}],
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
-  system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents','guides']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health']},
+  system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents','guides']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health','agent_health']},
     {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags']}],
   life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
@@ -14568,8 +14568,9 @@ var VERA_ROSTER=[
   {name:'TESS',breakdown:'Tailored Employment Search Scout',purpose:'Runs LinkedIn job alerts on Claude scheduled tasks and tailors materials; you submit applications yourself',state:'live'},
   {name:'HAILEY',breakdown:'Home Alerts, Inventory & Listings Evaluator, Yours',purpose:'Searches Zillow against your buy box and flags new listings and price drops',state:'live'},
   {name:'ARIA',breakdown:'Arrangements, Reservations & Itinerary Assistant',purpose:'Travel agent on a daily Claude scheduled task: watches and scouts fares, and says when to book; you book yourself',state:'live'}];
-function VeraRoster({links,veraHref}){
-  var h=React.createElement;var L=links||{};
+function VeraRoster({links,veraHref,health}){
+  var h=React.createElement;var L=links||{};var H=health||{};
+  var HC={ok:'#34d399',late:'#fbbf24',failed:'#f87171',none:'#64748b'};
   return h("div",{className:"bento-card vera-roster",style:{cursor:'default'}},
     h("div",{className:"bento-card-title"},"🤖 Your assistants"),
     h("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:10}},VERA_ROSTER.map(function(r){
@@ -14579,7 +14580,8 @@ function VeraRoster({links,veraHref}){
       return h("li",{key:r.name,className:'roster-row',style:{display:'flex',flexDirection:'column',gap:2,paddingBottom:8,borderBottom:'1px solid #1e3060',opacity:planned?0.75:1}},
         h("div",{style:{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap'}},
           href?h("a",{href:href,target:'_blank',rel:'noopener',className:'roster-link',style:{fontWeight:700,fontSize:15,color:'#8ab4f8'}},r.name):h("strong",{className:'roster-name',style:{fontSize:15,color:'#dde1f0'}},r.name),
-          h("span",{className:'roster-state',style:{fontSize:11,fontWeight:600,padding:'1px 8px',borderRadius:999,background:planned?'rgba(226,196,107,.12)':'rgba(102,187,106,.1)',color:planned?'#e2c46b':'#4d9f6a',border:'1px solid '+(planned?'rgba(226,196,107,.35)':'rgba(102,187,106,.3)')}},planned?'Not built yet':'Live')),
+          h("span",{className:'roster-state',style:{fontSize:11,fontWeight:600,padding:'1px 8px',borderRadius:999,background:planned?'rgba(226,196,107,.12)':'rgba(102,187,106,.1)',color:planned?'#e2c46b':'#4d9f6a',border:'1px solid '+(planned?'rgba(226,196,107,.35)':'rgba(102,187,106,.3)')}},planned?'Not built yet':'Live'),
+          H[r.name]&&h("span",{className:'roster-health',title:'Agent health (System › Agent health)',style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:11.5,color:'#8a9abf'}},h("i",{'aria-hidden':'true',style:{width:8,height:8,borderRadius:'50%',display:'inline-block',background:HC[H[r.name].level]||'#64748b'}}),H[r.name].short)),
         h("div",{style:{fontSize:11,color:'#8a9abf',letterSpacing:'.02em'}},r.breakdown),
         h("div",{style:{fontSize:13,color:'#c9cfe3',lineHeight:1.45}},r.purpose),
         (r.note||!href)&&h("div",{className:'roster-note',style:{fontSize:12,color:planned?'#e2c46b':'#6b7fa8'}},r.note||hint));})));

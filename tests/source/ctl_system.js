@@ -21,7 +21,7 @@ const CONTROLS = [
   ['OK sorts first', srv("var rank = { failing: 0, slow: 1, ok: 2 };", "var rank = { failing: 2, slow: 1, ok: 0 };")],
   ['the used-by line is not shown', ui('r.usedBy&&r.usedBy.length>0&&', 'false&&'), UI],
   ['API health is not mounted', ui("cur==='api_health'&&h(SysApiHealth,", "false&&h(SysApiHealth,"), UI],
-  ['the roster is not under Assistants', ui("cur==='assistants'&&h(VeraRoster,", "false&&h(VeraRoster,"), UI],
+  ['the roster is not under Assistants', ui("cur==='assistants'&&h(SysAssistants,", "false&&h(SysAssistants,"), UI],
   ['Feature Flags is not under System', ui("cur==='flags'&&h(SysFeatureFlags,", "false&&h(SysFeatureFlags,"), UI],
   ['Home shows Projects with none active', ui("if(activeProjs.length===0)return null;", ""), UI],
   ['System opens on Documents again', ui("var[own,setOwn]=React.useState('assistants');", "var[own,setOwn]=React.useState('documents');"), UI],
