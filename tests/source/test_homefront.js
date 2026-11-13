@@ -32,7 +32,7 @@ const constLine = (src, name) => { const m = src.match(new RegExp('const ' + nam
 const S = vm.createContext({ console, Math, JSON, Date, Object, String, Number, Array, isNaN, Logger: { log() {} } });
 vm.runInContext(SRC, S);
 vm.runInContext(constLine(CODE, 'CHORES_HEADERS') + constLine(CODE, 'TASK_HEADERS') + constLine(CODE, 'FLAG_HEADERS'), S);
-vm.runInContext(extract(CODE, 'upsertKeyedFlags_'), S);
+vm.runInContext(extract(CODE, 'upsertKeyedFlags_') + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
 vm.runInContext(extract(fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8'), 'tiSchema_'), S);
 const run = code => vm.runInContext(code, S);
 

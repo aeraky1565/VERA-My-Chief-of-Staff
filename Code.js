@@ -151,50 +151,50 @@ const TABS = {
 // ---- Notification Registry (Issue #188) ------------------------------------
 const NOTIF_REGISTRY = [
   // Morning & Discovery
-  { key: 'morning_briefing',    label: 'Morning Briefing',      emoji: '☀️',  category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'Daily morning context digest', locked: false },
-  { key: 'daily_discovery',     label: 'Daily Discovery',       emoji: '🔍', category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'VERA-curated daily interest pick', locked: false },
+  { key: 'morning_briefing',    label: 'Morning Briefing',      emoji: '☀️',  category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'Daily morning context digest', locked: false, whileAway: 'send' },
+  { key: 'daily_discovery',     label: 'Daily Discovery',       emoji: '🔍', category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'VERA-curated daily interest pick', locked: false, whileAway: 'hold' },
   // Wellness Reminders
-  { key: 'desk_break',          label: 'Desk Break',            emoji: '🪑', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Ergonomic break reminder', locked: false },
-  { key: 'water_break',         label: 'Water Break',           emoji: '💧', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Hydration reminder', locked: false },
-  { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge', locked: false },
-  { key: 'health_performance_insight', label: 'Health–Performance Insight', emoji: '🔬', category: 'Wellness Reminders', channel: 'vera-notifications', description: 'Weekly + monthly health vs performance correlation', locked: false },
+  { key: 'desk_break',          label: 'Desk Break',            emoji: '🪑', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Ergonomic break reminder', locked: false, whileAway: 'hold' },
+  { key: 'water_break',         label: 'Water Break',           emoji: '💧', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Hydration reminder', locked: false, whileAway: 'hold' },
+  { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge', locked: false, whileAway: 'hold' },
+  { key: 'health_performance_insight', label: 'Health–Performance Insight', emoji: '🔬', category: 'Wellness Reminders', channel: 'vera-notifications', description: 'Weekly + monthly health vs performance correlation', locked: false, whileAway: 'hold' },
   // Planning Nudges
-  { key: 'calendar_opportunity',label: 'Calendar Opportunity',  emoji: '📅', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Free-time block suggestion', locked: false },
-  { key: 'goal_checkin',        label: 'Goal Check-in',         emoji: '🎯', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly goal progress nudge', locked: false },
+  { key: 'calendar_opportunity',label: 'Calendar Opportunity',  emoji: '📅', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Free-time block suggestion', locked: false, whileAway: 'hold' },
+  { key: 'goal_checkin',        label: 'Goal Check-in',         emoji: '🎯', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly goal progress nudge', locked: false, whileAway: 'hold' },
   // Flags & Alerts
-  { key: 'flag_high',           label: 'High Urgency Flags',    emoji: '🔴', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly high-urgency flag alerts', locked: false },
-  { key: 'flag_medium',         label: 'Medium Urgency Flags',  emoji: '🟡', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly medium-urgency flag alerts', locked: false },
-  { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false },
-  { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false },
-  { key: 'career_cert_expiry',  label: 'Certification Expiry',  emoji: '🎓', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'A certification 90, 30 and 7 days before it expires, and renewal credits behind pace', locked: false },
-  { key: 'cycle_reminders',     label: 'Cycle Reminders',       emoji: '🌸', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Only while Family Planning is on Trying: period due soon, fertile window and peak days, late (Cycle.js). A private channel or DM is best.', locked: false },
-  { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false },
-  { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false },
-  { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false },
-  { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false },
-  { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false },
-  { key: 'coupon_expiry',       label: 'Coupon Expiry',         emoji: '🎟️',  category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Coupon or deal expiring soon', locked: false },
+  { key: 'flag_high',           label: 'High Urgency Flags',    emoji: '🔴', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly high-urgency flag alerts', locked: false, whileAway: 'due' },
+  { key: 'flag_medium',         label: 'Medium Urgency Flags',  emoji: '🟡', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly medium-urgency flag alerts', locked: false, whileAway: 'hold' },
+  { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false, whileAway: 'hold' },
+  { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false, whileAway: 'due' },
+  { key: 'career_cert_expiry',  label: 'Certification Expiry',  emoji: '🎓', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'A certification 90, 30 and 7 days before it expires, and renewal credits behind pace', locked: false, whileAway: 'hold' },
+  { key: 'cycle_reminders',     label: 'Cycle Reminders',       emoji: '🌸', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Only while Family Planning is on Trying: period due soon, fertile window and peak days, late (Cycle.js). A private channel or DM is best.', locked: false, whileAway: 'hold' },
+  { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false, whileAway: 'hold' },
+  { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false, whileAway: 'hold' },
+  { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false, whileAway: 'send' },
+  { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false, whileAway: 'hold' },
+  { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false, whileAway: 'due' },
+  { key: 'coupon_expiry',       label: 'Coupon Expiry',         emoji: '🎟️',  category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Coupon or deal expiring soon', locked: false, whileAway: 'due' },
   // Travel
-  { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false },
-  { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
-  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false },
-  { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false },
-  { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false },
+  { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false, whileAway: 'send' },
+  { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false, whileAway: 'send' },
+  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false, whileAway: 'send' },
+  { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false, whileAway: 'send' },
+  { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false, whileAway: 'send' },
   // Routines
-  { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false },
-  { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false },
-  { key: 'weekly_trend_review',   label: 'Weekly Trend Review',   emoji: '📊', category: 'Routines',             channel: 'vera-notifications', description: 'Sunday week-over-week metric digest', locked: false },
-  { key: 'usps_mail',           label: 'USPS Mail Scan',        emoji: '📬', category: 'Routines',             channel: 'vera-notifications', description: 'Daily USPS mail notification', locked: false },
+  { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false, whileAway: 'hold' },
+  { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false, whileAway: 'hold' },
+  { key: 'weekly_trend_review',   label: 'Weekly Trend Review',   emoji: '📊', category: 'Routines',             channel: 'vera-notifications', description: 'Sunday week-over-week metric digest', locked: false, whileAway: 'hold' },
+  { key: 'usps_mail',           label: 'USPS Mail Scan',        emoji: '📬', category: 'Routines',             channel: 'vera-notifications', description: 'Daily USPS mail notification', locked: false, whileAway: 'hold' },
   // System Logs (locked)
-  { key: 'nightly_log',         label: 'Nightly Run Summary',   emoji: '📋', category: 'System Logs',          channel: 'vera-logs',          description: 'Nightly automation summary', locked: true },
-  { key: 'error_alerts',        label: 'Error Alerts',          emoji: '⚠️',  category: 'System Logs',          channel: 'vera-logs',          description: 'System error notifications', locked: true },
+  { key: 'nightly_log',         label: 'Nightly Run Summary',   emoji: '📋', category: 'System Logs',          channel: 'vera-logs',          description: 'Nightly automation summary', locked: true, whileAway: 'send' },
+  { key: 'error_alerts',        label: 'Error Alerts',          emoji: '⚠️',  category: 'System Logs',          channel: 'vera-logs',          description: 'System error notifications', locked: true, whileAway: 'send' },
   // System Health — the watchdog's three delivery paths, each switchable on its
   // own so the modal offers all three, any one, or none. fixedChannel means the
   // destination is inherent to the path and not a dropdown, while the ON/OFF
   // toggle still applies (unlike locked, which removes the toggle entirely).
-  { key: 'watchdog_flag',       label: 'Watchdog → Flag',       emoji: '🚩', category: 'System Health',        channel: 'flag',               description: 'Open a Flag when a job stops running or a feed goes quiet', locked: false, fixedChannel: true },
-  { key: 'watchdog_email',      label: 'Watchdog → Morning Email', emoji: '📧', category: 'System Health',     channel: 'email',              description: 'Add watchdog notices to the morning briefing', locked: false, fixedChannel: true },
-  { key: 'watchdog_slack',      label: 'Watchdog → Slack',      emoji: '💬', category: 'System Health',        channel: 'vera-logs',          description: 'Post watchdog notices to #vera-logs', locked: false, fixedChannel: true },
+  { key: 'watchdog_flag',       label: 'Watchdog → Flag',       emoji: '🚩', category: 'System Health',        channel: 'flag',               description: 'Open a Flag when a job stops running or a feed goes quiet', locked: false, fixedChannel: true, whileAway: 'send' },
+  { key: 'watchdog_email',      label: 'Watchdog → Morning Email', emoji: '📧', category: 'System Health',     channel: 'email',              description: 'Add watchdog notices to the morning briefing', locked: false, fixedChannel: true, whileAway: 'send' },
+  { key: 'watchdog_slack',      label: 'Watchdog → Slack',      emoji: '💬', category: 'System Health',        channel: 'vera-logs',          description: 'Post watchdog notices to #vera-logs', locked: false, fixedChannel: true, whileAway: 'send' },
 ];
 
 function isNotifEnabled_(key) {
@@ -209,7 +209,8 @@ function getNotifChannel_(key) {
   return entry ? entry.channel : 'vera-notifications';
 }
 // ---- Column Headers --------------------------------------------------------
-const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
+// Due: a deadline, when the source knows one (#246).
+const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated', 'Due'];
 const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner', 'Completed On', 'Target Date', 'Phase', 'Sequence', 'Context', 'Days Before', 'Waiting On'];
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
@@ -1807,6 +1808,7 @@ function keysAreSimilar_(newKey, existingFingerprints) {
  * @returns {number} flags written
  */
 function appendExactKeyFlags_(flagSheet, flags, dateStr) {
+  flagDueHeader_(flagSheet);
   var lastRow = flagSheet.getLastRow();
   var keys = {};
   if (lastRow >= 2) {
@@ -1821,7 +1823,7 @@ function appendExactKeyFlags_(flagSheet, flags, dateStr) {
     flagSheet.appendRow([
       'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
       dateStr, f.source, f.flag, f.reason, f.urgency,
-      'No', '', 'No', f.key, '',
+      'No', '', 'No', f.key, '', flagDueCell_(f.due),
     ]);
     keys[f.key] = true;
     written++;
@@ -1853,9 +1855,32 @@ function resolveFlagsWithPrefix_(flagSheet, prefix, exceptKey, exact) {
   return n;
 }
 
+/**
+ * A flag's Due cell: its deadline as 'yyyy-MM-dd' (text, so the sheet keeps it as
+ * typed), or blank. Away mode lets a High flag through only when this falls before
+ * you're back (Away.js, #246).
+ */
+function flagDueCell_(due) {
+  if (due instanceof Date && !isNaN(due.getTime())) return Utilities.formatDate(due, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var s = String(due == null ? '' : due).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
+/** Labels the Flags tab's Due column when its header cell is blank (once per run). */
+var _flagDueHeaderDone_ = false;
+function flagDueHeader_(sheet) {
+  if (_flagDueHeaderDone_ || !sheet) return;
+  try {
+    var col = FLAG_HEADERS.indexOf('Due') + 1, cell = sheet.getRange(1, col);
+    if (!String(cell.getValue() || '').trim()) cell.setValue('Due');
+    _flagDueHeaderDone_ = true;
+  } catch (e) {}
+}
+
 function writeFlags(flags) {
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.FLAGS);
+  flagDueHeader_(sheet);
   const today = new Date();
   const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const timestamp = dateStr.replace(/-/g, '');
@@ -1898,6 +1923,7 @@ function writeFlags(flags) {
       'No',                   // I: Resolved
       flag.key     || '',     // J: Key (stable dedup identifier)
       '',                     // K: Escalated (3d / 7d once aged)
+      flagDueCell_(flag.due), // L: Due — a deadline, when the source knows one (#246)
     ];
     sheet.appendRow(row);
     existing.add(fp); // Prevent dupes within the same batch
@@ -2066,6 +2092,9 @@ function recordExpiredFlags_() {
  * Snoozed flags are skipped while the snooze window is active.
  */
 function escalateAgedFlags_() {
+  // Away mode (Away.js, #246): nothing escalates while you're away. A flag's age keeps
+  // counting, so anything still open escalates on the first night back.
+  if (typeof awayStatus_ === 'function' && awayStatus_().on) { Logger.log('escalateAgedFlags_: away, nothing escalated'); return; }
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.FLAGS);
   if (!sheet || sheet.getLastRow() < 2) return;
@@ -2920,6 +2949,7 @@ function checkWarrantiesExpiring_() {
  * (ARIA's dates its flags by when the action began); else dateStr.
  */
 function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
+  flagDueHeader_(sheet);
   var lastRow = sheet.getLastRow();
   var rows    = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, FLAG_HEADERS.length).getValues() : [];
 
@@ -2957,7 +2987,7 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
       'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
       wanted[key].date || dateStr, source,
       wanted[key].flag, wanted[key].reason, wanted[key].urgency,
-      'No', '', 'No', key, '',
+      'No', '', 'No', key, '', flagDueCell_(wanted[key].due),
     ]);
     appended++;
   });
@@ -3039,7 +3069,8 @@ function checkContracts_() {
       flag:    flagText,
       reason:  reason,
       urgency: urgency,
-      key:     flagKey
+      key:     flagKey,
+      due:     endDate,   // #246
     }]);
     flagsGenerated++;
   });
@@ -3828,6 +3859,7 @@ function checkCardPerksExpiring_() {
       reason:  reason,
       urgency: 'High',
       key:     'perk_expiry_' + id + '_' + periodKey,
+      due:     periodEnd,   // #246
     }]);
     flagsGenerated++;
 
@@ -4099,11 +4131,13 @@ function inferCapacityMode_() {
   } catch (e) { /* non-fatal */ }
 
   if (tripActive) {
+    // A trip day is not a "light day, show everything" day (#246): Away mode holds what
+    // can wait, and only High + time-sensitive matters.
     veraStateProps_('CAPACITY_INFERRED').setProperties({
-      capacity_inferred_mode: 'light',
+      capacity_inferred_mode: 'busy',
       capacity_inferred_date: Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd')
     });
-    Logger.log('inferCapacityMode_: light (trip active)');
+    Logger.log('inferCapacityMode_: busy (trip active)');
     return;
   }
 
@@ -4247,6 +4281,13 @@ function morningNudge() {
     // Watchdog.js's own comment says must not happen ("Both still record").
     if (!isNotifEnabled_('morning_briefing')) {
       Logger.log('morningNudge: skipped — morning_briefing disabled');
+      return;
+    }
+
+    // Away mode (Away.js, #246): the away edition instead — today's plan, your
+    // flights, and only what got through. Inside the try, so the heartbeat records.
+    if (typeof awayStatus_ === 'function' && awayStatus_().on) {
+      sendAwayEditionEmail_();
       return;
     }
 
@@ -5292,7 +5333,7 @@ function checkExpiringCoupons_() {
     });
     if (alreadyOpen) return;
 
-    writeFlags([{ source: 'Coupons', flag: flagText, reason: reason, urgency: urgency, key: flagKey }]);
+    writeFlags([{ source: 'Coupons', flag: flagText, reason: reason, urgency: urgency, key: flagKey, due: expiry }]);   // due: #246
     generated++;
   });
   Logger.log('checkExpiringCoupons_: ' + generated + ' flag(s) generated.');

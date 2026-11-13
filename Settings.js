@@ -148,7 +148,9 @@ function veraOnceSet_(name, stamp) {
 
 var VERA_STATE_BUNDLES_ = {
   PACING:            ['PACING_FIRST_DETECTED', 'PACING_MODE_ACTIVE', 'PACING_MODE_ENDS', 'PACING_OFFER_FLAG_KEY',
-                      'VACATION_MODE_ACTIVE', 'VACATION_MODE_ENDS', 'VACATION_TRIP_NAME'],
+                      'VACATION_MODE_ACTIVE', 'VACATION_MODE_ENDS', 'VACATION_TRIP_NAME',
+                      // Away mode (Away.js, #246): the manual switch, when it began, and what it held.
+                      'AWAY_MANUAL', 'AWAY_UNTIL', 'AWAY_TRIP', 'AWAY_ENDED_TRIP', 'AWAY_STARTED', 'AWAY_HELD'],
   PTO_BUFFER:        ['PTO_BUFFER_EVENT_ID', 'PTO_BUFFER_EVENT_DATE', 'PTO_BUFFER_DECLINED_UNTIL'],
   MAIL:              ['MAIL_COUNTER_PIECES', 'MAIL_COUNTER_PACKAGES', 'MAIL_COUNTER_LAST_SCAN',
                       'MAIL_COUNTER_LAST_SCAN_RUN', 'MAIL_COUNTER_LAST_RESET'],

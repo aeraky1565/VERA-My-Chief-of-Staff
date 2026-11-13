@@ -331,7 +331,7 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   // The sync, through VERA's real upsertKeyedFlags_.
   const CODE_SRC = fs.readFileSync(path.join(ROOT, 'Code.js'), 'utf8');
   const at = CODE_SRC.indexOf('function upsertKeyedFlags_'); const end = CODE_SRC.indexOf('\n}\n', at) + 3;
-  vm.runInContext(CODE_SRC.slice(at, end), S);
+  vm.runInContext(CODE_SRC.slice(at, end) + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
   S.FLAG_HEADERS = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
   S.colorCodeFlags = () => {};
   const FL = [S.FLAG_HEADERS.slice(), ['FLAG-OLD', '2027-02-01', 'ARIA', 'Ceiling not set', 'x', 'Low', 'No', '', 'No', 'ARIA|TRIP-0009|CEILING_NOT_SET', ''],

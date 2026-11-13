@@ -96,11 +96,18 @@ function checkVacationMode_() {
 
   if (activeTrip) {
     var wasActive = props.getProperty('VACATION_MODE_ACTIVE') === 'true';
-    props.setProperties({
+    var startPatch = {
       VACATION_MODE_ACTIVE: 'true',
       VACATION_MODE_ENDS:   activeTrip.endStr,
       VACATION_TRIP_NAME:   activeTrip.key,
-    });
+    };
+    // Away mode (Away.js, #246) begins with the trip: the day it began and a fresh
+    // held count, unless the switch already turned it on by hand.
+    if (!wasActive && props.getProperty('AWAY_MANUAL') !== 'on') {
+      startPatch.AWAY_STARTED = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+      startPatch.AWAY_HELD = null;
+    }
+    props.setProperties(startPatch);
     Logger.log('checkVacationMode_: ACTIVE — trip "' + activeTrip.key + '" ends ' + activeTrip.endStr);
     // Memory Log: record vacation start (only on first detection, not every nightly run)
     if (!wasActive) {
@@ -116,6 +123,8 @@ function checkVacationMode_() {
     props.setProperties({ VACATION_MODE_ACTIVE: 'false' });
     props.deleteProperty('VACATION_MODE_ENDS');
     props.deleteProperty('VACATION_TRIP_NAME');
+    // The trip is over, so a trip ended early by hand needs no remembering (#246).
+    props.deleteProperty('AWAY_ENDED_TRIP');
     Logger.log('checkVacationMode_: inactive');
     // Memory Log: record vacation end (only on transition from active → inactive)
     if (wasActiveEnd && endedTrip) {
@@ -132,8 +141,8 @@ function checkVacationMode_() {
  * Fast Script Properties read — safe to call from any nightly job.
  */
 function isInVacationMode_() {
-  return veraStateProps_('PACING')
-           .getProperty('VACATION_MODE_ACTIVE') === 'true';
+  // Away mode (Away.js, #246): a trip of yours, or the manual switch, and not ended early.
+  return awayStatus_().on;
 }
 
 // ── Miss Rate / Pacing Mode ──────────────────────────────────────────────────
@@ -393,7 +402,7 @@ function isInPacingMode_() {
 function getPacingStatus_() {
   var props = veraStateProps_('PACING');
   return {
-    vacationMode:     props.getProperty('VACATION_MODE_ACTIVE') === 'true',
+    vacationMode:     isInVacationMode_(),
     vacationModeEnds: props.getProperty('VACATION_MODE_ENDS')   || '',
     vacationTripName: props.getProperty('VACATION_TRIP_NAME')   || '',
     pacingMode:       isInPacingMode_(),

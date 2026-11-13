@@ -398,6 +398,10 @@ function sendMonthlyReviewEmail_(label, reviewText) {
     Logger.log('sendMonthlyReviewEmail_: skipped — monthly_review disabled');
     return;
   }
+  if (typeof awayHolds_ === 'function' && awayHolds_('monthly_review')) {   // Away mode (#246)
+    Logger.log('sendMonthlyReviewEmail_: held — away');
+    return;
+  }
   var to = CONFIG.MORNING_NUDGE_EMAIL;
   if (!to) { Logger.log('sendMonthlyReviewEmail_: no recipient configured.'); return; }
 

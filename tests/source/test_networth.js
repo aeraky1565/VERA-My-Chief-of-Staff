@@ -71,7 +71,7 @@ function sandbox(over) {
   vm.runInContext(extractFn(TRIP, 'dateCellToIso_'), S);
   vm.runInContext(NW, S);
   // The CD flag writer is the shared exact-key helper now (Code.js), not a copy in NetWorth.js.
-  vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_'), S);
+  vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_') + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
   return S;
 }
 

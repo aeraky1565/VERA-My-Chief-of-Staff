@@ -58,7 +58,7 @@ function agentSandbox(over) {
   S.ss.sheets.Flags = flags;
   S.A = A;
   vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_') + extractFn(CODE, 'resolveFlagsWithPrefix_') +
-                  'function colorCodeFlags(){}', S);
+                  'function colorCodeFlags(){}' + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
   run(S, 'webGetCareer_()');
   return S;
 }

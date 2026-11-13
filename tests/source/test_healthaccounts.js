@@ -60,7 +60,7 @@ function load(opts) {
     colorCodeFlags: () => {},
   };
   vm.createContext(ctx);
-  vm.runInContext(HEADERS_LINE + '\n' + FLAG_HEADERS_LINE.replace(/^const /, 'var ') + '\n' + extract(CODE, 'upsertKeyedFlags_') + '\n' + SRC, ctx);
+  vm.runInContext(HEADERS_LINE + '\n' + FLAG_HEADERS_LINE.replace(/^const /, 'var ') + '\n' + extract(CODE, 'upsertKeyedFlags_') + '\n' + CODE.slice(CODE.indexOf('function flagDueCell_('), CODE.indexOf('function writeFlags(')) + '\n' + SRC, ctx);
   ctx._tab = tab; ctx._flags = flags; ctx._opened = () => opened;
   return ctx;
 }

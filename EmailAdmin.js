@@ -283,7 +283,8 @@ function runEmailAdmin_() {
     Logger.log('runEmailAdmin_: follow-up stale check error (non-fatal): ' + fuErr.message);
   }
 
-  sendSlackNotification_(lines.join('\n'), null, 'Low');
+  // Away mode (#246): Slack stays quiet; the counts are still recorded below.
+  if (!(typeof awayHolds_ === 'function' && awayHolds_('email_admin'))) sendSlackNotification_(lines.join('\n'), null, 'Low');
   Logger.log('runEmailAdmin_: complete. ' + JSON.stringify(counts));
   recordFeedResult_('gmail:email-admin', candidates.length);
   veraLog_('runEmailAdmin', 'Email', 'Success',

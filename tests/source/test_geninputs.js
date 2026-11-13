@@ -77,6 +77,7 @@ function sandbox(over) {
   vm.runInContext(GI, S);
   vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_'), S);
   vm.runInContext(extractFn(CODE, 'resolveFlagsWithPrefix_'), S);
+  vm.runInContext(CODE.slice(CODE.indexOf('function flagDueCell_('), CODE.indexOf('function writeFlags(')), S);
   return S;
 }
 

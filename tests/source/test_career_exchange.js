@@ -44,7 +44,7 @@ function full(over) {
     recordApiHealth_: () => {},
   }, over || {}));
   S.ss.sheets.Flags = new FakeSheet('Flags', [['ID','Date','Source','Flag','Reason','Urgency','Ack','Snooze','Resolved','Key','x']]);
-  vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_') + extractFn(CODE, 'resolveFlagsWithPrefix_') + 'function colorCodeFlags(){}', S);
+  vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_') + extractFn(CODE, 'resolveFlagsWithPrefix_') + 'function colorCodeFlags(){}' + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
   run(S, 'webGetCareer_()');
   S.agent = agent; S.agentWrites = agentWrites;
   return S;

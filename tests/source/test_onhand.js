@@ -60,7 +60,7 @@ vm.runInContext(PAN.match(/var PANTRY_AISLES_ = \[[\s\S]*?\]\];\n/)[0], S);
  [PAN, ['normalizeItemName_', 'pantryAisle_', 'getPurchaseHistorySheet_']],
  [MP, ['generateId_', 'addWeeksToStart_', 'dayDateForWeek_', '_readMealPlanRows_', 'getMealPlanWeek_', 'getMealPlanHistory_', 'upsertMealPlanEntry_', 'mpSetExtras_']],
  [CODE, ['upsertKeyedFlags_']]].forEach(([src, names]) => names.forEach(n => vm.runInContext(extract(src, n), S)));
-vm.runInContext(OH, S);
+vm.runInContext(OH + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S);
 S.getCurrentWeekStart_ = () => WS;
 S.ensureSheet = (ss, name, headers) => S.sheets[name] || (S.sheets[name] = fakeSheet(headers, []));
 const run = code => vm.runInContext(code, S);

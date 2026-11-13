@@ -279,6 +279,9 @@ function sendHealthPerformanceInsightMonthly_() {
   if (!isNotifEnabled_('health_performance_insight')) {
     Logger.log('sendHealthPerformanceInsightMonthly_: notif disabled'); return;
   }
+  if (typeof awayHolds_ === 'function' && awayHolds_('health_performance_insight')) {   // Away mode (#246)
+    Logger.log('sendHealthPerformanceInsightMonthly_: held — away'); return;
+  }
 
   // Collect 4 weeks of data (weeksBack 1–4, i.e. last 4 completed weeks)
   var weekRows = [];

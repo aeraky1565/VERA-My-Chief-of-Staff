@@ -23,7 +23,7 @@ function realUpsert() {
     if (src[i] === '{') depth++;
     else if (src[i] === '}') { depth--; if (!depth) { end = i + 1; break; } }
   }
-  return src.slice(at, end);
+  return src.slice(at, end) + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8'));
 }
 
 function fakeFlagSheet() {

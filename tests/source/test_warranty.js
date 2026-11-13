@@ -62,7 +62,7 @@ function run(homeRows, flagRows, todayISO) {
     decl(/^var WARRANTY_FLAG_PREFIX_ = .*;$/m) + '\n' +
     decl(/^var WARRANTY_FLAG_SOURCE_ = .*;$/m) + '\n' +
     decl(/^var WARRANTY_TIERS_ = [\s\S]*?^\];$/m) + '\n' +
-    extractFn('upsertKeyedFlags_') + '\n' + extractFn('checkWarrantiesExpiring_') +
+    extractFn('upsertKeyedFlags_') + '\n' + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')) + '\n' + extractFn('checkWarrantiesExpiring_') +
     '\ncheckWarrantiesExpiring_();', ctx);
   return { flags: flags._rows.slice(1), logs, ctx };
 }
@@ -183,7 +183,7 @@ console.log('\nsuppression');
   vm.runInContext(
     decl(/^var WARRANTY_FLAG_PREFIX_ = .*;$/m) + '\n' + decl(/^var WARRANTY_FLAG_SOURCE_ = .*;$/m) + '\n' +
     decl(/^var WARRANTY_TIERS_ = [\s\S]*?^\];$/m) + '\n' +
-    extractFn('upsertKeyedFlags_') + '\n' + extractFn('checkWarrantiesExpiring_') +
+    extractFn('upsertKeyedFlags_') + '\n' + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')) + '\n' + extractFn('checkWarrantiesExpiring_') +
     '\ncheckWarrantiesExpiring_();', ctx);
   check('a suppressed item does not flag', flagsSheet._rows.length === 1, JSON.stringify(flagsSheet._rows));
 }

@@ -436,6 +436,9 @@ function sendWeeklyTrendReview_() {
     if (!isNotifEnabled_('weekly_trend_review')) {
       Logger.log('sendWeeklyTrendReview_: notif disabled'); return;
     }
+    if (typeof awayHolds_ === 'function' && awayHolds_('weekly_trend_review')) {   // Away mode (#246)
+      Logger.log('sendWeeklyTrendReview_: held — away'); return;
+    }
 
     var snapshotDay = parseInt(cfg['memory_snapshot_day'] || '0', 10);
     var today       = new Date();

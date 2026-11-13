@@ -224,7 +224,7 @@ console.log('\nflags: our unbought gifts, Dec 1–25');
     appendRow: x => rows.push(x.slice()),
   };
   const S5 = sandbox({ colorCodeFlags() {} });
-  vm.runInContext(CODE.slice(CODE.indexOf('function appendExactKeyFlags_('), CODE.indexOf('function resolveFlagsWithPrefix_(')), S5);
+  vm.runInContext(CODE.slice(CODE.indexOf('function appendExactKeyFlags_('), CODE.indexOf('function resolveFlagsWithPrefix_(')) + (s => s.slice(s.indexOf('function flagDueCell_('), s.indexOf('function writeFlags(')))(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'Code.js'), 'utf8')), S5);
   S5.sheet = flagSheet; S5.due = d1;
   vm.runInContext('appendExactKeyFlags_(sheet, due, "2026-12-01")', S5);
   vm.runInContext('appendExactKeyFlags_(sheet, due, "2026-12-02")', S5);

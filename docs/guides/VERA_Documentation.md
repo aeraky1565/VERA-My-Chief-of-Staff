@@ -264,7 +264,7 @@ Keys serve as the cross-run dedup anchor. When Claude generates the same concept
 
 ### Escalation — `escalateAgedFlags_()`
 
-Escalation runs at the very start of `nightlyRun()` (Step -1) so the urgency of aged flags is correct before the morning nudge reads them. The `Escalated` column (col K, index 10) stores `'3d'` and `'7d'` as watermarks so each threshold fires exactly once per flag lifetime. Snoozed flags are excluded from escalation while the snooze date is in the future.
+Escalation runs at the very start of `nightlyRun()` (Step -1) so the urgency of aged flags is correct before the morning nudge reads them. The `Escalated` column (col K, index 10) stores `'3d'` and `'7d'` as watermarks so each threshold fires exactly once per flag lifetime. Snoozed flags are excluded from escalation while the snooze date is in the future. Nothing escalates while Away mode is on; a flag's age keeps counting, so anything still open escalates on the first night back. Column L, **Due**, holds a flag's deadline (`yyyy-MM-dd`) when its source knows one: bills (from Claude), contracts, coupons, card perks and travel documents. Away mode uses it.
 
 ### Flag lifecycle
 
@@ -412,11 +412,22 @@ Fast read from the `VERA_STATE_PACING` Script Property. Reads `PACING_MODE_ACTIV
 
 ### `isInVacationMode_()`
 
-Fast read: returns `true` if `VACATION_MODE_ACTIVE === 'true'` in `VERA_STATE_PACING`. Set by `checkVacationMode_()` which runs inside `checkPacing_()` at the start of each nightly run.
+Returns `awayStatus_().on` (`Away.js`): true while Away mode is on, from a trip found by `checkVacationMode_()` (which runs inside `checkPacing_()` at the start of each nightly run) or from the manual switch, and not ended early.
+
+### Away mode (`Away.js`, #246)
+
+**Away mode** (`Away.js`, #246) is on while you're on a trip. VERA turns it on by itself each night when today falls within a trip in the Itinerary tab that isn't Victoria-only. You can also turn it on by hand from Home (✈️ Away mode…), for a trip VERA can't see, and end it early the same way. While it's on:
+- Flags are still written, but nothing escalates.
+- Each notification follows its **While away** setting (System › Notifications): **Send**, **Hold** (saved and counted for the catch-up), or **Send if due** (sent only when its deadline falls before you're back). The defaults: travel messages, ARIA Book now, the system logs and the watchdog send; High flags, bills, contracts and coupons send if due; everything else is held. Config `notif_<key>_while_away` overrides one.
+- The morning email becomes the short **away edition**: today's plan, your flights, and only what got through. A flag gets through when it is High, comes from a source with a deadline (bills, contracts, coupons, card perks, travel documents), and its **Due** date (Flags tab column L) falls before you're back.
+- Home shows a banner with what's held, and the capacity mode for trip days is `busy`.
+- Fitness consistency checks, goal check-ins and pacing escalation are paused, as before.
+
+State lives in `VERA_STATE_PACING`: `AWAY_MANUAL`, `AWAY_UNTIL` and `AWAY_TRIP` for the switch; `AWAY_ENDED_TRIP` when a trip was ended early (cleared when the trip ends); `AWAY_STARTED`; `AWAY_HELD` (`{notification key: count}`). The pure deciders are `awayDecide_`, `awayHoldsDecide_`, `awayFlagGetsThrough_`, `awayHeldSummary_` and `awayEditionHtml_`. Endpoints: `away_status` and `set_notif_while_away` (GET), `away_set` (POST `{ on, until, trip }`).
 
 ### `checkVacationMode_()` — vacation detection logic
 
-Reads the `Itinerary` tab to build a date-range map (`tripKey → { min, max }`). Reads `TripMeta` to build a traveler map (`tripKey → traveler string`). Finds the first active trip where today falls within the date span and the trip is not Victoria-only (a trip is Victoria-only if the traveler string contains `'victoria'` and does not contain `'ahmed'`). Writes `VACATION_MODE_ACTIVE`, `VACATION_MODE_ENDS`, and `VACATION_TRIP_NAME` to Script Properties. Fires a Memory Log event on first detection and on transition back to inactive.
+Reads the `Itinerary` tab to build a date-range map (`tripKey → { min, max }`). Reads `TripMeta` to build a traveler map (`tripKey → traveler string`). Finds the first active trip where today falls within the date span and the trip is not Victoria-only (a trip is Victoria-only if the traveler string contains `'victoria'` and does not contain `'ahmed'`). Writes `VACATION_MODE_ACTIVE`, `VACATION_MODE_ENDS`, and `VACATION_TRIP_NAME` to `VERA_STATE_PACING`; on a trip's first day it records `AWAY_STARTED` and clears `AWAY_HELD` (unless the switch already turned Away mode on). Fires a Memory Log event on first detection and on transition back to inactive.
 
 ### `checkMissRate_()` — the pacing offer loop
 
@@ -811,7 +822,7 @@ done" markers live together in `VERA_ONCE_MARKERS` (`veraOnceGet_`/`veraOnceSet_
 and `VERA_SETTINGS_COPY` is a nightly copy of the settings used only when the Config
 tab can't be read. Each feature's runtime state is one record (`veraStateGet_` /
 `veraStateSet_`, or the `veraStateProps_` adapter): `VERA_STATE_PACING` (pacing and
-vacation mode), `VERA_STATE_PTO_BUFFER`, `VERA_STATE_MAIL`, and
+Away mode), `VERA_STATE_PTO_BUFFER`, `VERA_STATE_MAIL`, and
 `VERA_STATE_CAPACITY_OVERRIDE` apart from `VERA_STATE_CAPACITY_INFERRED`, so a nightly
 write never undoes your override. Caches and histories (`FLIGHT_STATUS_CACHE`,
 `FLIGHT_DAYS`, `EXPLORER_HISTORY`, `WKND_PLAN_HISTORY`) are rows in the hidden
@@ -835,7 +846,7 @@ the lock too.
 - **An id or link that isn't a secret** (a sheet, doc or file id, a Slack channel or user id, the dashboard link, an email address) → Config tab, read with `veraSetting_`. Never in source control either: the repo is public.
 - **Value the user might want to tune** (thresholds, labels, calendar names, feature flags) → Config tab with a sensible default fallback in code.
 - **Value that changes system behaviour** (feature on/off switches, interval days, target counts) → Config tab with a sensible default fallback. The fallback ensures the system works without any Config row being present for that key.
-- **Value that is computed at runtime and needs to survive between executions** (pacing mode active/inactive, vacation mode, AviationStack backoff window) → Script Properties as ephemeral state. These are not secrets but they need to persist across the 6-minute execution boundary.
+- **Value that is computed at runtime and needs to survive between executions** (pacing mode active/inactive, Away mode, AviationStack backoff window) → Script Properties as ephemeral state. These are not secrets but they need to persist across the 6-minute execution boundary.
 
 ### The Config tab's layout (November 2026)
 
@@ -855,7 +866,7 @@ Change only column B. The full list of keys is in the appendix (§22).
 |---|---|---|
 | General | `morning_nudge_time` | Hour the morning briefing goes out |
 | General | `max_flags_per_night` | Most new flags a night |
-| Notifications | `notif_<key>_channel`, `notif_<key>_enabled` | Where each message goes, or off (System › Notifications edits them) |
+| Notifications | `notif_<key>_channel`, `notif_<key>_enabled`, `notif_<key>_while_away` | Where each message goes, or off, and what it does while you're away: send, hold or due (System › Notifications edits them) |
 | Calendars | `gap_calendars`, `skip_calendars` | Calendars checked for free time; calendars ignored |
 | Travel | `home_airports`, `pretrip_briefing_hours` | Where you fly from; how early the pre-trip email goes |
 | Travel | `victoria_email` | Victoria's address for her Travel Day email |
@@ -911,7 +922,7 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 - **Two dashboards:** `docs/index.html` (built from `docs/app.js` by `docs/build.js`, React inlined) and `docs/dashboard-lite.html` (Victoria's, compiled in the browser). Shared blocks are copied byte-for-byte between them and tests enforce it.
 - **Tile navigation:** each area groups its sub-tabs into tiles (`VN_GROUPS`, `FIN_GROUPS`, `HF_GROUPS`, `LF_GROUPS`, `SYS_SUBS`). The lite dashboard has eight tabs: Today, Chat, Shopping, Home, Travel, Money, Family, Projects.
-- **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel` and `notif_<key>_enabled` override it, and System › Notifications edits them.
+- **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel`, `notif_<key>_enabled` and `notif_<key>_while_away` override it, and System › Notifications edits them.
 
 
 ---
@@ -1201,7 +1212,7 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | AVIATIONSTACK_KEY | Optional | FlightStatus.js | AviationStack API key for flight status monitoring |
 | WEATHER_API_KEY | Optional | Weather.js, WebApp.js | OpenWeather API key for weather ticker and destination forecasts |
 | VERA_SEARCH_API_KEY | Optional | Chat.js | Serper.dev or Tavily API key for web search tool in chat |
-| VERA_STATE_PACING | Runtime | Pacing.js | Pacing and vacation mode, one JSON record (written by VERA) |
+| VERA_STATE_PACING | Runtime | Pacing.js, Away.js | Pacing and Away mode, one JSON record (written by VERA) |
 | VERA_STATE_PTO_BUFFER / VERA_STATE_MAIL | Runtime | PTO.js / MailCounter.js | The buffer-day suggestion; the mail counter |
 | VERA_STATE_CAPACITY_OVERRIDE / _INFERRED | Runtime | Chat.js, Slack.js / Code.js | Your capacity override; the nightly guess |
 | (VERA State tab) | Runtime | FlightStatus.js, Reminders.js, WeekendPlanner.js | Flight status cache, flight-days list, discovery and weekend histories: rows of the hidden tab, not properties |
@@ -1352,7 +1363,9 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `get_experiments` | — | Personal experiments + check-ins |
 | `get_resources` | — | Reference links and docs |
 | `get_wish_list` | — | Aspirational wish list |
-| `get_pacing_status` | — | Current pacing + vacation mode status |
+| `get_pacing_status` | — | Current pacing + Away mode status |
+| `away_status` | — | Away mode, and what it has held |
+| `set_notif_while_away` | `key`, `value` | A notification's While away setting (send / hold / due) |
 | `get_visa_requirements` | origin, destination | Visa requirements for a traveler profile |
 | `dest_weather` | location | Weather forecast for destination |
 | `tx_aliases / set_tx_alias` | params | Transaction merchant alias management |

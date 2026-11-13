@@ -201,7 +201,7 @@ function tpRemindersDue_(items, trips, today, perks, cfg) {
     var who = i.person + '’s ', what = tpKindLabel_(i.section, i.kind);
     if (i.kind === 'passport' || i.kind === 'child_passport') {
       if (i.expiry <= horizon)
-        out.push({ key: 'tp_passport_' + i.id + '_' + i.expiry, urgency: tpDays_(today, i.expiry) <= 120 ? 'High' : 'Medium',
+        out.push({ key: 'tp_passport_' + i.id + '_' + i.expiry, due: i.expiry, urgency: tpDays_(today, i.expiry) <= 120 ? 'High' : 'Medium',
           flag: who + (i.country ? i.country + ' ' : '') + 'passport runs out ' + i.expiry,
           reason: 'Renew it now: renewals can take months, and many countries want 6 months left. Then update it in Travel › Travelers › Profiles.' });
       // A trip abroad that this passport won't have 6 months left after.
@@ -209,7 +209,7 @@ function tpRemindersDue_(items, trips, today, perks, cfg) {
         var end = t.endDate || t.startDate;
         if (!end || t.startDate > horizon || t.startDate < today) return;
         if (tpAddMonths_(end, 6) <= i.expiry) return;
-        out.push({ key: 'tp_passport_trip_' + i.id + '_' + i.expiry + '_' + t.startDate, urgency: 'High',
+        out.push({ key: 'tp_passport_trip_' + i.id + '_' + i.expiry + '_' + t.startDate, due: t.startDate, urgency: 'High',
           flag: who + 'passport is short for ' + t.label,
           reason: 'It runs out ' + i.expiry + ', under 6 months after you get back from ' + t.country + '. Renew it before the trip.' });
       });
@@ -219,7 +219,7 @@ function tpRemindersDue_(items, trips, today, perks, cfg) {
         if (String(t.country).toLowerCase() !== String(i.country).toLowerCase()) return;
         var end = t.endDate || t.startDate;
         if (t.startDate < today || i.expiry >= end) return;
-        out.push({ key: 'tp_held_' + i.id + '_' + i.expiry + '_' + t.startDate, urgency: 'High',
+        out.push({ key: 'tp_held_' + i.id + '_' + i.expiry + '_' + t.startDate, due: t.startDate, urgency: 'High',
           flag: who + what + ' for ' + i.country + ' runs out before ' + t.label,
           reason: 'It runs out ' + i.expiry + '; the trip ends ' + end + '. Apply for a new one before you go.' });
       });
@@ -231,7 +231,7 @@ function tpRemindersDue_(items, trips, today, perks, cfg) {
       var payLine = pay ? (pay.availableFrom && pay.availableFrom > today
         ? ' The ' + pay.card + ' credit is available again from ' + pay.availableFrom + '.'
         : ' Pay with the ' + pay.card + ': its credit covers it.') : '';
-      out.push({ key: 'tp_trusted_' + i.id + '_' + i.expiry, urgency: d <= 60 ? 'High' : 'Medium',
+      out.push({ key: 'tp_trusted_' + i.id + '_' + i.expiry, due: i.expiry, urgency: d <= 60 ? 'High' : 'Medium',
         flag: who + what + ' runs out ' + i.expiry,
         reason: 'Renew it up to a year ahead; you keep it while the renewal is pending.' + payLine });
     }
@@ -386,7 +386,7 @@ function tpNightly_() {
   try { perks = tpPerks_(); } catch (e) {}
   var due = tpRemindersDue_(items, trips, tpToday_(), perks, getConfigValues());
   if (!due.length) return '0 reminders';
-  writeFlags(due.map(function(x) { return { source: 'Travel', flag: x.flag, reason: x.reason, urgency: x.urgency, key: x.key }; }));
+  writeFlags(due.map(function(x) { return { source: 'Travel', flag: x.flag, reason: x.reason, urgency: x.urgency, key: x.key, due: x.due }; }));   // due: #246
   var sent = 0;
   due.forEach(function(x) {
     if (wasRecentlySent_(x.key, 60 * 24 * 365)) return;

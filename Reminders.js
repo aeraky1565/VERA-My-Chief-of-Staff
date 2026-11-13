@@ -280,6 +280,10 @@ function checkEveningMobility_(now, hour, cfg) {
     Logger.log('checkEveningMobility_: skipped — gym_checkin disabled');
     return;
   }
+  if (typeof awayHolds_ === 'function' && awayHolds_('gym_checkin')) {   // Away mode (#246)
+    Logger.log('checkEveningMobility_: held — away');
+    return;
+  }
 
   // Evening check-in goes to #vera-chat (bidirectional) with Yes/No buttons when Slack is configured
   if (isSlackConfigured_()) {
@@ -389,11 +393,13 @@ function checkBillsDue_(now, hour, cfg) {
     var amtStr = money ? ' (' + money + ')' : '';
     var dayStr = daysUntilDue === 0 ? 'DUE TODAY' : 'due in ' + daysUntilDue + ' day' + (daysUntilDue === 1 ? '' : 's');
 
+    var dueIso = Utilities.formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntilDue), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     sendNudge_(
       ruleKey,
       'Bill reminder: ' + billName,
       '💰 Bill reminder: ' + billName + amtStr + ' is ' + dayStr + '.\n\nMark it paid in VERA once done.',
-      'bill_due'
+      'bill_due',
+      dueIso   // while away, it comes through only if due before you're back (#246)
     );
   });
 }
@@ -863,9 +869,15 @@ function writeExplorerHistory_(discoveryText) {
  * @param {string} message  - Message body
  * @param {string} [notifKey] - NOTIF_REGISTRY key for channel routing (Issue #188)
  */
-function sendNudge_(ruleKey, subject, message, notifKey) {
+function sendNudge_(ruleKey, subject, message, notifKey, due) {
   if (notifKey && !isNotifEnabled_(notifKey)) {
     Logger.log('sendNudge_ [skipped \u2014 disabled]: ' + ruleKey);
+    return;
+  }
+  // Away mode (Away.js, #246): held, unless this notification sends while away (or
+  // is "due" and its deadline falls before you're back). Counted for the catch-up.
+  if (notifKey && typeof awayHolds_ === 'function' && awayHolds_(notifKey, due)) {
+    Logger.log('sendNudge_ [held \u2014 away]: ' + ruleKey);
     return;
   }
   var ch = notifKey ? getNotifChannel_(notifKey) : (isSlackConfigured_() ? 'vera-notifications' : 'email');

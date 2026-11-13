@@ -587,7 +587,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Flag any bill where dueDay falls within 7 days of today\'s date AND it is marked UNPAID this month.\n' +
     '  Urgency: ≤2 days = High, ≤5 days = Medium, ≤7 days = Low.\n' +
     '- Do NOT flag bills marked PAID this month.\n' +
-    '- Use source "Finance". Key format: bill_due_[bill_name_snake].\n\n' +
+    '- Use source "Finance". Key format: bill_due_[bill_name_snake]. Add "due": the bill\'s due date as YYYY-MM-DD.\n\n' +
 
     'HOME MAINTENANCE INTELLIGENCE RULES:\n' +
     '- The Home Maintenance section lists household items with scheduled service intervals.\n' +
@@ -711,7 +711,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     'Return ONLY a raw JSON array. ' +
     'No markdown. No code fences. No explanation before or after. Just the JSON array itself, starting with [ and ending with ].\n\n' +
 
-    'Each object must have exactly these five fields:\n' +
+    'Each object must have these five fields (plus "due" where noted):\n' +
     '  "source"  — one of: "Calendar", "Tasks", "Finance", "Summaries", "General"\n' +
     '  "flag"    — short action-oriented title, max 10 words\n' +
     '  "reason"  — specific explanation of why this matters right now, 1-2 sentences\n' +
@@ -722,7 +722,8 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '    • Keep it IDENTICAL night-to-night for the same ongoing issue so the deduplication system blocks it\n' +
     '    • If an issue is genuinely new or a fresh recurrence, append a short qualifier: "verizon_payment_due_q2" or "dentist_followup"\n' +
     '    • Good examples: "verizon_payment_due", "anniversary_dinner", "ramadan_iftar", "sti_payout", "apartment_cleaning"\n' +
-    '    • Bad examples: "verizon_bill_march_13", "upcoming_anniversary_dinner_march_9", "sti_payout_march_11"\n\n' +
+    '    • Bad examples: "verizon_bill_march_13", "upcoming_anniversary_dinner_march_9", "sti_payout_march_11"\n' +
+    '  "due"     — OPTIONAL: only for a flag with a real deadline (a bill\'s due date), as YYYY-MM-DD. Leave it out otherwise.\n\n' +
 
     'Example of the expected format (do not include this in your response):\n' +
     '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High","key":"anniversary_dinner"}]\n\n' +
@@ -869,6 +870,7 @@ function parseFlags(rawContent) {
         reason:  String(f.reason || '').trim(),
         urgency: urgency,
         key:     String(f.key    || '').toLowerCase().replace(/[^a-z0-9_]/g, '').trim(),
+        due:     /^\d{4}-\d{2}-\d{2}$/.test(String(f.due || '').trim()) ? String(f.due).trim() : '',   // #246
       };
     })
     .slice(0, CONFIG.MAX_FLAGS); // Enforce max flag cap

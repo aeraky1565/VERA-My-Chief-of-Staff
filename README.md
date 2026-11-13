@@ -179,7 +179,7 @@ Runs nightly as Step 0q. Assembles a lightweight cross-domain snapshot and evalu
 |---|---------|-----------------|
 | 1 | **High-Stress Compound** | Overdue tasks + high unacknowledged flags + no gym this week |
 | 2 | **Goal-Behaviour Drift** | Active goals + gym sessions below target + task backlog growing |
-| 3 | **Social/Calendar Gap** | Empty week ahead (not in pacing/vacation mode) |
+| 3 | **Social/Calendar Gap** | Empty week ahead (not in pacing or Away mode) |
 | 4 | **Overload + Pacing Mismatch** | High intensity week + pacing mode not active |
 | 5 | **Meal Chaos** | Takeout ratio >70% in last 7 days + overdue tasks |
 | 6 | **Backlog Accumulation** | Busy calendar + task neglect pile growing |
@@ -193,7 +193,12 @@ Tracks flag engagement over time in the `SignalLearning` tab. Each flag key patt
 
 ### Pacing & Capacity Mode (`Pacing.js`)
 
-**Vacation mode** is detected automatically each night: if today falls within an active trip in the Itinerary tab (where the traveller is not exclusively Victoria), `VACATION_MODE_ACTIVE` is set to `true` (in the `VERA_STATE_PACING` Script Property). While active, fitness consistency checks, pacing escalation, and flag escalation are all suppressed.
+**Away mode** (`Away.js`, #246) is on while you're on a trip. VERA turns it on by itself each night when today falls within a trip in the Itinerary tab that isn't Victoria-only. You can also turn it on by hand from Home (✈️ Away mode…), for a trip VERA can't see, and end it early the same way. While it's on:
+- Flags are still written, but nothing escalates.
+- Each notification follows its **While away** setting (System › Notifications): **Send**, **Hold** (saved and counted for the catch-up), or **Send if due** (sent only when its deadline falls before you're back). The defaults: travel messages, ARIA Book now, the system logs and the watchdog send; High flags, bills, contracts and coupons send if due; everything else is held. Config `notif_<key>_while_away` overrides one.
+- The morning email becomes the short **away edition**: today's plan, your flights, and only what got through. A flag gets through when it is High, comes from a source with a deadline (bills, contracts, coupons, card perks, travel documents), and its **Due** date (Flags tab column L) falls before you're back.
+- Home shows a banner with what's held, and the capacity mode for trip days is `busy`.
+- Fitness consistency checks, goal check-ins and pacing escalation are paused, as before.
 
 **Pacing mode** is activated by the miss-rate checker. If 2+ domains show missed targets (gym sessions, overdue tasks, unacknowledged flags, overdue chores) within a 48-hour window, VERA fires a Medium deferral-offer flag. If the offer is not responded to within another 48 hours and the pattern persists, VERA auto-activates pacing mode for 7 days: defers upcoming non-recurring tasks to next Monday and pauses routine Anticipator reminders.
 
@@ -2095,7 +2100,7 @@ Add these rows to the `Config` tab (`Setting` | `Value`). All keys are read via 
 | `pantry_enabled` | `false` | Pantry | Enable purchase history + auto-restock predictions |
 | `pantry_restock_days_ahead` | `7` | Pantry | Days ahead to predict and auto-add items to shopping list |
 | `pantry_ema_alpha` | `0.3` | Pantry | EMA learning rate (higher = adapts faster to recent habits) |
-| `pacing_enabled` | `true` | Pacing | Enable pacing/vacation mode detection |
+| `pacing_enabled` | `true` | Pacing | Enable pacing and Away mode detection |
 | `pacing_flag_threshold` | `3` | Pacing | Number of unacknowledged Med/High flags to trigger pacing check |
 | `pacing_mode_days` | `7` | Pacing | Duration of auto-activated pacing mode (days) |
 | `reminders_enabled` | `true` | Reminders | Master switch for Anticipator rules |
@@ -2240,7 +2245,7 @@ Config tab can't be read at all.
 > the `googlecalendar-advanced` health source, once per scan, so it reaches the morning
 > banner instead of only the execution log. `tbCalendarAccess()` prints the verdict
 > directly, alongside what a cold scan costs against a warm one.
-| `VERA_STATE_PACING` | Auto | Pacing.js | One record for pacing and vacation mode: `VACATION_MODE_ACTIVE`/`_ENDS`, `VACATION_TRIP_NAME`, `PACING_MODE_ACTIVE`/`_ENDS`, `PACING_FIRST_DETECTED`, `PACING_OFFER_FLAG_KEY` |
+| `VERA_STATE_PACING` | Auto | Pacing.js | One record for pacing and Away mode: `VACATION_MODE_ACTIVE`/`_ENDS`, `VACATION_TRIP_NAME`, `PACING_MODE_ACTIVE`/`_ENDS`, `PACING_FIRST_DETECTED`, `PACING_OFFER_FLAG_KEY`, and the Away switch and counts (`AWAY_MANUAL`, `AWAY_UNTIL`, `AWAY_TRIP`, `AWAY_ENDED_TRIP`, `AWAY_STARTED`, `AWAY_HELD`) |
 | `VERA_STATE_PTO_BUFFER` | Auto | PTO.js | The buffer-day suggestion: event id, its date, declined-until |
 | `VERA_STATE_MAIL` | Auto | MailCounter.js | The mail counter: pieces, packages, last scan, last reset |
 | `VERA_STATE_CAPACITY_OVERRIDE` / `VERA_STATE_CAPACITY_INFERRED` | Auto | Chat.js, Slack.js / Code.js | Your busy/light override, and the nightly run's guess, kept apart so one never undoes the other |
@@ -2432,7 +2437,9 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `get_wish_list` | — | Personal wish list |
 | `add_wish_item` / `update_wish_item` / `mark_wish_purchased` / `delete_wish_item` | (item fields) | Manage wish list |
 | `add_bucket_activity` / `toggle_bucket_activity` / `delete_bucket_activity` | `bucketId`, `activity` | Manage bucket list activities |
-| `get_pacing_status` | — | Current pacing/vacation mode status |
+| `get_pacing_status` | — | Current pacing / Away mode status |
+| `away_status` | — | Away mode, and what it has held (Home banner) |
+| `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
 | `health_appointments` | — | All tracked health appointments with next-due dates |
 | `add_health_appointment` / `update_health_appointment` / `delete_health_appointment` | (appointment fields) | Manage health appointments |
@@ -2478,7 +2485,8 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Projects.js` | Projects CRUD; the derived model and health verdict (`decorateProject_`, `projectHealth_`); `setProjectTaskStatus_()` keeps `Completed On` in lockstep with status; `setProjectFields_()`/`reorderProjectTasks_()`; `PROJECT_PLAN_GUIDANCE_` — the single copy of how VERA plans a project, shared by the chat prompt and the drafting endpoint; `getProjectsSummaryForContext_()`; `ensureProjectsSchema_()` widens an existing tab to the current `PROJECT_HEADERS` |
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
-| `Pacing.js` | Vacation mode, pacing mode, miss-rate checker, capacity mode |
+| `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
+| `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
 | `WeekendPlanner.js` | Weekend Decision Memo — Wednesday 8am delivery; `testWeekendMemo()` dry-runs it on demand |
 | `PreTripBriefing.js` | 48-hour pre-trip briefing flag generation |

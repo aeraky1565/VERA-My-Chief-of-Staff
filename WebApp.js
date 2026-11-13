@@ -504,6 +504,8 @@ function doGet(e) {
       case 'get_notification_map': return jsonOut_(webGetNotificationMap_());
       case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
       case 'set_notif_channel':    return jsonOut_(webSetNotifChannel_(e));
+      case 'set_notif_while_away': return jsonOut_(webSetNotifWhileAway_(e));   // Away mode (#246)
+      case 'away_status':          return jsonOut_(webAwayStatus_());            // Away mode (#246)
       // Config Editor (Issue #189)
       case 'get_config_rows':  return jsonOut_(webGetConfigRows_());
       case 'test_travel_trips':  return jsonOut_(webTestTravelTrips_());
@@ -730,6 +732,7 @@ function doPost(e) {
       case 'aria_request_withdraw':      return jsonOut_(webWithdrawAriaRequest_(body));
       case 'aria_request_watch':         return jsonOut_(webWatchAriaRequest_(body));
       case 'aria_request_stay':          return jsonOut_(webStayAriaRequest_(body));
+      case 'away_set':                   return jsonOut_(webAwaySet_(body));   // Away mode (#246)
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));
@@ -11897,10 +11900,41 @@ function webGetNotificationMap_() {
     return {
       key: n.key, label: n.label, emoji: n.emoji, category: n.category,
       channel: channelOverride || n.channel, description: n.description,
-      enabled: enabled, locked: n.locked, fixedChannel: !!n.fixedChannel
+      enabled: enabled, locked: n.locked, fixedChannel: !!n.fixedChannel,
+      whileAway: notifWhileAway_(n.key)   // Away mode (#246): send | hold | due
     };
   });
   return { ok: true, notifications: notifications };
+}
+
+/** GET set_notif_while_away?key=…&value=send|hold|due — what a notification does while you're away (#246). */
+function webSetNotifWhileAway_(e) {
+  var p = (e && e.parameter) || {};
+  var key = String(p.key || '').trim(), value = String(p.value || '').trim().toLowerCase();
+  if (!key) return { ok: false, error: 'key required' };
+  if (AWAY_POLICIES_.indexOf(value) === -1) return { ok: false, error: 'value must be send, hold or due' };
+  var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
+  if (!entry) return { ok: false, error: 'unknown key' };
+  if (entry.locked) return { ok: false, error: 'locked' };
+  setConfigRow_('notif_' + key + '_while_away', value);
+  return { ok: true, key: key, whileAway: value };
+}
+
+/** GET away_status → Away mode, and what it has held (Home banner, #246). */
+function webAwayStatus_() {
+  try { return Object.assign({ ok: true }, awaySummary_()); }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
+/** POST away_set { on, until, trip } — the manual switch (#246). */
+function webAwaySet_(body) {
+  var b = body || {};
+  var on = b.on === true || b.on === 'true';
+  var until = String(b.until || '').trim();
+  if (on && until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) return { ok: false, error: 'until must be YYYY-MM-DD' };
+  if (on && until && until < awayToday_()) return { ok: false, error: 'that date has already passed' };
+  awaySet_(on, until, b.trip);
+  return Object.assign({ ok: true }, awaySummary_());
 }
 
 function webSetNotifEnabled_(e) {
