@@ -25,7 +25,7 @@ const varSrc = (src, name) => { const a = src.indexOf('var ' + name + '='); retu
 
 console.log('\nwhere it lives');
 check('System › Checks › Trip IDs, after Agent health', /\{id:'agent_health',label:'🤖 Agent health'\},\{id:'trip_ids',label:'🧳 Trip IDs'\}/.test(APP) && /cur==='trip_ids'&&h\(SysTripIds,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','trip_ids'\]/.test(APP) && /items:\['test','api_health','agent_health','trip_ids'\]/.test(LITE));
+check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','trip_ids'(,'script_props')?\]/.test(APP) && /items:\['test','api_health','agent_health','trip_ids'(,'script_props')?\]/.test(LITE));
 check('index.html is rebuilt with it', IDX.includes('function SysTripIds('));
 check('it only reads: the one call is trip_id_check', (fnSrc(APP, 'SysTripIds').match(/action:'[a-z_]+'/g) || []).join() === "action:'trip_id_check'");
 

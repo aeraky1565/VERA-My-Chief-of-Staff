@@ -1359,6 +1359,9 @@ function nightlyRun() {
     // The copy of the Config-tab settings used only if the Config tab can't be read
     // (Settings.js); written only when a value changed.
     nightlyStep_(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_);
+    // The Access tab, from the dashboard's last saved tab list (People.js, #218), so a
+    // new person or tab shows up without anyone opening the dashboard.
+    nightlyStep_(ctx, 'accessNightlySync_', accessNightlySync_);
     nightlyStep_(ctx, 'sendWeeklyTrendReview_', sendWeeklyTrendReview_);
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)

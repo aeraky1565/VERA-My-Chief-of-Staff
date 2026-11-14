@@ -20,14 +20,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof SystemTab === 'function', null, { timeout: 15000 }).catch(() => {});
     await page.evaluate(() => {
-      window.__posts = [];
+      window.__posts = []; window.__access = { rows: 74, listSaved: true };
       window.__people = [{ name: 'Sam', owner: true, view: 'full', codes: 0, lastSeen: new Date().toISOString(), visible: 74, total: 74 },
                          { name: 'Robin', owner: false, view: 'lite', codes: 1, lastSeen: '', visible: 31, total: 74 }];
       window.fetch = (url, opt) => {
         const u = new URL(url); let a = u.searchParams.get('action'), body = null;
         if (opt && opt.method === 'POST') { body = JSON.parse(opt.body); a = body.action; window.__posts.push(body); }
         let r = { ok: true };
-        if (a === 'people_list') r = { ok: true, people: window.__people };
+        if (a === 'people_list') r = { ok: true, people: window.__people, access: window.__access };
+        if (a === 'access_sync') { window.__access = { rows: 74, listSaved: true }; r = { ok: true, addedRows: 74, addedCols: [] }; }
         if (a === 'people_add') { window.__people.push({ name: body.name, owner: false, view: body.view, codes: 1, lastSeen: '', visible: 74, total: 74 }); r = { ok: true, name: body.name, code: 'TEST-CODE-ABCD-EFGH' }; }
         if (a === 'people_code') r = { ok: true, name: body.name, code: 'NEXT-CODE-ABCD-EFGH' };
         if (a === 'people_signout') { window.__people.forEach(p => { if (p.name === body.name) p.codes = 0; }); r = { ok: true, signedOut: 1 }; }
@@ -63,8 +64,28 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     check(L + ': sign out everywhere asks first, then signs Robin out', JSON.stringify(last) === JSON.stringify({ action: 'people_signout', name: 'Robin' }) && /0 sign-in codes/.test((await page.$$eval('#pp .pp-person', ns => ns[1].innerText.replace(/\s+/g, ' ')))));
     await page.selectOption('#pp select[aria-label="Kit\'s view"]', 'full'); await wait(200);
     check(L + ': the view switch', JSON.stringify((await page.evaluate(() => window.__posts)).slice(-1)[0]) === JSON.stringify({ action: 'people_view', name: 'Kit', view: 'full' }));
+    const first = (await page.evaluate(() => window.__posts))[0] || {};
+    check(L + ': opening the panel brings the Access tab up to date first, with both dashboards’ tabs', first.action === 'access_sync' && first.catalog.some(c => /^full:/.test(c.id)) && first.catalog.some(c => /^lite:/.test(c.id)));
+    check(L + ': a filled Access tab shows no warning', (await page.$('#pp .pp-access-empty')) === null);
     const sw = await page.evaluate(() => document.documentElement.scrollWidth);
     check(L + ': no sideways scroll', sw <= width, sw);
+    // An empty Access tab: the panel says so and fills it.
+    await page.evaluate(() => {
+      window.__posts = []; window.__access = { rows: 0, listSaved: false };
+      const real = window.fetch;
+      window.fetch = (url, opt) => (opt && opt.method === 'POST' && JSON.parse(opt.body).action === 'access_sync' && window.__holdSync)
+        ? (window.__posts.push(JSON.parse(opt.body)), Promise.resolve({ json: () => Promise.resolve({ ok: true, addedRows: 0, addedCols: [] }) })) : real(url, opt);
+      window.__holdSync = true;
+      const host = document.getElementById('pp'); const again = document.createElement('div'); again.id = 'pp2'; host.replaceWith(again); again.id = 'pp';
+      ReactDOM.createRoot(again).render(React.createElement(SysPeople, { apiUrl: 'https://vera.test/exec', apiToken: 't' }));
+    });
+    await wait(400);
+    check(L + ': an empty Access tab: the panel says what that means, with “Fill it now”', /The Access tab is empty, so everyone sees every tab/.test(await txt('.pp-access-empty')) && /Fill it now/.test(await txt('.pp-access-empty')), await txt('.pp-access-empty'));
+    await page.evaluate(() => { window.__holdSync = false; });
+    await page.click('#pp .pp-access-empty button'); await wait(400);
+    check(L + ': “Fill it now” sends the tab list, and the warning goes once it’s filled', (await page.evaluate(() => window.__posts)).slice(-1)[0].action === 'access_sync' && (await page.$('#pp .pp-access-empty')) === null);
+    const sw2 = await page.evaluate(() => document.documentElement.scrollWidth);
+    check(L + ': …no sideways scroll', sw2 <= width, sw2);
     check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }

@@ -97,7 +97,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
-| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Trip IDs) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Trip IDs, Script Properties) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
@@ -2215,7 +2215,13 @@ deletes the property. A Config row that already holds a different value is left 
 and so is its property (the Config row wins). It also moves the one-time markers into
 `VERA_ONCE_MARKERS`, each feature's state into its `VERA_STATE_*` record, and the caches
 into the hidden VERA State tab, reading each back before deleting the old property. It
-logs names and counts, never values, and is safe to run again.
+logs names and counts, never values, and is safe to run again. **System › Checks ›
+Script Properties** has a **Move settings now** button that runs the same move without the
+editor, and lists every property by name (never its value) with what it is and where it
+belongs; **Remove the old copies** there deletes only copies already in their new home.
+A setup placeholder (`PASTE_…`, `TODO`, `CHANGE_ME`) counts as blank: the real property
+behind it is used, the move writes it over the placeholder, and a placeholder is never
+copied in.
 A nightly step keeps a copy of these settings in `VERA_SETTINGS_COPY`, used only if the
 Config tab can't be read at all.
 
@@ -2472,6 +2478,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
+| `script_props` | — | Owner only: every Script Property by name (never a value), grouped, each with what it is and where it belongs |
 | `pto_strategy` | `year` (optional) | The PTO plan for this year or next: picks, budget, the accrual check, Use it before Dec 31, strategies and settings |
 | `pto_strategy_settings` (POST) | `preset`, `overrides`, `reset` | Save the strategy and Advanced settings (Config `pto_strategy`), then re-plan |
 | `pto_plan_accept` / `pto_plan_skip` / `pto_plan_remove` (POST) | `id`, `year` | Accept a break (VERA calendar + PTO Plan tab), skip or bring it back, take it off again |
@@ -2525,7 +2532,8 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
-| `People.js` | Sign-in codes per person (fingerprints only), the Access tab, whoami, the owner's People & access endpoints, Slack's verification token |
+| `People.js` | Sign-in codes per person (fingerprints only), the Access tab (filled from the dashboard's saved tab list, also nightly), whoami, the owner's People & access endpoints, Slack's verification token |
+| `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |

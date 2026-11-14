@@ -151,6 +151,7 @@ function doGet(e) {
       case 'people_list':           return jsonOut_(webPeopleList_());      // People.js (#218), owner only
       case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'trip_id_check':         return jsonOut_(webTripIdCheck_());   // TripIds.js (#239): read only
+      case 'script_props':          return jsonOut_(webScriptProps_());   // ScriptProps.js: names only, owner
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -611,6 +612,9 @@ function doPost(e) {
       case 'people_signout':             return jsonOut_(webPeopleSignOut_(body));
       case 'people_view':                return jsonOut_(webPeopleSetView_(body));
       case 'access_sync':                return jsonOut_(webAccessSync_(body));
+      // System › Checks › Script Properties (ScriptProps.js): owner only, checked inside.
+      case 'settings_move':              return jsonOut_(webSettingsMove_());
+      case 'script_props_clean':         return jsonOut_(webScriptPropsClean_());
 
       // Projects — POST because the context is free-form prose, which a query
       // string mangles. These handlers read `e.parameter` when present and the

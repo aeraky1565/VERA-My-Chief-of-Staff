@@ -226,7 +226,7 @@ function webPeopleList_() {
   return { ok: true, people: d.people.map(function(p) {
     var c = accessCounts_(v, p.name);
     return { name: p.name, owner: !!p.owner, view: p.view === 'lite' ? 'lite' : 'full', codes: (p.hashes || []).length, lastSeen: p.lastSeen || '', visible: c.visible, total: c.total };
-  }) };
+  }), access: { rows: accessCounts_(v, '').total, listSaved: accessCatalogRead_().length > 0 } };
 }
 
 /** POST people_add { name, view } (owner) → their first sign-in code, shown once. */
@@ -284,15 +284,49 @@ function webPeopleSetView_(body) {
   });
 }
 
+// The dashboard's list of tabs, kept in the hidden VERA State tab so the nightly run
+// can fill the Access tab without anyone opening the dashboard.
+var ACCESS_CATALOG_KEY_ = 'ACCESS_CATALOG';
+
+/** Pure: only well-formed catalog entries, at most 400. */
+function accessCleanCatalog_(list) {
+  return (list || []).filter(function(c) { return c && /^(full|lite):[a-z_]+(\/[a-z_]+)?$/.test(String(c.id || '')); })
+    .slice(0, 400).map(function(c) { return { id: String(c.id), area: String(c.area || '').slice(0, 60), tab: String(c.tab || '').slice(0, 80) }; });
+}
+
+function accessCatalogRead_() {
+  try { var v = veraStoreGet_(ACCESS_CATALOG_KEY_); return v ? accessCleanCatalog_(JSON.parse(v)) : []; } catch (e) { return []; }
+}
+
+/** Brings the Access tab up to date with a catalog, under the lock. Logs a write that fails. */
+function accessSyncWith_(cat, source) {
+  return veraLocked_(function() {
+    try {
+      var plan = accessSyncPlan_(accessValues_(), cat, accessNames_(peopleWithOwner_()));
+      if (plan.addedRows || plan.addedCols.length || !accessSheet_(false)) accessWrite_(plan);
+      return { ok: true, addedRows: plan.addedRows, addedCols: plan.addedCols };
+    } catch (e) {
+      try { veraLog_('accessSync', 'System', 'Warning', 'Access tab couldn’t be written (' + source + '): ' + e.message, 0); } catch (x) {}
+      return { ok: false, error: 'The Access tab couldn’t be written: ' + e.message };
+    }
+  });
+}
+
 /** POST access_sync { catalog: [{id, area, tab}] } (owner): a row for every tab the dashboard has. */
 function webAccessSync_(body) {
   var no = peopleOwnerOnly_(); if (no) return no;
-  var cat = ((body || {}).catalog || []).filter(function(c) { return c && /^(full|lite):[a-z_]+(\/[a-z_]+)?$/.test(String(c.id || '')); }).slice(0, 400);
-  return veraLocked_(function() {
-    var plan = accessSyncPlan_(accessValues_(), cat, accessNames_(peopleWithOwner_()));
-    if (plan.addedRows || plan.addedCols.length || !accessSheet_(false)) accessWrite_(plan);
-    return { ok: true, addedRows: plan.addedRows, addedCols: plan.addedCols };
-  });
+  var cat = accessCleanCatalog_((body || {}).catalog);
+  if (cat.length) {
+    try { if (JSON.stringify(cat) !== JSON.stringify(accessCatalogRead_())) veraStoreSet_(ACCESS_CATALOG_KEY_, JSON.stringify(cat)); } catch (e) {}
+  }
+  return accessSyncWith_(cat, 'dashboard');
+}
+
+/** Nightly: fills the Access tab from the last saved catalog (a new person or tab shows up). */
+function accessNightlySync_() {
+  var cat = accessCatalogRead_();
+  if (!cat.length) return { skipped: 'no tab list saved yet: open the full dashboard once' };
+  return accessSyncWith_(cat, 'nightly');
 }
 
 // ---- Slack's own posts (#218: doPost had no check) -------------------------------------

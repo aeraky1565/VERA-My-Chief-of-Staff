@@ -61,20 +61,31 @@ function veraSettingRow_(key) {
 }
 
 /**
+ * Pure: a value left as a setup placeholder ("PASTE_VICTORIA_USER_ID", "TODO",
+ * "CHANGE_ME") rather than a real one. Placeholders count as blank everywhere.
+ */
+function veraIsPlaceholder_(v) {
+  var t = String(v == null ? '' : v).trim();
+  return /^PASTE_/i.test(t) || /^(TODO|TBD|CHANGE_?ME)$/i.test(t);
+}
+function veraReal_(v) { var t = String(v == null ? '' : v).trim(); return veraIsPlaceholder_(t) ? '' : t; }
+
+/**
  * A setting: the Config row first, then the old Script Property, then (only when
- * the Config tab couldn't be read at all) the nightly copy. → trimmed string or ''.
+ * the Config tab couldn't be read at all) the nightly copy. A placeholder counts as
+ * blank, so a real value behind it is used. → trimmed string or ''.
  */
 function veraSetting_(key) {
   var k = String(key || ''), cfg = null, v = '';
   try { cfg = getConfigValues() || {}; } catch (e) { cfg = null; }
-  if (cfg) v = String(cfg[veraSettingRow_(k)] == null ? '' : cfg[veraSettingRow_(k)]).trim();
+  if (cfg) v = veraReal_(cfg[veraSettingRow_(k)]);
   if (v) return v;
   var props;
   try { props = PropertiesService.getScriptProperties(); } catch (e) { return ''; }
-  try { v = String(props.getProperty(k) || '').trim(); } catch (e) { v = ''; }
+  try { v = veraReal_(props.getProperty(k)); } catch (e) { v = ''; }
   if (v) return v;
   if (cfg && Object.keys(cfg).length) return '';
-  try { v = String((JSON.parse(props.getProperty(VERA_SETTINGS_COPY_PROP_) || '{}') || {})[k] || '').trim(); } catch (e) { v = ''; }
+  try { v = veraReal_((JSON.parse(props.getProperty(VERA_SETTINGS_COPY_PROP_) || '{}') || {})[k]); } catch (e) { v = ''; }
   return v;
 }
 
@@ -108,8 +119,8 @@ function veraSettingsCopyRefresh_() {
   if (!Object.keys(cfg).length) return { written: false, reason: 'config unreadable' };
   var props = PropertiesService.getScriptProperties(), copy = {};
   VERA_SETTINGS_.forEach(function(k) {
-    var v = String(cfg[veraSettingRow_(k)] == null ? '' : cfg[veraSettingRow_(k)]).trim();
-    if (!v) { try { v = String(props.getProperty(k) || '').trim(); } catch (e) { v = ''; } }
+    var v = veraReal_(cfg[veraSettingRow_(k)]);
+    if (!v) { try { v = veraReal_(props.getProperty(k)); } catch (e) { v = ''; } }
     if (v) copy[k] = v;
   });
   var next = JSON.stringify(copy), was = '';
@@ -377,7 +388,7 @@ function veraMoveSettings_() {
   var props = PropertiesService.getScriptProperties();
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) { Logger.log('moveSettingsToConfig: no Config tab, nothing moved'); return null; }
-  var out = { moved: [], same: [], kept: [], markers: [], missing: [] };
+  var out = { moved: [], same: [], kept: [], markers: [], missing: [], placeholders: [] };
 
   var rowsOf = function() {
     var n = Math.max(sheet.getLastRow() - 1, 0), at = {};
@@ -389,8 +400,11 @@ function veraMoveSettings_() {
   };
 
   VERA_SETTINGS_.concat(Object.keys(VERA_SETTING_ROWS_)).forEach(function(k) {
-    var row = veraSettingRow_(k), at = rowsOf(), have = at[row] ? at[row].value : '';
-    var prop = String(props.getProperty(k) || '').trim();
+    // A placeholder on either side counts as blank: a real property fills a placeholder
+    // cell, and a placeholder property is never copied in.
+    var row = veraSettingRow_(k), at = rowsOf(), have = at[row] ? veraReal_(at[row].value) : '';
+    var raw = String(props.getProperty(k) || '').trim(), prop = veraReal_(raw);
+    if ((at[row] && veraIsPlaceholder_(at[row].value) && !prop) || (raw && !prop)) out.placeholders.push(row);
     if (!prop) { if (!have) out.missing.push(row); return; }
     if (have) {
       if (have === prop || (veraIdFrom_(have) && veraIdFrom_(have) === veraIdFrom_(prop))) { props.deleteProperty(k); out.same.push(k); }
@@ -437,6 +451,7 @@ function veraMoveSettings_() {
     '; feature state bundled ' + out.state.length + (out.state.length ? ' (' + out.state.join(', ') + ')' : '') +
     '; caches moved to the VERA State tab ' + out.stores.length + (out.stores.length ? ' (' + out.stores.join(', ') + ')' : '') +
     (out.storesKept.length ? '; caches left in Script Properties (the tab couldn’t be written): ' + out.storesKept.join(', ') : '') +
-    (out.missing.length ? '; not set anywhere: ' + out.missing.join(', ') : ''));
+    (out.missing.length ? '; not set anywhere: ' + out.missing.join(', ') : '') +
+    (out.placeholders.length ? '; still a placeholder (paste the real value into Config): ' + out.placeholders.join(', ') : ''));
   return out;
 }

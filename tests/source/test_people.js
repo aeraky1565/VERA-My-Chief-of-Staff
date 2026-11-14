@@ -41,6 +41,7 @@ function ctx(opts) {
     getSpreadsheet: () => ({ getSheetByName: () => sheet, insertSheet: () => { sheet = mkSheet([]); c.__sheet = () => sheet; return sheet; } }),
   };
   c.__props = props; c.__sheet = () => sheet;
+  Object.assign(c, o.extra || {});
   vm.createContext(c);
   vm.runInContext(PEOPLE, c);
   return c;
@@ -136,6 +137,42 @@ console.log('\nThe Access tab');
   w.veraIdentify_('tok');
   const sync = run(w, 'webAccessSync_({ catalog: [{ id: "full:life/goals", area: "Life", tab: "Grow › goals" }, { id: "bad id!", area: "x" }] })');
   check('the owner’s sync adds the new row; a malformed id is dropped; the checkboxes go on the person cells only', sync.ok && sync.addedRows === 1 && sh.v.length === 5 && sh.v[4][2] === 'full:life/goals' && J(sh.boxes) === J([3, 4, 3, 2]), J(sh.v));
+}
+
+console.log('\nThe Access tab fills without the dashboard');
+{
+  const store = {}, logs = [], saves = [];
+  const extra = { veraStoreGet_: k => (k in store ? store[k] : null), veraStoreSet_: (k, v) => { saves.push(k); store[k] = String(v); return true; },
+                  veraLog_: (r, c, s, m) => logs.push([r, s, m]) };
+  const owner = { VERA_WEB_TOKEN: 'tok', VERA_USER_TOKENS: J({ people: [{ name: 'Sam', owner: true, view: 'full', hashes: [] }] }) };
+  // An Access tab that exists but has nothing in it (what the sheet showed).
+  const empty = mkSheet([]);
+  const a = ctx({ props: owner, sheet: empty, extra });
+  a.veraIdentify_('tok');
+  check('no list saved yet: the nightly run does nothing, and says why', /open the full dashboard once/.test(J(run(a, 'accessNightlySync_()'))) && empty.v.length === 0);
+  const cat = [{ id: 'full:home', area: 'Home', tab: '(main tab)' }, { id: 'full:flags', area: 'Flags', tab: '(main tab)' }, { id: 'lite:overview', area: 'Overview', tab: '(main tab)' }];
+  const r = run(a, 'webAccessSync_(' + J({ catalog: cat.concat([{ id: 'Bad!' }]) }) + ')');
+  check('an empty-but-present tab gets the header, the Opens on row and a row per tab', r.ok && r.addedRows === 3 && J(empty.v[0]) === J(['Area', 'Tab', 'Id', 'Sam']) && empty.v[1][2] === 'opens_on' && empty.v.length === 5, J(empty.v));
+  check('…and the dashboard’s list is saved (well-formed entries only)', J(JSON.parse(store.ACCESS_CATALOG || '[]').map(x => x.id)) === J(['full:home', 'full:flags', 'lite:overview']));
+  const saved = saves.length;
+  run(a, 'webAccessSync_(' + J({ catalog: cat }) + ')');
+  check('the same list again is not re-saved', saved === 1 && saves.length === 1, J(saves));
+  // A new person, then the nightly run, with nobody opening the dashboard.
+  a.__props.VERA_USER_TOKENS = J({ people: [{ name: 'Sam', owner: true, view: 'full', hashes: [] }, { name: 'Robin', view: 'lite', hashes: [] }] });
+  const n = run(a, 'accessNightlySync_()');
+  check('the nightly run adds a new person’s column, ticked everywhere', n.ok && J(n.addedCols) === J(['Robin']) && empty.v[0][4] === 'Robin' && empty.v.slice(2).every(x => x[4] === true), J(empty.v));
+  const quiet = run(a, 'accessNightlySync_()');
+  check('…and nothing on a night with nothing new', quiet.ok && quiet.addedRows === 0 && quiet.addedCols.length === 0);
+  // A write that fails says so, in the System Log and the reply.
+  const broken = mkSheet([]); broken.getRange = () => { throw new Error('protected range'); };
+  const b = ctx({ props: owner, sheet: broken, extra });
+  b.veraIdentify_('tok');
+  const f = run(b, 'webAccessSync_(' + J({ catalog: cat }) + ')');
+  check('a write that fails is reported, and logged as a Warning', f.ok === false && /couldn’t be written: protected range/.test(f.error) && logs.some(x => x[0] === 'accessSync' && x[1] === 'Warning'), J(f));
+  check('the People panel is told whether the tab is empty and whether a list is saved', J(run(a, 'webPeopleList_()').access) === J({ rows: 3, listSaved: true }) && J(run(ctx({ props: owner, extra: { veraStoreGet_: () => null } }), 'veraIdentify_("tok"), webPeopleList_()').access) === J({ rows: 0, listSaved: false }));
+  check('not the owner: no sync', (() => { const p = ctx({ props: Object.assign({}, owner, { VERA_USER_TOKENS: J({ people: [{ name: 'Sam', owner: true, hashes: [] }, { name: 'Robin', view: 'lite', hashes: [sha('ROBN-ROBN-ROBN-ROBN')] }] }) }), extra }); p.veraIdentify_('ROBN-ROBN-ROBN-ROBN'); return run(p, 'webAccessSync_({ catalog: [] })').ok === false; })());
+  check('the nightly run calls it', /nightlyStep_\(ctx, 'accessNightlySync_', accessNightlySync_\);/.test(read('Code.js')));
+  check('the People panel syncs when it opens, and offers “Fill it now” on an empty tab', /React\.useEffect\(function\(\)\{apiPost\(apiUrl,apiToken,syncBody\(\)\)\.catch\(function\(\)\{\}\)\.then\(load\);\},\[apiUrl,apiToken\]\);/.test(APP) && /className:"pp-access-empty"/.test(APP) && /'Fill it now'/.test(APP));
 }
 
 console.log('\nSlack’s posts');

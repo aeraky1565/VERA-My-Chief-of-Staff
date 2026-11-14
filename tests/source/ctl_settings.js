@@ -10,7 +10,7 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70)); return src.replace(from, () => to); };
 const S = 'Settings.js';
 const CONTROLS = [
-  ['the property beats the Config row', b => ({ [S]: swap(b[S], "  if (cfg) v = String(cfg[veraSettingRow_(k)] == null ? '' : cfg[veraSettingRow_(k)]).trim();\n  if (v) return v;\n", "") })],
+  ['the property beats the Config row', b => ({ [S]: swap(b[S], "  if (cfg) v = veraReal_(cfg[veraSettingRow_(k)]);\n  if (v) return v;\n", "") })],
   ['the copy is used even when Config reads fine', b => ({ [S]: swap(b[S], "  if (cfg && Object.keys(cfg).length) return '';\n", "") })],
   ['a pasted link is taken as the id', b => ({ [S]: swap(b[S], "  if (m) return m[1];\n", "  if (m) return t;\n") })],
   ['the copy is rewritten every night', b => ({ [S]: swap(b[S], "  if (next === was) return { written: false, count: Object.keys(copy).length };\n", "") })],

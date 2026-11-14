@@ -167,6 +167,31 @@ console.log('\nthe one-time move');
   check('a value that doesn\'t read back keeps its property', p2.store.SAT_SHEET_ID === 'InventedSatSheet0123456789' && r2.kept.indexOf('SAT_SHEET_ID') !== -1);
 }
 
+console.log('\nplaceholders count as blank');
+{
+  const c = ctx(fakeProps(), {});
+  check('PASTE_…, TODO and CHANGE_ME are placeholders, in any case; real values aren’t',
+        ['PASTE_VICTORIA_USER_ID', ' paste_bot_token_here ', 'TODO', 'tbd', 'CHANGE_ME', 'changeme'].every(v => c.veraIsPlaceholder_(v))
+        && !['U0INVENTED1', 'https://example.test/', '', 'todo list sheet', 'PASTEL'].some(v => c.veraIsPlaceholder_(v)));
+  const p = fakeProps({ SLACK_VICTORIA_USER_ID: 'U0INVENTED2' });
+  check('a placeholder in Config gives way to the real property', ctx(p, { slack_victoria_user_id: 'PASTE_VICTORIA_USER_ID' }).veraSetting_('SLACK_VICTORIA_USER_ID') === 'U0INVENTED2');
+  check('a placeholder everywhere reads as blank, never as the placeholder', ctx(fakeProps({ SLACK_VICTORIA_USER_ID: 'PASTE_VICTORIA_USER_ID' }), { slack_victoria_user_id: 'PASTE_VICTORIA_USER_ID' }).veraSetting_('SLACK_VICTORIA_USER_ID') === '');
+  const pc = fakeProps({});
+  ctx(pc, { slack_victoria_user_id: 'PASTE_VICTORIA_USER_ID', slack_logs_channel_id: 'C0LOG0001' }).veraSettingsCopyRefresh_();
+  check('…and the nightly copy never keeps one', !/PASTE_/.test(pc.store.VERA_SETTINGS_COPY) && /C0LOG0001/.test(pc.store.VERA_SETTINGS_COPY));
+
+  const mp = fakeProps({ SLACK_VICTORIA_USER_ID: 'U0INVENTED2', SLACK_AHMED_USER_ID: 'PASTE_AHMED_USER_ID', VERA_DASHBOARD_URL: 'https://example.test/old/' });
+  const cfg = fakeConfig([['slack_victoria_user_id', 'PASTE_VICTORIA_USER_ID'], ['slack_ahmed_user_id', ''], ['vera_dashboard_url', 'https://example.test/new/']]);
+  const read3 = () => { const o = {}; cfg.grid.slice(1).forEach(r => { o[r[0]] = String(r[1]); }); return o; };
+  const mc = ctx(mp, read3, { getSpreadsheet: () => ({ getSheetByName: n => n === 'Config' ? cfg.sheet : null }) });
+  const r = mc.moveSettingsToConfig();
+  check('the move writes the real value over a placeholder cell, reads it back, then drops the property',
+        read3().slack_victoria_user_id === 'U0INVENTED2' && !('SLACK_VICTORIA_USER_ID' in mp.store) && r.moved.indexOf('SLACK_VICTORIA_USER_ID') !== -1, J(r));
+  check('a placeholder property is never copied into Config, and is reported', read3().slack_ahmed_user_id === '' && r.placeholders.indexOf('slack_ahmed_user_id') !== -1);
+  check('a real value that differs is still kept, as before', mp.store.VERA_DASHBOARD_URL === 'https://example.test/old/' && r.kept.indexOf('VERA_DASHBOARD_URL') !== -1);
+  check('the log names the placeholders, never a value', /still a placeholder[^;]*slack_ahmed_user_id/.test(mc.__logs.join('\n')) && !/U0INVENTED|PASTE_|example\.test/.test(mc.__logs.join('\n')), mc.__logs.join('\n'));
+}
+
 console.log('\nthe call sites');
 {
   const all = fs.readdirSync(ROOT).filter(f => f.endsWith('.js')).map(f => [f, read(f)]);
