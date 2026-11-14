@@ -28,7 +28,7 @@ const CONTROLS = [
   ['Done this week takes 8 days', one('WebApp.js', "tasksDoneRecent_(rows, ftToday_(), 7, ", "tasksDoneRecent_(rows, ftToday_(), 8, "), NODE],
   ['Done this week counts cancelled', one('FlagsTasks.js', "  var DONE = ['done', 'complete', 'completed'];", "  var DONE = ['done', 'complete', 'completed', 'cancelled'];"), NODE],
   ['Reopen leaves the day', one('FlagsTasks.js', "  found.sheet.getRange(found.rowNum, ftCompletedCol_()).setValue('');\n", ''), NODE],
-  ['a task row one cell short', one('WebApp.js', "  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, '', ''];", "  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, ''];"), NODE],
+  ['a task row one cell short', one('WebApp.js', ".setValues([[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '', '']]);", ".setValues([[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '']]);"), NODE],
   ['the card offers Resolve on automatic flags', ui("!flag.auto&&h(\"button\",{className:\"btn btn-resolve\"", "true&&h(\"button\",{className:\"btn btn-resolve\""), UI],
   ['every group starts open', ui("Object.prototype.hasOwnProperty.call(open,g.id)?!!open[g.id]:g.high;", "Object.prototype.hasOwnProperty.call(open,g.id)?!!open[g.id]:true;"), UI],
   ['snoozed flags stay in their area', ui("var g=!f.resolved&&f.snoozedUntil&&f.snoozedUntil>today?FLAG_SNOOZED_:a;", "var g=a;"), UI],
@@ -39,6 +39,12 @@ const CONTROLS = [
   ['Undo doesn’t stop the write', ui("function undoComplete(){const p=pendingRef.current;if(!p)return;clearTimeout(p.timer);", "function undoComplete(){const p=pendingRef.current;if(!p)return;"), UI],
   ['Delete without asking', ui("onClick:()=>setDelAsk(true)},\"Delete…\")", "onClick:()=>onDelete(task)},\"Delete…\")"), UI],
   ['the flag chip is gone', ui("task.flag&&React.createElement(\"div\",{className:\"task-flag\"", "false&&React.createElement(\"div\",{className:\"task-flag\""), UI],
+  // Task IDs and Google Tasks
+  ['task IDs counted by rows again', one('FlagsTasks.js', "  return veraNextSeqId_('TASK-' + dateKey + '-', ids, 2);", "  return 'TASK-' + dateKey + '-' + String(ids.filter(function(r) { return String(r[0] || '').indexOf('TASK-' + dateKey) === 0; }).length + 1).padStart(2, '0');"), NODE],
+  ['the recurring copy numbered outside the lock', one('WebApp.js', "  const newId = veraLocked_(function() {\n    const nid = taskNextId_(sheet, dateKey);", "  const newId = (function() {\n    const nid = taskNextId_(sheet, dateKey);"), NODE],
+  ['Google task completed with a whole-task update', one('WebApp.js', "    Tasks.Tasks.patch({ status: 'completed' }, listId, id);", "    Tasks.Tasks.update({ id: id, status: 'completed' }, listId, id);"), NODE],
+  ['Google task completed in the first list only', one('WebApp.js', "        try { if (Tasks.Tasks.get(lists[i].id, id)) listId = lists[i].id; } catch (notHere) {}", "        if (!listId) listId = lists[i].id;"), NODE],
+  ['the task\'s list isn\'t sent back', one('WebApp.js', "        listId:       t.__listId,\n", ''), NODE],
 ];
 let allBit = true;
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the

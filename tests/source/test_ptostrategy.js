@@ -250,5 +250,17 @@ console.log('\nthe wiring');
   check('fix: the Config seeder writes pto_-prefixed keys', /\['pto_gap_calendars',/.test(CODE) && !/\['gap_calendars',/.test(CODE) && /\['pto_holiday_keywords',/.test(CODE));
 }
 
+console.log('\nthe year grid fills only days that cost PTO');
+{
+  const APPJS = read('docs/app.js'), LITEJS = read('docs/dashboard-lite.html');
+  const src = (s, name) => { const a = s.indexOf('function ' + name + '('); return a === -1 ? '' : s.slice(a, s.indexOf('\n', a)); };
+  const g = {}; vm.createContext(g); vm.runInContext(src(APPJS, 'psFree_'), g);
+  const plan = { people: [{ id: 'a', holidays: { '2027-07-05': 'Independence Day (observed)' } }, { id: 'b', holidays: {} }] };
+  check('a weekend or anyone’s holiday is free; a working day isn’t', g.psFree_(plan, '2027-07-03') && g.psFree_(plan, '2027-07-04') && g.psFree_(plan, '2027-07-05') && !g.psFree_(plan, '2027-07-06'));
+  check('a trip or a reserve on a free day is an outline, not a fill', /soft=\(k==='l'\|\|k==='p'\)&&psFree_\(plan,iso\)/.test(APPJS) && /background:mk&&!soft\?mk\.bg:/.test(APPJS) && /soft\?'1\.5px solid '\+mk\.bg/.test(APPJS));
+  check('…the legend says what the outline means, and the pencilled colour is its own', /outline: a trip’s weekend or holiday \(no PTO\)/.test(APPJS) && /p:\{bg:'#22d3ee'/.test(APPJS));
+  check('…the same in lite (the shared block)', src(LITEJS, 'psFree_') === src(APPJS, 'psFree_') && LITEJS.indexOf("soft=(k==='l'||k==='p')&&psFree_(plan,iso)") !== -1);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

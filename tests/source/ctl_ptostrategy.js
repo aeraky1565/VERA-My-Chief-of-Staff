@@ -39,6 +39,10 @@ const CONTROLS = [
   ['Advanced sends every field', ui("var o={};Object.keys(dirty).forEach(function(k){", "var o={minRatio:st.minRatio};Object.keys(dirty).forEach(function(k){"), UI],
   ['lite shows Skip', ui("!compact&&h('button',{className:'ps-skip'", "h('button',{className:'ps-skip'"), UI],
   ['an accepted break has no request date', ui("h('div',null,'🏢 Request it at work by ',h('b',null,psNice_(psRequestBy_(c,st)))", "h('div',null,'🏢 Request it at work'"), UI],
+  // The grid fills only days that cost PTO
+  ['a trip’s weekend is filled again', ui("soft=(k==='l'||k==='p')&&psFree_(plan,iso);", "soft=false;"), NODE],
+  ['holidays don’t count as free', ui("return w===0||w===6||(plan.people||[]).some(function(p){return!!(p.holidays||{})[iso];});}", "return w===0||w===6;}"), NODE],
+  ['the outline isn’t explained', ui("'outline: a trip’s weekend or holiday (no PTO)'", "''"), NODE],
 ];
 let allBit = true;
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the

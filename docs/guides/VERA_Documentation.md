@@ -268,6 +268,8 @@ Escalation runs at the very start of `nightlyRun()` (Step -1) so the urgency of 
 
 **Automatic flags and the Flags tab (`FlagsTasks.js`).** A flag kept by a nightly check through `upsertKeyedFlags_` reopens if it's resolved while its cause is still there, so the dashboard marks it *automatic*, offers no Resolve, and says what clears it; `resolve` refuses it. `AUTO_FLAG_KINDS_` lists every such prefix (a test checks each call site's prefix is there). The Flags tab groups flags by area, shows each one's Due date, snoozes to a chosen day, opens where a flag came from (Go to it) and makes a task from it. A task made from a flag keeps the flag's ID in the Tasks tab's *Flagged* column; checking it off resolves a one-off flag and leaves an automatic one to its check. The Tasks tab's *Completed* column feeds Done this week.
 
+**Task IDs and Google Tasks.** A new task's ID is one past the highest number used that day (`taskNextId_`, under `veraLocked_`), never a count of that day's rows, which repeated an ID after a delete or when two writers counted at once, so checking off one task marked the other. Completing a Google Task patches only its status, in the list it lives in: a whole-task update blanked the title, notes and due date of every task completed from the dashboard. In PTO Planner › Next year, the year grid fills only days that cost PTO; a trip's or a reserve's weekends and holidays are drawn as an outline.
+
 ### Flag lifecycle
 
 ```

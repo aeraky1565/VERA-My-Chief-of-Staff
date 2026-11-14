@@ -2310,7 +2310,7 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `flags` | `filter=active` (optional) | All flags or active-only (not acknowledged + not resolved) |
 | `tasks` | — | All open VERA tasks |
 | `get_google_tasks` | — | Google Tasks from all task lists |
-| `complete_google_task` | `id` | Completes a Google Task by ID |
+| `complete_google_task` | `id`, `listId` | Completes a Google Task in its own list (found when `listId` is missing), changing only its status: a patch, so the title, notes and due date stay |
 | `summaries` | — | Summaries tab rows |
 | `acknowledge` | `id` | Sets Acknowledged=Yes on flag |
 | `snooze` | `id`, `days` or `until` (yyyy-MM-dd) | Sets Snoozed Until: a date from tomorrow to a year out, or today + days |
@@ -2521,7 +2521,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Calendar.js` | `getUpcomingEvents()` — reads all Google Calendars with label/color/status |
 | `Tasks.js` | `getOpenTasks()`, `parseFlexibleDate()`, `suggestDueDates()` |
 | `PTOStrategy.js` | Next year's PTO plan (#248): bridges over weekends and holidays for both of you and each, strategies and Advanced settings, the budget with carryover and the month-by-month accrual cap, accept / skip, the nightly flags and the morning email's Time off section |
-| `FlagsTasks.js` | Automatic flags (the prefixes a nightly check keeps, and what clears each), snooze to a date, a task made from a flag, Done this week, Reopen |
+| `FlagsTasks.js` | Automatic flags (the prefixes a nightly check keeps, and what clears each), snooze to a date, a task made from a flag, Done this week, Reopen; `taskNextId_`: a new task ID is one past the highest used that day, under the lock, so no two rows share one |
 | `Slack.js` | Slack bot — send/receive messages, Block Kit builders, App Home, event/interaction handlers |
 | `Summaries.js` | `writeSummarySnapshot()` — Metrics + Summaries tab auto-population |
 | `Finance.js` | SAT budget reader + Transactions reader; `getFinanceSummaries()` |

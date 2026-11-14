@@ -11,7 +11,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const FT = read('FlagsTasks.js'), WEB = read('WebApp.js'), CODE = read('Code.js'), TASKS = read('Tasks.js');
+const FT = read('FlagsTasks.js'), WEB = read('WebApp.js'), CODE = read('Code.js'), TASKS = read('Tasks.js'), SETTINGS = read('Settings.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -67,6 +67,7 @@ function ctx(flags, tasks) {
   if (typeof c.formatDateVal_ !== 'function') c.formatDateVal_ = v => String(v || '');
   vm.runInContext('var DAY_NAMES_ = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];', c);
   vm.runInContext(fn(CODE, 'flagDueCell_'), c);
+  vm.runInContext(fn(SETTINGS, 'veraNextSeqId_'), c);
   ['getOpenTasks', 'parseFlexibleDate'].forEach(n => vm.runInContext(fn(TASKS, n), c));
   return c;
 }
@@ -167,9 +168,50 @@ console.log('\nthe shape of the Tasks tab');
   files.forEach(f => { const s = read(f); let m; const re = /TASK_HEADERS\.length\)\s*\.setValues\(\[\[?([^\]]*)\]/g;
     while ((m = re.exec(s))) { let depth = 0, n = m[1].trim() ? 1 : 0; for (const ch of m[1]) { if (ch === '(') depth++; else if (ch === ')') depth--; else if (ch === ',' && depth === 0) n++; } if (m[1].trim() && n && n !== TASK_HEADERS.length && !/^row$/.test(m[1].trim())) short.push(f + ': ' + n); } });
   check('every whole-row task write has ' + TASK_HEADERS.length + ' values', !short.length, short.join(', '));
-  check('the add route writes the new width', /const row = \[taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, '', ''\];/.test(WEB));
+  check('the add route writes the new width', /\.setValues\(\[\[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '', ''\]\]\);/.test(WEB));
   check('the routes', /case 'flag_to_task':\s+return jsonOut_\(webFlagToTask_\(e\.parameter\)\);/.test(WEB) && /case 'reopen_task':\s+return jsonOut_\(webReopenTask_\(id\)\);/.test(WEB)
     && /case 'snooze':\s+return jsonOut_\(webSnooze_\(id, days, e\.parameter\.until\)\);/.test(WEB));
+}
+
+console.log('\ntask IDs never repeat');
+{
+  // Today's 02 was deleted and 03 is still there: counting rows would hand out 03 again.
+  const c = ctx([], [taskRow({ id: 'TASK-20270310-01' }), taskRow({ id: 'TASK-20270310-03', task: 'Water plants', recurring: 'Weekly', due: '2027-03-12' })]);
+  const added = c.webAddTask_({ parameter: { task: 'New one' } });
+  check('a new task takes one past the highest number used today, not a count of rows', added.id === 'TASK-20270310-04', added.id);
+  const done = c.webCompleteTask_('TASK-20270310-03');
+  check('…and so does the next copy of a recurring task', done.recurring && done.nextTaskId === 'TASK-20270310-05', JSON.stringify(done));
+  const ids = c._sheets.Tasks._all.slice(1).map(r => r[0]);
+  check('no two rows share an ID', new Set(ids).size === ids.length, JSON.stringify(ids));
+  const fromFlag = ctx([flagRow({ id: 'F1', flag: 'Do the thing' })], [taskRow({ id: 'TASK-20270310-07' })]).webFlagToTask_({ id: 'F1' });
+  check('a task made from a flag too', fromFlag.id === 'TASK-20270310-08', fromFlag.id);
+  const src = WEB + FT;
+  check('every task ID comes from taskNextId_, under the lock', !/'TASK-' \+ (dateKey|dateStr) \+ '-' \+ String\(seq\)/.test(src) && (src.match(/taskNextId_\((sheet|taskSheet), (dateKey|dateStr|Utilities)/g) || []).length === 5
+        && /const newId = veraLocked_\(function\(\) \{\n    const nid = taskNextId_\(sheet, dateKey\);/.test(WEB) && /const taskId = veraLocked_\(function\(\) \{\n    const id = taskNextId_\(sheet, dateStr\);/.test(WEB)
+        && /const taskId = veraLocked_\(function\(\) \{\n    const id = taskNextId_\(taskSheet, dateStr\);/.test(WEB));
+}
+
+console.log('\nGoogle Tasks: completing keeps the title');
+{
+  const calls = [];
+  const lists = [{ id: 'L-MY' }, { id: 'L-HOME' }];
+  const g = { String, Object, JSON, Logger: { log: () => {} },
+    Tasks: { Tasklists: { list: () => ({ items: lists }) },
+      Tasks: { get: (l, id) => { calls.push(['get', l, id]); if (l === 'L-HOME' && id === 'T2') return { id }; throw new Error('Not Found'); },
+               patch: (body, l, id) => { calls.push(['patch', JSON.stringify(body), l, id]); return {}; },
+               update: (body, l, id) => { calls.push(['update', JSON.stringify(body), l, id]); return {}; } } } };
+  vm.createContext(g);
+  vm.runInContext(fn(WEB, 'webCompleteGoogleTask_'), g);
+  const r = g.webCompleteGoogleTask_({ parameter: { id: 'T1', listId: 'L-HOME' } });
+  check('it patches only the status, so the title, notes and due date stay', r.ok && JSON.stringify(calls) === JSON.stringify([['patch', '{"status":"completed"}', 'L-HOME', 'T1']]), JSON.stringify(calls));
+  check('…never a whole-task update', !/Tasks\.Tasks\.update\(/.test(fn(WEB, 'webCompleteGoogleTask_')));
+  calls.length = 0;
+  const r2 = g.webCompleteGoogleTask_({ parameter: { id: 'T2' } });
+  check('no list given: the list that holds it is found, not just the first', r2.ok && calls.filter(x => x[0] === 'patch').length === 1 && calls.filter(x => x[0] === 'patch')[0][2] === 'L-HOME', JSON.stringify(calls));
+  const r3 = g.webCompleteGoogleTask_({ parameter: { id: 'T9' } });
+  check('a task in no list: says so, writes nothing', r3.ok === false && /wasn’t found/.test(r3.error) && !calls.some(x => x[3] === 'T9'));
+  check('the list comes back with each task, and the dashboard sends it', /listId:\s+t\.__listId,/.test(WEB) && /t\.__listId = list\.id;/.test(WEB)
+        && /'complete_google_task',gt\.listId\?\{id,listId:gt\.listId\}:\{id\}/.test(read('docs/app.js')));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

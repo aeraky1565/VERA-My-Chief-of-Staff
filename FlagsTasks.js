@@ -96,6 +96,17 @@ function tasksDoneRecent_(rows, todayIso, days, completedCol) {
   return out.sort(function(a, b) { return a.completed < b.completed ? 1 : a.completed > b.completed ? -1 : 0; });
 }
 
+/**
+ * The next task ID for a day: TASK-yyyyMMdd-NN, one past the highest NN already used
+ * that day. Counting that day's rows instead (as before) repeated an ID once a row was
+ * deleted or two writers counted at once, and two rows with one ID meant checking off
+ * one task marked the other. Callers hold veraLocked_ from here to the write.
+ */
+function taskNextId_(sheet, dateKey) {
+  var ids = sheet && sheet.getLastRow() >= 2 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues() : [];
+  return veraNextSeqId_('TASK-' + dateKey + '-', ids, 2);
+}
+
 function ftToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
 function ftCompletedCol_() { return TASK_HEADERS.indexOf('Completed') + 1; }     // 1-based
 function ftFlaggedCol_() { return TASK_HEADERS.indexOf('Flagged') + 1; }
@@ -145,9 +156,7 @@ function webFlagToTask_(p) {
     var due = String(p.dueDate || '').trim() || flagDueCell_(row[11]);
     if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return { ok: false, error: 'dueDate must be yyyy-MM-dd' };
     var tz = Session.getScriptTimeZone(), now = new Date();
-    var dateKey = Utilities.formatDate(now, tz, 'yyyyMMdd'), seq = 1;
-    if (sheet.getLastRow() >= 2) sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) { if (String(r[0] || '').indexOf('TASK-' + dateKey) === 0) seq++; });
-    var id = 'TASK-' + dateKey + '-' + String(seq).padStart(2, '0');
+    var id = taskNextId_(sheet, Utilities.formatDate(now, tz, 'yyyyMMdd'));
     // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged | Completed
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[id, text, Utilities.formatDate(now, tz, 'yyyy-MM-dd'), due, 'Open', '', '', flagId, '']]);
     return { ok: true, id: id, created: true };

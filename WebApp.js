@@ -983,7 +983,7 @@ function webGetGoogleTasks_() {
           if (pageToken) opts.pageToken = pageToken;
           var tasksRes = Tasks.Tasks.list(list.id, opts);
           var items    = (tasksRes && tasksRes.items) || [];
-          items.forEach(function(t) { allItems.push(t); });
+          items.forEach(function(t) { t.__listId = list.id; allItems.push(t); });
           pageToken = (tasksRes && tasksRes.nextPageToken) || null;
         } while (pageToken);
       } catch (listErr) {
@@ -1020,6 +1020,7 @@ function webGetGoogleTasks_() {
 
       result.push({
         id:           t.id,
+        listId:       t.__listId,
         title:        titleStr,
         task:         titleStr,
         due:          dueStr,
@@ -1054,26 +1055,29 @@ function webGetGoogleTasks_() {
 }
 
 /**
- * Marks a Google Task complete by ID.
+ * Marks a Google Task complete by ID, in its own list (listId, from get_google_tasks;
+ * without one, the list that holds it is looked up).
+ * PATCH, never UPDATE: update replaces the whole task, so sending only the status
+ * blanked its title, notes and due date (a recurring task's done copies had no name).
  * Requires Advanced Google Services — Tasks API to be enabled in Apps Script.
- * NOTE: Enable via Resources → Advanced Google Services → Tasks API in the Apps Script editor.
  * @param {Object} e  Apps Script event (GET)
  * @returns {{ ok: boolean, id: string }}
  */
 function webCompleteGoogleTask_(e) {
   var id = e && e.parameter && e.parameter.id;
+  var listId = e && e.parameter && e.parameter.listId;
   if (!id) return { ok: false, error: 'id param required' };
 
   try {
-    // Use Advanced Tasks service (must be enabled: Resources → Advanced Google Services → Tasks API)
-    var lists     = Tasks.Tasklists.list();
-    var taskListId = null;
-    if (lists.items && lists.items.length > 0) {
-      taskListId = lists.items[0].id; // 'My Tasks' is always the first list
+    if (!listId) {
+      var lists = (Tasks.Tasklists.list({ maxResults: 20 }) || {}).items || [];
+      for (var i = 0; i < lists.length && !listId; i++) {
+        try { if (Tasks.Tasks.get(lists[i].id, id)) listId = lists[i].id; } catch (notHere) {}
+      }
     }
-    if (!taskListId) return { ok: false, error: 'Could not find My Tasks list' };
+    if (!listId) return { ok: false, error: 'That task wasn’t found in any of your Google Tasks lists' };
 
-    Tasks.Tasks.update({ id: id, status: 'completed' }, taskListId, id);
+    Tasks.Tasks.patch({ status: 'completed' }, listId, id);
     Logger.log('webCompleteGoogleTask_: completed task ' + id);
     return { ok: true, id: id };
   } catch (err) {
@@ -1359,21 +1363,15 @@ function webCompleteTask_(id) {
   const todayStr    = Utilities.formatDate(today,    tz, 'yyyy-MM-dd');
   const dateKey     = Utilities.formatDate(today,    tz, 'yyyyMMdd');
 
-  // Generate new task ID
-  const sheet   = found.sheet;
-  const lastRow = sheet.getLastRow();
-  let seq = 1;
-  if (lastRow >= 2) {
-    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(r) {
-      if (String(r[0] || '').indexOf('TASK-' + dateKey) === 0) seq++;
-    });
-  }
-  const newId = 'TASK-' + dateKey + '-' + String(seq).padStart(2, '0');
-
-  // Append the regenerated task
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
-    newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, '', ''
-  ]]);
+  // The regenerated task, with an ID no other row has (FlagsTasks.js taskNextId_).
+  const sheet = found.sheet;
+  const newId = veraLocked_(function() {
+    const nid = taskNextId_(sheet, dateKey);
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
+      nid, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, '', ''
+    ]]);
+    return nid;
+  });
 
   return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr, flag: flag };
 }
@@ -1403,18 +1401,12 @@ function webAddTask_(e) {
   const dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
   const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
 
-  let seq = 1;
-  if (sheet.getLastRow() >= 2) {
-    const idData = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-    idData.forEach(function(r) {
-      if (String(r[0] || '').indexOf('TASK-' + dateStr) === 0) seq++;
-    });
-  }
-  const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
-
   // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged | Completed
-  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, '', ''];
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([row]);
+  const taskId = veraLocked_(function() {
+    const id = taskNextId_(sheet, dateStr);
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '', '']]);
+    return id;
+  });
 
   return { ok: true, id: taskId, action: 'created' };
 }
@@ -7011,16 +7003,13 @@ function webPromoteIdea_(e) {
   const dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
   const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
 
-  let seq = 1;
-  if (taskSheet.getLastRow() >= 2) {
-    taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (String(r[0] || '').indexOf('TASK-' + dateStr) === 0) seq++; });
-  }
-  const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
-
   // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged | Completed
-  taskSheet.getRange(taskSheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length)
-    .setValues([[taskId, ideaText, addedStr, '', 'Open', '', ideaNotes, '', '']]);
+  const taskId = veraLocked_(function() {
+    const id = taskNextId_(taskSheet, dateStr);
+    taskSheet.getRange(taskSheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length)
+      .setValues([[id, ideaText, addedStr, '', 'Open', '', ideaNotes, '', '']]);
+    return id;
+  });
 
   // 3. Mark idea as Promoted
   found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status
