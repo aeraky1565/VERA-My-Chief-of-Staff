@@ -64,9 +64,10 @@ check('old top tabs still land in the right place',
   /cards: \['finances', 'fin_cards'\]/.test(LITE) && /coupons: \['shopping', 'coupons'\]/.test(LITE) && /prescriptions: \['family', 'prescriptions'\]/.test(LITE)
   && /wishlists: \['family', 'wishlists'\]/.test(LITE) && /people: \['family', 'contacts'\]/.test(LITE) && /household: \['home_front', ''\]/.test(LITE)
   && /var to = LITE_OLD_TABS\[id\];/.test(LITE));
-check('Shopping holds the card cheat sheet, and Money › Cards has no cheat sheet',
-  /<CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cheat" \/>/.test(LITE) && /part="cards" \/>/.test(LITE)
-  && /display: part === 'cards' \? 'none' : undefined/.test(LITE) && /display: part === 'cheat' \? 'none' : 'flex'/.test(LITE));
+// Card Hub: Shopping › Which card is the one-row list; Money › Our cards is the reference.
+check('Shopping holds Which card, and Money › Our cards is the reference, not a second cheat sheet',
+  /<CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cheat" \/>/.test(LITE) && /part="ref" \/>/.test(LITE)
+  && /if \(part === 'cheat'\) return[\s\S]{0,200}<CardWhich [^>]*compact=\{true\}/.test(LITE) && /if \(part === 'ref'\) return[\s\S]{0,200}<LiteOurCards /.test(LITE));
 check('Travel is My Trips, Bucket List, Profiles, Our bags and Gifts', /const LITE_TRAVEL_TABS = \[\{ id: 'trips', label: '✈️ My Trips' \}, \{ id: 'bucketlist', label: '🪣 Bucket List' \}, \{ id: 'profiles', label: '👤 Profiles' \}, \{ id: 'bags', label: '🧳 Our bags' \}, \{ id: 'gifts', label: '🎁 Gifts' \}\];/.test(LITE));
 check('Your assistants stays on lite Today', LITE.indexOf('<VeraRoster links={status && status.rosterLinks} veraHref="./" />') !== -1);
 check('no Home slot on lite', LITE.indexOf('HomeSlot') === -1);
