@@ -43,7 +43,7 @@ check('both dashboards mount the full Groceries card on its own subtab, and keep
   && LITE.indexOf("{activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} who=\"Victoria\" />}") !== -1
   && LITE.indexOf("groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} who=\"Victoria\" />}") !== -1 && APP.indexOf("groceriesCard:React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'})") !== -1);
 check('the lite Finances uses FinNav, with Victoria’s own groups', LITE.indexOf('<FinNav tabs={FINANCE_TABS} groups={FIN_GROUPS_LITE} sub={activeFinanceTab} onPick={setActiveFinanceTab} />') !== -1);
-check('Victoria’s Money has no Bills, Accounts, Contracts or Tax, and Cards is in it', !/fin_billscash|fin_accounts|fin_contracts|id: 'tax'/.test((LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0]) && /\{ id: 'fin_cards',    label: '💳 Cards' \}/.test(LITE) && /activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cards" \/>/.test(LITE));
+check('Victoria’s Money has no Bills, Accounts, Contracts or Tax, and Cards is in it', !/fin_billscash|fin_accounts|fin_contracts|id: 'tax'/.test((LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0]) && /\{ id: 'fin_cards',    label: '📇 Our cards' \}/.test(LITE) && /activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="ref" \/>/.test(LITE));
 
 const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget: 800,
   byWho: { Ahmed: { total: 389, runs: 4 }, Victoria: { total: 223, runs: 3 } },
