@@ -938,6 +938,16 @@ Change only column B. The full list of keys is in the appendix (§22).
 - **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
 - **Summary & check-in (`FinSummary.js`):** quarterly snapshots (*Finance Snapshots*), decisions with owners (*Check-in Decisions*), notes, and the `quarterly_checkin` reminder.
 - **Groceries and receipt runs (`Groceries.js`, `GroceryRun.js`):** a receipt photo is read by Claude vision (store, date, lines, total); picked lines go to Purchase History (On Hand syncs from it), matching shopping-list items are ticked across stores, and the run is logged to *Grocery Runs* with its date.
+- **Card Hub (`CardValue.js`, `CardHub.js`):** Finances › Cards has four subtabs.
+  - **🥇 Which card** ranks every open card by cents back per $1 in fixed groups: Everyday, Travel, Online & bills, then More.
+    - Points are valued at the program's ¢ per point. That's yours, else Typical CPP, else VERA's typical value, else 1¢.
+    - Ties go to the lower annual fee, Costco takes Visa only, and "I'm abroad" keeps only no-FX cards.
+  - **📇 My cards** is the tracker, with each card's perks used this year against its fee. A rate can be edited from a card's pop-up.
+  - **🎫 Perks** lists every perk, due soonest first, each with its own cycle tag and reset date.
+  - **🪙 Points** shows each program's owner, member #, status, expiry, transfer partners, value and balance trend. Goals read their program's balance, plus transfers if ticked.
+  - **Lite** has Shopping › Which card (one best card a row, tap for the runner-up) and Money › Our cards, a read-only reference where a perk can be ticked.
+  - **New tabs:** *Points History* (every balance change) and *Perk Uses* (one row per perk per cycle).
+  - **Nightly flags:** points expiring (90 days), status renewing (60), and the annual fee (30, with what the perks paid back).
 - **Phone plan, Planned Purchases, planner Goals and Net worth** read their own sheets; the planner is read live and never written.
 
 ## 18. Places, Gifts, Life & Career
@@ -1324,6 +1334,8 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `TABS.CARD_PERKS` | Card Perks | Monthly/annual perk tracker with last-used date | Manual |
 | `TABS.LOYALTY_PROGRAMS` | Loyalty Programs | Points/miles balances per program | Manual |
 | `TABS.REWARDS_GOALS` | Rewards Goals | Redemption goal tracking | Manual |
+| `TABS.POINTS_HISTORY` | Points History | Each loyalty balance change, dated (dashboard or Chat) | Auto |
+| `TABS.PERK_USES` | Perk Uses | One row per perk per cycle it was used | Auto |
 | `TABS.GIFT_PEOPLE` | Gift People | People list for gift ideas (Ahmed + Victoria seeded) | Manual |
 | `TABS.GIFT_IDEAS` | Gift Ideas | Individual gift ideas linked to people | Manual |
 | `TABS.IMPORTANT_DATES` | Important Dates | Birthdays, anniversaries, meaningful dates — synced from calendar | Hybrid |
@@ -1413,7 +1425,7 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `gym_log` | — | Gym session log |
 | `career` | — | Career data (position, goals, progression, wins, network) |
 | `prescriptions` | — | Medication tracker |
-| `cards` | — | Credit card hub (cards, rewards, perks, loyalty, goals) |
+| `cards` | — | Card Hub (cards, rewards, perks, programs, goals, points history, this year's perk uses) |
 | `get_gift_data` | — | Gift people + gift ideas |
 | `get_important_dates` | — | Important dates list |
 | `get_chores` | — | Household chores with cadence + status |

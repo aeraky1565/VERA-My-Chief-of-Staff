@@ -438,6 +438,7 @@ console.log('\nThe column is writable, not just readable');
     dueDay: 'Due Day', lastUsed: 'Last Used', owner: 'Owner', authUser: 'Auth User',
     active: 'Active', statementCredit: 'Statement Credit', notes: 'Notes',
     creditLimit: 'Credit Limit', noFxFee: 'No FX Fee',
+    feeMonth: 'Fee Month', fxFeePct: 'FX Fee %', network: 'Network', opened: 'Opened', closed: 'Closed',
   };
   const wrong = [];
   cm[1].split(',').forEach(pair => {

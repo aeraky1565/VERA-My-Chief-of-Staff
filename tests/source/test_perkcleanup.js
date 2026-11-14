@@ -190,7 +190,8 @@ console.log('\nBoth writers now end in the same place');
   check('…and closes any "available again" notice',
         /resolveCardPerkEligibleFlags_\(perkId\)/.test(finish),
         'acting on the prompt has to close it, or it sits there until the next cycle');
-  check('…each guarded separately', (finish.match(/try \{/g) || []).length === 3,
+  check('…and logs the use for "perks used this year" (Card Hub)', /cardPerkUseLog_\(perkId, periodKey, true\)/.test(finish));
+  check('…each guarded separately', (finish.match(/try \{/g) || []).length === 4,
         'one failing third must not skip the other two');
 
   check('the dashboard toggle calls it', /finishCardPerkMarkedUsed_\(r\.id, r\.period\)/.test(toggle),

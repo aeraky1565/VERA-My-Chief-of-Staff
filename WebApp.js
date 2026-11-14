@@ -7883,6 +7883,12 @@ function webGetCards_() {
       // a filter reads it, blank stops meaning "do not offer this one" and the asymmetry
       // above is lost. test_cardfx.js asserts it appears in no filter.
       noFxFeeSet:      String(r[13] == null ? '' : r[13]).trim() !== '',
+      // Card Hub: blank cells (or a sheet that predates the columns) read as unset.
+      feeMonth:        cardCell_(r[14]),
+      fxFeePct:        cardCell_(r[15]),
+      network:         cardCell_(r[16]),
+      opened:          cardMonth_(r[17]),
+      closed:          cardMonth_(r[18]),
     };
   });
   // Sort: active first → owner order → name alpha
@@ -7935,10 +7941,42 @@ function webGetCards_() {
       totalPoints:   r[3] !== '' ? Number(r[3]) : 0,
       centsPerPoint: r[4] !== '' ? Number(r[4]) : 1.0,
       bestUse:       String(r[5] || ''),
-      expiry:        String(r[6] || ''),
+      expiry:        cardDay_(r[6]),
       notes:         String(r[7] || ''),
+      owner:         cardCell_(r[8]),
+      memberNo:      cardCell_(r[9]),
+      status:        cardCell_(r[10]),
+      statusRenews:  cardDay_(r[11]),
+      transfersFrom: cardCell_(r[12]),
+      typicalCpp:    cardCell_(r[13]),
     };
   });
+  // A program on two rows (one per linked card) is one program: merge them, keeping the
+  // first row's details and every row's linked cards.
+  var progById = {}, mergedPrograms = [];
+  programs.forEach(function(p) {
+    var k = p.id || p.program;
+    if (!progById[k]) { progById[k] = p; mergedPrograms.push(p); return; }
+    var into = progById[k];
+    if (p.linkedCard) into.linkedCard = [into.linkedCard, p.linkedCard].filter(Boolean).join(', ');
+    if (!into.totalPoints && p.totalPoints) into.totalPoints = p.totalPoints;
+  });
+  programs = mergedPrograms;
+  programs.forEach(function(p) { p.cpp = cvCpp_(p); p.typical = cvTypicalCpp_(p.program); p.value = Math.round((p.totalPoints || 0) * p.cpp) / 100; });
+
+  // Points History: the last 12 balances per program, oldest first, for the trend line.
+  var history = {};
+  readSheet('POINTS_HISTORY').forEach(function(r) {
+    var id = String(r[1] || '').trim(); if (!id) return;
+    (history[id] = history[id] || []).push({ date: cardDay_(r[0]), points: Number(r[2]) || 0 });
+  });
+  Object.keys(history).forEach(function(id) { history[id] = history[id].sort(function(a, b) { return a.date < b.date ? -1 : 1; }).slice(-12); });
+
+  // Perk Uses this year, and what each card's perks have paid back.
+  var yearNow = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy');
+  var perkUses = readSheet('PERK_USES').filter(function(r) { return String(r[1] || '').trim() && cardDay_(r[0]).slice(0, 4) === yearNow; })
+    .map(function(r) { return { date: cardDay_(r[0]), perkId: String(r[1]), cardName: String(r[2] || ''), amount: Number(r[3]) || 0, period: String(r[4] || '') }; });
+  cards.forEach(function(c) { c.perksUsedValue = perkUses.filter(function(u) { return u.cardName === c.cardName; }).reduce(function(n, u) { return n + u.amount; }, 0); c.program = (cvProgramFor_(c, programs) || {}).program || ''; });
 
   // --- Rewards Goals ---
   var goalRows = readSheet('REWARDS_GOALS');
@@ -7950,10 +7988,64 @@ function webGetCards_() {
       targetPoints:  r[3] !== '' ? Number(r[3]) : 0,
       currentPoints: r[4] !== '' ? Number(r[4]) : 0,
       notes:         String(r[5] || ''),
+      countTransfers: String(r[6] || '').trim().toLowerCase() === 'yes',
     };
   });
+  // A goal reads its program's balance (plus bank points that transfer in, when ticked);
+  // a goal whose program isn't listed keeps its typed Current Points.
+  goals.forEach(function(g) { var r = cardGoalPoints_(g, programs); g.fromProgram = r.fromProgram; g.transferable = r.transferable; if (r.fromProgram) g.currentPoints = r.points; });
 
-  return { ok: true, cards: cards, rewards: rewards, perks: perks, programs: programs, goals: goals };
+  return { ok: true, cards: cards, rewards: rewards, perks: perks, programs: programs, goals: goals, history: history, perkUses: perkUses };
+}
+
+// ---- Card Hub helpers ----
+
+/** Adds any missing headers at the end of a card tab (never moves a column). Pure on the sheet. */
+function cardEnsureHeaders_(sheet, headers) {
+  if (!sheet) return sheet;
+  var need = headers.length;
+  if (sheet.getMaxColumns() < need) sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  var have = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) if (!String(have[i] || '').trim()) sheet.getRange(1, i + 1).setValue(headers[i]).setFontWeight('bold');
+  return sheet;
+}
+
+/** Points History: a dated balance for a program (the trend on Card Hub › Points). */
+function cardLogPoints_(programId, points, source) {
+  try {
+    var sh = ensureSheet(getSpreadsheet(), TABS.POINTS_HISTORY, POINTS_HISTORY_HEADERS);
+    sh.appendRow([Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), String(programId), Number(String(points).replace(/,/g, '')) || 0, String(source || 'dashboard')]);
+  } catch (e) { Logger.log('cardLogPoints_: ' + e.message); }
+}
+
+function cardCell_(v) { return String(v == null ? '' : v).trim(); }
+/** A date cell as yyyy-MM-dd (Sheets hands back Dates), else the text. */
+function cardDay_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(v == null ? '' : v).trim();
+}
+/** A month cell as yyyy-MM. */
+function cardMonth_(v) { var d = cardDay_(v); return /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : d; }
+
+/**
+ * Pure: a goal's points from its program: { fromProgram, points, transferable }. With Count
+ * Transfers, bank programs whose Transfers From names reach the goal's program add theirs
+ * (the target program lists "Chase UR 1:1", and Chase UR is a program you hold).
+ */
+function cardGoalPoints_(goal, programs) {
+  var want = String(goal.targetProgram || '').trim().toLowerCase();
+  var prog = (programs || []).filter(function(p) { return String(p.program).trim().toLowerCase() === want || String(p.id).toLowerCase() === want; })[0];
+  if (!prog) return { fromProgram: false, points: Number(goal.currentPoints) || 0, transferable: 0 };
+  var extra = 0;
+  if (goal.countTransfers) {
+    String(prog.transfersFrom || '').split(/[,;]/).forEach(function(part) {
+      var name = part.replace(/\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?\s*$/, '').trim().toLowerCase();
+      var ratio = /(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/.exec(part), mult = ratio ? Number(ratio[2]) / Number(ratio[1]) : 1;
+      var bank = name && (programs || []).filter(function(p) { var n = String(p.program).toLowerCase(); return p !== prog && (n === name || n.indexOf(name) !== -1 || name.indexOf(n) !== -1); })[0];
+      if (bank) extra += Math.floor((Number(bank.totalPoints) || 0) * mult);
+    });
+  }
+  return { fromProgram: true, points: (Number(prog.totalPoints) || 0) + extra, transferable: extra };
 }
 
 // ---- Credit Card CRUD ----
@@ -7979,9 +8071,24 @@ function webAddCard_(e) {
     (p.statementCredit || '').trim(),
     (p.notes           || '').trim(),
     (p.creditLimit     || '').toString().trim(),
-    (p.noFxFee         || '').trim(),
+    cardFxFlag_(p.noFxFee, p.fxFeePct),
+    (p.feeMonth        || '').toString().trim(),
+    (p.fxFeePct        == null ? '' : p.fxFeePct).toString().trim(),
+    (p.network         || '').toString().trim(),
+    (p.opened          || '').toString().trim(),
+    (p.closed          || '').toString().trim(),
   ]);
   return { ok: true, id: id };
+}
+
+/**
+ * The No FX Fee cell, kept in step with FX Fee %: 0% means Yes, any other % means No, and
+ * with no % given the Yes/No sent (or blank) stands. Pure.
+ */
+function cardFxFlag_(noFxFee, fxFeePct) {
+  var pct = String(fxFeePct == null ? '' : fxFeePct).trim();
+  if (pct !== '' && !isNaN(Number(pct.replace('%', '')))) return Number(pct.replace('%', '')) === 0 ? 'Yes' : 'No';
+  return String(noFxFee == null ? '' : noFxFee).trim();
 }
 
 /**
@@ -8025,9 +8132,12 @@ function webUpdateCard_(e) {
   // into the wrong column — the FX flag into Notes, silently. test_cardfx.js derives
   // the expected numbers from the header list rather than restating them here, so that
   // whole class of off-by-one is caught rather than trusted.
-  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12, creditLimit:13, noFxFee:14 };
+  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12, creditLimit:13, noFxFee:14,
+                 feeMonth:15, fxFeePct:16, network:17, opened:18, closed:19 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
+      // A foreign fee % decides the No FX flag, so the two can't disagree.
+      if (p.fxFeePct != null && String(p.fxFeePct).trim() !== '') p.noFxFee = cardFxFlag_(p.noFxFee, p.fxFeePct);
       for (var key in colMap) {
         if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
       }
@@ -8324,7 +8434,29 @@ function finishCardPerkMarkedUsed_(perkId, periodKey) {
     out.eligibleResolved = 0;
     Logger.log('finishCardPerkMarkedUsed_: could not resolve the eligibility flag — ' + ge.message);
   }
+  // Perk Uses: what this perk paid back, for "perks used this year" (Card Hub).
+  try { cardPerkUseLog_(perkId, periodKey, true); } catch (ue) { Logger.log('finishCardPerkMarkedUsed_: perk use not logged — ' + ue.message); }
   return out;
+}
+
+/**
+ * Perk Uses: adds one row for a perk and its cycle's period (never twice), or removes
+ * that row when the tick is taken back. The card and amount come from the perk's row.
+ */
+function cardPerkUseLog_(perkId, periodKey, add) {
+  var id = String(perkId || '').trim(), period = String(periodKey || '').trim();
+  if (!id || !period) return false;
+  var ss = getSpreadsheet();
+  var sh = ensureSheet(ss, TABS.PERK_USES, PERK_USE_HEADERS);
+  var rows = sh.getLastRow() >= 2 ? sh.getRange(2, 1, sh.getLastRow() - 1, PERK_USE_HEADERS.length).getValues() : [];
+  var at = -1;
+  rows.forEach(function(r, i) { if (String(r[1]).trim() === id && String(r[4]).trim() === period) at = i; });
+  if (!add) { if (at !== -1) sh.deleteRow(at + 2); return at !== -1; }
+  if (at !== -1) return false;
+  var perks = ss.getSheetByName(TABS.CARD_PERKS), card = '', amount = 0;
+  if (perks && perks.getLastRow() >= 2) perks.getRange(2, 1, perks.getLastRow() - 1, 4).getValues().forEach(function(r) { if (String(r[0]).trim() === id) { card = String(r[1] || ''); amount = Number(r[3]) || 0; } });
+  sh.appendRow([Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), id, card, amount, period]);
+  return true;
 }
 
 /**
@@ -8353,6 +8485,9 @@ function webToggleCardPerk_(e) {
     out.flagsResolved = done.flagsResolved;
     out.eventsRemoved = done.eventsRemoved;
     out.eligibleResolved = done.eligibleResolved;
+  } else {
+    // Taken back: it no longer counts as used this cycle.
+    try { cardPerkUseLog_(r.id, r.period, false); } catch (ue) { Logger.log('webToggleCardPerk_: perk use not removed — ' + ue.message); }
   }
   return out;
 }
@@ -8594,16 +8729,23 @@ function webAddLoyaltyProgram_(e) {
   if (!program) throw new Error('program is required');
   var id    = 'LP-' + Date.now();
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+  var sheet = cardEnsureHeaders_(ss.getSheetByName(TABS.LOYALTY_PROGRAMS), LOYALTY_PROGRAM_HEADERS);
   sheet.appendRow([
     id, program,
     (p.linkedCard    || '').trim(),
     totalPoints,
-    (p.centsPerPoint || '1.0').toString().trim(),
+    (p.centsPerPoint || '').toString().trim(),
     (p.bestUse       || '').trim(),
     (p.expiry        || '').trim(),
     (p.notes         || '').trim(),
+    (p.owner         || '').trim(),
+    (p.memberNo      || '').toString().trim(),
+    (p.status        || '').trim(),
+    (p.statusRenews  || '').trim(),
+    (p.transfersFrom || '').trim(),
+    (p.typicalCpp    || '').toString().trim(),
   ]);
+  cardLogPoints_(id, totalPoints, p.source || 'dashboard');
   return { ok: true, id: id };
 }
 
@@ -8612,14 +8754,17 @@ function webUpdateLoyaltyProgram_(e) {
   var id = (p.id || '').trim();
   if (!id) throw new Error('id is required');
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+  var sheet = cardEnsureHeaders_(ss.getSheetByName(TABS.LOYALTY_PROGRAMS), LOYALTY_PROGRAM_HEADERS);
   var rows  = sheet.getDataRange().getValues();
-  var colMap = { program:2, linkedCard:3, totalPoints:4, centsPerPoint:5, bestUse:6, expiry:7, notes:8 };
+  var colMap = { program:2, linkedCard:3, totalPoints:4, centsPerPoint:5, bestUse:6, expiry:7, notes:8,
+                 owner:9, memberNo:10, status:11, statusRenews:12, transfersFrom:13, typicalCpp:14 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       for (var key in colMap) {
         if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
       }
+      // A new balance is dated in Points History, for the trend line.
+      if (p.totalPoints != null && String(p.totalPoints).trim() !== '' && Number(p.totalPoints) !== Number(rows[i][3])) cardLogPoints_(id, p.totalPoints, p.source || 'dashboard');
       return { ok: true };
     }
   }
@@ -8649,11 +8794,12 @@ function webAddRewardsGoal_(e) {
   if (!goal || !targetProgram) throw new Error('goal and targetProgram are required');
   var id    = 'RG-' + Date.now();
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.REWARDS_GOALS);
+  var sheet = cardEnsureHeaders_(ss.getSheetByName(TABS.REWARDS_GOALS), REWARDS_GOAL_HEADERS);
   sheet.appendRow([
     id, goal, targetProgram, targetPoints,
     (p.currentPoints || '0').toString().trim(),
     (p.notes         || '').trim(),
+    String(p.countTransfers || '').trim().toLowerCase() === 'yes' ? 'Yes' : '',
   ]);
   return { ok: true, id: id };
 }
@@ -8663,9 +8809,9 @@ function webUpdateRewardsGoal_(e) {
   var id = (p.id || '').trim();
   if (!id) throw new Error('id is required');
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.REWARDS_GOALS);
+  var sheet = cardEnsureHeaders_(ss.getSheetByName(TABS.REWARDS_GOALS), REWARDS_GOAL_HEADERS);
   var rows  = sheet.getDataRange().getValues();
-  var colMap = { goal:2, targetProgram:3, targetPoints:4, currentPoints:5, notes:6 };
+  var colMap = { goal:2, targetProgram:3, targetPoints:4, currentPoints:5, notes:6, countTransfers:7 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       for (var key in colMap) {

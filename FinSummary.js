@@ -59,6 +59,15 @@ function fsOutputs_(grid) {
   return out;
 }
 
+/** Pure: a card's annual fee month: its Fee Month ("March", "3", "2027-03"), else its notes. */
+function fsCardFeeMonthOf_(card) {
+  var s = fsText_(card && card.feeMonth).toLowerCase(), m;
+  if ((m = /^\d{4}-(\d{2})/.exec(s))) return Number(m[1]);
+  if (/^\d{1,2}$/.test(s) && Number(s) >= 1 && Number(s) <= 12) return Number(s);
+  if (s && FS_MONTHS_[s.slice(0, 3)]) return FS_MONTHS_[s.slice(0, 3)];
+  return fsCardFeeMonth_(card && card.notes);
+}
+
 /** Pure: a card's annual fee month from its notes ("fee in March", "annual fee: Mar"), or 0. */
 function fsCardFeeMonth_(notes) {
   var m = fsText_(notes).toLowerCase().match(/fee[^.;]*?\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/);
@@ -95,7 +104,8 @@ function fsAttention_(sources, today) {
     if (!c.matures) return; var n = fsDays_(today, c.matures); if (n < 0 || n > 30) return;
     items.push({ kind: 'cd', title: c.name + ' matures', detail: 'decide whether to roll it over', date: c.matures, tab: 'networth' }); }); });
   take('cards', function(s) { (s.items || []).forEach(function(c) {
-    var fm = fsCardFeeMonth_(c.notes); if (!fm || !c.annualFee || String(c.active || 'Yes') !== 'Yes') return;
+    // The Fee Month column first (Card Hub), else "fee in March" in the notes.
+    var fm = fsCardFeeMonthOf_(c); if (!fm || !c.annualFee || String(c.active || 'Yes') !== 'Yes') return;
     var fy = fm < mo ? y + 1 : y, d = fy + '-' + String(fm).padStart(2, '0') + '-01', n = fsDays_(today, d);
     if (fm !== mo && (n < 0 || n > 31)) return;
     items.push({ kind: 'fee', title: c.cardName + ' annual fee ' + fsMoney_(c.annualFee), detail: fm === mo ? 'this month' : 'next month', date: fm === mo ? today : d, tab: 'cards' }); }); });

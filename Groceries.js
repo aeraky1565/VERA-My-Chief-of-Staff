@@ -107,12 +107,17 @@ function grCardsFor_(cards, who) {
   });
 }
 
-/** Pure: the best grocery card for a person: the highest "Groceries" rate among their cards, with why. */
-function grBestCard_(cards, rewards, who) {
-  var mine = grCardsFor_(cards, who), names = {};
-  mine.forEach(function(c) { names[c.name] = 1; });
+/**
+ * Pure: the best grocery card for a person: the "Groceries" rate worth most among their
+ * cards, with why. With programs (Card Hub), points are valued at the program's ¢ per point
+ * (CardValue.js cvRewardValue_), the same ranking as the cheat sheet; without, by the rate.
+ */
+function grBestCard_(cards, rewards, who, programs) {
+  var mine = grCardsFor_(cards, who), names = {}, byName = {};
+  mine.forEach(function(c) { names[c.name] = 1; byName[c.name] = c; });
+  var worth = function(r) { return programs && typeof cvRewardValue_ === 'function' ? cvRewardValue_(r, { id: byName[r.card].id, cardName: r.card }, programs) : Number(r.rate); };
   var hits = (rewards || []).filter(function(r) { return r && names[r.card] && String(r.category || '').trim().toLowerCase() === 'groceries' && isFinite(Number(r.rate)); })
-    .sort(function(a, b) { return Number(b.rate) - Number(a.rate); });
+    .sort(function(a, b) { return worth(b) - worth(a); });
   if (!hits.length) return mine[0] ? { card: mine[0].name, why: 'no grocery rate on file' } : null;
   var h = hits[0], where = String(h.conditions || '').split(',')[0].trim();
   var rate = /%/.test(h.rateType || '') ? h.rate + '% back' : h.rate + 'x points';
@@ -177,13 +182,20 @@ function grCardsAndRewards_() {
   try {
     var cs = ss.getSheetByName(TABS.CREDIT_CARDS);
     if (cs && cs.getLastRow() >= 2) cards = cs.getRange(2, 1, cs.getLastRow() - 1, CREDIT_CARD_HEADERS.length).getValues().filter(function(r) { return r[1]; })
-      .map(function(r) { return { name: String(r[1]).trim(), owner: String(r[7] || '').trim(), authUser: String(r[8] || '').trim(),
-        active: !/^(no|false|closed)$/i.test(String(r[9] || '').trim()) }; });
+      .map(function(r) { return { id: String(r[0] || '').trim(), name: String(r[1]).trim(), owner: String(r[7] || '').trim(), authUser: String(r[8] || '').trim(),
+        active: !/^(no|false|closed)$/i.test(String(r[9] || '').trim()) && !String(r[18] || '').trim() }; });
     var rs = ss.getSheetByName(TABS.CARD_REWARDS);
     if (rs && rs.getLastRow() >= 2) rewards = rs.getRange(2, 1, rs.getLastRow() - 1, CARD_REWARD_HEADERS.length).getValues().filter(function(r) { return r[1]; })
       .map(function(r) { return { card: String(r[1]).trim(), category: String(r[2] || '').trim(), rate: Number(r[3]), rateType: String(r[4] || '').trim(), conditions: String(r[5] || '').trim() }; });
   } catch (e) { Logger.log('groceries: cards unavailable'); }
-  return { cards: cards, rewards: rewards };
+  // Points are valued by their program (Card Hub), so the pick matches the cheat sheet.
+  var programs = [];
+  try {
+    var ps = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+    if (ps && ps.getLastRow() >= 2) programs = ps.getRange(2, 1, ps.getLastRow() - 1, Math.min(ps.getLastColumn(), LOYALTY_PROGRAM_HEADERS.length)).getValues().filter(function(r) { return r[1]; })
+      .map(function(r) { return { id: String(r[0]), program: String(r[1]), linkedCard: String(r[2] || ''), centsPerPoint: String(r[4] || ''), typicalCpp: String(r[13] || '') }; });
+  } catch (e) { programs = []; }
+  return { cards: cards, rewards: rewards, programs: programs };
 }
 
 function grBudget_() {
@@ -196,7 +208,7 @@ function grBudget_() {
 function webGrocerySetup_(p) {
   var store = grStr_(p && p.store, 60), setting = grStoreSetting_(), cr = grCardsAndRewards_(), today = grToday_();
   var people = {};
-  GR_PEOPLE_.forEach(function(w) { people[w] = { suggested: grBestCard_(cr.cards, cr.rewards, w), cards: grCardsFor_(cr.cards, w).map(function(c) { return c.name; }) }; });
+  GR_PEOPLE_.forEach(function(w) { people[w] = { suggested: grBestCard_(cr.cards, cr.rewards, w, cr.programs), cards: grCardsFor_(cr.cards, w).map(function(c) { return c.name; }) }; });
   return { ok: true, store: store, counts: grIsGroceryStore_(store, setting), people: people,
     month: { spent: grMonthTotals_(grAll_(), today.slice(0, 7)).total, budget: grBudget_() } };
 }

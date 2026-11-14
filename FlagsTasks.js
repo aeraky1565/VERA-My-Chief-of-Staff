@@ -42,6 +42,10 @@ var AUTO_FLAG_KINDS_ = [
   { prefix: 'PTOPLAN|USE|',      clears: 'Clears once the time is booked on the work calendar, or the year ends.' },
   { prefix: 'PTOPLAN|REQ|',      clears: 'Clears once the PTO shows on the work calendar.' },
   { prefix: 'PTOPLAN|',          clears: 'Clears once the PTO plan no longer needs it.' },
+  { prefix: 'POINTS|EXP|',       clears: 'Clears once the expiry date moves (any activity resets it) or passes.' },
+  { prefix: 'POINTS|STATUS|',    clears: 'Clears once the renewal date passes or moves.' },
+  { prefix: 'POINTS|',           clears: 'Clears once the points no longer need it.' },
+  { prefix: 'CARDFEE|',          clears: 'Clears once the fee month passes.' },
 ];
 
 /** Pure: the automatic kind a flag key belongs to ({prefix, clears}), or null for a one-off flag. */

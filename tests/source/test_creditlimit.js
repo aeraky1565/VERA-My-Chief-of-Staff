@@ -36,8 +36,10 @@ const MAP_SRC = WEBAPP.match(/var cards = cardRows\.filter\([\s\S]*?\n  \}\);/)[
 
 console.log('\nthe read mapping');
 {
-  const ctx = { console, String, Number };
+  const ctx = { console, String, Number, Date };
   vm.createContext(ctx);
+  // The Card Hub columns' small readers (WebApp.js), which the mapping calls.
+  vm.runInContext(['cardCell_', 'cardDay_', 'cardMonth_'].map(n => extractFn(WEBAPP, n)).join('\n'), ctx);
   vm.runInContext('var cardRows = CARD_ROWS;\n' + MAP_SRC.replace('var cards =', 'var cards ='), Object.assign(ctx, {
     CARD_ROWS: [
       // 12 columns: a row written before the Credit Limit header existed.

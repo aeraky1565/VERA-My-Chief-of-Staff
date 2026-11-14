@@ -88,6 +88,8 @@ const TABS = {
   CARD_PERKS:         'Card Perks',           // Monthly/annual perk tracker
   LOYALTY_PROGRAMS:   'Loyalty Programs',     // Points/miles balances (Issue #117)
   REWARDS_GOALS:      'Rewards Goals',        // Redemption goal tracking
+  POINTS_HISTORY:     'Points History',       // Loyalty balance changes over time (Card Hub)
+  PERK_USES:          'Perk Uses',            // Each perk marked used, by cycle (Card Hub)
   GIFT_PEOPLE:        'Gift People',          // Per-person gift idea lists (Issue #105)
   GIFT_IDEAS:         'Gift Ideas',           // Individual gift ideas linked to people (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
@@ -310,7 +312,10 @@ const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Fre
 // 'No FX Fee' is Yes/No and BLANK MEANS NO — see webGetCreditCards_. It is the one
 // field here whose unset state must not be read as the permissive one: it decides
 // which cards the cheat sheet offers for spending abroad.
-const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit', 'No FX Fee'];
+// Card Hub (Finances › Cards): Fee Month (the month the annual fee posts), FX Fee % (0 =
+// no foreign fee; kept in step with No FX Fee), Network (Visa / Mastercard / Amex /
+// Discover), Opened and Closed (yyyy-MM). Appended so every existing column keeps its number.
+const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit', 'No FX Fee', 'Fee Month', 'FX Fee %', 'Network', 'Opened', 'Closed'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
 
@@ -332,8 +337,16 @@ const HOTELS_PAY_AT_REWARDS_ = [
   ['Capital One Venture',                '2',  'x miles',    'Paid at the hotel, not via Capital One Travel'],
 ];
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review', 'Autopay'];
-const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
-const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
+// Linked Card: the card IDs (comma list) whose points land here. Owner, Member #, Status and
+// Status Renews (yyyy-MM-dd), Transfers From ("Chase UR 1:1, Amex MR 1:1"), Typical CPP
+// (blank = VERA's typical value for the program). Appended (Card Hub).
+const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes', 'Owner', 'Member #', 'Status', 'Status Renews', 'Transfers From', 'Typical CPP'];
+// Count Transfers: Yes = the goal also counts bank points that transfer into its program.
+const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes', 'Count Transfers'];
+// Every balance change, dated (Card Hub › Points trend). Source: dashboard | chat.
+const POINTS_HISTORY_HEADERS     = ['Date', 'Program ID', 'Points', 'Source'];
+// Every perk marked used, with its cycle's period key, for "perks used this year".
+const PERK_USE_HEADERS           = ['Date', 'Perk ID', 'Card', 'Amount', 'Period'];
 const GIFT_PEOPLE_HEADERS        = ['Name'];
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
 // Date accepts a fixed value (MM-DD, YYYY-MM-DD) or a rule that no calendar
@@ -571,6 +584,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CARD_PERKS,           CARD_PERK_HEADERS);
   ensureSheet(ss, TABS.LOYALTY_PROGRAMS,     LOYALTY_PROGRAM_HEADERS);
   ensureSheet(ss, TABS.REWARDS_GOALS,        REWARDS_GOAL_HEADERS);
+  ensureSheet(ss, TABS.POINTS_HISTORY,       POINTS_HISTORY_HEADERS);
+  ensureSheet(ss, TABS.PERK_USES,            PERK_USE_HEADERS);
   ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]);
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS);
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS);
@@ -1447,6 +1462,10 @@ function nightlyRun() {
     nightlyStep_(ctx, 'checkCardPerksExpiring_', checkCardPerksExpiring_);
     // Step 0m-iii: Monthly card perk relevance check — verify with issuer via web search, flag stale perks for review (Issue #187)
     nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);
+    // Card Hub (CardHub.js): points that expire, status that renews, the annual fee coming
+    // up against what the perks paid back; and, once, Perk Uses from what's ticked now.
+    nightlyStep_(ctx, 'seedPerkUses_', seedPerkUses_);
+    nightlyStep_(ctx, 'checkCardHub_', checkCardHub_);
 
     // Also previously unguarded.
     nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);

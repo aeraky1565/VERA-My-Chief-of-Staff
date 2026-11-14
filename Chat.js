@@ -2802,7 +2802,7 @@ function executeActions_(rawText) {
             return p.program.toLowerCase().indexOf(ulProg.toLowerCase()) >= 0;
           });
           if (ulMatch.length > 0) {
-            webUpdateLoyaltyProgram_({ parameter: { id: ulMatch[0].id, totalPoints: ulPts } });
+            webUpdateLoyaltyProgram_({ parameter: { id: ulMatch[0].id, totalPoints: ulPts, source: 'chat' } });
             executed.push('update_loyalty_points (' + ulMatch[0].program + ' \u2192 ' + ulPts + ')');
           } else {
             errors.push('update_loyalty_points: no program found matching "' + ulProg + '"');

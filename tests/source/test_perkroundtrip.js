@@ -146,6 +146,10 @@ function serverCtx(now, perkRows) {
     extractFn(SRC.Web, 'webToggleCardPerk_'),
     extractFn(SRC.Web, 'webMarkCardPerkUsed_'),
     extractFn(SRC.Web, 'webGetCards_'),
+    // Card Hub: what webGetCards_ calls for the new columns, perk uses and goals.
+    extractFn(SRC.Web, 'cardCell_'), extractFn(SRC.Web, 'cardDay_'), extractFn(SRC.Web, 'cardMonth_'), extractFn(SRC.Web, 'cardGoalPoints_'),
+    extractFn(SRC.Web, 'cardPerkUseLog_'),
+    require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'CardValue.js'), 'utf8').split('// ---- /CardValue ----')[0],
     // Freeze the clock, forwarding every argument: cardPerkPeriodEnd_ builds
     // new Date(year, month, 0), and a one-arg stub turns that into 1970.
     'var __Real = Date;',

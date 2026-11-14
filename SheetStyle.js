@@ -63,7 +63,7 @@ var SS_AREAS_ = [
     'BucketActivities', 'Countries', 'Place Facts', 'ARIA Requests', 'Loyalty Programs'],
     prefixes: ['Trip ', 'Travel', 'Packing', 'Leaving Home'] },
   { id: 'money',    color: '#2e9d5b', tabs: ['Bills', 'Bill Schedule', 'Transactions', 'Bank Accounts', 'Credit Cards',
-    'Rewards Goals', 'Financial Goals', 'Financial Scenarios', 'Finance Snapshots', 'Planned Purchases', 'Planned Purchase Options',
+    'Rewards Goals', 'Points History', 'Perk Uses', 'Financial Goals', 'Financial Scenarios', 'Finance Snapshots', 'Planned Purchases', 'Planned Purchase Options',
     'Health Accounts', 'Contracts', 'Coupons', 'Giving', 'Resell List'],
     prefixes: ['Card ', 'Tax ', 'Budget ', 'Check-in ', 'Phone '] },
   { id: 'home',     color: '#e07b39', tabs: ['HouseholdInfo', 'Home Items', 'Vehicles', 'On Hand', 'Purchase History',

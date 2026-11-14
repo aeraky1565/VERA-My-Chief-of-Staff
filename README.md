@@ -101,7 +101,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
-**Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, Card cheat sheet, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
+**Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, 🥇 Which card, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money (… 📇 Our cards) · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
 
 **Guides** (in `docs/guides/`, served by GitHub Pages):
 
@@ -706,6 +706,61 @@ under GET almost all of them would have needed a presence flag. A JSON body carr
   through one `deleteAddressBookRowsFor_`, which deletes **back to front** — two copies
   of that loop is two chances to write the forward one, where deleting row 4 shifts
   row 5 up into its place and the loop skips it.
+
+### Card Hub (`CardValue.js`, `CardHub.js`, `WebApp.js`)
+
+Finances › Cards has four subtabs: **🥇 Which card · 📇 My cards · 🎫 Perks · 🪙 Points**.
+Lite has **Shopping › 🥇 Which card** and **Money › 📇 Our cards**, a reference where
+Victoria can tick a perk as used (in lite it sits under **Money**). Everything else is edited on the full dashboard.
+
+- **Which card** ranks every open card by **cents back per $1**. Cash back counts as it
+  is. Points and miles are the rate times what a point is worth in the program the card
+  earns into. That's the Loyalty Programs row whose `Linked Card` lists the card's ID.
+  - **What a point is worth:** your `Cents Per Point` (its first number, so "1.7 – 2.0+"
+    reads 1.7), else `Typical CPP`, else VERA's typical value for the program, else 1¢.
+  - **The groups, in this order:** Everyday (Groceries, Gas / EV, Costco, Dining,
+    Everything else), Travel (Flights, Hotels prepaid, Hotels pay-at-hotel, Travel portal,
+    Abroad, Rental cars), Online & bills (Amazon / Whole Foods, Online shopping, Streaming,
+    Phone / utilities, Rent). Any other category your cards earn on goes under More.
+  - **The rate that counts:** a card's own rate for the category, else a broad `Travel`
+    rate (for flights, hotels and rental cars), else its everything-else rate.
+  - **The rules:** ties go to the lower annual fee, Costco takes Visa only, a card with
+    a `Closed` month is left out, and "I'm abroad" keeps only cards with no foreign fee.
+  - **The full dashboard** shows everyone's cards with an owner tag, plus Ahmed's and
+    Victoria's filters, search and Copy.
+  - **Lite** shows one best card a row; tap a row for the runner-up.
+- **The grocery run's suggested card** (`grBestCard_`) uses the same value maths.
+- **My cards** is the card tracker. Above it, each card's perks used this year are shown
+  against its annual fee.
+- **Perks** puts every open card's perks on one list, due soonest first. Each perk keeps
+  its own cycle and shows its reset date. There's a filter by cycle.
+  - In the browser, "used" is `chPerkUsed_`. It mirrors `cardPerkIsUsed_`, and
+    test_cardvalue checks the two agree on every cycle.
+- **Points** shows each program's owner, member #, status and when it renews, expiry,
+  transfer partners, your ¢ next to the typical ¢, the $ value and a balance trend.
+  - A goal reads its program's balance. With `Count Transfers` ticked, it also counts
+    bank points that transfer in (`Transfers From`, e.g. "Chase UR 1:1").
+- **New columns** are added at the end of each tab and never moved:
+  - `Credit Cards`: `Fee Month`, `FX Fee %`, `Network`, `Opened`, `Closed`. `Auth User`
+    takes a comma list. Setting `FX Fee %` keeps `No FX Fee` in step (0% is Yes).
+  - `Loyalty Programs`: `Owner`, `Member #`, `Status`, `Status Renews`,
+    `Transfers From`, `Typical CPP`.
+  - `Rewards Goals`: `Count Transfers`.
+- **New tabs:**
+  - `Points History` (Date, Program ID, Points, Source) dates every balance change, from
+    the dashboard or Chat.
+  - `Perk Uses` (Date, Perk ID, Card, Amount, Period) holds one row per perk per cycle.
+    Ticking a perk adds its row and un-ticking removes it. It's seeded once from the
+    perks already marked used.
+- **Nightly** (`checkCardHub_`):
+  - a flag 90 days before points expire (High within 30);
+  - a flag 60 days before status renews;
+  - a flag 30 days before an annual fee, saying what the perks paid back. It's Low when
+    they covered the fee, else Medium with a nudge to ask for a retention offer.
+  - The keys are `POINTS|EXP|…`, `POINTS|STATUS|…` and `CARDFEE|…`, and the flags clear
+    themselves.
+  - The fee month comes from `Fee Month`, else the card's Notes (the Finance summary
+    reads it the same way).
 
 ### Card Perks (`Code.js`, `WebApp.js`)
 
