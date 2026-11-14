@@ -8423,6 +8423,8 @@ function finishCardPerkMarkedUsed_(perkId, periodKey) {
   } catch (ce) {
     Logger.log('finishCardPerkMarkedUsed_: could not remove the reminder event — ' + ce.message);
   }
+  // Perk Uses: what this perk paid back, for "perks used this year" (Card Hub).
+  try { cardPerkUseLog_(perkId, periodKey, true); } catch (ue) { Logger.log('finishCardPerkMarkedUsed_: perk use not logged — ' + ue.message); }
   // A multi-year perk's open "available again" notice, if it has one. Matched on
   // the perk alone rather than on the anchor it was raised with: the anchor has
   // just been overwritten by the caller, and a notice raised against a stamp that
@@ -8434,8 +8436,6 @@ function finishCardPerkMarkedUsed_(perkId, periodKey) {
     out.eligibleResolved = 0;
     Logger.log('finishCardPerkMarkedUsed_: could not resolve the eligibility flag — ' + ge.message);
   }
-  // Perk Uses: what this perk paid back, for "perks used this year" (Card Hub).
-  try { cardPerkUseLog_(perkId, periodKey, true); } catch (ue) { Logger.log('finishCardPerkMarkedUsed_: perk use not logged — ' + ue.message); }
   return out;
 }
 

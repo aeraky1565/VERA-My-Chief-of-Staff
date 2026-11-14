@@ -26,7 +26,7 @@ const CONTROLS = [
   [SRV, 'the month includes last month\'s runs', b => ({ [G]: swap(b[G], "return r.date && r.date.slice(0, 7) === ym && r.total != null; }).forEach", "return r.date && r.total != null; }).forEach") })],
   [SRV, 'last month counts the whole month, not to date', b => ({ [G]: swap(b[G], " && r.date.slice(8, 10) <= day && r.total != null; })", " && r.total != null; })") })],
   [SRV, 'a closed card is still suggested', b => ({ [G]: swap(b[G], "if (!c || !c.name || c.active === false) return false;", "if (!c || !c.name) return false;") })],
-  [SRV, 'the lowest grocery rate wins', b => ({ [G]: swap(b[G], "return Number(b.rate) - Number(a.rate); });", "return Number(a.rate) - Number(b.rate); });") })],
+  [SRV, 'the lowest grocery rate wins', b => ({ [G]: swap(b[G], "return worth(b) - worth(a); });", "return worth(a) - worth(b); });") })],
   [SRV, 'someone else\'s card is suggested', b => ({ [G]: swap(b[G], "return !w || owner === w || owner === 'joint'", "return true || owner === w || owner === 'joint'") })],
   [SRV, 'the budget reads the wrong row', b => ({ [G]: swap(b[G], "return String(r.label || '').trim().toLowerCase() === 'groceries'; })[0];", "return true; })[0];") })],
   [SRV, 'a zero total is logged', b => ({ [G]: swap(b[G], "  if (x.total == null || x.total <= 0) return { ok: false, error: 'Enter the total' };\n", "") })],

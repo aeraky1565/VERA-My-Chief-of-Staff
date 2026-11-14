@@ -206,7 +206,10 @@ console.log('\nThe dashboard shows it — all three copies');
           /frequency\s*===\s*'Standing'\)\s*return false/.test(s));
     check(label + ': a badge replaces the checkbox', /Standing/.test(s) && /♾️/.test(s));
     check(label + ': the period suffix is suppressed',
-          /(?:pk\.)?freq(?:uency)?\s*!==\s*'Standing'/.test(s), 'would read "Not used this month"');
+          // The guard on the perk line itself (`&& pk.frequency !== 'Standing'`), not any
+          // Standing test elsewhere: the Card Hub Perks list has its own, which kept this
+          // passing when the guard was removed.
+          /&&\s*(?:pk\.)?freq(?:uency)?\s*!==\s*'Standing'/.test(s), 'would read "Not used this month"');
   });
 
   // index.html is generated; drift has shipped a dead feature before.

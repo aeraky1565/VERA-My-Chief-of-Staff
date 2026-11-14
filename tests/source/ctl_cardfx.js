@@ -135,21 +135,22 @@ const CONTROLS = {
 
   // ---- the column ----------------------------------------------------------
   'the header is removed': b => ({
-    'Code.js': b['Code.js'].replace(", 'No FX Fee'];", "];"),
+    'Code.js': b['Code.js'].replace("'No FX Fee', 'Fee Month'", "'Fee Month'"),
   }),
   'the header moves, leaving the read index behind': b => ({
     'Code.js': b['Code.js'].replace(
-      "'Notes', 'Credit Limit', 'No FX Fee'];", "'Notes', 'No FX Fee', 'Credit Limit'];"),
+      "'Notes', 'Credit Limit', 'No FX Fee',", "'Notes', 'No FX Fee', 'Credit Limit',"),
   }),
   'the colMap index is off by one (the flag writes into Notes)': b => ({
-    'WebApp.js': b['WebApp.js'].replace('creditLimit:13, noFxFee:14 }',
-                                        'creditLimit:13, noFxFee:12 }'),
+    'WebApp.js': b['WebApp.js'].replace('creditLimit:13, noFxFee:14,',
+                                        'creditLimit:13, noFxFee:12,'),
   }),
   'the colMap entry is missing, so the field is never written': b => ({
-    'WebApp.js': b['WebApp.js'].replace('creditLimit:13, noFxFee:14 }', 'creditLimit:13 }'),
+    'WebApp.js': b['WebApp.js'].replace('creditLimit:13, noFxFee:14,', 'creditLimit:13,'),
   }),
+  // Card Hub: the add writes the flag through cardFxFlag_ (kept in step with FX Fee %).
   'webAddCard_ stops writing the column': b => ({
-    'WebApp.js': b['WebApp.js'].replace("    (p.noFxFee         || '').trim(),\n", ''),
+    'WebApp.js': b['WebApp.js'].replace("    cardFxFlag_(p.noFxFee, p.fxFeePct),\n", "    '',\n"),
   }),
 
   // ---- the two representations meeting -------------------------------------
