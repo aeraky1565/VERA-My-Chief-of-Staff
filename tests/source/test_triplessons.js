@@ -525,7 +525,7 @@ console.log('\nThe packing hints no longer depend on itinerary row types');
   const gen = extractFn(SRC.Web, 'webGeneratePacking_');
   check('packing loads the characteristics', /traits   = String\(metaResult\.characteristics/.test(gen));
   check('…passes them to the lesson matcher', /activityTypes: activityTypes, traits: traits/.test(gen));
-  check('…and to the prompt builder', /packingLessons, traits/.test(gen));
+  check('…and to the prompt builder', /\(packingLessons \|\| ''\), traits/.test(gen));
   check('a blank field is REPORTED, not silently treated as "no"',
         /characteristicsMissing/.test(gen),
         'blank reads exactly like "not a beach trip" — that must be visible');

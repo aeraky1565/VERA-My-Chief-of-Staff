@@ -671,7 +671,7 @@ console.log('\nwiring');
         /const travellers = genTravellers_\(traveler, itinData\);\s+traveler = travellers\.value;/.test(pack) && /travellerSource: travellers\.source/.test(pack));
   check('both record the trip notes they were given',
         /briefing:\s+briefing,/.test(pack) && /briefing:\s+briefing,/.test(recs));
-  check('…and both prompts still get them', /context, traveler, destination, season,[\s\S]*?briefing,/.test(pack) && /gapSummary, briefing, recsLessons/.test(recs));
+  check('…and both prompts still get them', /context, traveler, destination, season,[\s\S]*?briefing,/.test(pack) && /gapSummary, briefing,[\s\S]{0,200}?recsLessons/.test(recs));
   check('generation_inputs is a doGet action', /case 'generation_inputs':\s+return jsonOut_\(webGetGenerationInputs_\(e\)\);/.test(WEB));
   check('the nightly check runs', /nightlyStep_\(ctx, 'checkGenerationInputs_', checkGenerationInputs_\);/.test(CODE));
 

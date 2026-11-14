@@ -98,6 +98,8 @@ const PRELUDE = [
   CHARS_SRC,
   extractFn(WEB, 'ensureTripMetaColumns_'),
   extractFn(WEB, 'normaliseTripCharacteristics_'),
+  // Working and Business Trips (WorkTrips.js) also reach webGetTripMeta_ through the shared scope.
+  'function tripWorkKind_() { return ""; } function tripWorkers_() { return []; } function wtStoreRead_() { return {}; } function wtStoredFor_() { return ""; }',
   extractFn(WEB, 'webGetTripMeta_'),
   extractFn(WEB, 'webSetTripMeta_'),
   extractFn(WEB, 'setTripBriefing_'),
