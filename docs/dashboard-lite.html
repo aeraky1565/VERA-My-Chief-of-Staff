@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport-fit=cover: the page runs to the screen edges on iPhone, and the bottom bar pads itself clear of the home indicator. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>VERA — Shopping</title>
   <!-- Home-screen app (#243): the manifest for Android and Chrome, the apple- tags for iPhone. -->
   <link rel="manifest" href="manifest-lite.webmanifest" />
@@ -269,6 +270,66 @@
     @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .voice-status { font-size: 11px; color: #ef5350; margin-bottom: 4px; padding-left: 2px; letter-spacing: 0.03em; }
     .chat-msg-img { display: block; max-width: 200px; max-height: 140px; border-radius: 8px; margin-bottom: 6px; object-fit: cover; border: 1px solid rgba(255,255,255,.1); }
+
+    /* ---- Lite shell: the bottom bar, Today and All ---- */
+    /* The header clears the iPhone status bar; the content clears the bottom bar and the home indicator. */
+    .header { padding-top: env(safe-area-inset-top, 0px); height: calc(60px + env(safe-area-inset-top, 0px)); }
+    .lite-main { max-width: 800px; margin: 0 auto; padding: 24px 28px calc(96px + env(safe-area-inset-bottom, 0px)); }
+    @media (max-width: 600px) {
+      .lite-main { padding-top: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+      .header { height: calc(54px + env(safe-area-inset-top, 0px)); }
+    }
+    .lite-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; background: #0a1428; border-top: 1px solid #1e3060;
+                padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+    .lite-bar-in { max-width: 800px; margin: 0 auto; display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); }
+    .lite-bar-btn { background: none; border: 0; color: #6b7fa8; font: inherit; font-size: 11px; font-weight: 600; display: flex; flex-direction: column;
+                    align-items: center; gap: 2px; padding: 4px 0; min-height: 48px; cursor: pointer; border-radius: 10px; -webkit-tap-highlight-color: transparent; }
+    .lite-bar-btn .ic { font-size: 20px; line-height: 1.2; filter: grayscale(.7); opacity: .7; }
+    .lite-bar-btn.on { color: #c9a84c; }
+    .lite-bar-btn.on .ic { filter: none; opacity: 1; }
+    .lite-bar-btn.center .ic { width: 44px; height: 44px; margin-top: -18px; border-radius: 50%; background: #c9a84c; display: grid; place-items: center;
+                               filter: none; opacity: 1; box-shadow: 0 6px 14px -6px rgba(0,0,0,.6); }
+    .lite-bar-btn:focus-visible, .lite-tile:focus-visible, .lite-app:focus-visible, .lite-need-go:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
+    .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    .chat-wrap { height: calc(100vh - 230px - env(safe-area-inset-bottom, 0px)); }
+    .lite-hello { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .lite-hello h2 { font-size: 21px; font-weight: 800; color: #dde1f0; }
+    .lite-hello small { display: block; font-size: 12.5px; color: #6b7fa8; }
+    .lite-av { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #c9a84c, #e8cf82); color: #2b2208; font-weight: 800;
+               display: grid; place-items: center; flex-shrink: 0; }
+    .lite-hero { background: #16315f; border: 1px solid #2f5ea8; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; margin-bottom: 16px; color: #f0f3fa; }
+    .lite-hero-d { font-weight: 800; font-size: 17px; }
+    .lite-ev { display: grid; grid-template-columns: 4px 1fr; gap: 10px; }
+    .lite-ev::before { content: ""; border-radius: 3px; background: var(--c, #8ab4f8); }
+    .lite-ev b { display: block; font-size: 14px; font-weight: 600; }
+    .lite-ev span { font-size: 12px; color: #b7c8e8; }
+    .lite-hero-none { font-size: 13px; color: #9db0d0; }
+    .lite-trip { align-self: flex-start; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px; background: rgba(255,255,255,.14); color: #f0f3fa; border: 0; cursor: pointer; font-family: inherit; }
+    .lite-sect { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: #55617f;
+                 font-weight: 700; margin: 4px 0 8px; }
+    .lite-sect button { background: none; border: 0; color: #8a9abf; font: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 500; cursor: pointer; }
+    .lite-need { background: #0d1b3e; border: 1px solid #1e3060; border-radius: 14px; margin-bottom: 18px; display: flex; flex-direction: column; }
+    .lite-need-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; font-size: 13.5px; color: #dde1f0; }
+    .lite-need-row + .lite-need-row { border-top: 1px solid #1e3060; }
+    .lite-need-row input { width: 19px; height: 19px; accent-color: #34d399; margin: 0; }
+    .lite-need-row small { display: block; color: #8a9abf; font-size: 12px; }
+    .lite-need-row.done b { text-decoration: line-through; opacity: .55; }
+    .lite-need-go { grid-column: 2 / 4; display: flex; justify-content: space-between; gap: 10px; align-items: center; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
+    .lite-due { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; color: #fbbf24; background: rgba(251,191,36,.12); }
+    .lite-due.red { color: #f87171; background: rgba(248,113,113,.13); }
+    .lite-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .lite-tile { position: relative; background: #0d1b3e; border: 1px solid #1e3060; border-radius: 14px; padding: 11px 12px 12px; min-height: 92px; display: flex;
+                 flex-direction: column; gap: 4px; text-align: left; color: #dde1f0; font: inherit; cursor: pointer; }
+    .lite-tile b { font-size: 14px; font-weight: 700; }
+    .lite-tile span { font-size: 12.5px; color: #8a9abf; line-height: 1.35; padding-right: 26px; white-space: pre-line; }
+    .lite-tile em { position: absolute; right: 10px; bottom: 9px; font-style: normal; font-size: 20px; }
+    .lite-tile.hot { border-color: #6b5420; }
+    .lite-tile.hot span { color: #fbbf24; }
+    .lite-all { display: flex; flex-direction: column; gap: 16px; }
+    .lite-all-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .lite-app { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; color: #8a9abf; font: inherit; font-size: 11.5px;
+                text-align: center; line-height: 1.2; cursor: pointer; padding: 2px; min-width: 0; }
+    .lite-app .ic { width: 52px; height: 52px; border-radius: 16px; background: #0d1b3e; border: 1px solid #1e3060; display: grid; place-items: center; font-size: 23px; }
   </style>
 </head>
 <body>
@@ -5691,7 +5752,7 @@ function HfComingUp(props){var h=React.createElement;var _d=React.useState(null)
 // ---- /HfNav ----
 // ---- HomeFrontLiteTab -------------------------------------------------------
 
-function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
+function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects, openSub }) {
   const feat = features || {};
   // Grouped by HfNav (House, Chores, Kitchen, Hosting, Savings); Household first, and where Home Front opens.
   const ALL_SUBTABS = [
@@ -5718,7 +5779,9 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
     return !t.featureKey || feat[t.featureKey] !== false;
   });
 
-  const [sub,             setSub]             = React.useState('meal_plan');
+  const [sub,             setSub]             = React.useState(function() { return (openSub && openSub.id) || 'meal_plan'; });
+  // The bottom bar's All screen and Today's tiles open a subtab ({ id, at }).
+  React.useEffect(function() { if (openSub && openSub.id) setSub(openSub.id); }, [openSub && openSub.at]);
   const [homeFront,       setHomeFront]       = React.useState(null);
   const [chores,          setChores]          = React.useState(null);
   const [choresLoading,   setChoresLoading]   = React.useState(false);
@@ -12295,7 +12358,7 @@ var[form,setForm]=React.useState({});// Group by name
 var groups={};(profiles||[]).forEach(function(p){var n=p.name||'Unknown';if(!groups[n])groups[n]=[];groups[n].push(p);});var names=Object.keys(groups).sort();function openNew(defaultName){setForm({name:defaultName||'',passportCountry:'',passportExpiry:'',specialDocs:'',notes:''});setModal('new');}function openEdit(p){setForm(Object.assign({},p));setModal(p);}function closeModal(){setModal(null);setForm({});}async function handleSave(){if(!form.name||!form.passportCountry)return;await onSave(Object.assign({},form,{id:modal==='new'?'':modal.id}));closeModal();}var INP={width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13};var LBL={display:'block',fontSize:11,color:'#8a9abf',marginBottom:4,textTransform:'uppercase',letterSpacing:1};return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"toolbar",style:{marginBottom:16}},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:function(){openNew();},disabled:busy},"＋ Add Person"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},names.length," travelers")),loading&&/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading profiles…"),!loading&&names.length===0&&/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:10}},"🛂"),/*#__PURE__*/React.createElement("div",null,"No traveler profiles yet."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:6}},"Add a person and their passport(s) to track expiry and enable visa checking.")),names.map(function(name){var passports=groups[name];// initials avatar
 var initials=name.split(' ').map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();return/*#__PURE__*/React.createElement("div",{key:name,className:"card",style:{padding:0,marginBottom:14,overflow:'hidden'}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 18px',borderBottom:passports.length?'1px solid #1e3060':'none'}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:12}},/*#__PURE__*/React.createElement("div",{style:{width:36,height:36,borderRadius:'50%',background:'#1a2a4a',border:'1px solid #2a3a5a',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#5c9eff',flexShrink:0}},initials),/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,color:'#dde1f0',fontSize:15}},name)),/*#__PURE__*/React.createElement("button",{onClick:function(){openNew(name);},disabled:busy,style:{padding:'5px 12px',borderRadius:8,background:'#1a2a4a',border:'1px solid #2a3a5a',color:'#8a9abf',cursor:'pointer',fontSize:12}},"＋ Passport")),passports.map(function(p,pi){var expiry=p.passportExpiry?new Date(p.passportExpiry+'T12:00:00'):null;var daysLeft=expiry?Math.ceil((expiry-new Date())/86400000):null;var expiryLabel,expiryBg,expiryColor;if(daysLeft===null){expiryLabel=null;}else if(daysLeft<0){expiryLabel='⚠ EXPIRED';expiryBg='#f8717122';expiryColor='#f87171';}else if(daysLeft<180){expiryLabel='⚠ '+daysLeft+'d left';expiryBg='#f8717122';expiryColor='#f87171';}else if(daysLeft<365){expiryLabel='Expiring · '+daysLeft+'d';expiryBg='#fbbf2422';expiryColor='#fbbf24';}else{expiryLabel='Valid · '+daysLeft+'d';expiryBg='#4ade8022';expiryColor='#4ade80';}return/*#__PURE__*/React.createElement("div",{key:p.id,style:{padding:'12px 18px',borderTop:pi>0?'1px solid #1e3060':'none',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}},/*#__PURE__*/React.createElement("div",{style:{flex:1,minWidth:0}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:p.specialDocs||p.notes?6:0}},/*#__PURE__*/React.createElement(CountryFlag,{name:p.passportCountry,size:18}),/*#__PURE__*/React.createElement("span",{style:{fontSize:14,fontWeight:600,color:'#dde1f0'}},p.passportCountry),expiryLabel&&/*#__PURE__*/React.createElement("span",{style:{fontSize:11,padding:'2px 9px',borderRadius:10,background:expiryBg,color:expiryColor,border:'1px solid '+expiryColor+'55',fontWeight:600}},expiryLabel)),p.specialDocs&&/*#__PURE__*/React.createElement("div",{style:{marginBottom:p.notes?4:0}},/*#__PURE__*/React.createElement("span",{style:{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#1a2a4a',color:'#8ab4f8',border:'1px solid #2a3a5a'}},"📋 ",p.specialDocs)),p.notes&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginTop:2}},p.notes)),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:4,flexShrink:0}},/*#__PURE__*/React.createElement("button",{onClick:function(){openEdit(p);},style:{background:'none',border:'none',color:'#5c6a8a',cursor:'pointer',fontSize:14,padding:'0 4px'},title:"Edit"},"✎"),/*#__PURE__*/React.createElement("button",{onClick:function(){if(window.confirm('Remove '+p.passportCountry+' passport for '+p.name+'?'))onDelete(p.id);},disabled:busy,style:{background:'none',border:'none',color:'#5c6a8a',cursor:'pointer',fontSize:16,padding:'0 4px'}},"×")));}));}),modal&&/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:closeModal},/*#__PURE__*/React.createElement("div",{className:"modal-box",style:{maxWidth:440},onClick:function(e){e.stopPropagation();}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:16}},modal==='new'?'Add Passport':'Edit Passport'),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("label",{style:LBL},"Person Name *"),/*#__PURE__*/React.createElement("input",{value:form.name||'',placeholder:"e.g. Ahmed",onChange:function(e){var v=e.target.value;setForm(function(p){return Object.assign({},p,{name:v});});},style:INP})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("label",{style:LBL},"Passport Country *"),/*#__PURE__*/React.createElement("input",{value:form.passportCountry||'',placeholder:"e.g. Egypt",onChange:function(e){var v=e.target.value;setForm(function(p){return Object.assign({},p,{passportCountry:v});});},style:INP})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("label",{style:LBL},"Expiry Date"),/*#__PURE__*/React.createElement("input",{type:"date",value:form.passportExpiry||'',onChange:function(e){var v=e.target.value;setForm(function(p){return Object.assign({},p,{passportExpiry:v});});},style:INP})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("label",{style:LBL},"Special Docs"),/*#__PURE__*/React.createElement("input",{value:form.specialDocs||'',placeholder:"e.g. US Green Card, UK Ancestry Visa",onChange:function(e){var v=e.target.value;setForm(function(p){return Object.assign({},p,{specialDocs:v});});},style:INP})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},/*#__PURE__*/React.createElement("label",{style:LBL},"Notes"),/*#__PURE__*/React.createElement("textarea",{value:form.notes||'',placeholder:"e.g. Renewed 2024",onChange:function(e){var v=e.target.value;setForm(function(p){return Object.assign({},p,{notes:v});});},rows:2,style:Object.assign({},INP,{resize:'vertical'})})),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,justifyContent:'flex-end'}},/*#__PURE__*/React.createElement("button",{type:"button",onClick:closeModal,style:{padding:'7px 16px',borderRadius:8,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:13}},"Cancel"),/*#__PURE__*/React.createElement("button",{type:"button",disabled:busy||!form.name||!form.passportCountry,onClick:handleSave,style:{padding:'7px 16px',borderRadius:8,background:'#5c9eff',border:'none',color:'#fff',fontWeight:600,fontSize:13,cursor:busy||!form.name||!form.passportCountry?'not-allowed':'pointer',opacity:busy||!form.name||!form.passportCountry?0.5:1}},busy?'Saving…':'Save')))));}
 
-function TravelLiteTab({ apiUrl, apiToken }) {
+function TravelLiteTab({ apiUrl, apiToken, openSub }) {
   const [pto, setPto]               = useState(null);
   const [ptoLoading, setPtoLoading] = useState(false);
   const [itineraries, setItineraries]   = useState({});
@@ -12310,7 +12373,9 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   const [busy, setBusy]             = useState(false);
   const [error, setError]           = useState(null);
 
-  const [travSub, setTravSub] = useState('trips');
+  const [travSub, setTravSub] = useState(() => (openSub && openSub.id) || 'trips');
+  // The bottom bar and All open a subtab ({ id, at }: a new at re-opens the same one).
+  useEffect(() => { if (openSub && openSub.id) setTravSub(openSub.id); }, [openSub && openSub.at]);
   const [openIdea, setOpenIdea] = useState(null);
   // A trip's plan card asks to open its idea (tsOpenIdea_); a Bucket List place, to start one (tiPlanBucket_).
   useEffect(() => {
@@ -12678,6 +12743,9 @@ function TravelLiteTab({ apiUrl, apiToken }) {
             color:'#f87171',cursor:'pointer',fontSize:14}}>✕</button>
         </div>
       )}
+
+      {/* ARIA's "book now" lives here now, at the top of Trips (it was a banner on Today). */}
+      <AriaBookBanner apiUrl={apiUrl} apiToken={apiToken} />
 
       <VeraTileNav name="lite_travel" label="Travel" tabs={LITE_TRAVEL_TABS} sub={travSub} onPick={setTravSub} />
 
@@ -14833,15 +14901,194 @@ function VeraRoster({links,veraHref,health}){
 }
 // ---- /Your assistants ----
 
-function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
+// ---- Lite shell (lite only): the bottom bar, the All screen, and Today's "Needs you" and tiles ----
+// The bar and All sit on top of TOP_TABS' ids, which People & access (#218) knows; each entry is [tab, sub].
+const LITE_BAR = [
+  { id: 'overview', icon: '🌅', label: 'Today' },
+  { id: 'shopping', sub: 'lists', icon: '🛒', label: 'Lists' },
+  { id: 'chat',     icon: '💬', label: 'Chat', center: true },
+  { id: 'travel',   sub: 'trips', icon: '✈️', label: 'Trips' },
+  { id: 'all',      icon: '▦',  label: 'All' },
+];
+const LITE_ALL_GROUPS = [
+  { label: 'Everyday', items: [['🛒', 'Lists', 'shopping', 'lists'], ['🥇', 'Which card', 'shopping', 'cheat'], ['🎟️', 'Coupons', 'shopping', 'coupons'], ['💬', 'Chat', 'chat', '']] },
+  { label: 'Home',     items: [['🍽️', 'Kitchen', 'home_front', 'meal_plan'], ['🏠', 'House', 'home_front', 'household'], ['🧹', 'Chores', 'home_front', 'chores'], ['🎉', 'Hosting', 'home_front', 'guests']] },
+  { label: 'Money',    items: [['🗓️', 'This month', 'finances', 'fin_summary'], ['🎯', 'Saving', 'finances', 'fin_goals'], ['📇', 'Our cards', 'finances', 'fin_cards'], ['📈', 'Net worth', 'finances', 'fin_networth']] },
+  { label: 'Travel',   items: [['✈️', 'My trips', 'travel', 'trips'], ['🪣', 'Bucket list', 'travel', 'bucketlist'], ['👤', 'Profiles', 'travel', 'profiles'], ['🎁', 'Gifts', 'travel', 'gifts']] },
+  { label: 'Family',   items: [['👶', 'Planning', 'family', 'planning'], ['💊', 'Prescriptions', 'family', 'prescriptions'], ['🎄', 'Wish lists', 'family', 'wishlists'], ['📒', 'Addresses', 'family', 'contacts']] },
+  { label: 'More',     items: [['🏗️', 'Projects', 'projects', ''], ['⚙️', 'Settings', 'settings', '']] },
+];
+// Pure: may this person open [tab, sub]? The tab, and a subtab that People & access lists (lite_<tab>/<sub>).
+function liteCanOpen_(tab, sub) {
+  if (tab === 'settings' || tab === 'all') return true;
+  if (!veraCan_(tab)) return false;
+  var nav = 'lite_' + tab;
+  return !sub || !vnGroupOf_(nav, sub) || veraCan_(nav + '/' + sub);
+}
+// Pure: days from today to a 'yyyy-MM-dd…' date (local calendar days), or null.
+function liteDays_(ymd, now) {
+  var s = String(ymd || '');
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  var a = new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)), n = now || new Date();
+  return Math.round((a - new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 864e5);
+}
+function liteChecked_(c) { return c && (c.Checked === true || String(c.Checked).toUpperCase() === 'TRUE'); }
+// Pure: "Needs you": what's due soonest, at most 10, soonest first.
+//   perks: open cards, not autopay or Standing, not used this cycle, 14 days or fewer left (Card Hub's rule);
+//   coupons: expiring within 7 days (a tap opens Coupons: marking one used deletes it);
+//   chores: dated upkeep due within 3 days or overdue; packing: the next trip within 14 days, one row.
+// d: { cards, coupons, chores, trip, packing } as the routes return them.
+function liteNeedsYou_(d, now) {
+  now = now || new Date();
+  var out = [], c = d.cards || {}, byName = {};
+  (c.cards || []).forEach(function(x) { byName[x.cardName] = x; });
+  (c.perks || []).forEach(function(p) {
+    var card = byName[p.cardName];
+    if (!card || !cvOpen_(card) || p.autopay || p.frequency === 'Standing' || chPerkUsed_(p, now)) return;
+    var cy = chPerkCycle_(p, now);
+    if (cy.days == null || cy.days < 0 || cy.days > 14) return;
+    out.push({ kind: 'perk', id: p.id, title: p.perk, sub: p.cardName + (p.amount ? ' · ' + chMoney_(p.amount) : ''), days: cy.days, tick: true, go: ['finances', 'fin_cards'] });
+  });
+  ((d.coupons || {}).coupons || []).forEach(function(x) {
+    if (/used|expired|redeemed/i.test(String(x.Status || x.status || ''))) return;
+    var n = liteDays_(x.Expires || x.expires, now);
+    if (n == null || n < 0 || n > 7) return;
+    out.push({ kind: 'coupon', id: String(x.ID || x.id || ''), title: (x.Store || x.store || 'Coupon') + ' coupon', sub: String(x.Offer || x.offer || ''), days: n, tick: false, go: ['shopping', 'coupons'] });
+  });
+  ((d.chores || {}).chores || []).forEach(function(x) {
+    var u = x.upkeep;
+    if (!u || u.days == null || u.days > 3) return;
+    var on = /^\d{4}-\d{2}-\d{2}/.test(String(u.next || '')) ? new Date(+u.next.slice(0, 4), +u.next.slice(5, 7) - 1, +u.next.slice(8, 10)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : String(u.next || '');
+    out.push({ kind: 'chore', id: x.ID, title: x.Chore, sub: (u.days < 0 ? 'Overdue since ' : 'Due by ') + on, days: u.days, tick: true, go: ['home_front', 'chores'] });
+  });
+  if (d.trip && d.packing) {
+    var td = liteDays_(d.trip.startDate, now);
+    var left = (d.packing.items || []).filter(function(i) { return i.status !== 'bag' && !i.checked && (!i.person || /victoria|both|everyone|shared|all/i.test(i.person)); }).length;
+    if (td != null && td >= 0 && td <= 14 && left > 0)
+      out.push({ kind: 'packing', id: d.trip.startDate + '|' + d.trip.label, title: 'Pack for ' + d.trip.label, sub: left + ' item' + (left === 1 ? '' : 's') + ' left', days: td, tick: false, go: ['travel', 'trips'] });
+  }
+  return out.sort(function(a, b) { return (a.days - b.days) || String(a.title).localeCompare(String(b.title)); }).slice(0, 10);
+}
+// Pure: the words for a number of days left.
+function liteDueText_(n) { return n < 0 ? (-n) + 'd overdue' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'; }
+// Pure: Today's tiles, each with one useful line, and hot when something needs a look (due within 3 days, or overdue).
+// d: { cards, coupons, rx, bills, chores, trips } as loaded; stores: the shopping lists. null lines mean "still loading".
+function liteTiles_(d, stores, now) {
+  now = now || new Date();
+  var T = [], wd = function(n) { var x = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n); return x.toLocaleDateString('en-US', { weekday: 'short' }); };
+  var shops = (stores || []).map(function(s) { return { name: s.storeName || s.store || 'List', n: (s.items || []).filter(function(i) { return !i.done; }).length }; })
+    .filter(function(s) { return s.n > 0; }).sort(function(a, b) { return b.n - a.n; });
+  T.push({ id: 'lists', tab: 'shopping', sub: 'lists', icon: '🛒', title: 'Lists', line: shops.length ? shops.slice(0, 2).map(function(s) { return s.name + ' · ' + s.n + ' to buy'; }).join('\n') : 'Nothing to buy', hot: false });
+  var wc = null;
+  if (d.cards) {
+    var rows = cvCheat_(d.cards.cards || [], d.cards.rewards || [], d.cards.programs || [], {}), best = function(k) { var r = rows.filter(function(x) { return x.key === k; })[0]; return r && r.picks[0] ? r.picks[0].card.cardName : ''; };
+    var g = best('groceries'), s = best('gas');
+    wc = [g && 'Groceries → ' + g, s && 'Gas → ' + s].filter(Boolean).join('\n') || 'Add card rates on the full dashboard';
+  }
+  T.push({ id: 'cheat', tab: 'shopping', sub: 'cheat', icon: '🥇', title: 'Which card', line: wc, hot: false });
+  var trip = null, tl = null, thot = false;
+  if (d.trips) {
+    trip = d.trips.slice().sort(function(a, b) { return String(a.startDate || '').localeCompare(String(b.startDate || '')); })[0] || null;
+    if (!trip) tl = 'No trips planned';
+    else { var td = liteDays_(trip.startDate, now); tl = td != null && td <= 0 ? (trip.label || 'Trip') + ' · underway' : (trip.label || 'Trip') + ' · ' + (td === 1 ? 'tomorrow' : 'in ' + td + ' days'); thot = td != null && td >= 0 && td <= 3; }
+  }
+  T.push({ id: 'trips', tab: 'travel', sub: 'trips', icon: '✈️', title: 'Trips', line: tl, hot: thot });
+  var ml = null, mhot = false;
+  if (d.bills) {
+    var day = now.getDate(), due = (d.bills.bills || []).filter(function(b) { return !b.paid && b.dueDay != null && b.dueDay >= day; }).sort(function(a, b) { return a.dueDay - b.dueDay; })[0];
+    if (!due) ml = 'Nothing due soon';
+    else { var n = due.dueDay - day; ml = (due.bill || 'A bill') + ' · due ' + (n === 0 ? 'today' : n === 1 ? 'tomorrow' : n <= 6 ? wd(n) : 'the ' + due.dueDay + (due.dueDay % 10 === 1 && due.dueDay !== 11 ? 'st' : due.dueDay % 10 === 2 && due.dueDay !== 12 ? 'nd' : due.dueDay % 10 === 3 && due.dueDay !== 13 ? 'rd' : 'th')); mhot = n <= 3; }
+  }
+  T.push({ id: 'money', tab: 'finances', sub: 'fin_summary', icon: '💰', title: 'Money', line: ml, hot: mhot });
+  var hl = null, hhot = false;
+  if (d.chores) {
+    var list = d.chores.chores || [];
+    var left = list.filter(function(c) { return !c.upkeep && /daily/i.test(String(c.Cadence || '')) && !liteChecked_(c); }).length;
+    var over = list.filter(function(c) { return c.upkeep && c.upkeep.status === 'overdue'; }).length;
+    hl = (left ? left + ' chore' + (left === 1 ? '' : 's') + ' left today' : 'Daily chores done') + (over ? '\n' + over + ' overdue' : '');
+    hhot = over > 0;
+  }
+  T.push({ id: 'home', tab: 'home_front', sub: 'chores', icon: '🏡', title: 'Home', line: hl, hot: hhot });
+  var fl = null, fhot = false;
+  if (d.rx) {
+    var act = (d.rx.prescriptions || []).filter(function(r) { return r.active === 'Yes'; });
+    var next = act.map(function(r) { return { r: r, n: liteDays_(String(r.refillDate || '').slice(0, 10), now) }; }).filter(function(x) { return x.n != null && x.n >= -7; }).sort(function(a, b) { return a.n - b.n; })[0];
+    if (next) { fl = 'Refill ' + next.r.medication + ' · ' + (next.n < 0 ? 'overdue' : next.n === 0 ? 'today' : next.n === 1 ? 'tomorrow' : next.n <= 6 ? wd(next.n) : next.r.refillDate.slice(5, 10).replace('-', '/')); fhot = next.n <= 3; }
+    else fl = act.length ? act.length + ' active prescription' + (act.length === 1 ? '' : 's') : 'Planning, prescriptions, wish lists';
+  }
+  T.push({ id: 'family', tab: 'family', sub: next && d.rx ? 'prescriptions' : 'planning', icon: '👪', title: 'Family', line: fl, hot: fhot });
+  var cl = null, chot = false;
+  if (d.coupons) {
+    var ex = (d.coupons.coupons || []).map(function(x) { return liteDays_(x.Expires || x.expires, now); }).filter(function(n) { return n != null && n >= 0 && n <= 7; });
+    cl = ex.length ? ex.length + ' expire' + (ex.length === 1 ? 's' : '') + ' this week' : 'None expiring soon';
+    chot = ex.some(function(n) { return n <= 3; });
+  }
+  T.push({ id: 'coupons', tab: 'shopping', sub: 'coupons', icon: '🎟️', title: 'Coupons', line: cl, hot: chot });
+  T.push({ id: 'projects', tab: 'projects', sub: '', icon: '🏗️', title: 'Projects', line: 'House projects and next steps', hot: false });
+  return T.filter(function(t) { return liteCanOpen_(t.tab, t.sub); });
+}
+
+/** The bottom bar: Today, Lists, Chat, Trips and All. A tab this person can't see has no button. */
+function LiteBottomBar({ active, onGo }) {
+  const items = LITE_BAR.filter(b => liteCanOpen_(b.id, b.sub));
+  return (
+    <nav className="lite-bar" aria-label="Sections">
+      <div className="lite-bar-in" style={{ '--n': items.length }}>
+        {items.map(b => (
+          <button key={b.id} type="button" className={'lite-bar-btn' + (b.center ? ' center' : '') + (active === b.id ? ' on' : '')}
+            aria-current={active === b.id ? 'page' : undefined} data-bar={b.id} onClick={() => onGo(b.id, b.sub)}>
+            <span className="ic" aria-hidden="true">{b.icon}</span>{b.label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+/** All: every area in one grid, grouped; each opens its tab and subtab. Your assistants sit at the end. */
+function LiteAllView({ onOpen, status }) {
+  return (
+    <div className="lite-all">
+      <div className="lite-hello"><div><small>Everything in VERA</small><h2>All</h2></div></div>
+      {LITE_ALL_GROUPS.map(g => {
+        const items = g.items.filter(it => liteCanOpen_(it[2], it[3]));
+        if (!items.length) return null;
+        return (
+          <div key={g.label}>
+            <div className="lite-sect">{g.label}</div>
+            <div className="lite-all-grid">
+              {items.map(it => (
+                <button key={it[1]} type="button" className="lite-app" data-open={it[2] + (it[3] ? '/' + it[3] : '')} onClick={() => onOpen(it[2], it[3])}>
+                  <span className="ic" aria-hidden="true">{it[0]}</span>{it[1]}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {/* The roster: VERA's link here goes to the full dashboard. */}
+      <div>
+        <VeraRoster links={status && status.rosterLinks} veraHref="./" />
+      </div>
+    </div>
+  );
+}
+// ---- /Lite shell ----
+
+function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate, who }) {
   // Each key resolves independently (no Promise.all) so tiles reveal their
   // stat as soon as their own fetch lands, instead of all waiting on the
   // slowest one. undefined = still loading; {} = loaded (possibly errored/empty).
   const [data, setData] = useState({});
+  // "Needs you" ticks: struck through at once, kept until the reload lands; an error puts the row back.
+  const [ticked, setTicked] = useState({});
+  const [tickErr, setTickErr] = useState('');
+  const [reloadAt, setReloadAt] = useState(0);
+  const [seeAll, setSeeAll] = useState(false);
 
   useEffect(() => {
     if (!apiUrl || !apiToken) return;
-    setData({});
+    if (!reloadAt) setData({});
     const actions = {
       cards: 'cards', coupons: 'get_coupons', rx: 'prescriptions',
       pto: 'pto', bills: 'bills', chores: 'get_chores',
@@ -14852,7 +15099,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
         .then(res => setData(prev => ({ ...prev, [key]: res || {} })))
         .catch(() => setData(prev => ({ ...prev, [key]: {} })));
     });
-  }, [apiUrl, apiToken]);
+  }, [apiUrl, apiToken, reloadAt]);
 
   const _now = new Date();
   const todayDate = _now.getDate();
@@ -14863,44 +15110,40 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
     String(_now.getMonth() + 1).padStart(2, '0') + '-' +
     String(_now.getDate()).padStart(2, '0');
 
-  const shoppingPending = (shopping || []).reduce(
-    (sum, s) => sum + (s.items || []).filter(i => !i.done).length, 0
-  );
-
-  const activeCards = data.cards
-    ? (data.cards.cards || []).filter(c => c.active === 'Yes').length : null;
-
-  const couponsExpiringSoon = data.coupons
-    ? (data.coupons.coupons || []).filter(c => {
-        if (!c.expires) return false;
-        const days = Math.round((new Date(c.expires + 'T00:00:00') - new Date(todayStr + 'T00:00:00')) / 86400000);
-        return days >= 0 && days <= 3; // mirrors CouponsLiteTab's expiryInfo() "expiring soon" bucket
-      }).length
-    : null;
-
-  const activeRx = data.rx
-    ? (data.rx.prescriptions || []).filter(r => r.active === 'Yes').length : null;
-
   const trips = data.pto ? (data.pto.ahmedStats && data.pto.ahmedStats.upcomingTravel) || [] : null;
   const nextTrip = trips && trips.length
-    ? trips.slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))[0]
+    ? trips.filter(t => (t.endDate || t.startDate || '') >= todayStr).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))[0] || null
     : null;
-  const nextTripDays = nextTrip && nextTrip.startDate
-    ? Math.round((new Date(nextTrip.startDate + 'T12:00:00') - new Date(todayStr + 'T12:00:00')) / 86400000)
-    : null;
+  const nextTripDays = nextTrip ? liteDays_(nextTrip.startDate, _now) : null;
+  // The next trip's packing, for "Needs you", once it's two weeks out or closer.
+  const packKey = nextTrip && nextTripDays != null && nextTripDays >= 0 && nextTripDays <= 14 ? nextTrip.startDate + '|' + nextTrip.label : '';
+  useEffect(() => {
+    if (!apiUrl || !apiToken || !packKey) return;
+    apiGet(apiUrl, apiToken, { action: 'get_packing', tripKey: packKey })
+      .then(res => setData(prev => ({ ...prev, packing: res || {} })))
+      .catch(() => setData(prev => ({ ...prev, packing: {} })));
+  }, [apiUrl, apiToken, packKey, reloadAt]);
 
-  // Sheet-native bills due within 5 days, unpaid — mirrors BillTrackerView's
-  // dueDay branch. Calendar-only bills aren't merged in here (that merge is
-  // fairly involved — see BillTrackerView) to keep this homepage fetch light.
-  const billsDueSoon = data.bills
-    ? (data.bills.bills || []).filter(b => {
-        if (b.paid) return false;
-        return b.dueDay != null && (b.dueDay - todayDate) >= 0 && (b.dueDay - todayDate) <= 5;
-      }).length
-    : null;
+  // Tiles say one useful thing each (liteTiles_). Home counts daily chores not yet ticked:
+  // the Chores tab has Checked, not Status, so the old count included every chore.
+  const tiles = liteTiles_({ cards: data.cards, coupons: data.coupons, rx: data.rx, bills: data.bills, chores: data.chores, trips }, shopping, _now);
+  const needs = liteNeedsYou_({ cards: data.cards, coupons: data.coupons, chores: data.chores, trip: packKey ? nextTrip : null, packing: data.packing }, _now);
+  const needsLoading = data.cards === undefined || data.coupons === undefined || data.chores === undefined;
 
-  const pendingChores = data.chores
-    ? (data.chores.chores || []).filter(c => c.Status !== 'Done').length : null;
+  async function tickNeed(n) {
+    if (!n.tick || ticked[n.kind + n.id]) return;
+    setTickErr('');
+    setTicked(prev => ({ ...prev, [n.kind + n.id]: true }));
+    try {
+      const params = n.kind === 'perk' ? { action: 'toggle_card_perk', id: n.id } : { action: 'chore_upkeep_done', id: n.id };
+      const r = await apiGet(apiUrl, apiToken, params);
+      if (r && r.ok === false) throw new Error(r.error || 'not saved');
+      setReloadAt(Date.now());
+    } catch (err) {
+      setTicked(prev => { const x = { ...prev }; delete x[n.kind + n.id]; return x; });
+      setTickErr('Couldn’t mark “' + n.title + '” done: ' + err.message);
+    }
+  }
 
   // Active-travel detection, same rule as the main dashboard's HomeTab: a trip
   // that's in progress today, else one departing within the next 24 hours.
@@ -14920,52 +15163,41 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
   const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-  const TILES = [
-    { id: 'chat', icon: '💬', label: 'Chat', hasStat: false, sub: 'Ask VERA anything' },
-    { id: 'household', icon: '🏠', label: 'Household', hasStat: false, sub: 'Contacts & reference info' },
-    {
-      id: 'shopping', icon: '🛒', label: 'Shopping', hasStat: true, loading: false, stat: shoppingPending,
-      sub: shoppingPending === 0 ? 'Nothing pending' : plural(shoppingPending, 'item') + ' pending',
-    },
-    {
-      id: 'cards', icon: '💳', label: 'Cards', hasStat: true, loading: activeCards == null, stat: activeCards,
-      sub: activeCards == null ? '' : plural(activeCards, 'active card'),
-    },
-    {
-      id: 'coupons', icon: '🎟️', label: 'Coupons', hasStat: true, loading: couponsExpiringSoon == null, stat: couponsExpiringSoon,
-      sub: couponsExpiringSoon == null ? '' : couponsExpiringSoon === 0 ? 'None expiring soon' : plural(couponsExpiringSoon, 'coupon') + ' expiring soon',
-    },
-    {
-      id: 'prescriptions', icon: '💊', label: 'Prescriptions', hasStat: true, loading: activeRx == null, stat: activeRx,
-      sub: activeRx == null ? '' : plural(activeRx, 'active prescription'),
-    },
-    {
-      id: 'travel', icon: '✈️', label: 'Travel', hasStat: true, loading: trips == null, stat: trips ? trips.length : null,
-      sub: trips == null ? '' : !nextTrip ? 'No trips planned' : nextTripDays <= 0 ? 'Trip underway' : `Next trip in ${nextTripDays}d`,
-    },
-    {
-      id: 'finances', icon: '💰', label: 'Finances', hasStat: true, loading: billsDueSoon == null, stat: billsDueSoon,
-      sub: billsDueSoon == null ? '' : billsDueSoon === 0 ? 'Nothing due soon' : plural(billsDueSoon, 'bill') + ' due soon',
-    },
-    {
-      id: 'home_front', icon: '🏡', label: 'Home Front', hasStat: true, loading: pendingChores == null, stat: pendingChores,
-      sub: pendingChores == null ? '' : plural(pendingChores, 'chore') + ' pending',
-    },
-  ];
+  const shownNeeds = needs.slice(0, seeAll ? 10 : 3);
+  const RAILS = ['#f87171', '#c4b5fd', '#fcd34d', '#5eead4', '#8ab4f8'];
+  const me = (who && (who.name || who.person)) || '';
 
   return (
     <div>
       <VeraInstallTip />
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
-        <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
+      <div className="lite-hello">
+        <div><small>{dateLabel}</small><h2>{greeting}{me ? ', ' + me : ''}</h2></div>
+        {me && <div className="lite-av" aria-hidden="true">{me.charAt(0).toUpperCase()}</div>}
       </div>
 
-      <AriaBookBanner apiUrl={apiUrl} apiToken={apiToken} onNavigate={onNavigate} />
-
-      <GroceryRunButton apiUrl={apiUrl} apiToken={apiToken} who="Victoria" variant="tile" />
+      {/* Today first: the day's events, and how far off the next trip is. */}
+      <div className="lite-hero" aria-label="Today">
+        <div className="lite-hero-d">📅 Today</div>
+        {todaysEventsLoading ? (
+          <div className="lite-hero-none">Loading…</div>
+        ) : !todaysEventsCalendarFound ? (
+          <div className="lite-hero-none">Couldn't find the Joint Chaos calendar</div>
+        ) : todaysEvents.length === 0 ? (
+          <div className="lite-hero-none">Nothing on the calendar today</div>
+        ) : todaysEvents.map((ev, i) => (
+          <div key={i} className="lite-ev" style={{ '--c': RAILS[i % RAILS.length] }}>
+            <div>
+              <b>{ev.title}</b>
+              <span>{ev.allDay ? 'All day' : ev.startTime + (ev.endTime ? ' – ' + ev.endTime : '')}{ev.location ? ' · ' + ev.location : ''}</span>
+            </div>
+          </div>
+        ))}
+        {nextTrip && nextTripDays != null && nextTripDays > 0 && (
+          <button type="button" className="lite-trip" onClick={() => onNavigate('travel', 'trips')}>
+            ✈️ {nextTrip.label || 'Next trip'} {nextTripDays === 1 ? 'tomorrow' : 'in ' + nextTripDays + ' days'}
+          </button>
+        )}
+      </div>
 
       {displayTrip && (
         <div style={{ marginBottom: 20 }}>
@@ -14980,57 +15212,42 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
         </div>
       )}
 
-      {/* Lighter blue fill than the .bento-card tiles below (#0d1b3e) so the
-          day's agenda reads as a header, not a tenth tile. The muted text
-          colors are lifted to match — the defaults are tuned for the darker
-          tile background and go dim on this one. */}
-      <div className="bento-card" style={{
-        cursor: 'default', marginBottom: 20,
-        background: '#16315f', border: '1px solid #2f5ea8',
-      }}>
-        <div className="bento-card-title" style={{ color: '#a8c5f5' }}>📅 Today</div>
-        {todaysEventsLoading ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Loading…</div>
-        ) : !todaysEventsCalendarFound ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Couldn't find the Joint Chaos calendar</div>
-        ) : todaysEvents.length === 0 ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Nothing on the calendar today</div>
-        ) : (
-          <div className="bento-card-list">
-            {todaysEvents.map((ev, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
-                <span style={{ color: '#9fc4ff', fontWeight: 600, minWidth: 72, flexShrink: 0 }}>
-                  {ev.allDay ? 'All day' : ev.startTime}
-                </span>
-                <span style={{ color: '#f0f3fa' }}>
-                  {ev.title}
-                  {ev.location && <span style={{ color: '#9db0d0' }}> · {ev.location}</span>}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Needs you: the few things due soonest, from perks, coupons, upkeep chores and packing (liteNeedsYou_). */}
+      <div className="lite-sect">
+        <span>Needs you</span>
+        {needs.length > 3 && <button type="button" onClick={() => setSeeAll(!seeAll)}>{seeAll ? 'Show fewer' : 'See all ' + needs.length}</button>}
       </div>
+      <div className="lite-need" aria-label="Needs you">
+        {needsLoading && !needs.length ? (
+          <div className="lite-need-row"><span /><span style={{ color: '#6b7fa8' }}>Loading…</span></div>
+        ) : !needs.length ? (
+          <div className="lite-need-row"><span aria-hidden="true">✓</span><span style={{ color: '#8a9abf' }}>Nothing due in the next two weeks.</span></div>
+        ) : shownNeeds.map(n => {
+          const done = !!ticked[n.kind + n.id];
+          const due = <span className={'lite-due' + (n.days <= 3 ? ' red' : '')}>{liteDueText_(n.days)}</span>;
+          return (
+            <div key={n.kind + n.id} className={'lite-need-row' + (done ? ' done' : '')} data-need={n.kind}>
+              {n.tick
+                ? <input type="checkbox" checked={done} disabled={done} aria-label={'Mark ' + n.title + ' done'} onChange={() => tickNeed(n)} />
+                : <span aria-hidden="true">{n.kind === 'coupon' ? '🎟️' : '🧳'}</span>}
+              <button type="button" className="lite-need-go" onClick={() => onNavigate(n.go[0], n.go[1])}>
+                <span style={{ minWidth: 0 }}><b>{n.title}</b><small>{n.sub}</small></span>{due}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {tickErr && <div className="error-banner" style={{ marginTop: -8, marginBottom: 14 }}><span>{tickErr}</span><button className="error-dismiss" onClick={() => setTickErr('')}>✕</button></div>}
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
-        gap: 14,
-      }}>
-        {TILES.map(tile => (
-          <div key={tile.id} className="bento-card" onClick={() => onNavigate(tile.id)}>
-            <div className="bento-card-title">{tile.icon} {tile.label}</div>
-            {tile.hasStat && (
-              <div className="bento-card-main">{tile.loading ? '…' : tile.stat}</div>
-            )}
-            <div className="bento-card-sub">{tile.hasStat && tile.loading ? 'Loading…' : tile.sub}</div>
-          </div>
+      <div className="lite-sect"><span>Everything</span></div>
+      <div className="lite-tiles">
+        {tiles.map(t => (
+          <button key={t.id} type="button" className={'lite-tile' + (t.hot ? ' hot' : '')} data-tile={t.id} onClick={() => onNavigate(t.tab, t.sub)}>
+            <b>{t.title}</b>
+            <span>{t.line == null ? 'Loading…' : t.line}</span>
+            <em aria-hidden="true">{t.icon}</em>
+          </button>
         ))}
-      </div>
-
-      {/* The roster: VERA's link here goes to the full dashboard. */}
-      <div style={{ marginTop: 20 }}>
-        <VeraRoster links={status && status.rosterLinks} veraHref="./" />
       </div>
     </div>
   );
@@ -15043,14 +15260,22 @@ function App() {
   const [activeTab,       setActiveTabRaw]    = useState('overview');
   const [shopSub,   setShopSub]   = useState('lists');
   const [familySub, setFamilySub] = useState('planning');
-  // Old tab ids (Overview links, saved links) still open the right place.
-  const setActiveTab = function(id) {
-    var to = LITE_OLD_TABS[id];
+  // Travel and Home keep their own subtab; the bar and All ask them to open one ({ id, at }).
+  const [travOpen, setTravOpen] = useState(null);
+  const [homeOpen, setHomeOpen] = useState(null);
+  // setActiveTab(tab, sub): the bottom bar, All and Today's tiles open [tab, sub]; old tab ids
+  // (Overview links, saved links) still open the right place; 'settings' opens the settings.
+  const setActiveTab = function(id, sub) {
+    var to = sub != null && sub !== '' ? [id, sub] : LITE_OLD_TABS[id];
+    if (id === 'settings') { setShowSettings(true); return; }
+    try { window.scrollTo(0, 0); } catch (e) {}
     if (!to) { setActiveTabRaw(id); return; }
     setActiveTabRaw(to[0]);
     if (to[0] === 'finances') setActiveFinanceTab(to[1]);
     if (to[0] === 'shopping') setShopSub(to[1]);
     if (to[0] === 'family') setFamilySub(to[1]);
+    if (to[0] === 'travel' && to[1]) setTravOpen({ id: to[1], at: Date.now() });
+    if (to[0] === 'home_front' && to[1]) setHomeOpen({ id: to[1], at: Date.now() });
   };
   const [activeFinanceTab, setActiveFinanceTab] = useState('fin_summary');
   // Who's signed in (#218): their hidden tabs and first tab. Before whoami answers, everything shows.
@@ -15076,7 +15301,7 @@ function App() {
       whoLanded.current = true;
       if (who.opensOn && ok.indexOf(who.opensOn) !== -1) { setActiveTabRaw(who.opensOn); return; }
     }
-    if (ok.length && ok.indexOf(activeTab) === -1) setActiveTabRaw(ok[0]);
+    if (ok.length && activeTab !== 'all' && ok.indexOf(activeTab) === -1) setActiveTabRaw(ok[0]);
   }, [who, activeTab]);
   const [shopping,     setShopping]     = useState([]);
   const [busy,         setBusy]         = useState(false);
@@ -15242,39 +15467,8 @@ function App() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div style={{
-        background: '#0a1428',
-        borderBottom: '1px solid #1e3060',
-        display: 'flex',
-        gap: 0,
-        overflowX: 'auto',
-        padding: '0 28px',
-      }}>
-        {TOP_TABS.filter(tab => veraCan_(tab.id)).map(tab => (
-          <button
-            key={tab.id}
-            disabled={!!tab.disabled}
-            onClick={() => !tab.disabled && setActiveTab(tab.id)}
-            style={{
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #c9a84c' : '2px solid transparent',
-              color: tab.disabled ? '#2a3a5e' : activeTab === tab.id ? '#c9a84c' : '#8a9abf',
-              cursor: tab.disabled ? 'not-allowed' : 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-              padding: '12px 16px',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Main content */}
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 28px' }}>
+      {/* Main content. The bottom bar (below) replaced the row of eight tabs; every tab is still here, and in All. */}
+      <div className="lite-main">
         {error && (
           <div className="error-banner">
             <span>{error}</span>
@@ -15289,8 +15483,10 @@ function App() {
             shopping={shopping}
             status={status}
             onNavigate={setActiveTab}
+            who={who}
           />
         )}
+        {activeTab === 'all' && <LiteAllView onOpen={setActiveTab} status={status} />}
         {activeTab === 'overview' && <PtoStrategyView apiUrl={apiUrl} apiToken={apiToken} compact={true} me="victoria" />}
 
         {activeTab === 'chat' && (
@@ -15302,6 +15498,7 @@ function App() {
         )}
         {activeTab === 'shopping' && shopSub === 'cheat' && <CardsTab apiUrl={apiUrl} apiToken={apiToken} part="cheat" />}
         {activeTab === 'shopping' && shopSub === 'coupons' && <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+        {activeTab === 'shopping' && shopSub === 'lists' && <GroceryRunButton apiUrl={apiUrl} apiToken={apiToken} who="Victoria" variant="tile" />}
         {activeTab === 'shopping' && shopSub === 'lists' && (
           <ShoppingTab
             grocery={{ apiUrl, apiToken, who: 'Victoria' }}
@@ -15326,7 +15523,7 @@ function App() {
         {activeTab === 'family' && familySub === 'contacts' && <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />}
 
         {activeTab === 'home_front' && (
-          <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} features={status && status.features} onOpenProjects={() => setActiveTab('projects')} />
+          <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} features={status && status.features} onOpenProjects={() => setActiveTab('projects')} openSub={homeOpen} />
         )}
 
         {activeTab === 'projects' && (
@@ -15334,7 +15531,7 @@ function App() {
         )}
 
         {activeTab === 'travel' && (
-          <TravelLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+          <TravelLiteTab apiUrl={apiUrl} apiToken={apiToken} openSub={travOpen} />
         )}
 
         {activeTab === 'finances' && (
@@ -15361,6 +15558,9 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* The bottom bar: Today, Lists, Chat, Trips, All. Lists is Shopping; the bar marks the tab you're in. */}
+      <LiteBottomBar active={activeTab} onGo={setActiveTab} />
 
       {/* Settings modal */}
       {showSettings && (

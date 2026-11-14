@@ -47,7 +47,7 @@ const CONTROLS = [
   ['a run saves with no total', both("if(f.counted!=='none'&&!(total>0)&&!picked.length){setErr('Enter the total paid.');return;}\n    if(f.counted!=='none'&&!(total>0)){setErr('Enter the total paid, or pick “Not this one”.');return;}", '')],
   ['no Home quick action', app(",React.createElement(GroceryRunButton,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed',variant:'tile'})", '')],
   ['no Quick capture chip', app("h(GroceryRunButton,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed',variant:'chip'}),", '')],
-  ['no Today tile', b => ({ [L]: swap(b[L], '      <GroceryRunButton apiUrl={apiUrl} apiToken={apiToken} who="Victoria" variant="tile" />\n', '') })],
+  ['no button at the top of lite’s Lists', b => ({ [L]: swap(b[L], `        {activeTab === 'shopping' && shopSub === 'lists' && <GroceryRunButton apiUrl={apiUrl} apiToken={apiToken} who="Victoria" variant="tile" />}\n`, '') })],
   ['no button on the Groceries card', both("    h(GroceryRunButton,{apiUrl:props.apiUrl,apiToken:props.apiToken,who:props.who||'',variant:'wide',onDone:load}),\n", '')],
 ];
 

@@ -101,7 +101,20 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
-**Lite dashboard (Victoria):** Today · Chat · Shopping (Lists, 🥇 Which card, Coupons) · Home · Travel (My Trips, Bucket List, Profiles, Our bags, Gifts) · Money (… 📇 Our cards) · Family (Family Planning, Prescriptions, Wish Lists, Address Book) · Projects.
+**Lite dashboard (Victoria):** a bar at the bottom of the screen: **Today · Lists · Chat · Trips · All**.
+- **Today** shows, in order:
+  - the day's calendar and the next trip;
+  - **Needs you**: the three things due soonest, out of perks about to lapse, coupons expiring, house jobs due and packing. Perks and jobs tick off in place, and "See all" shows up to ten;
+  - eight tiles that each say one thing ("Costco · 7 to buy", "Groceries → Gold", "Internet · due Wed").
+- **All** is one grid of every area:
+  - Everyday: Lists, Which card, Coupons, Chat;
+  - Home: Kitchen, House, Chores, Hosting;
+  - Money: This month, Saving, Our cards, Net worth;
+  - Travel: My trips, Bucket list, Profiles, Gifts;
+  - Family: Planning, Prescriptions, Wish lists, Addresses;
+  - More: Projects, Settings, and Your assistants.
+- **Under the bar** are the same tabs as before, with the same ids (`TOP_TABS`), so People & access and old links still work. A hidden tab has no button and no icon.
+- **On iPhone**, the page runs to the screen edges (`viewport-fit=cover`), and the bar pads itself clear of the home indicator.
 
 **Guides** (in `docs/guides/`, served by GitHub Pages):
 

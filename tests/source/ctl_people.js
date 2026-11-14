@@ -35,7 +35,7 @@ const CONTROLS = [
   ['the menus don’t hide anything', both("return by[id]&&veraCan_(name+'/'+id);", "return by[id];"), NODE],
   ['the full tab bar unfiltered', b => ({ [APP]: swap(b[APP], "VERA_MAIN_TABS.map(t=>t.id).filter(tab=>veraCan_(tab)).map(tab=>", "VERA_MAIN_TABS.map(t=>t.id).map(tab=>") }), NODE],
   ['a lite-view person stays on full', b => ({ [APP]: swap(b[APP], "if(d.view==='lite'&&!d.owner){window.location.replace('dashboard-lite.html');return;}", "") }), NODE],
-  ['lite’s tab bar unfiltered', b => ({ [LITE]: swap(b[LITE], "{TOP_TABS.filter(tab => veraCan_(tab.id)).map(tab => (", "{TOP_TABS.map(tab => (") }), NODE],
+  ['lite’s bottom bar and All unfiltered', b => ({ [LITE]: swap(b[LITE], "  if (!veraCan_(tab)) return false;\n", "") }), NODE],
   ['the panel shows the owner a sign-out', withIndex(b => ({ [APP]: swap(b[APP], "!p.owner&&p.codes>0&&h(\"button\"", "p.codes>=0&&h(\"button\"") })), UI],
   ['the code never shown', withIndex(b => ({ [APP]: swap(b[APP], "setShown({name:r.name,code:r.code});});}},busy==='people_add'", "});}},busy==='people_add'") })), UI],
 ];

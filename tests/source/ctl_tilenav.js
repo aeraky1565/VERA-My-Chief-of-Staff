@@ -30,7 +30,7 @@ const CONTROLS = [
   ['Chat is not right after Today', b => ({ [L]: swap(b[L], "  { id: 'chat',          label: '💬 Chat'     },\n  { id: 'shopping',      label: '🛒 Shopping' },", "  { id: 'shopping',      label: '🛒 Shopping' },\n  { id: 'chat',          label: '💬 Chat'     },") })],
   ['an old Cards link goes nowhere', b => ({ [L]: swap(b[L], "cards: ['finances', 'fin_cards'], ", "") })],
   ['Money › Our cards is the old tracker, not the reference', b => ({ [L]: swap(b[L], "  if (part === 'ref') return <div>", "  if (part === 'ref_off') return <div>") })],
-  ['Your assistants leaves lite Today', b => ({ [L]: swap(b[L], '<VeraRoster links={status && status.rosterLinks} veraHref="./" />', '') })],
+  ['Your assistants leaves lite’s All screen', b => ({ [L]: swap(b[L], '<VeraRoster links={status && status.rosterLinks} veraHref="./" />', '') })],
   ['Home loses the slot', full('React.createElement(HomeSlot,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate}),', '')],
   ['Bills comes back to the slot', full("{id:'birthday',label:'🎂 Birthday'}];", "{id:'birthday',label:'🎂 Birthday'},{id:'bills',label:'🧾 Bills'}];")],
   ['spending counts lines with no actuals', full("if(x.actual==null)return;plan+=x.plan||0;", "plan+=x.plan||0;")],

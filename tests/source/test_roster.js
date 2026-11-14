@@ -108,8 +108,8 @@ check('System › Assistants renders the roster with status’s links and this p
       /cur==='assistants'&&h\(SysAssistants,\{apiUrl:apiUrl,apiToken:apiToken,status:status\}\)/.test(fnBody(APP, 'SystemTab'))
       && /React\.createElement\(VeraRoster,\{links:status&&status\.rosterLinks,veraHref:window\.location\.origin\+window\.location\.pathname,health:health\}\)/.test(fnBody(APP, 'SysAssistants')));
 check('Home no longer renders it (it moved to System)', !/VeraRoster/.test(fnBody(APP, 'HomeTab')));
-check('lite’s Overview renders it with VERA pointing at the full dashboard',
-      /<VeraRoster links=\{status && status\.rosterLinks\} veraHref="\.\/" \/>/.test(fnBody(LITE, 'OverviewLiteTab')));
+check('lite’s All screen renders it with VERA pointing at the full dashboard',
+      /<VeraRoster links=\{status && status\.rosterLinks\} veraHref="\.\/" \/>/.test(fnBody(LITE, 'LiteAllView')) && !/VeraRoster/.test(fnBody(LITE, 'OverviewLiteTab')));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

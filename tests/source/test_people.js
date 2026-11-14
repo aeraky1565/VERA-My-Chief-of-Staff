@@ -200,7 +200,9 @@ console.log('\nThe dashboards');
   check('…and the catalog the owner sends covers both dashboards', /veraAccessCatalog_\('full',VERA_MAIN_TABS\)\.concat\(veraAccessCatalog_\('lite',VERA_LITE_MAIN_TABS\)\)/.test(APP));
   check('full: the main tabs filtered, the first tab, and a lite-view person sent to lite', /VERA_MAIN_TABS\.map\(t=>t\.id\)\.filter\(tab=>veraCan_\(tab\)\)\.map\(tab=>/.test(APP)
         && /if\(d\.view==='lite'&&!d\.owner\)\{window\.location\.replace\('dashboard-lite\.html'\);return;\}/.test(APP) && /who\.opensOn&&ok\.indexOf\(who\.opensOn\)!==-1\)\{setActiveTab\(who\.opensOn\)/.test(APP));
-  check('lite: the main tabs filtered and the first tab', /TOP_TABS\.filter\(tab => veraCan_\(tab\.id\)\)\.map\(tab =>/.test(LITE) && /VERA_ACCESS = \{ dash: 'lite', hidden: hid \};/.test(LITE) && /if \(who\.opensOn && ok\.indexOf\(who\.opensOn\) !== -1\) \{ setActiveTabRaw\(who\.opensOn\)/.test(LITE));
+  // Lite's bottom bar and All screen (no top tab bar any more) open only what veraCan_ allows.
+  check('lite: the main tabs filtered and the first tab', /tab === 'settings' \|\| tab === 'all'\) return true;\n\s+if \(!veraCan_\(tab\)\) return false;/.test(LITE)
+        && /const items = LITE_BAR\.filter\(b => liteCanOpen_\(b\.id, b\.sub\)\);/.test(LITE) && /const items = g\.items\.filter\(it => liteCanOpen_\(it\[2\], it\[3\]\)\);/.test(LITE) && /VERA_ACCESS = \{ dash: 'lite', hidden: hid \};/.test(LITE) && /if \(who\.opensOn && ok\.indexOf\(who\.opensOn\) !== -1\) \{ setActiveTabRaw\(who\.opensOn\)/.test(LITE));
   check('the lists the catalog uses match the real tab bars', (() => {
     const lite = (LITE.match(/const TOP_TABS = \[([\s\S]*?)\];/) || [])[1] || '';
     const liteIds = (lite.match(/id: '([a-z_]+)'/g) || []).map(x => x.slice(5, -1));
