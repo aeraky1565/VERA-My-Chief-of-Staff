@@ -39,7 +39,7 @@ check('…else the Typical CPP column', C.cvCpp_({ program: 'Amex MR', centsPerP
 check('…else VERA’s typical for the program', C.cvCpp_({ program: 'United MileagePlus' }) === 1.2 && C.cvCpp_({ program: 'Marriott Bonvoy' }) === 0.8 && C.cvCpp_({ program: 'Chase UR' }) === 1.7);
 check('…else 1¢; no program at all is 1¢', C.cvCpp_({ program: 'Corner Café Points' }) === 1 && C.cvCpp_(null) === 1);
 const programs = [{ id: 'LP-1', program: 'Amex MR', linkedCard: 'CC-1', centsPerPoint: '1.6' }, { id: 'LP-2', program: 'Chase UR', linkedCard: 'CC-2, CC-3', centsPerPoint: '' }];
-check('a card earns into the program whose Linked Card lists it (comma list)', C.cvProgramFor_({ id: 'CC-3' }, programs).program === 'Chase UR' && C.cvProgramFor_({ id: 'CC-9' }, programs) === null);
+check('a card earns into the program whose Linked Card lists it (comma list)', (C.cvProgramFor_({ id: 'CC-3' }, programs) || {}).program === 'Chase UR' && C.cvProgramFor_({ id: 'CC-9' }, programs) === null);
 check('cash back counts as it is; points at the program’s value', C.cvRewardValue_({ rate: '3', rateType: '% cashback' }, { id: 'CC-4' }, programs) === 3
       && C.cvRewardValue_({ rate: '4', rateType: 'x points' }, { id: 'CC-1' }, programs) === 6.4 && C.cvRewardValue_({ rate: '1.5', rateType: 'x points' }, { id: 'CC-2' }, programs) === 2.55);
 check('categories map into the fixed list; others are left for More', C.cvCategoryOf_('Groceries') === 'groceries' && C.cvCategoryOf_('Gas stations and EV charging') === 'gas' && C.cvCategoryOf_('General Spend') === 'general'
