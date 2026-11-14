@@ -1639,7 +1639,7 @@ outdoors · roadtrip · cruise · themepark`, and `normaliseTripCharacteristics_
 anything outside it, since a characteristic nothing can match is indistinguishable
 from a typo.
 
-This is a **different axis from Trip Context**, which is `Anniversary Trip · Work Trip
+This is a **different axis from Trip Context**, which is `Anniversary Trip · Business Trip
 · Family Trip · Girls Trip · Solo Adventure` — entirely *who you are with and why*.
 A beach trip is a beach trip whether it is an anniversary or a family holiday.
 
@@ -2025,7 +2025,7 @@ Every tab is created automatically by `setupVERA()` → `createSheetTabs()`. Hea
 | Home Items | `HOME_ITEMS` | Warranties + service log | User + chat managed |
 | Ideas | `IDEAS` | Braindump repo + Thought Inbox | User + chat managed |
 | Itinerary | `ITINERARY` | Trip itinerary items | User + chat + email parser managed |
-| TripMeta | `TRIP_META` | Per-trip `Context` (a short label — Anniversary Trip, Work Trip — picked from a menu or typed) and `Notes`, which holds the **trip briefing**: free text saying what the trip is actually for. The column keeps its original name; everywhere a person reads it, it is the briefing | User + chat managed |
+| TripMeta | `TRIP_META` | Per-trip `Context` (a short label — Anniversary Trip, Business Trip, Working Trip — picked from a menu or typed) and `Notes`, which holds the **trip briefing**: free text saying what the trip is actually for. The column keeps its original name; everywhere a person reads it, it is the briefing | User + chat managed |
 
 
 **Trip briefing.** Each trip carries two separate pieces of context. The
@@ -2533,6 +2533,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
 | `People.js` | Sign-in codes per person (fingerprints only), the Access tab (filled from the dashboard's saved tab list, also nightly), whoami, the owner's People & access endpoints, Slack's verification token |
+| `WorkTrips.js` | Working Trips (working remotely) and Business Trips (the employer sends you), by the trip's Context; who's working (`set_trip_working`, kept by Trip ID in the VERA State tab, defaulting to the Traveller); no PTO, busy only for the people on a trip, Employer pays, and the packing and day-plan lines for working days (Config `work_hours_<name>`, 9-18) |
 | `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |

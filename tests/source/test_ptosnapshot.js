@@ -197,7 +197,7 @@ console.log('\nThe consumers use the injected scan, and still work without one')
         /\(scannedEvents && scannedEvents\[c\]\) \|\| gapCalendars\[c\]\.getEvents\(/.test(gms));
   check('writePTOSnapshot_ scans once and passes it to both',
         /var gapScan\s+= sub_\('gapScan'/.test(PTO) &&
-        /findClearWindows_\(gapCals, today, PTO_GAP_SCAN_DAYS_, 3, gapScan\)/.test(PTO) &&
+        /findClearWindows_\(gapCals, today, PTO_GAP_SCAN_DAYS_, 3, gapScan(, ptoSkipOthersTrip_\('Ahmed'\))?\)/.test(PTO) &&
         /getMilestones_\(gapCals, cfg, today, gapScan\)/.test(PTO));
 }
 

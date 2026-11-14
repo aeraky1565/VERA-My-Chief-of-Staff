@@ -898,7 +898,7 @@ function buildChatSystemPrompt_(context) {
     '  \u2014 type options: flight, train, cruise, ferry, hotel, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
     'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
     'ACTION:delete_itinerary_item|{id}\n' +
-    'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
+    'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Business Trip, Working Trip, Honeymoon, Visiting Friends\n' +
     'ACTION:set_trip_briefing|{tripKey}|{briefing}  \u2014 free text: what the trip is actually FOR\n' +
     'ACTION:set_trip_characteristics|{tripKey}|{comma-separated}  \u2014 what KIND of trip it is, from: ' +
     'beach, city, resort, ski, outdoors, roadtrip, cruise, themepark. A trip can be several ("beach, city"). ' +
@@ -1036,7 +1036,7 @@ function buildChatSystemPrompt_(context) {
     '- For update_idea: valid fields are "idea" (text), "category", "tags", "notes". Use the idea ID from IDEA BRAINDUMP above.\n' +
     '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD. Use blank for optional time/location/notes.\n' +
     '- For update_itinerary_item / delete_itinerary_item: use the item ID (e.g., ITIN-20260101-01) shown in UPCOMING TRIPS above.\n' +
-    '- For set_trip_context: use the TripKey exactly as shown. Context should describe the trip sentiment (Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends, Visiting Family, Solo Adventure, Girls Trip, Group Trip, etc.).\n' +
+    '- For set_trip_context: use the TripKey exactly as shown. Context should describe the trip sentiment (Anniversary Trip, Family Trip, Business Trip (your employer sends you), Working Trip (working remotely from out of town), Honeymoon, Visiting Friends, Visiting Family, Solo Adventure, Girls Trip, Group Trip, etc.).\n' +
     '- For set_trip_characteristics: the CHARACTER of the trip, not who is on it. A beach trip is a beach trip whether it is an anniversary or a family holiday. Set it whenever Ahmed describes a trip in a way that names one ("a week on the beach", "city break in Lisbon", "skiing in March"), because trip lessons scoped trait:beach only fire for trips marked beach — and an unmarked trip reads exactly like "not a beach trip".\n' +
     '- For set_trip_briefing: the briefing is a SENTENCE, not a label \u2014 why the trip is happening and what matters about it ("visiting Sarah and Tom for the new baby; quiet and low-key, we want to be useful"). Whenever Ahmed explains the reason for a trip, record it with set_trip_briefing rather than only replying: it steers the discoveries, the packing list and the pre-trip emails. set_trip_context stays the short category label; the two are separate and both are kept.\n' +
     '- For add_packing_item: person must be "ahmed", "victoria", or "shared". Use the TripKey exactly as shown.\n' +

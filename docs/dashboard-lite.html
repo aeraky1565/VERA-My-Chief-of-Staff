@@ -3819,10 +3819,10 @@ function psRequestBy_(c,st){var days=psDays_(c);if(!days.length)return '';var w=
 // Pure: each day's mark in the year grid. Accepted beats suggested beats locked, reserved, blackout, holiday.
 function psMarks_(plan,filter){var m={};var put=function(a,b,k){for(var d=a;d<=b;d=psAdd_(d,1))if(!m[d]||PS_RANK[k]<PS_RANK[m[d]])m[d]=k;};
   (plan.people||[]).forEach(function(p){if(filter&&filter!=='all'&&filter!=='joint'&&p.id!==filter)return;Object.keys(p.holidays||{}).forEach(function(d){put(d,d,p.assumed?'ha':'h');});(p.blackouts||[]).forEach(function(b){put(b[0],b[1],'b');});});
-  (plan.locked||[]).forEach(function(t){put(t.start,t.end,'l');});(plan.reserves||[]).forEach(function(r){put(r.start,r.end,'p');});
+  (plan.locked||[]).forEach(function(t){var one=filter&&filter!=='all'&&filter!=='joint';if(one&&t.who&&t.who.indexOf(filter)===-1)return;var w=(t.work||[]).length&&(!one||t.work.indexOf(filter)!==-1);put(t.start,t.end,w?'w':'l');});(plan.reserves||[]).forEach(function(r){put(r.start,r.end,'p');});
   (plan.picks||[]).forEach(function(c){if(!psShows_(c,filter))return;psDays_(c).forEach(function(d){put(d,d,c.status==='accepted'?'a':'k');});});return m;}
-var PS_RANK={a:0,k:1,l:2,p:3,b:4,h:5,ha:6};
-var PS_MARK={a:{bg:'#8ab4f8',fg:'#0b1020',t:'accepted day off'},k:{bg:'#34d399',fg:'#05231a',t:'suggested day off'},l:{bg:'#a78bfa',fg:'#170d33',t:'locked trip'},
+var PS_RANK={a:0,k:1,w:2,l:2,p:3,b:4,h:5,ha:6};
+var PS_MARK={w:{bg:'repeating-linear-gradient(135deg,#334155 0 3px,#1f2937 3px 6px)',edge:'#94a3b8',fg:'#cbd5e1',t:'working away (no PTO)'},a:{bg:'#8ab4f8',fg:'#0b1020',t:'accepted day off'},k:{bg:'#34d399',fg:'#05231a',t:'suggested day off'},l:{bg:'#a78bfa',fg:'#170d33',t:'locked trip'},
   p:{bg:'#22d3ee',fg:'#04202a',t:'held for a pencilled trip'},b:{bg:'#3a1414',fg:'#fca5a5',t:'blackout'},h:{bg:'#f59e0b',fg:'#1a1205',t:'holiday'},ha:{bg:'#f59e0b55',fg:'#ffe2a8',t:'assumed holiday'}};
 // A trip or a reserve covers its weekends and holidays too, but those cost no PTO: they're drawn as an outline, so only filled days are days you take off.
 function psFree_(plan,iso){var w=new Date(iso+'T00:00:00Z').getUTCDay();return w===0||w===6||(plan.people||[]).some(function(p){return!!(p.holidays||{})[iso];});}
@@ -3830,11 +3830,11 @@ function PsYearGrid({plan,filter}){var h=React.createElement;var y=Number(plan.y
   return h('div',null,h('div',{className:'ps-year',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(112px,1fr))',gap:10}},
     PS_MON.map(function(name,mi){var first=new Date(Date.UTC(y,mi,1)).getUTCDay(),n=new Date(Date.UTC(y,mi+1,0)).getUTCDate(),cells=[];
       for(var i=0;i<first;i++)cells.push(h('span',{key:'e'+i}));
-      for(var d=1;d<=n;d++){var iso=y+'-'+String(mi+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),k=marks[iso],w=new Date(Date.UTC(y,mi,d)).getUTCDay(),mk=k?PS_MARK[k]:null,soft=(k==='l'||k==='p')&&psFree_(plan,iso);
+      for(var d=1;d<=n;d++){var iso=y+'-'+String(mi+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),k=marks[iso],w=new Date(Date.UTC(y,mi,d)).getUTCDay(),mk=k?PS_MARK[k]:null,soft=(k==='l'||k==='p'||k==='w')&&psFree_(plan,iso);
         cells.push(h('span',{key:iso,className:'ps-day'+(k?' ps-'+k:'')+(soft?' ps-soft':''),title:iso+(mk?' · '+mk.t+(soft?' (no PTO: a weekend or holiday)':''):''),style:{aspectRatio:'1',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9.5,borderRadius:3,fontVariantNumeric:'tabular-nums',
-          background:mk&&!soft?mk.bg:(w===0||w===6?PS_C.wknd:'transparent'),color:soft?mk.bg:mk?mk.fg:(w===0||w===6?'#55617f':'#9aa6c4'),fontWeight:mk?700:400,outline:k==='ha'?'1px dashed #f59e0b':soft?'1.5px solid '+mk.bg:'none',outlineOffset:soft?-1.5:-1,textDecoration:k==='b'?'line-through':'none'}},d));}
+          background:mk&&!soft?mk.bg:(w===0||w===6?PS_C.wknd:'transparent'),color:soft?(mk.edge||mk.bg):mk?mk.fg:(w===0||w===6?'#55617f':'#9aa6c4'),fontWeight:mk?700:400,outline:k==='ha'?'1px dashed #f59e0b':soft?'1.5px solid '+(mk.edge||mk.bg):'none',outlineOffset:soft?-1.5:-1,textDecoration:k==='b'?'line-through':'none'}},d));}
       return h('div',{key:name},h('div',{style:{fontSize:11.5,fontWeight:700,color:PS_C.ink,marginBottom:3}},name),h('div',{style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}},['S','M','T','W','T','F','S'].map(function(x,i){return h('span',{key:'w'+i,'aria-hidden':'true',style:{fontSize:8.5,textAlign:'center',color:'#55617f'}},x);}).concat(cells)));})),
-    h('div',{className:'ps-legend',style:{display:'flex',flexWrap:'wrap',gap:'6px 12px',fontSize:11.5,color:PS_C.muted,marginTop:8}},['h','ha','l','p','k','a','b'].map(function(k){return h('span',{key:k,style:{display:'inline-flex',alignItems:'center',gap:5}},h('i',{style:{width:10,height:10,borderRadius:3,display:'inline-block',background:PS_MARK[k].bg,outline:k==='ha'?'1px dashed #f59e0b':'none'}}),PS_MARK[k].t);}).concat([h('span',{key:'soft',className:'ps-legend-soft',style:{display:'inline-flex',alignItems:'center',gap:5}},h('i',{style:{width:10,height:10,borderRadius:3,display:'inline-block',outline:'1.5px solid '+PS_MARK.l.bg,outlineOffset:-1.5}}),'outline: a trip’s weekend or holiday (no PTO)')])));}
+    h('div',{className:'ps-legend',style:{display:'flex',flexWrap:'wrap',gap:'6px 12px',fontSize:11.5,color:PS_C.muted,marginTop:8}},['h','ha','l','w','p','k','a','b'].map(function(k){return h('span',{key:k,style:{display:'inline-flex',alignItems:'center',gap:5}},h('i',{style:{width:10,height:10,borderRadius:3,display:'inline-block',background:PS_MARK[k].bg,outline:k==='ha'?'1px dashed #f59e0b':'none'}}),PS_MARK[k].t);}).concat([h('span',{key:'soft',className:'ps-legend-soft',style:{display:'inline-flex',alignItems:'center',gap:5}},h('i',{style:{width:10,height:10,borderRadius:3,display:'inline-block',outline:'1.5px solid '+PS_MARK.l.bg,outlineOffset:-1.5}}),'outline: a trip’s weekend or holiday (no PTO)')])));}
 function PsWhoPill({who}){var w=PS_WHO[who]||{label:who,col:PS_C.muted};return React.createElement('span',{className:'ps-who',style:{fontSize:11,fontWeight:700,padding:'1px 8px',borderRadius:999,background:w.col,color:'#0b1020',whiteSpace:'nowrap'}},w.label);}
 var PS_BTN={fontSize:12,padding:'6px 10px',borderRadius:8,border:'1px solid #2a4080',background:'#0a1220',color:'#8ab4f8',cursor:'pointer',minHeight:32};
 var PS_BTN_ON=Object.assign({},PS_BTN,{background:'#8ab4f8',color:'#0b1020',borderColor:'#8ab4f8',fontWeight:600});
@@ -7710,7 +7710,7 @@ function fmtDayHeader(dateStr, dayNum) {
 
 const CONTEXT_COLORS = {
   'Anniversary Trip':'#ff6b9d','Romantic Couples Getaway':'#ff6b9d','Honeymoon':'#ff6b9d',
-  'Work Trip':'#4d8af0','Family Trip':'#56cc9d','Visiting Family':'#56cc9d',
+  'Business Trip':'#94a3b8','Work Trip':'#94a3b8','Working Trip':'#5eead4','Family Trip':'#56cc9d','Visiting Family':'#56cc9d',
   'Visiting Friends':'#f7c948',"Girls Trip":'#c084fc','Group Trip':'#94a3b8',
   'Solo Adventure':'#fb923c',
 };

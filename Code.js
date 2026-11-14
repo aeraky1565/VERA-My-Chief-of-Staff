@@ -236,7 +236,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
 
 /**
  * What KIND of trip this is — as opposed to Context, which is who you are with and
- * why (Anniversary Trip, Work Trip, Family Trip…). Nothing in VERA described the
+ * why (Anniversary Trip, Business Trip, Family Trip…). Nothing in VERA described the
  * character of a trip before, which is why a lesson learned on a beach trip could
  * only be pinned to a place.
  *

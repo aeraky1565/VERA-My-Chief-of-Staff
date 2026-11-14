@@ -236,13 +236,16 @@ function ptsPlan_(input) {
   var saved = input.saved || {};
   var people = input.people.map(function(p) {
     var busy = (p.busy || []).slice();
-    (input.locked || []).forEach(function(t) { busy.push([t.start, t.end]); });
+    // A trip is busy for the people on it (all of you when that's not known), never charged:
+    // PTO only comes off the balance from the work calendar.
+    (input.locked || []).forEach(function(t) { if (!t.who || t.who.indexOf(p.id) !== -1) busy.push([t.start, t.end]); });
     return Object.assign({}, p, { busy: busy, blackouts: (p.blackouts || []).concat((st.blackouts || {})[p.id] || []) });
   });
   var byId = {}; people.forEach(function(p) { byId[p.id] = p; });
   // Reserves for pencilled trips (they're busy for the bridges).
   var reserves = [];
   if (st.reservePencilled) (input.pencilled || []).forEach(function(t) {
+    if (t.working) return;                 // a working or business trip takes no days off
     var r = ptsReserveFor_(t, people, year);
     if (!r) return;
     reserves.push(r);
@@ -509,6 +512,12 @@ function ptsPerson_(p, year, today) {
     remVac: got.remVac, remPersH: got.remPersH, capCarry: capCarry, accrual: accrual };
 }
 
+/** Pure: a Trip Idea that says it's a working or business trip (its title or must-haves). */
+function ptsIdeaIsWorking_(t) {
+  var text = [t && t.title, t && t.mustHaves, t && t.note].map(function(x) { return Array.isArray(x) ? x.join(' ') : String(x == null ? '' : x); }).join(' ');
+  return /\b(working|business|work) trip\b/i.test(text);
+}
+
 /** Pencilled trips (Trip Ideas pulled into My Trips, not yet on the calendar). */
 function ptsPencilled_(today) {
   try {
@@ -516,6 +525,7 @@ function ptsPencilled_(today) {
     return mtPencilled_(ideas, {}, today).filter(function(t) { return !t.expired; }).map(function(t) {
       var who = mtTraveler_(t.travelers);
       return { label: t.title, start: t.exact ? t.exactStart : '', end: t.exact ? t.exactEnd : '', months: t.months, days: t.days || 7,
+        working: ptsIdeaIsWorking_(t),
         who: who === 'Ahmed' ? ['ahmed'] : who === 'Victoria' ? ['victoria'] : ['ahmed', 'victoria'] };
     });
   } catch (e) { Logger.log('pto_strategy: pencilled trips unavailable'); return []; }
@@ -525,7 +535,15 @@ function ptsPencilled_(today) {
 function ptsInputs_(year, today, st) {
   var saved = ptsSaved_();
   var locked = [];
-  try { locked = (getUpcomingTravel_(readPTOConfig_()) || []).map(function(t) { return { label: t.label, start: t.startDate, end: t.endDate }; }); } catch (e) { Logger.log('pto_strategy: upcoming trips unavailable'); }
+  // Each trip with who's on it and who's working on it (WorkTrips.js): a trip is busy only
+  // for its travellers, and a Working or Business Trip is "working away" for those working.
+  var peopleOf = function() { return { travellers: [], workers: [], kind: '' }; };
+  try { peopleOf = tripPeopleIndex_(); } catch (e) { Logger.log('pto_strategy: trip people unavailable'); }
+  var ids = function(names) { return (names || []).map(function(n) { return String(n).toLowerCase(); }); };
+  try { locked = (getUpcomingTravel_(readPTOConfig_()) || []).map(function(t) {
+    var pp = peopleOf(t.startDate + '|' + t.label);
+    return { label: t.label, start: t.startDate, end: t.endDate, who: pp.travellers.length ? ids(pp.travellers) : null, work: ids(pp.workers), kind: pp.kind };
+  }); } catch (e) { Logger.log('pto_strategy: upcoming trips unavailable'); }
   var acceptedIds = {}; Object.keys(saved).forEach(function(id) { if (saved[id].status === 'accepted') acceptedIds[id] = true; });
   var people = PTS_PEOPLE_.map(function(p) {
     var v = ptsPerson_(p, year, today), cfg = v.cfg;

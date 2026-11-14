@@ -1228,7 +1228,23 @@ function getUpcomingGuests_(cfg) {
  * @param {number} minDays       (default 3)
  * @returns {Array} Up to 3 windows: [{ startDate, endDate, workdays }]
  */
-function findClearWindows_(gapCalendars, today, lookAheadDays, minDays, scannedEvents) {
+/**
+ * For the clear-window scan: true for a multi-day all-day event that is a trip only
+ * other people are on (its TripMeta Traveller). Unknown trips count as everyone's.
+ */
+function ptoSkipOthersTrip_(name) {
+  var peopleOf = null;
+  try { peopleOf = tripPeopleIndex_(); } catch (e) { return null; }
+  var tz = Session.getScriptTimeZone();
+  return function(ev) {
+    if (!ev.isAllDayEvent()) return false;
+    var key = Utilities.formatDate(ev.getAllDayStartDate(), tz, 'yyyy-MM-dd') + '|' + ev.getTitle();
+    var who = peopleOf(key).travellers;
+    return who.length > 0 && who.indexOf(name) === -1;
+  };
+}
+
+function findClearWindows_(gapCalendars, today, lookAheadDays, minDays, scannedEvents, skipEvent) {
   lookAheadDays = lookAheadDays || PTO_GAP_SCAN_DAYS_;
   minDays       = minDays       || 3;
 
@@ -1245,6 +1261,8 @@ function findClearWindows_(gapCalendars, today, lookAheadDays, minDays, scannedE
     var events = (scannedEvents && scannedEvents[c]) || gapCalendars[c].getEvents(today, scanEnd);
     for (var e = 0; e < events.length; e++) {
       var ev = events[e];
+      // A trip that's only someone else's (WorkTrips.js) leaves this person's days clear.
+      if (skipEvent) { try { if (skipEvent(ev)) continue; } catch (skipErr) {} }
       if (ev.isAllDayEvent()) {
         var evStart  = ev.getAllDayStartDate();
         var evEndExcl = ev.getAllDayEndDate(); // exclusive
@@ -1984,7 +2002,7 @@ function writePTOSnapshot_() {
   // array object and computed the same window, so each calendar was fetched twice.
   var gapScan    = sub_('gapScan',   function() { return scanGapCalendars_(gapCals, today); });
   var allWindows = sub_('clearWindows', function() {
-    return findClearWindows_(gapCals, today, PTO_GAP_SCAN_DAYS_, 3, gapScan);
+    return findClearWindows_(gapCals, today, PTO_GAP_SCAN_DAYS_, 3, gapScan, ptoSkipOthersTrip_('Ahmed'));
   });
   var milestones = sub_('milestones', function() {
     return getMilestones_(gapCals, cfg, today, gapScan);

@@ -152,6 +152,7 @@ function doGet(e) {
       case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'trip_id_check':         return jsonOut_(webTripIdCheck_());   // TripIds.js (#239): read only
       case 'script_props':          return jsonOut_(webScriptProps_());   // ScriptProps.js: names only, owner
+      case 'set_trip_working':      return jsonOut_(webSetTripWorking_(e.parameter));   // WorkTrips.js: who works on a Working/Business Trip
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -5087,11 +5088,15 @@ function webGetTripMeta_(e) {
                  // Reads blank on a sheet seeded before this column existed, which
                  // is the correct answer: no characteristics set. ensureTripMetaColumns_
                  // adds the header on the first write rather than on every read.
-                 characteristics: String(data[i][10] || '') };
+                 characteristics: String(data[i][10] || ''),
+                 // A Working or Business Trip, and who works on it (WorkTrips.js).
+                 workKind:       tripWorkKind_(data[i][1]),
+                 working:        tripWorkers_(data[i][1], data[i][4], wtStoredFor_(wtStoreRead_(), tripKey)).join(', '),
+                 workingSaved:   wtStoredFor_(wtStoreRead_(), tripKey) };
       }
     }
   }
-  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2, outboundMode: '', returnMode: '', characteristics: '' };
+  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2, outboundMode: '', returnMode: '', characteristics: '', workKind: '', working: '', workingSaved: '' };
 }
 
 /**
@@ -5860,7 +5865,8 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
     'Electronics, Medications, Entertainment, Beach/Pool, Outdoor/Hiking, Formal/Dress, Snacks, Romantic.\n\n' +
     'RULES:\n' +
     '- Match context: Anniversary/Romantic/Honeymoon \u2192 nicer clothes + Romantic category;\n' +
-    '  Work Trip \u2192 laptop, charger, business clothes; Family \u2192 shared snacks/kids items if relevant.\n' +
+    '  Business Trip \u2192 laptop, charger, business clothes; Working Trip (working remotely) \u2192 laptop, charger and the usual holiday wardrobe;\n' +
+    '  Family \u2192 shared snacks/kids items if relevant.\n' +
     '- Match weather: rain \u2192 rain jacket; hot \u2192 sunscreen + light clothes; cold \u2192 layers + coat.\n' +
     '- 30\u201360 total items max. Keep item names concise (e.g. "3 T-shirts", not "t-shirt 1, t-shirt 2").\n' +
     '- Do NOT include basic everyday items unless travel-specific (e.g. include "travel toothbrush" not just "toothbrush").\n' +
@@ -6042,12 +6048,15 @@ function webGeneratePacking_(e) {
     packingLessonsError = lsErr.message;
   }
 
+  // A Working or Business Trip: what the person working needs, and which days they work (WorkTrips.js).
+  let workLines = '';
+  try { workLines = wtPromptLines_(tripKey, startDate, endDate); } catch (wtErr) { workLines = ''; }
   const prompt = buildPackingPrompt_(
     tripLabel, startDate, endDate, durationNights,
     context, traveler, destination, season,
     itinerarySummary, weatherSummary,
     activityTypes, dressCodes, freeDays, briefing,
-    packingLessons, traits
+    (workLines ? '=== WORKING ON THIS TRIP ===\n' + workLines + '\n\n' : '') + (packingLessons || ''), traits
   );
 
   // Step 7 — Call Claude
@@ -6370,7 +6379,7 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     '- Never recommend a place you cannot tie to the itinerary or the stated destination. ' +
     'If neither names a location, return an empty array rather than guessing where this trip goes.\n' +
     '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
-    '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
+    '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Business Trip or Working Trip → quick sights near the hotel, good coffee, evening plans; Family → family-friendly attractions.\n' +
     // A label is a category picked from a menu; the briefing is a sentence
     // someone wrote about this specific trip. When they disagree, the sentence
     // is the better evidence — "Family Trip" plus "everyone is exhausted, we
@@ -6745,7 +6754,11 @@ function webGenerateRecommendations_(e) {
     recsLessonsError = lsErr.message;
   }
 
-  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, recsLessons,
+  // On a working day, only before-work, lunch and after-work ideas (WorkTrips.js).
+  let recsWork = '';
+  try { recsWork = wtPromptLines_(tripKey, startDate, endDate); } catch (wtErr) { recsWork = ''; }
+  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing,
+                                          (recsWork ? '=== WORKING ON THIS TRIP ===\n' + recsWork + '\n\n' : '') + (recsLessons || ''),
                                           weather.summary, recsSeason, recTraits);
   const apiKey     = getApiKey();
   const tools      = getSearchTools_(); // from Chat.js — empty if no VERA_SEARCH_API_KEY
@@ -10935,7 +10948,11 @@ function webGetTripBudget_(e) {
     totalActual   += Number(it['Actual'])   || 0;
   });
 
+  // A Business Trip's costs are the employer's: shown as "Employer pays", to claim back (WorkTrips.js).
+  var employerPays = tripWorkKind_(meta.context) === 'business';
   var summary = {
+    employerPays: employerPays,
+    toClaim:     employerPays ? totalActual : 0,
     budgeted:    totalBudgeted,
     actual:      totalActual,
     diff:        totalActual - totalBudgeted,
