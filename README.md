@@ -410,6 +410,26 @@ It writes the alias first, so a half-failed run has already mapped the orphan an
 nothing re-mints. It **refuses** a merge where both halves have a different
 TripMeta Context or Notes, printing both so you choose.
 
+**Fixing it from the page.** System › Checks › Trip IDs does the same without the
+editor (owner only; anyone else sees the list without buttons):
+
+- **Keys that name no trip** (`trip_orphans`) lists each orphan key once, biggest first,
+  with its rows per tab and the trip VERA thinks it is (the live matcher, minting and
+  writing nothing). Per key:
+  - **Merge** into the trip in the picker (it starts on VERA's guess) runs
+    `repairOrphanTripKeys_` for that one key. A Trip details conflict comes back as
+    the reason, and nothing changes.
+  - **Register as a past trip** (after a confirm) adds a registry row with status
+    `past`, named and dated from the key, ending on its latest Itinerary date, with
+    the key as its alias. A second tap finds the key already fixed and adds nothing.
+  - **Leave** hides it until the next count.
+
+  Merge and register both fill the Trip IDs at once (`trip_orphan_fix`, `{key, how, tripId}`).
+- **Trip details' header row has drifted** shows when TripMeta is skipped. **Check the
+  repair** is a dry run of `repairTripMeta` (values it would move back, duplicates it
+  would clear, extra labels it would remove, or why it can't). **Repair Trip details**
+  (after a confirm) runs it and fills the IDs (`trip_meta_repair`, `dryRun: 'yes'` for the check).
+
 Rows are re-keyed to the target's **canonical key**, not its bare `TRIP-…` id.
 `getRecentlyCompletedTrips_` and `getTripBoundsByKey_` both skip any key that is not
 `yyyy-MM-dd`-prefixed and derive the departure date from that prefix, so rows
@@ -2573,6 +2593,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
+| `trip_orphans` | — | Trip IDs: the keys that name no trip, rows per tab, VERA's guess, the trips to pick from, and whether you can fix them (read only) |
 | `script_props` | — | Owner only: every Script Property by name (never a value), grouped, each with what it is and where it belongs |
 | `pto_strategy` | `year` (optional) | The PTO plan for this year or next: picks, budget, the accrual check, Use it before Dec 31, strategies and settings |
 | `pto_strategy_settings` (POST) | `preset`, `overrides`, `reset` | Save the strategy and Advanced settings (Config `pto_strategy`), then re-plan |
@@ -2592,6 +2613,8 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | Action | Body Parameters | What it does |
 |--------|----------------|-------------|
 | `chat` | `message`, `session` | Send chat message (same as GET chat but supports longer payloads) |
+| `trip_orphan_fix` | `key`, `how` (`merge` or `register`), `tripId` (merge) | Owner only: merge a key that names no trip into a trip, or register it as a past trip; then fills the Trip IDs |
+| `trip_meta_repair` | `dryRun` (`yes` for the check) | Owner only: what the Trip details header repair would do, or does it and fills the Trip IDs |
 | `acknowledge` | `id` | Acknowledge a flag |
 | `snooze` | `id`, `days` or `until` | Snooze a flag |
 | `resolve` | `id` | Resolve a flag |
@@ -2660,7 +2683,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `TestBench.js` | **The index of manual test entry points.** One `tb*` callout per user-facing feature, grouped into four sections, with knobs at the top because the Run menu cannot pass arguments. Clears the relevant dedup guard before anything that would otherwise silently no-op |
 | `MyTrips.js` | Travel › My Trips: calendar trips, pencilled-in trips, a 15-month strip and past trips (#220) |
 | `TripEmails.js` | Who's travelling, and per-trip Travel Day email recipients (`teResolve_`) (#233) |
-| `TripIds.js` | A Trip ID column on the ten trip-keyed tabs (#239): `tripIdStampAll_` fills blanks nightly and records a clean night, `backfillTripIds()` once by hand, never overwrites an ID; `webTripIdCheck_` is the read-only System › Checks › Trip IDs panel |
+| `TripIds.js` | A Trip ID column on the ten trip-keyed tabs (#239): `tripIdStampAll_` fills blanks nightly and records a clean night, `backfillTripIds()` once by hand, never overwrites an ID; `webTripIdCheck_` is the read-only System › Checks › Trip IDs panel; `webTripOrphans_`, `webTripOrphanFix_` and `webTripMetaRepair_` are its fixes (owner only) |
 | `SheetStyle.js` | The VERA sheet's look as a script (#235): `styleVeraSheet()`, run by hand from the editor, re-applies headers, banding, tab colours and order, column formats and colour rules; never writes a value or moves a column; new tabs get it from `ensureSheet` |
 | `TravelerProfiles.js` · `TripReadiness.js` | Traveller documents, trusted traveller, memberships, preferences, health (last 4 digits only); per-traveller trip readiness (`trdReadiness_`) (#227) |
 | `Luggage.js` · `LeavingHome.js` · `PackPlus.js` | Bag advice and Our bags (#230); leaving-home checklists and Heading out (#231); enriched packing: statuses, staples, outfits, buy list, checkout, review (#234) |

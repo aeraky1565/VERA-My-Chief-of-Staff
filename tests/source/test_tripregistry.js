@@ -511,9 +511,11 @@ console.log('\n…and the registry tab is declared');
 console.log('\nthe repair tool refuses to guess');
 {
   const rep = extractFn(TRP, 'repairOrphanTripKeys_');
+  const orph = extractFn(TRP, 'tripOrphanKeys_');   // the orphan finder it shares with the Trip IDs page
+  check('it finds orphans through the shared finder', /tripOrphanKeys_\(\)/.test(rep));
   check('it is dry-run by default', /dryRun = opts\.dryRun !== false/.test(rep));
   check('it prints per-tab row counts', /rows: /.test(rep));
-  check('it suggests a target without minting one', /\{ mint: false \}/.test(rep));
+  check('it suggests a target without minting one', /\{ mint: false, touch: false \}/.test(orph));
   check('it applies only from a mapping handed to it', /opts\.merges/.test(rep));
   // Alias first, so a half-failed run has already mapped the orphan.
   check('the alias is written before any tab is rewritten',
@@ -522,7 +524,7 @@ console.log('\nthe repair tool refuses to guess');
   check('…naming both sides so you can choose', /orphan: /.test(rep) && /target: /.test(rep));
   check('it clears the orphan’s stale latches', /clearTripLatches_\(orphanKey\)/.test(rep));
   check('a blank key is left alone — EmailParser writes those on purpose',
-        /EmailParser writes a blank key on purpose/.test(rep));
+        /EmailParser writes a blank key on purpose/.test(orph));
 
   const clear = extractFn(TRP, 'clearTripLatches_');
   // The prefixes moved into TRIP_LATCH_PREFIXES_, shared with the senders, so a

@@ -663,7 +663,7 @@ function resolveTripIdForLabelRange_(label, startDate, endDate, opts) {
   return resolveTripId_({ label: label, startDate: startDate, endDate: endDate }, opts);
 }
 
-function createTripRow_(label, startDate, endDate, eventIds, legacyAlias) {
+function createTripRow_(label, startDate, endDate, eventIds, legacyAlias, status) {
   var sheet = getTripsSheet_();
   var id    = mintTripId_();
   var now   = new Date().toISOString();
@@ -671,7 +671,7 @@ function createTripRow_(label, startDate, endDate, eventIds, legacyAlias) {
     id, label, startDate, endDate,
     (eventIds || []).join(';'),
     legacyAlias || '',
-    now, now, 'active',
+    now, now, status || 'active',   // 'past': registered by hand from System › Checks › Trip IDs
   ]);
   Logger.log('Trips: minted ' + id + ' for "' + label + '" ' + startDate + '..' + endDate);
   invalidateTripRegistry_();
@@ -1185,10 +1185,13 @@ function adoptLegacyTripKeysDryRun() {
   return adoptLegacyTripKeys_({ dryRun: true });
 }
 
-function repairOrphanTripKeys_(opts) {
-  opts = opts || {};
-  var dryRun = opts.dryRun !== false;
-  var merges = opts.merges || {};
+/**
+ * Every trip key on the trip tabs that names no live trip, with where it's used and the
+ * one trip it most likely is (the live matcher, minting nothing). Shared by
+ * repairOrphanTripKeys_ (the editor) and System › Checks › Trip IDs (trip_orphans).
+ * → [{ key, startDate, label, tabs: {tab: n}, total, suggestion }]
+ */
+function tripOrphanKeys_() {
   var ss     = getSpreadsheet();
   var tabs   = tripKeyedTabs_();
 
@@ -1219,11 +1222,25 @@ function repairOrphanTripKeys_(opts) {
     var label = pipe > 0 ? k.slice(pipe + 1) : '';
     var suggestion = '';
     if (label) {
-      // Same matcher the live path uses, minting nothing.
-      suggestion = resolveTripIdForLabelRange_(label, start, start, { mint: false });
+      // Same matcher the live path uses, minting nothing and writing nothing: without
+      // touch:false a match rewrote the trip's dates to the orphan's (a read that wrote).
+      suggestion = resolveTripIdForLabelRange_(label, start, start, { mint: false, touch: false });
     }
-    orphans.push({ key: k, tabs: seen[k], startDate: start, label: label, suggestion: suggestion });
+    var total = 0;
+    Object.keys(seen[k]).forEach(function(t) { total += seen[k][t]; });
+    orphans.push({ key: k, tabs: seen[k], total: total, startDate: start, label: label, suggestion: suggestion });
   });
+  return orphans.sort(function(a, b) { return (b.total - a.total) || a.key.localeCompare(b.key); });
+}
+
+function repairOrphanTripKeys_(opts) {
+  opts = opts || {};
+  var dryRun = opts.dryRun !== false;
+  var merges = opts.merges || {};
+  var ss     = getSpreadsheet();
+  var tabs   = tripKeyedTabs_();
+  var orphans = tripOrphanKeys_();
+  var refused = {};   // orphan key → why it wasn't merged (the page shows it)
 
   Logger.log('=== Orphan trip keys ===');
   if (!orphans.length) {
@@ -1253,7 +1270,7 @@ function repairOrphanTripKeys_(opts) {
   Object.keys(merges).forEach(function(orphanKey) {
     var targetId = String(merges[orphanKey] || '').trim().toUpperCase();
     var target   = getTripById_(targetId);
-    if (!target) { Logger.log('SKIP "' + orphanKey + '" — ' + targetId + ' is not a live Trip ID'); return; }
+    if (!target) { Logger.log('SKIP "' + orphanKey + '" — ' + targetId + ' is not a live Trip ID'); refused[orphanKey] = targetId + ' isn’t a trip VERA knows'; return; }
 
     // TripMeta's key column IS the row identity, so two halves of a split trip
     // can hold different Context/Notes. Refuse rather than silently pick one.
@@ -1281,6 +1298,7 @@ function repairOrphanTripKeys_(opts) {
             Logger.log('    orphan: ' + av);
             Logger.log('    target: ' + bv);
             Logger.log('  Merge them by hand in the TripMeta tab first, then re-run.');
+            refused[orphanKey] = 'Both trips have a different ' + TRIP_META_HEADERS[c] + ' in Trip details. Make them match in the TripMeta tab, then merge again.';
             return;
           }
         }
@@ -1316,7 +1334,7 @@ function repairOrphanTripKeys_(opts) {
 
   invalidateTripRegistry_();
   Logger.log('=== ' + applied + ' merge(s) applied ===');
-  return { orphans: orphans, applied: applied };
+  return { orphans: orphans, applied: applied, refused: refused };
 }
 
 /**

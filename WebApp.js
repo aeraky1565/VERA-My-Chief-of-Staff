@@ -151,6 +151,7 @@ function doGet(e) {
       case 'people_list':           return jsonOut_(webPeopleList_());      // People.js (#218), owner only
       case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'trip_id_check':         return jsonOut_(webTripIdCheck_());   // TripIds.js (#239): read only
+      case 'trip_orphans':          return jsonOut_(webTripOrphans_());   // TripIds.js: keys that name no trip, read only
       case 'script_props':          return jsonOut_(webScriptProps_());   // ScriptProps.js: names only, owner
       case 'set_trip_working':      return jsonOut_(webSetTripWorking_(e.parameter));   // WorkTrips.js: who works on a Working/Business Trip
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
@@ -617,6 +618,9 @@ function doPost(e) {
       case 'settings_move':              return jsonOut_(webSettingsMove_());
       case 'script_props_clean':         return jsonOut_(webScriptPropsClean_());
       case 'script_props_move_notes':    return jsonOut_(webScriptPropsMoveNotes_());   // ScriptProps.js: running notes to the VERA State tab
+      // System › Checks › Trip IDs (TripIds.js): owner only, checked inside.
+      case 'trip_orphan_fix':            return jsonOut_(webTripOrphanFix_(body));
+      case 'trip_meta_repair':           return jsonOut_(webTripMetaRepair_(body));
 
       // Projects — POST because the context is free-form prose, which a query
       // string mangles. These handlers read `e.parameter` when present and the

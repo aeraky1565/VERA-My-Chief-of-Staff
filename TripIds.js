@@ -240,5 +240,111 @@ function repairTripMeta() {
   var filled = tripIdStampAll_();
   Logger.log('repairTripMeta: header row reset; ' + plan.moves.length + ' value(s) moved back to their column, ' +
     plan.clears.length + ' duplicate(s) cleared, ' + plan.extraCols + ' extra label(s) removed; Trip IDs filled: ' + (filled ? filled.filled : 0));
+  plan.filled = filled ? filled.filled : 0;
   return plan;
+}
+
+// ---- fixing it from the page (System › Checks › Trip IDs) -------------------------
+//
+// The two things the nightly run can't do on its own, with a person deciding:
+//   - a trip key that names no trip (a past trip never in the registry, or one renamed or
+//     moved): merge it into the trip it is (repairOrphanTripKeys_, which refuses when
+//     both trips' details disagree), or register it as a past trip of its own;
+//   - TripMeta's drifted header row: repairTripMeta, shown as a dry run first.
+// Both then fill the Trip IDs at once. The writes are owner only, under the lock.
+
+/** Pure: a repair plan, summed up for the page. */
+function tmRepairSummary_(plan) {
+  return { ok: !!plan.ok, why: plan.why || '', moved: (plan.moves || []).length, cleared: (plan.clears || []).length, extraCols: plan.extraCols || 0 };
+}
+
+/** The latest Itinerary date under a key (yyyy-MM-dd), or ''. */
+function tidLastItineraryDate_(key) {
+  try {
+    var sh = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    var kc = ITINERARY_HEADERS.indexOf('Trip Key'), dc = ITINERARY_HEADERS.indexOf('Date');
+    if (!sh || sh.getLastRow() < 2 || kc === -1 || dc === -1) return '';
+    var last = '';
+    sh.getRange(2, 1, sh.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
+      if (String(r[kc] || '').trim() !== key) return;
+      var d = dateCellToIso_(r[dc]);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > last) last = d;
+    });
+    return last;
+  } catch (e) { return ''; }
+}
+
+/** GET trip_orphans → { ok, orphans: [{ key, startDate, label, tabs, total, suggestion }], trips }. Read only. */
+function webTripOrphans_() {
+  var list;
+  try { list = tripOrphanKeys_(); } catch (e) { return { ok: false, error: 'The trip tabs couldn’t be read: ' + e.message }; }
+  var reg = readTripRegistry_();
+  var trips = reg.rows.filter(function(r) { return !(r.status && r.status.indexOf('merged:') === 0); })
+    .map(function(r) { return { tripId: r.tripId, label: r.label, startDate: r.startDate, endDate: r.endDate }; })
+    .sort(function(a, b) { return String(b.startDate).localeCompare(String(a.startDate)); });
+  var orphans = list.map(function(o) {
+    var s = o.suggestion ? reg.byId[String(o.suggestion).toUpperCase()] : null;
+    return { key: o.key, startDate: o.startDate, label: o.label, tabs: o.tabs, total: o.total,
+      suggestion: s ? { tripId: s.tripId, label: s.label, startDate: s.startDate, endDate: s.endDate } : null };
+  });
+  var canFix = false;
+  try { canFix = !peopleOwnerOnly_(); } catch (e) { canFix = false; }   // the buttons show for the owner only
+  return { ok: true, orphans: orphans, trips: trips, canFix: canFix };
+}
+
+/**
+ * POST trip_orphan_fix (owner): { key, how: 'merge' | 'register', tripId }.
+ * merge: into tripId (repairOrphanTripKeys_). register: a new 'past' trip, the key its alias.
+ * Either way the Trip IDs are filled at once. → { ok, done, tripId, filled } or { ok: false, error }.
+ */
+function webTripOrphanFix_(p) {
+  var no = peopleOwnerOnly_(); if (no) return no;
+  p = p || {};
+  var key = String(p.key || '').trim(), action = String(p.how || '');   // body.action is the route
+  if (!key) return { ok: false, error: 'Which trip key?' };
+  return veraLocked_(function() {
+    invalidateTripRegistry_();
+    // Still an orphan? (A second tap, or the nightly run, may have fixed it already.)
+    var still = tripOrphanKeys_().some(function(o) { return o.key === key; });
+    if (!still) return { ok: true, done: 'already', filled: 0 };
+    var pipe = key.indexOf('|'), start = pipe > 0 ? key.slice(0, pipe).trim() : '', label = pipe > 0 ? key.slice(pipe + 1).trim() : key;
+    var tripId = '';
+    if (action === 'merge') {
+      tripId = String(p.tripId || '').trim().toUpperCase();
+      if (!tripId) return { ok: false, error: 'Pick the trip it’s the same as' };
+      var merges = {}; merges[key] = tripId;
+      var r = repairOrphanTripKeys_({ dryRun: false, merges: merges });
+      if (!r.applied) return { ok: false, error: (r.refused && r.refused[key]) || 'Not merged' };
+    } else if (action === 'register') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !label) return { ok: false, error: 'This key has no date and name to register a trip from' };
+      tripId = createTripRow_(label, start, tidLastItineraryDate_(key) || start, [], key, 'past');
+    } else {
+      return { ok: false, error: 'Merge or register?' };
+    }
+    invalidateTripRegistry_();
+    var filled = tripIdStampAll_();
+    return { ok: true, done: action, tripId: tripId, filled: filled ? filled.filled : 0 };
+  });
+}
+
+/**
+ * POST trip_meta_repair (owner): { dryRun: 'yes' } → what the repair would do, changing
+ * nothing; otherwise repairs (repairTripMeta). → { ok, plan: { ok, why, moved, cleared, extraCols }, filled }
+ */
+function webTripMetaRepair_(p) {
+  var no = peopleOwnerOnly_(); if (no) return no;
+  var dry = String((p || {}).dryRun || '') === 'yes';
+  return veraLocked_(function() {
+    var sh = getSpreadsheet().getSheetByName(TABS.TRIP_META);
+    if (!sh) return { ok: false, error: 'There’s no Trip details (TripMeta) tab' };
+    if (dry) {
+      var lastCol = Math.max(sh.getLastColumn(), TRIP_META_HEADERS.length), lastRow = sh.getLastRow();
+      var header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+      var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+      return { ok: true, dryRun: true, plan: tmRepairSummary_(tmRepairPlan_(header, rows)) };
+    }
+    var plan = repairTripMeta();
+    if (!plan) return { ok: false, error: 'There’s no Trip details (TripMeta) tab' };
+    return { ok: true, dryRun: false, plan: tmRepairSummary_(plan), filled: plan.filled || 0 };
+  });
 }

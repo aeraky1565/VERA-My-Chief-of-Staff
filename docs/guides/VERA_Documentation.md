@@ -925,7 +925,9 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 **Trip ID columns (`TripIds.js`, #239 phase 1).** Ten trip tabs carry a Trip ID as their last column: Itinerary, TripMeta, PackingItems, Trip Budget, Trip Gifts, Trip Outfits, Packing Reviews, Leaving Home Runs, TripRecommendations and Trip Decisions. Fixed-width writers fill it (`tripIdCell_`); `tripIdStampAll_` fills any blank one from its key each night, right after legacy keys are adopted, and never overwrites an ID that is there. Run `backfillTripIds()` once by hand after the release, with a backup of the sheet first.
 
-**Readers prefer the Trip ID (#239 phase 2).** Every reader of those tabs asks `tripRowIs_`: a row's Trip ID decides when it has one, so a moved or renamed trip keeps all its rows and a row carrying another trip's ID is never read as this trip's; a row with no ID still matches by key. Writers still look rows up by key. **System › Checks › Trip IDs** (read only) counts rows with and without an ID and the mismatches on each tab, lists the rows to fix, and shows how long the tabs have been clean: the nightly fill records the first clean night and clears it on any night that isn't. Switching the writers (step 3) waits for a week of clean nights and a dated copy of the sheet. The Trip Key column stays filled; ARIA reads it.
+**Readers prefer the Trip ID (#239 phase 2).** Every reader of those tabs asks `tripRowIs_`: a row's Trip ID decides when it has one, so a moved or renamed trip keeps all its rows and a row carrying another trip's ID is never read as this trip's; a row with no ID still matches by key. Writers still look rows up by key. **System › Checks › Trip IDs** counts rows with and without an ID and the mismatches on each tab (the count itself changes nothing), lists the mismatched rows, and shows how long the tabs have been clean: the nightly fill records the first clean night and clears it on any night that isn't. Switching the writers (step 3) waits for a week of clean nights and a dated copy of the sheet. The Trip Key column stays filled; ARIA reads it.
+
+**Fixing what the check finds (owner only).** The same page lists each **key that names no trip** once, with its rows per tab and the trip VERA thinks it is. For each, pick **Merge** (into the trip in the picker, which starts on VERA's guess), **Register as a past trip** (a new registry row named and dated from the key, with the key as its alias), or **Leave**. A merge whose two Trip details rows disagree is refused, with the reason. When Trip details is skipped because its header row drifted, **Check the repair** shows what the repair would change, and **Repair Trip details** does it. Every fix fills the Trip IDs at once.
 
 **Who's travelling and Travel Day recipients (`TripEmails.js`).** TripMeta's *Traveler* column holds names from the traveller profiles (old one-word values such as `Both` still read). The Trips tab's *Email Recipients* holds the switched-on travellers' names and any added addresses, separated by `;`. `teResolve_` builds the To list: the owner always on trips he travels on; Victoria only when switched on, with her address from Config `victoria_email`; others from their profile email; added addresses as given; an added address that matches a traveller's (Victoria's own, say) switches that traveller on. Victoria's solo trips send no Travel Day email. Config `travel_companions` is retired.
 
@@ -1464,6 +1466,7 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | `away_status` | — | Away mode, and what it has held |
 | `agent_health` | `refresh=1` (optional) | Agent health: each agent's level, last run, strip and source |
 | `trip_id_check` | — | Trip IDs (read only): per-tab counts, mismatches, clean since, ready |
+| `trip_orphans` | — | Trip IDs: keys that name no trip, rows per tab, VERA's guess, the trips to pick from |
 | `pto_strategy` | `year` (optional) | The PTO plan: picks, budget, accrual check, leftovers, strategies |
 | `pto_strategy_settings`, `pto_plan_accept`, `pto_plan_skip`, `pto_plan_remove`, `pto_plan_follow` (POST) | see README | Save settings; accept, skip, remove a break; Away mode or a trip from it |
 | `whoami` | — | The signed-in person: name, owner, view, first tab, hidden tabs |
@@ -1479,6 +1482,8 @@ The ids, links, channel and user ids, the email address (`morning_nudge_email`, 
 | action | Body params | What it does |
 |---|---|---|
 | `chat` | `message`, `session` | Process a chat message (same as GET chat) |
+| `trip_orphan_fix` | `key`, `how` (merge/register), `tripId` | Owner only: merge an orphan trip key into a trip, or register it as a past trip; fills the Trip IDs |
+| `trip_meta_repair` | `dryRun` | Owner only: the Trip details header repair, as a check (`yes`) or for real |
 | `acknowledge` | `id` | Acknowledge a flag by ID |
 | `snooze` | `id`, `days` or `until` | Snooze a flag for N days, or until a date (tomorrow to a year out) |
 | `resolve` | `id` | Resolve a one-off flag; refused on an automatic one, with what clears it |
