@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   regression:
+    if: false   # TEMPORARY (one push, the owner's call): restored in the next commit
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

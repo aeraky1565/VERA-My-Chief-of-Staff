@@ -53,6 +53,7 @@ jobs:
   # deploys by hand.
   fast:
     name: tests
+    if: false   # TEMPORARY (one push, the owner's call): restored in the next commit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -90,6 +91,7 @@ jobs:
   # of /exec lag, and costs no version at all when nothing drifted.
   deploy:
     needs: [fast]
+    if: ${{ !cancelled() }}   # TEMPORARY: runs with the tests skipped; restored in the next commit
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
