@@ -25,7 +25,7 @@ async function mount(page, items) {
     if (typeof HomestewardView !== 'function') return { error: 'HomestewardView is not defined' };
     window.__added = null; window.__deleted = null;
     window.confirm = () => true;
-    const host = document.createElement('div'); host.id = 'hprobe'; document.body.appendChild(host);
+    const host = document.createElement('div'); host.id = 'hprobe'; document.body.prepend(host);   // at the top: lite's bottom bar is fixed over the end of the page
     ReactDOM.createRoot(host).render(React.createElement(HomestewardView, {
       items, loading:false, busy:false,
       onRecordService: () => {},
