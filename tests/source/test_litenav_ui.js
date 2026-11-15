@@ -128,6 +128,7 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     check('it stays at the bottom of the screen, and the page leaves room for it', bar.pos === 'fixed' && bar.bottom === bar.vh && bar.pad >= bar.h, J(bar));
     check('the greeting uses her name', /Good morning, Victoria/.test(await page.textContent('.lite-hello')));
     const order = await page.$$eval('.lite-main > div > *', ns => ns.map(n => n.className || n.tagName).filter(Boolean));
+    check('the grocery run isn’t on Today any more (it’s at the top of Lists)', !/grocery run/i.test(await page.textContent('.lite-main')));
     check('Today first: greeting, the day, Needs you, then the tiles', order.indexOf('lite-hello') < order.indexOf('lite-hero') && order.indexOf('lite-hero') < order.indexOf('lite-need') && order.indexOf('lite-need') < order.indexOf('lite-tiles'), J(order));
     check('the day’s events with colour rails, and the next trip', J(await txt(page, '.lite-ev b')) === J(['Swim lesson', 'Dinner with friends']) && /10:30 – 11:30/.test(await page.textContent('.lite-hero'))
           && (await page.textContent('.lite-trip')).trim() === '✈️ Lisbon in 10 days');
@@ -162,7 +163,8 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     await page.click('.lite-bar-btn[data-bar="shopping"]');
     await page.waitForTimeout(400);
     await shot(page, label, 'lists');
-    check('Lists: Shopping’s lists, with the grocery run at the top', await barOn(page) === 'shopping' && /Costco/.test(await page.textContent('.lite-main')));
+    const listsText = await page.textContent('.lite-main');
+    check('Lists: Shopping’s lists, with the grocery run at the top', await barOn(page) === 'shopping' && /grocery run/i.test(listsText) && listsText.search(/grocery run/i) < listsText.indexOf('Costco'), listsText.slice(0, 120));
     await page.click('.lite-bar-btn[data-bar="travel"]');
     await page.waitForTimeout(500);
     await shot(page, label, 'trips');

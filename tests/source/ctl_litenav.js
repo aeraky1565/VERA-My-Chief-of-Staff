@@ -30,7 +30,9 @@ const CONTROLS = [
   ['ticking a perk calls the wrong route', lite("{ action: 'toggle_card_perk', id: n.id }", "{ action: 'mark_card_perk_used', perk: n.id }")],
   ['Home counts every chore (the old Status bug)', lite("&& /daily/i.test(String(c.Cadence || '')) && !liteChecked_(c); })", "&& /daily/i.test(String(c.Cadence || '')) && c.Status !== 'Done'; })")],
   ['All loses Family', lite("  { label: 'Family',   items: [['👶', 'Planning', 'family', 'planning'], ['💊', 'Prescriptions', 'family', 'prescriptions'], ['🎄', 'Wish lists', 'family', 'wishlists'], ['📒', 'Addresses', 'family', 'contacts']] },\n", '')],
-  ['All › Bucket list lands on My Trips', lite('useEffect(() => { if (openSub && openSub.id) setTravSub(openSub.id); }, [openSub && openSub.at]);', '')],
+  // Travel opens on the subtab it was asked for (its first render) and moves to it if already open (the effect).
+  ['All › Bucket list lands on My Trips', b => ({ [L]: swap(swap(b[L], 'useEffect(() => { if (openSub && openSub.id) setTravSub(openSub.id); }, [openSub && openSub.at]);', ''),
+    "const [travSub, setTravSub] = useState(() => (openSub && openSub.id) || 'trips');", "const [travSub, setTravSub] = useState('trips');") })],
   ['All › Settings does nothing', lite("if (id === 'settings') { setShowSettings(true); return; }", "if (id === 'settings') { return; }")],
   ['the grocery run stays on Today', lite("{activeTab === 'shopping' && shopSub === 'lists' && <GroceryRunButton", "{activeTab === 'overview' && <GroceryRunButton")],
   ['the tiles go back to bare counts', lite("<span>{t.line == null ? 'Loading…' : t.line}</span>", "<span>{t.line == null ? 'Loading…' : String((t.line.match(/\\d+/) || [''])[0])}</span>")],
