@@ -109,6 +109,8 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
+**Two people on one phone.** Each dashboard keeps its own sign-in: the full dashboard in `vera_token`, lite in `vera_token_lite`. So the same browser (and its two installed icons) can be the owner on the full dashboard and Victoria on lite. The first time lite opens after this change it keeps the sign-in both used to share; to switch lite to someone else, open lite's ⚙ and enter their code. A lite-only code opened on the full dashboard still goes to lite.
+
 **Lite dashboard (Victoria):** a bar at the bottom of the screen: **Today · Lists · Chat · Trips · All**.
 - **Today** shows, in order:
   - the day's calendar and the next trip;

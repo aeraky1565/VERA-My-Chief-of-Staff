@@ -343,6 +343,21 @@ function stored(key, fallback = '') {
   return localStorage.getItem(key) || fallback;
 }
 
+// Where this dashboard keeps its sign-in: its own key, so the same browser can be signed in as one
+// person on the full dashboard (vera_token) and another here.
+var VERA_TOKEN_KEY = 'vera_token_lite';
+// The sign-in to start with. Before lite had its own key both dashboards shared vera_token, so the
+// first time, lite takes that one and keeps it as its own; after that the two are independent.
+function liteSavedToken_() {
+  try {
+    var t = localStorage.getItem(VERA_TOKEN_KEY);
+    if (t) return t;
+    var was = localStorage.getItem('vera_token') || '';
+    if (was) localStorage.setItem(VERA_TOKEN_KEY, was);
+    return was;
+  } catch (e) { return ''; }
+}
+
 function makeUrl(base, token, params = {}) {
   const url = new URL(base);
   url.searchParams.set('token', token);
@@ -402,7 +417,7 @@ function SettingsModal({ initial, onSave, onClose }) {
     const t = token.trim();
     if (!u || !t) return;
     localStorage.setItem('vera_url', u);
-    localStorage.setItem('vera_token', t);
+    localStorage.setItem(VERA_TOKEN_KEY, t);
     onSave(u, t);
   }
 
@@ -6906,7 +6921,7 @@ function GenInputsBanner(props) {
   var e = React.createElement;
   var kind = props.kind, tripKey = props.tripKey;
   var url = props.apiUrl || (typeof localStorage !== 'undefined' && localStorage.getItem('vera_url')) || '';
-  var tok = props.apiToken || (typeof localStorage !== 'undefined' && localStorage.getItem('vera_token')) || '';
+  var tok = props.apiToken || (typeof localStorage !== 'undefined' && localStorage.getItem(VERA_TOKEN_KEY)) || '';
   var s1 = React.useState(undefined), record = s1[0], setRecord = s1[1];   // undefined = loading, null = none
   var s2 = React.useState(false), failed = s2[0], setFailed = s2[1];
   var s3 = React.useState(null), open = s3[0], setOpen = s3[1];            // null = default for the state
@@ -6987,7 +7002,7 @@ var WL_C_ = { card: '#161926', line: '#2a2f45', fg: '#dde1f0', muted: '#8a9abf',
 
 function wlConn_(props) {
   var url = props.apiUrl, tok = props.apiToken;
-  try { url = url || localStorage.getItem('vera_url'); tok = tok || localStorage.getItem('vera_token'); } catch (e) {}
+  try { url = url || localStorage.getItem('vera_url'); tok = tok || localStorage.getItem(VERA_TOKEN_KEY); } catch (e) {}
   return { url: url, tok: tok };
 }
 
@@ -15257,7 +15272,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate, who }
 
 function App() {
   const [apiUrl,       setApiUrl]       = useState(() => stored('vera_url'));
-  const [apiToken,     setApiToken]     = useState(() => stored('vera_token'));
+  const [apiToken,     setApiToken]     = useState(() => liteSavedToken_());
   const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
   const [activeTab,       setActiveTabRaw]    = useState('overview');
   const [shopSub,   setShopSub]   = useState('lists');
