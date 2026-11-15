@@ -266,7 +266,7 @@ function ssApplyTab_(sheet, ops) {
  */
 function ssApply_(ss) {
   var started = Date.now();
-  var props = PropertiesService.getScriptProperties();
+  var props = veraNotes_();   // resume progress is a running note (Settings.js)
   var done = {};
   try { done = JSON.parse(props.getProperty(SS_PROGRESS_PROP_) || '{}') || {}; } catch (e) { done = {}; }
   var sheets = ss.getSheets();

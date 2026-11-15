@@ -175,7 +175,7 @@ function cuSeedConfig_() {
   try { _configCache_ = null; } catch (e) {}
   return added;
 }
-function cuDone_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(CU_DONE_PROP_) || '{}') || {}; } catch (e) { return {}; } }
+function cuDone_() { try { return JSON.parse(veraNoteGet_(CU_DONE_PROP_) || '{}') || {}; } catch (e) { return {}; } }
 function cuTripsWindow_() {
   try { return (getUpcomingTravel_(readPTOConfig_()) || []).map(function(t) { return { label: t.label, start: t.startDate, end: t.endDate }; }); } catch (e) { return []; }
 }
@@ -222,7 +222,7 @@ function webComingUpDebrief_(body) {
     var done = cuDone_(); done[id] = lfToday_();
     var keys = Object.keys(done).sort(function(a, b) { return done[a] < done[b] ? 1 : -1; }).slice(0, 200), keep = {};
     keys.forEach(function(k) { keep[k] = done[k]; });
-    PropertiesService.getScriptProperties().setProperty(CU_DONE_PROP_, JSON.stringify(keep));
+    veraNoteSet_(CU_DONE_PROP_, JSON.stringify(keep));
     return out;
   });
 }

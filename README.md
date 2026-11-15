@@ -2290,6 +2290,33 @@ belongs; **Remove the old copies** there deletes only copies already in their ne
 A setup placeholder (`PASTE_…`, `TODO`, `CHANGE_ME`) counts as blank: the real property
 behind it is used, the move writes it over the placeholder, and a placeholder is never
 copied in.
+
+**VERA's running notes** (`Settings.js`) live in the VERA State tab too, not in Script Properties.
+
+What counts as a running note:
+- "already sent" latches: perk emails, travel-day briefings, trip mail, image dedupes;
+- day plans, chat histories and place climates;
+- small histories: ARIA posts, Coming up, Life and Growth, the sheet-styling progress and the email-admin window.
+
+How it works:
+- Reads go through `veraNoteGet_`: the tab first, then the old property, so nothing resends before the move.
+- Writes go through `veraNoteSet_`: written, read back, then the old property dropped. If the tab can't be written, the note stays a property.
+- **Move running notes** on the Script Properties page moves the old ones, then shows the count before and after.
+- The nightly prune ages out notes wherever they live:
+  - day plans after 7 days;
+  - travel-day latches after 30 days;
+  - perk latches 60 days after their period;
+  - image dedupes after 7 days;
+  - place climates after 180 days.
+
+  Trip latches are never pruned, because deleting one could resend a trip's mail.
+
+What stays a Script Property on purpose (`VERA_KEEP_PROPS_`):
+- the watchdog's keys: heartbeats, trigger registry, incidents, run steps and start stamps;
+- the two nightly finish stamps;
+- the AviationStack backoff and API health, which are read on every poll.
+
+Slack's debug trail is one bundle, `VERA_STATE_SLACK`.
 A nightly step keeps a copy of these settings in `VERA_SETTINGS_COPY`, used only if the
 Config tab can't be read at all.
 
@@ -2602,7 +2629,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
 | `People.js` | Sign-in codes per person (fingerprints only), the Access tab (filled from the dashboard's saved tab list, also nightly), whoami, the owner's People & access endpoints, Slack's verification token |
 | `WorkTrips.js` | Working Trips (working remotely) and Business Trips (the employer sends you), by the trip's Context; who's working (`set_trip_working`, kept by Trip ID in the VERA State tab, defaulting to the Traveller); no PTO, busy only for the people on a trip, Employer pays, and the packing and day-plan lines for working days (Config `work_hours_<name>`, 9-18) |
-| `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Remove the old copies (only those already in their new home) |
+| `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Move running notes (to the VERA State tab); Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |

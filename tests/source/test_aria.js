@@ -3,6 +3,7 @@
 // set beside VERA's own trips to find what needs a look. The sheet is a fake;
 // every trip, fare and ID here is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./notes_shim').installNotes(require('vm'));   // running notes (Settings.js) in every context
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = fs.readFileSync(path.join(ROOT, 'Aria.js'), 'utf8');

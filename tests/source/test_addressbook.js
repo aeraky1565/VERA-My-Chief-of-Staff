@@ -214,6 +214,8 @@ function harness(opts) {
     decl(SRC.Book, 'PROP_PRUNE_DAY_PLAN_DAYS_'),
     decl(SRC.Book, 'PROP_PRUNE_PERK_DAYS_'),
     decl(SRC.Book, 'PROP_PRUNE_TDB_DAYS_'),
+    decl(SRC.Book, 'PROP_PRUNE_SCHED_SLACK_DAYS_'),
+    decl(SRC.Book, 'PROP_PRUNE_CLIMATE_DAYS_'),
     extractFn(SRC.Code, 'perkPeriodKeyEnd_'),
     extractFn(SRC.Book, 'pruneScriptProperties_'),
     extractFn(SRC.Book, 'ensureAddressBookTabs_'),
@@ -880,6 +882,11 @@ console.log('\nThe property store stops filling up');
     'API_HEALTH_STATE': '{}', 'LAST_NIGHTLY_RUN': 'x', 'NIGHTLY_STEP': 'y',
     'ADDRESS_BOOK_SHEET_ID': 'BOOK-ID', 'VERA_WEB_TOKEN': 'secret',
     'SCHED_SLACK_abc123': '1',
+    // Running notes the prune now also ages out (they never were, so they piled up).
+    'SCHED_SLACK_OLDIMG': String(NOW - 10 * DAY), 'SCHED_SLACK_NEWIMG': String(NOW - 2 * 3600000),
+    'TI_CLIMATE_48.9_2.4': JSON.stringify({ at: new Date(NOW - 200 * DAY).toISOString(), m: [] }),
+    'TI_CLIMATE_41.9_12.5': JSON.stringify({ at: new Date(NOW - 20 * DAY).toISOString(), m: [] }),
+    'POSTTRIP_RECAP_TRIP_0001': new Date(NOW - 900 * DAY).toISOString(),
   };
   const c = harness({ props: props });
   let r = { scanned: 0, removed: 0, keys: [] }, pruneErr = null;
@@ -924,6 +931,10 @@ console.log('\nThe property store stops filling up');
         c._props['SCHED_SLACK_abc123'] === '1',
         'an unparseable key is left alone rather than guessed at');
 
+  check('an image dedupe older than 7 days goes; a fresh one stays', r.keys.indexOf('SCHED_SLACK_OLDIMG') !== -1 && c._props['SCHED_SLACK_NEWIMG'] === String(NOW - 2 * 3600000), JSON.stringify(r.keys));
+  check('a place’s climate older than 180 days goes; a recent one stays', r.keys.indexOf('TI_CLIMATE_48.9_2.4') !== -1 && 'TI_CLIMATE_41.9_12.5' in c._props);
+  check('a trip latch is never pruned, however old (deleting one could resend a trip’s mail)', 'POSTTRIP_RECAP_TRIP_0001' in c._props);
+
   const again = c.pruneScriptProperties_(NOW);
   check('a second pass removes nothing', again.removed === 0, JSON.stringify(again.keys));
 
@@ -936,7 +947,7 @@ console.log('\nThe property store stops filling up');
   // explain why it is not used, and matching the source would read that as a call.
   const code = fn.replace(/\/\/[^\n]*/g, '');
   check('it deletes key by key, never deleteAllProperties',
-        /deleteProperty\(k\)/.test(code) && !/deleteAllProperties/.test(code),
+        /veraNoteDel_\(k\)/.test(code) && !/deleteAllProperties/.test(code),
         'delete-all then restore loses EVERYTHING if the run is killed between them, ' +
         'and the nightly run is killed often enough to have a watchdog for it');
   check('…and one failed delete does not abort the rest', /catch \(delErr\)/.test(code));

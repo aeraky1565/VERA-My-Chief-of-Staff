@@ -4,6 +4,7 @@
 // Config and Access get no formatting, that a re-run replaces only its own rules,
 // that new tabs get the style, and that a long run resumes. Invented tabs and headers.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./notes_shim').installNotes(require('vm'));   // running notes (Settings.js) in every context
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC  = fs.readFileSync(path.join(ROOT, 'SheetStyle.js'), 'utf8');

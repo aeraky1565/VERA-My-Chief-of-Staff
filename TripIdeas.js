@@ -793,7 +793,7 @@ function tiClimate_(place) {
   try { g = geocodePackingDestination_(place); } catch (e) {}
   if (!g || g.lat == null || !tripPlaceMatches_(place, g.name)) return { place: place, found: false };
   var key = 'TI_CLIMATE_' + Number(g.lat).toFixed(1) + '_' + Number(g.lon).toFixed(1);
-  var props = PropertiesService.getScriptProperties(), kept = null;
+  var props = veraNotes_(), kept = null;   // a running note (Settings.js); pruned after 180 days
   try { kept = JSON.parse(props.getProperty(key) || 'null'); } catch (e) {}
   var fresh = kept && kept.at && (Date.now() - new Date(kept.at).getTime()) < TI_CLIMATE_KEEP_DAYS_ * 864e5;
   if (!fresh) {

@@ -9,6 +9,7 @@
 // 3. "Your 1-night trip just wrapped up" on a trip that had not ended. The
 //    duration floor turned "I have no end date" into a confident 1.
 const fs = require('fs'), vm = require('vm');
+require('./notes_shim').installNotes(require('vm'));   // running notes (Settings.js) in every context
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_ROOT || REPO;
 const TDB  = fs.readFileSync(ROOT + '/TravelDayBriefing.js', 'utf8');
@@ -139,7 +140,7 @@ console.log('\nthe travel-day briefing cannot send twice in one day');
   check('it is keyed on the day and the label, not the trip key',
         /_lbl\s*=\s*String\(tripKey\.split\('\|'\)\.slice\(1\)/.test(src), 'label derivation');
   check('…and the property is written only after a successful send',
-        src.indexOf('sendTravelDayBriefing_(tripKey') < src.indexOf('_tdbProps.setProperty(_sKey'));
+        src.indexOf('sendTravelDayBriefing_(tripKey') < src.indexOf('veraNoteSet_(_sKey') && src.indexOf('veraNoteSet_(_sKey') !== -1);   // the latch is a running note (Settings.js)
   check('a manual run can force past it', /_tdbForce/.test(src) && /opts\.force/.test(src));
   check('…and TestBench does force it',
         /force:\s*true/.test(extractFn(TB, 'tbTravelDayBriefing')));

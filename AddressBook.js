@@ -652,6 +652,10 @@ function newAddressBookId_(prefix) {
 var PROP_PRUNE_DAY_PLAN_DAYS_  = 7;    // a pure cache for Chat's apply action
 var PROP_PRUNE_PERK_DAYS_      = 60;   // after the period END, not the stamp
 var PROP_PRUNE_TDB_DAYS_       = 30;   // the briefing was for a day that has passed
+var PROP_PRUNE_SCHED_SLACK_DAYS_ = 7;  // a 24-hour image dedupe (Slack.js)
+var PROP_PRUNE_CLIMATE_DAYS_   = 180;  // TripIdeas refetches after this anyway (TI_CLIMATE_KEEP_DAYS_)
+// Trip latches (PRETRIP_*, POSTTRIP_*) are never pruned: deleting one could resend a
+// trip's mail, and they're a few rows per trip in the VERA State tab.
 
 /**
  * Drops expired latches from the script property store.
@@ -661,15 +665,31 @@ var PROP_PRUNE_TDB_DAYS_       = 30;   // the briefing was for a day that has pa
  */
 function pruneScriptProperties_(nowMs) {
   var now   = nowMs || Date.now();
-  var props = PropertiesService.getScriptProperties();
-  var all   = props.getProperties();
-  var keys  = Object.keys(all);
+  // The latches are running notes now: the VERA State tab, plus any old property not
+  // moved yet (veraNoteKeys_, Settings.js), so the windows below apply to both.
+  var keys  = veraNoteKeys_(/^(day_plan_|TDB_SENT_|PERK_NOTIFY_|SCHED_SLACK_|TI_CLIMATE_)/);
   var removed = [];
 
   function ageDays(ms) { return (now - ms) / 86400000; }
 
   keys.forEach(function(key) {
     var m;
+
+    // SCHED_SLACK_<fileId>: a 24-hour "already processed this image" latch, its value the epoch ms.
+    if (/^SCHED_SLACK_/.test(key)) {
+      var at = parseInt(veraNoteGet_(key) || '0', 10);
+      if (at > 1e12 && ageDays(at) > PROP_PRUNE_SCHED_SLACK_DAYS_) removed.push(key);   // only a real epoch-ms stamp
+      return;
+    }
+
+    // TI_CLIMATE_<lat>_<lon>: a place's normals, refetched after 180 days anyway ({ at, m }).
+    if (/^TI_CLIMATE_/.test(key)) {
+      var c = null;
+      try { c = JSON.parse(veraNoteGet_(key) || 'null'); } catch (e) { c = null; }
+      var cAt = c && c.at ? new Date(c.at).getTime() : NaN;
+      if (!isNaN(cAt) && ageDays(cAt) > PROP_PRUNE_CLIMATE_DAYS_) removed.push(key);
+      return;
+    }
 
     // day_plan_2026-10-04
     if ((m = /^day_plan_(\d{4})-(\d{2})-(\d{2})$/.exec(key))) {
@@ -716,7 +736,7 @@ function pruneScriptProperties_(nowMs) {
   // the store is unrecoverable.
   var deleted = [];
   removed.forEach(function(k) {
-    try { props.deleteProperty(k); deleted.push(k); }
+    try { veraNoteDel_(k); deleted.push(k); }
     catch (delErr) { Logger.log('pruneScriptProperties_: could not delete ' + k + ' — ' + delErr.message); }
   });
   if (deleted.length) {

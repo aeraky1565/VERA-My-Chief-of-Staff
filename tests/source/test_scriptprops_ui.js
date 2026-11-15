@@ -50,10 +50,10 @@ const CLEAN = { ok: true, total: 6, limit: 50, counts: { settings: 0, old: 0, ne
     }, [LIST, CLEAN]);
     await wait(400);
     const txt = sel => page.$eval('#sp ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
-    check(L + ': the count, against the editor’s 50, and the breakdown', /^9 properties of the editor’s 50 1 setting not moved · 2 old copies · 2 needed before Config · 2 secrets · 1 record · 1 running note/.test(await txt('.sp-summary')), await txt('.sp-summary'));
+    check(L + ': the count, against the editor’s 50, and the breakdown', /^9 properties of the editor’s 50 1 setting not moved · 2 to move or remove · 2 needed before Config · 2 secrets · 1 record · 1 not recognised/.test(await txt('.sp-summary')), await txt('.sp-summary'));
     check(L + ': …and what needs a look (1 setting, 2 old copies, 1 placeholder secret)', (await txt('.sp-pill')) === '4 things to look at', await txt('.sp-pill'));
     const groups = await page.$$eval('#sp .sp-group', ns => ns.map(n => ({ open: n.open, t: n.querySelector('summary').innerText })));
-    check(L + ': the groups, in order: what needs a look first', JSON.stringify(groups.map(g => g.t.replace(/\s*\(\d+\)/, ''))) === JSON.stringify(['Settings not moved yet', 'Old copies', 'Needed before Config', 'Secrets', 'VERA’s records', 'VERA’s running notes']), JSON.stringify(groups));
+    check(L + ': the groups, in order: what needs a look first', JSON.stringify(groups.map(g => g.t.replace(/\s*\(\d+\)/, ''))) === JSON.stringify(['Settings not moved yet', 'Old copies and running notes to move', 'Needed before Config', 'Secrets', 'VERA’s records', 'Not recognised']), JSON.stringify(groups));
     check(L + ': open where there’s something to read; closed where there isn’t', groups[0].open && groups[1].open && groups[3].open && !groups[2].open && !groups[4].open && !groups[5].open, JSON.stringify(groups));
     check(L + ': each name with why it’s there', /VERA_DASHBOARD_URL Config holds a different value/.test(await txt('.sp-group:nth-of-type(1)')) && /SLACK_SIGNING_SECRET Still a setup placeholder/.test(await txt('.sp-group:nth-of-type(4)')));
     check(L + ': names only: no value is on the page', !/https?:|xox|sk-|U0[A-Z0-9]/.test(await page.$eval('#sp', n => n.innerText)));

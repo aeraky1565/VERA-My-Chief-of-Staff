@@ -32,7 +32,10 @@ function world(over) {
     LG_DIDIT: 'x', PACING_MODE_ACTIVE: 'true',                   // a note; an old copy already in its bundle
     PACING_MODE_ENDS: '2026-12-01',                              // old copy NOT in its bundle
     FLIGHT_DAYS: '{"a":1}', EXPLORER_HISTORY: '[1]',             // a cache in the tab; one whose tab row differs
-    day_plan_2026_11_01: '{}', LAST_NIGHTLY_RUN: 'NOTE-INVENTED-0004',
+    day_plan_2026_11_01: '{}', LAST_NIGHTLY_RUN: 'NOTE-INVENTED-0004',  // not a note's shape; the nightly halves' stamp (kept)
+    TDB_SENT_20261101_INVENTED_TRIP: 'NOTE-INVENTED-0005',       // a running note, not moved yet
+    CHAT_HISTORY_dashboard: '["NOTE-INVENTED-0006"]',          // a running note already in the tab
+    SYSTEM_HEARTBEATS: '{}', SLACK_LAST_POST: 'NOTE-INVENTED-0007',  // the watchdog's (kept); Slack's trail (to its bundle)
   }, (over || {}).store || {});
   const log = [];
   const api = {
@@ -52,7 +55,7 @@ function world(over) {
   vm.createContext(c);
   vm.runInContext(SET, c);
   vm.runInContext(SP, c);
-  vm.runInContext('veraStoreRows_ = function() { return { FLIGHT_DAYS: { row: 2, value: \'{"a":1}\' }, EXPLORER_HISTORY: { row: 3, value: "[0]" } }; };', c);
+  vm.runInContext('veraStoreRows_ = function() { return { FLIGHT_DAYS: { row: 2, value: \'{"a":1}\' }, EXPLORER_HISTORY: { row: 3, value: "[0]" }, CHAT_HISTORY_dashboard: { row: 4, value: \'["NOTE-INVENTED-0006"]\' } }; };', c);
   return { c, store, log };
 }
 const byName = r => { const o = {}; Object.keys(r.groups).forEach(g => r.groups[g].forEach(i => { o[i.name] = Object.assign({ group: g }, i); })); return o; };
@@ -73,7 +76,13 @@ console.log('\nthe groups');
         n.TP_MIGRATED.group === 'old' && n.TP_MIGRATED.removable && n.PACING_MODE_ACTIVE.removable && n.FLIGHT_DAYS.removable
         && n.PACING_MODE_ENDS.removable === false && n.EXPLORER_HISTORY.removable === false && /Not copied yet/.test(n.PACING_MODE_ENDS.note));
   check('a state name ending in KEY is still an old copy, not a secret', c.spGroups_(['PACING_OFFER_FLAG_KEY'], {}).groups.old.length === 1);
-  check('everything else is VERA’s running notes', ['LG_DIDIT', 'day_plan_2026_11_01', 'LAST_NIGHTLY_RUN'].every(k => n[k].group === 'other'));
+  check('a running note is to be moved: not moved yet, or already in the VERA State tab (then safe to remove)',
+        n.TDB_SENT_20261101_INVENTED_TRIP.group === 'old' && /Move running notes/.test(n.TDB_SENT_20261101_INVENTED_TRIP.note) && !n.TDB_SENT_20261101_INVENTED_TRIP.removable
+        && n.CHAT_HISTORY_dashboard.group === 'old' && n.CHAT_HISTORY_dashboard.removable, J([n.TDB_SENT_20261101_INVENTED_TRIP, n.CHAT_HISTORY_dashboard]));
+  check('the watchdog’s keys and the nightly stamp stay, as records, saying why', ['SYSTEM_HEARTBEATS', 'LAST_NIGHTLY_RUN'].every(k => n[k].group === 'records' && /on purpose/.test(n[k].note)));
+  check('Slack’s trail is an old copy (it moves into its bundle)', n.SLACK_LAST_POST.group === 'old');
+  check('the move button’s count: the notes and Slack’s trail', r.notesToMove === 3, r.notesToMove);
+  check('anything unrecognised is just that', ['LG_DIDIT', 'day_plan_2026_11_01'].every(k => n[k].group === 'other'));
   const out = J(r);
   check('no value is in the response', [SECRET, BOT, 'web-INVENTED', 'InventedVeraSheet', 'U0A,U0B', 'example.test', 'U0INVENTED2', 'InventedSatSheet', '2026-12-01', 'PASTE_', 'NOTE-INVENTED'].every(v => out.indexOf(v) === -1), out.slice(0, 300));
 }
@@ -82,17 +91,17 @@ console.log('\nonly the owner');
 {
   const { c, log } = world({ owner: false });
   check('not the owner: the list, the move and the clean all refuse, and nothing is touched',
-        c.webScriptProps_().ok === false && c.webSettingsMove_().ok === false && c.webScriptPropsClean_().ok === false && log.length === 0);
+        c.webScriptProps_().ok === false && c.webSettingsMove_().ok === false && c.webScriptPropsClean_().ok === false && c.webScriptPropsMoveNotes_().ok === false && log.length === 0);
 }
 
 console.log('\nremove the old copies');
 {
   const { c, store } = world();
   const r = c.webScriptPropsClean_();
-  check('only the copies already in their new home go', J(r.removed.sort()) === J(['FLIGHT_DAYS', 'PACING_MODE_ACTIVE', 'TP_MIGRATED']) && !('TP_MIGRATED' in store) && !('FLIGHT_DAYS' in store), J(r));
+  check('only the copies already in their new home go', J(r.removed.sort()) === J(['CHAT_HISTORY_dashboard', 'FLIGHT_DAYS', 'PACING_MODE_ACTIVE', 'TP_MIGRATED']) && !('TP_MIGRATED' in store) && !('FLIGHT_DAYS' in store), J(r));
   check('…the rest are kept and named', r.left.indexOf('PACING_MODE_ENDS') !== -1 && r.left.indexOf('EXPLORER_HISTORY') !== -1 && 'PACING_MODE_ENDS' in store && 'EXPLORER_HISTORY' in store);
   check('secrets, settings, records and notes are never touched', [SECRET, BOT].every(v => Object.values(store).indexOf(v) !== -1)
-        && ['VERA_DASHBOARD_URL', 'SAT_SHEET_ID', 'VERA_ONCE_MARKERS', 'VERA_STATE_PACING', 'LG_DIDIT', 'LAST_NIGHTLY_RUN', 'VERA_SHEET_ID'].every(k => k in store));
+        && ['VERA_DASHBOARD_URL', 'SAT_SHEET_ID', 'VERA_ONCE_MARKERS', 'VERA_STATE_PACING', 'LG_DIDIT', 'LAST_NIGHTLY_RUN', 'VERA_SHEET_ID', 'SYSTEM_HEARTBEATS', 'TDB_SENT_20261101_INVENTED_TRIP'].every(k => k in store));
 }
 
 console.log('\nmove settings now');
@@ -101,7 +110,8 @@ console.log('\nmove settings now');
   check('it runs the same move as the editor, under the lock, and answers with names and counts only',
         /veraLocked_\(function\(\) \{ return veraMoveSettings_\(\); \}\)/.test(src(SP, 'webSettingsMove_')) && /markers: r\.markers\.length/.test(src(SP, 'webSettingsMove_')));
   check('the routes: script_props (GET), settings_move and script_props_clean (POST)',
-        /case 'script_props':\s+return jsonOut_\(webScriptProps_\(\)\);/.test(WEB) && /case 'settings_move':\s+return jsonOut_\(webSettingsMove_\(\)\);/.test(WEB) && /case 'script_props_clean':\s+return jsonOut_\(webScriptPropsClean_\(\)\);/.test(WEB));
+        /case 'script_props':\s+return jsonOut_\(webScriptProps_\(\)\);/.test(WEB) && /case 'settings_move':\s+return jsonOut_\(webSettingsMove_\(\)\);/.test(WEB) && /case 'script_props_clean':\s+return jsonOut_\(webScriptPropsClean_\(\)\);/.test(WEB)
+        && /case 'script_props_move_notes':\s+return jsonOut_\(webScriptPropsMoveNotes_\(\)\);/.test(WEB));
 }
 
 console.log('\nthe panel');
@@ -110,7 +120,7 @@ console.log('\nthe panel');
   check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','trip_ids','script_props'\]/.test(APP) && /items:\['test','api_health','agent_health','trip_ids','script_props'\]/.test(LITE));
   check('index.html is rebuilt with it', read('docs/index.html').includes('function SysScriptProps('));
   const p = (() => { const a = APP.indexOf('function SysScriptProps('); return APP.slice(a, APP.indexOf('\nfunction SysPeople(', a)); })();
-  check('it calls only its three actions', J((p.match(/action:'[a-z_]+'/g) || []).concat(p.match(/act\('[a-z_]+'/g) || []).sort()) === J(["act('script_props_clean'", "act('settings_move'", "action:'script_props'"]), J(p.match(/action:'[a-z_]+'|act\('[a-z_]+'/g)));
+  check('it calls only its four actions', J((p.match(/action:'[a-z_]+'/g) || []).concat(p.match(/act\('[a-z_]+'/g) || []).sort()) === J(["act('script_props_clean'", "act('script_props_move_notes'", "act('settings_move'", "action:'script_props'"]), J(p.match(/action:'[a-z_]+'|act\('[a-z_]+'/g)));
   check('removing asks first', /window\.confirm\('Remove '/.test(p));
 }
 

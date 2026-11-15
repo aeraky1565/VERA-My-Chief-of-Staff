@@ -265,7 +265,7 @@ function checkAndSendTravelDayBriefings_(opts) {
   // label is the part that does not change when a date is edited, so two keys
   // for one trip collapse to one latch. Two genuinely different trips on the
   // same day still have different labels.
-  var _tdbProps = PropertiesService.getScriptProperties();
+  // The latch is a running note in the VERA State tab (Settings.js); an old property still counts.
   var _tdbSeen  = {};   // labels briefed in THIS run
   tripKeys.forEach(function(tripKey) {
     try {
@@ -293,7 +293,7 @@ function checkAndSendTravelDayBriefings_(opts) {
       // The persisted one stops a second scheduled run the same day. TestBench
       // passes force to get past it, because a manual run that silently does
       // nothing looks exactly like "no trip today" and tells you nothing.
-      if (!_tdbForce && (_tdbProps.getProperty(_sKey) || _tdbProps.getProperty(_lKey))) {
+      if (!_tdbForce && (veraNoteGet_(_sKey) || veraNoteGet_(_lKey))) {
         Logger.log('TravelDayBriefing: already sent today for "' + _lbl + '" — skipping ' + tripKey);
         return;
       }
@@ -315,7 +315,7 @@ function checkAndSendTravelDayBriefings_(opts) {
       }
 
       sendTravelDayBriefing_(tripKey, _rows, { date: today, firstDay: _range.min, lastDay: _range.max });
-      _tdbProps.setProperty(_sKey, new Date().toISOString());
+      veraNoteSet_(_sKey, new Date().toISOString());
       sent++;
     } catch (err) {
       Logger.log('TravelDayBriefing: error for ' + tripKey + ' — ' + err.message);

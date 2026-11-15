@@ -169,6 +169,10 @@ var VERA_STATE_BUNDLES_ = {
   // nightly run writes its guess, and one read-modify-write must never undo the other.
   CAPACITY_OVERRIDE: ['capacity_override_mode', 'capacity_override_date'],
   CAPACITY_INFERRED: ['capacity_inferred_mode', 'capacity_inferred_date'],
+  // Slack's debug trail (debug_slack reads it) and the pinned morning post: one
+  // property instead of six. SLACK_LAST_POST is written on every doPost.
+  SLACK:             ['SLACK_LAST_INTERACT', 'SLACK_LAST_UPDATE', 'SLACK_LAST_PROCESSED', 'SLACK_LAST_QUEUED',
+                      'SLACK_LAST_POST', 'SLACK_PINNED_MORNING_TS'],
 };
 
 function veraStateProp_(bundle) { return 'VERA_STATE_' + bundle; }
@@ -249,13 +253,17 @@ function veraStoreSheet_(create) {
   return sh;
 }
 
+var _veraStoreFree_     = [];      // rows a deleted note left blank, reused before appending
+
 function veraStoreRows_() {
   if (_veraStoreCache_) return _veraStoreCache_;
   var sh = veraStoreSheet_(false), rows = {};
+  _veraStoreFree_ = [];
   if (sh && sh.getLastRow() >= 2) {
     sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function(r, i) {
       var k = String(r[0] || '').trim();
-      if (k && !(k in rows)) rows[k] = { row: i + 2, value: String(r[1] == null ? '' : r[1]) };
+      if (!k) { _veraStoreFree_.push(i + 2); return; }
+      if (!(k in rows)) rows[k] = { row: i + 2, value: String(r[1] == null ? '' : r[1]) };
     });
   }
   _veraStoreCache_ = rows;
@@ -279,11 +287,15 @@ function veraStoreSet_(key, value) {
   if (v.length > VERA_STORE_MAX_) { Logger.log('veraStoreSet_: ' + key + ' is ' + v.length + ' characters, over the limit; not saved'); return false; }
   var ok = false;
   try {
-    var sh = veraStoreSheet_(true), rows = veraStoreRows_(), now = new Date().toISOString();
-    if (rows[key]) sh.getRange(rows[key].row, 2, 1, 2).setValues([[v, now]]);
-    else { sh.appendRow([key, v, now]); rows[key] = { row: sh.getLastRow(), value: v }; }
-    rows[key].value = v;
-    ok = String(sh.getRange(rows[key].row, 2).getValue()) === v;
+    // Under the lock, so two triggers can't both append the same key.
+    ok = veraLocked_(function() {
+      var sh = veraStoreSheet_(true), rows = veraStoreRows_(), now = new Date().toISOString();
+      if (rows[key]) sh.getRange(rows[key].row, 2, 1, 2).setValues([[v, now]]);
+      else if (_veraStoreFree_.length) { var at = _veraStoreFree_.shift(); sh.getRange(at, 1, 1, 3).setValues([[key, v, now]]); rows[key] = { row: at, value: v }; }
+      else { sh.appendRow([key, v, now]); rows[key] = { row: sh.getLastRow(), value: v }; }
+      rows[key].value = v;
+      return String(sh.getRange(rows[key].row, 2).getValue()) === v;
+    });
   } catch (e) { ok = false; }
   if (!ok) {
     Logger.log('veraStoreSet_: the VERA State tab couldn’t be written for ' + key + '; kept in Script Properties');
@@ -293,6 +305,107 @@ function veraStoreSet_(key, value) {
   }
   try { if (props.getProperty(key) != null) props.deleteProperty(key); } catch (e) {}
   return true;
+}
+
+/** Blanks a key's row in the VERA State tab (the row is reused by the next new key). → true when it had one. */
+function veraStoreDel_(key) {
+  try {
+    return veraLocked_(function() {
+      var rows = veraStoreRows_(), r = rows[key], sh = veraStoreSheet_(false);
+      if (!r || !sh) return false;
+      sh.getRange(r.row, 1, 1, 3).setValues([['', '', '']]);
+      delete rows[key];
+      _veraStoreFree_.push(r.row);
+      return true;
+    });
+  } catch (e) { return false; }
+}
+
+// ---- VERA's running notes ---------------------------------------------------------
+//
+// The "already sent" markers, last-run stamps and small histories VERA writes for
+// itself used to be Script Properties: 89 of them, past the editor's 50, and the
+// per-item families kept growing. They live in the VERA State tab now, one row each,
+// read through veraNoteGet_ (the tab, then the old property, so nothing resends before
+// the move). System › Checks › Script Properties › "Move running notes" moves the old
+// ones (veraMoveNotes_), each read back before its property goes.
+//
+// STAYING Script Properties on purpose (VERA_KEEP_PROPS_): the watchdog's own keys,
+// which must work when a run was killed or the sheet can't be reached, and two read on
+// every poll or fetch. Slack's trail is a bundle (VERA_STATE_SLACK).
+
+var VERA_NOTE_NAMES_ = ['ARIA_FLAGS_SYNCED_AT', 'EMAIL_ADMIN_LAST_SCAN',
+  'ARIA_BOOK_NOW_POSTED', 'CU_DEBRIEFED', 'LF_WEEKEND_WISHES', 'LG_DID_IT_ASKS', 'LG_TIME_SNAPSHOTS', 'SS_STYLE_DONE'];
+var VERA_NOTE_FAMILIES_ = [/^PERK_NOTIFY_/, /^TDB_SENT_/, /^SCHED_SLACK_/, /^day_plan_\d{4}-\d{2}-\d{2}$/, /^CHAT_HISTORY_/,
+  /^TI_CLIMATE_/, /^PRETRIP_48H_/, /^PRETRIP_NB_/, /^POSTTRIP_NUDGE_/, /^POSTTRIP_RECAP_/, /^POSTTRIP_DEBRIEF_/];
+var VERA_KEEP_PROPS_ = ['SYSTEM_HEARTBEATS', 'TRIGGER_REGISTRATIONS', 'WATCHDOG_INCIDENTS', 'WATCHDOG_LAST_SLACK',
+  'NIGHTLY_STEP', 'NIGHTLY_TAIL_STEP', 'MORNING_STEP', 'LAST_NIGHTLY_START', 'LAST_NIGHTLY_TAIL_START', 'LAST_MORNING_START',
+  'LAST_NIGHTLY_RUN', 'LAST_NIGHTLY_TAIL_RUN',   // the nightly halves coordinate through these, written in finally
+  'USPS_SCAN_START', 'AVIATIONSTACK_BACKOFF_UNTIL', 'API_HEALTH_STATE'];
+
+/** Pure: is this one of VERA's running notes (it belongs in the VERA State tab)? */
+function veraIsNote_(name) {
+  var n = String(name || '');
+  if (VERA_KEEP_PROPS_.indexOf(n) !== -1) return false;
+  return VERA_NOTE_NAMES_.indexOf(n) !== -1 || VERA_NOTE_FAMILIES_.some(function(re) { return re.test(n); });
+}
+
+/** A running note (a string), or null: the VERA State tab, else its old property. */
+function veraNoteGet_(key) { return veraStoreGet_(key); }
+
+/** Saves a running note to the VERA State tab (its old property goes once it reads back). */
+function veraNoteSet_(key, value) { return veraStoreSet_(key, value); }
+
+/** Removes a running note: its row and any old property. */
+function veraNoteDel_(key) {
+  veraStoreDel_(key);
+  try { var p = PropertiesService.getScriptProperties(); if (p.getProperty(key) != null) p.deleteProperty(key); } catch (e) {}
+}
+
+/** Script Properties' three calls, for running notes: a drop-in where code holds a `props`. */
+function veraNotes_() {
+  return {
+    getProperty:    function(k) { return veraNoteGet_(k); },
+    setProperty:    function(k, v) { veraNoteSet_(k, v); return this; },
+    deleteProperty: function(k) { veraNoteDel_(k); return this; },
+  };
+}
+
+/** Every running note's key matching re (in the tab, or still a property). */
+function veraNoteKeys_(re) {
+  var seen = {}, out = [];
+  var add = function(k) { if (!seen[k] && (!re || re.test(k))) { seen[k] = true; out.push(k); } };
+  try { var rows = veraStoreRows_(); Object.keys(rows).forEach(function(k) { if (rows[k].value !== '') add(k); }); } catch (e) {}
+  try { Object.keys(PropertiesService.getScriptProperties().getProperties() || {}).forEach(add); } catch (e) {}
+  return out;
+}
+
+/**
+ * The move: every running note still a Script Property goes to the VERA State tab
+ * (written, read back, then the property deleted: veraStoreSet_), and Slack's trail
+ * into its bundle. Safe to run again. Logs names-free counts, never values.
+ * → { moved, kept: [{ name, why }], before, after }
+ */
+function veraMoveNotes_() {
+  return veraLocked_(function() {
+    var props = PropertiesService.getScriptProperties(), all = props.getProperties();
+    var out = { moved: 0, kept: [], before: Object.keys(all).length, after: 0 };
+    Object.keys(all).forEach(function(k) {
+      if (!veraIsNote_(k)) return;
+      var v = String(all[k] == null ? '' : all[k]);
+      if (v.length > VERA_STORE_MAX_) { out.kept.push({ name: k, why: 'too long for one cell' }); return; }
+      if (veraStoreSet_(k, v)) out.moved++;
+      else out.kept.push({ name: k, why: 'the VERA State tab couldn’t be written' });
+    });
+    if (VERA_STATE_BUNDLES_.SLACK.some(function(n) { return all[n] != null; })) {
+      veraStateSet_('SLACK', {});
+      out.moved += VERA_STATE_BUNDLES_.SLACK.filter(function(n) { return all[n] != null && props.getProperty(n) == null; }).length;
+    }
+    try { out.after = Object.keys(props.getProperties() || {}).length; } catch (e) { out.after = out.before - out.moved; }
+    Logger.log('veraMoveNotes_: moved ' + out.moved + ' running note(s) to the VERA State tab; left ' + out.kept.length +
+      '; Script Properties ' + out.before + ' → ' + out.after);
+    return out;
+  });
 }
 
 // ---- one writer at a time (#242) ------------------------------------------------

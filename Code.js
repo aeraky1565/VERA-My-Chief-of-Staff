@@ -2700,7 +2700,7 @@ function getDaySequencingAnalysis_(todayEvents, freeWindows, weekLoad, weatherSu
   // Cache for Chat apply action
   try {
     var planKey = 'day_plan_' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-    PropertiesService.getScriptProperties().setProperty(planKey, JSON.stringify(analysis));
+    veraNoteSet_(planKey, JSON.stringify(analysis));   // a running note (Settings.js)
   } catch (cacheErr) {
     Logger.log('getDaySequencingAnalysis_: cache write failed (non-fatal) — ' + cacheErr.message);
   }
@@ -3908,8 +3908,8 @@ function checkCardPerksExpiring_() {
     if (daysUntil <= 7) {
       var notifyKey = 'PERK_NOTIFY_' + id.toUpperCase().replace(/[^A-Z0-9]/g, '_') +
                        '_' + periodKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-      var notifyProps = PropertiesService.getScriptProperties();
-      if (!notifyProps.getProperty(notifyKey)) {
+      // A running note in the VERA State tab (Settings.js); an old property still counts.
+      if (!veraNoteGet_(notifyKey)) {
         try {
           var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
           var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
@@ -3958,7 +3958,7 @@ function checkCardPerksExpiring_() {
           Logger.log('checkCardPerksExpiring_: calendar error for ' + id + ' — ' + calErr.message);
         }
 
-        notifyProps.setProperty(notifyKey, new Date().toISOString());
+        veraNoteSet_(notifyKey, new Date().toISOString());
       }
     }
   });

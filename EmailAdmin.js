@@ -51,7 +51,7 @@ function runEmailAdmin_() {
   var tone        = config['email_tone'] || 'professional but warm and concise';
 
   // ── Step 2: Frequency gate ────────────────────────────────────────────────
-  var props = PropertiesService.getScriptProperties();
+  var props = veraNotes_();   // the scan window is a running note (Settings.js)
   var now   = new Date();
 
   if (frequency === 'weekly') {

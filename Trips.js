@@ -902,7 +902,7 @@ function tripLatchTarget_(trip) {
  */
 function tripLatchSeen_(prefix, trip) {
   var t = tripLatchTarget_(trip);
-  var props = PropertiesService.getScriptProperties();
+  var props = veraNotes_();   // latches are running notes (Settings.js); old properties still count
 
   var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
   if (id && props.getProperty(prefix + tripIdSlugForProperty_(id))) return true;
@@ -937,7 +937,7 @@ function tripLatchName_(prefix, trip) {
  */
 function tripLatchValue_(prefix, trip) {
   var t     = tripLatchTarget_(trip);
-  var props = PropertiesService.getScriptProperties();
+  var props = veraNotes_();
 
   var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
   if (id) {
@@ -961,7 +961,7 @@ function tripLatchMark_(prefix, trip, value) {
   var name = id ? (prefix + tripIdSlugForProperty_(id))
                 : (prefix + tripLegacySlugForProperty_(t.key));
   try {
-    PropertiesService.getScriptProperties().setProperty(name, value || new Date().toISOString());
+    veraNoteSet_(name, value || new Date().toISOString());
   } catch (e) {
     Logger.log('tripLatchMark_: could not write ' + name + ' — ' + e.message);
   }
@@ -978,7 +978,7 @@ function tripLatchMark_(prefix, trip, value) {
  * @returns {{seeded:number, skipped:number, details:Array<string>}}
  */
 function seedTripIdLatches_() {
-  var props   = PropertiesService.getScriptProperties();
+  var props   = veraNotes_();   // running notes (Settings.js)
   var reg     = readTripRegistry_();
   var seeded  = 0, skipped = 0, details = [];
 
@@ -1330,7 +1330,7 @@ function clearTripLatches_(tripKey) {
   var propSlug = tripLegacySlugForProperty_(tripKey);
   var flagSlug = String(tripKey).toLowerCase().replace(/[^a-z0-9]/g, '_')
                    .replace(/_+/g, '_').replace(/^_|_$/g, '');
-  var props = PropertiesService.getScriptProperties();
+  var props = veraNotes_();   // running notes (Settings.js)
 
   // LEGACY NAMES ONLY — deliberately.
   //

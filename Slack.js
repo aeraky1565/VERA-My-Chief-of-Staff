@@ -551,7 +551,7 @@ function handleSlackFormPost_(e) {
   if (payloadStr) {
     try {
       var payload = JSON.parse(payloadStr);
-      try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_INTERACT',
+      try { veraStateProps_('SLACK').setProperty('SLACK_LAST_INTERACT',
         new Date().toISOString() + ' actionId=' + (payload.actions && payload.actions[0] && payload.actions[0].action_id || '?'));
       } catch(te) {}
       // Synchronous handler: does data writes + POSTs to response_url in-process.
@@ -827,14 +827,14 @@ function handleSlackInteractionSync_(payload) {
         payload:            JSON.stringify(msg),
         muteHttpExceptions: true,
       });
-      try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
+      try { veraStateProps_('SLACK').setProperty('SLACK_LAST_UPDATE',
         new Date().toISOString() + ' response_url=' + r.getResponseCode() + ' ' + r.getContentText().substring(0, 60)); } catch(te) {}
     } catch (e) {
       Logger.log('handleSlackInteractionSync_ response_url error: ' + e.message);
     }
   }
 
-  try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_PROCESSED',
+  try { veraStateProps_('SLACK').setProperty('SLACK_LAST_PROCESSED',
     new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
 }
 
@@ -907,7 +907,7 @@ function queueInteraction_(payload) {
       if (t.getHandlerFunction() === 'processInteractionQueue_') ScriptApp.deleteTrigger(t);
     });
     ScriptApp.newTrigger('processInteractionQueue_').timeBased().after(200).create();
-    try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_QUEUED', new Date().toISOString() + ' qId=' + qId); } catch(te) {}
+    try { veraStateProps_('SLACK').setProperty('SLACK_LAST_QUEUED', new Date().toISOString() + ' qId=' + qId); } catch(te) {}
   } catch (err) {
     Logger.log('queueInteraction_ error: ' + err.message);
     // Fallback: process synchronously rather than silently dropping the action
@@ -950,7 +950,7 @@ function processInteraction_(payload) {
   var userId   = payload.user && payload.user.id;
 
   var isWellnessAction = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
-  try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_PROCESSED', new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
+  try { veraStateProps_('SLACK').setProperty('SLACK_LAST_PROCESSED', new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
 
   var ackText = '';
   var updatedBlocks = null;
@@ -1067,7 +1067,7 @@ function processInteraction_(payload) {
       }
     }
 
-    try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
+    try { veraStateProps_('SLACK').setProperty('SLACK_LAST_UPDATE',
       new Date().toISOString() + ' ' + updateResult); } catch(te) {}
   }
 }
@@ -1223,7 +1223,7 @@ function pinSlackMessage_(channelId, ts) {
   var token = getSlackToken_();
   try {
     // Unpin previous
-    var prevTs = PropertiesService.getScriptProperties().getProperty('SLACK_PINNED_MORNING_TS');
+    var prevTs = veraStateProps_('SLACK').getProperty('SLACK_PINNED_MORNING_TS');
     if (prevTs) {
       UrlFetchApp.fetch(SLACK_API + 'pins.remove', {
         method:      'post',
@@ -1241,7 +1241,7 @@ function pinSlackMessage_(channelId, ts) {
       payload:     JSON.stringify({ channel: channelId, timestamp: ts }),
       muteHttpExceptions: true,
     });
-    PropertiesService.getScriptProperties().setProperty('SLACK_PINNED_MORNING_TS', ts);
+    veraStateProps_('SLACK').setProperty('SLACK_PINNED_MORNING_TS', ts);
   } catch (err) {
     Logger.log('pinSlackMessage_ error: ' + err.message);
   }
@@ -1392,14 +1392,13 @@ function processSlackSchedulerPhoto_(event) {
 
   // Dedup — same file ID within 24h skipped
   if (file.id) {
-    var props    = PropertiesService.getScriptProperties();
-    var dedupKey = 'SCHED_SLACK_' + file.id;
-    var lastSeen = parseInt(props.getProperty(dedupKey) || '0', 10);
+    var dedupKey = 'SCHED_SLACK_' + file.id;   // a running note (Settings.js); pruned after 7 days
+    var lastSeen = parseInt(veraNoteGet_(dedupKey) || '0', 10);
     if (Date.now() - lastSeen < 86400000) {
       sendSlackMessage_(channel, '📷 This image was already processed recently. Send a new screenshot to process it again.');
       return;
     }
-    props.setProperty(dedupKey, String(Date.now()));
+    veraNoteSet_(dedupKey, String(Date.now()));
   }
 
   var thinkingResult = sendSlackMessage_(channel, '📷 Analyzing image\u2026');

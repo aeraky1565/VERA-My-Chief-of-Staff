@@ -3,6 +3,7 @@
 // sheet; the dashboard's pure builders run straight from the block; the two copies
 // of the block must match. Every trip, place and figure here is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./notes_shim').installNotes(require('vm'));   // running notes (Settings.js) in every context
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8');

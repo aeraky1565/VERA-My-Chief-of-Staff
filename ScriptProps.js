@@ -47,8 +47,12 @@ function spGroups_(names, info) {
     var i = (info || {})[n] || {};
     if (SP_NEEDED_.indexOf(n) !== -1) return g.needed.push({ name: n, note: i.placeholder ? 'Still a setup placeholder: paste the real value in the Apps Script editor' : '' });
     if (SP_RECORDS_.indexOf(n) !== -1 || /^VERA_STATE_/.test(n)) return g.records.push({ name: n, note: '' });
+    // The watchdog's keys and two hot ones stay here on purpose (Settings.js VERA_KEEP_PROPS_).
+    if (VERA_KEEP_PROPS_.indexOf(n) !== -1) return g.records.push({ name: n, note: 'Stays here on purpose: read when a run was cut short or the sheet can’t be reached' });
     if (settings[n]) return g.settings.push({ name: n, note: i.setting || '' });
     if (old[n]) return g.old.push({ name: n, note: i.inHome ? 'Already copied to its new home; safe to remove' : 'Not copied yet: “Move settings now” moves it', removable: !!i.inHome });
+    // A running note (an "already sent" marker, a stamp, a small history): it belongs in the VERA State tab.
+    if (veraIsNote_(n)) return g.old.push({ name: n, note: i.inHome ? 'Already in the VERA State tab; safe to remove' : 'Not moved yet: “Move running notes” moves it', removable: !!i.inHome });
     if (SP_SECRET_RE_.test(n)) return g.secret.push({ name: n, note: i.placeholder ? 'Still a setup placeholder: paste the real value in the Apps Script editor' : '' });
     g.other.push({ name: n, note: '' });
   });
@@ -91,6 +95,7 @@ function spInspect_() {
     var v = all[n], i = { placeholder: veraIsPlaceholder_(v) };
     if (settings[n]) i.setting = spSettingWhy_(cfg[veraSettingRow_(n)], v);
     else if (old[n]) i.inHome = spInHome_(n, old[n], v, props);
+    else if (veraIsNote_(n)) { old[n] = 'store'; i.inHome = spInHome_(n, 'store', v, props); }
     info[n] = i;
   });
   return { names: names, info: info, props: props, all: all, old: old };
@@ -100,7 +105,16 @@ function spInspect_() {
 function webScriptProps_() {
   var no = peopleOwnerOnly_(); if (no) return no;
   var s = spInspect_(), r = spGroups_(s.names, s.info);
-  return { ok: true, total: r.total, counts: r.counts, groups: r.groups, limit: 50 };
+  // How many running notes "Move running notes" would move (and Slack's trail into its bundle).
+  var toMove = s.names.filter(function(n) { return veraIsNote_(n) || VERA_STATE_BUNDLES_.SLACK.indexOf(n) !== -1; }).length;
+  return { ok: true, total: r.total, counts: r.counts, groups: r.groups, limit: 50, notesToMove: toMove };
+}
+
+/** POST script_props_move_notes (owner): VERA's running notes to the VERA State tab (veraMoveNotes_). */
+function webScriptPropsMoveNotes_() {
+  var no = peopleOwnerOnly_(); if (no) return no;
+  var r = veraMoveNotes_();
+  return { ok: true, moved: r.moved, kept: r.kept, before: r.before, after: r.after };
 }
 
 /** POST settings_move (owner): the one-time move, without the editor. → names and counts. */

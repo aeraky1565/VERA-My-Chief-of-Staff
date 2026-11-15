@@ -553,7 +553,7 @@ function doPost(e) {
       contentsLen: e && e.postData && e.postData.contents ? e.postData.contents.length : 0,
       contentsHead: e && e.postData && e.postData.contents ? e.postData.contents.substring(0, 120) : '',
     };
-    PropertiesService.getScriptProperties().setProperty('SLACK_LAST_POST', JSON.stringify(trace));
+    veraStateProps_('SLACK').setProperty('SLACK_LAST_POST', JSON.stringify(trace));
   } catch (traceErr) { Logger.log('trace error: ' + traceErr.message); }
 
   // ── Slack form-encoded payloads (Block Kit interactions + slash commands) ──
@@ -616,6 +616,7 @@ function doPost(e) {
       // System › Checks › Script Properties (ScriptProps.js): owner only, checked inside.
       case 'settings_move':              return jsonOut_(webSettingsMove_());
       case 'script_props_clean':         return jsonOut_(webScriptPropsClean_());
+      case 'script_props_move_notes':    return jsonOut_(webScriptPropsMoveNotes_());   // ScriptProps.js: running notes to the VERA State tab
 
       // Projects — POST because the context is free-form prose, which a query
       // string mangles. These handlers read `e.parameter` when present and the
@@ -2120,7 +2121,7 @@ function webGetBudget_() {
  * function degrades gracefully if the layout shifts.
  */
 function webDebugSlack_() {
-  var props = PropertiesService.getScriptProperties();
+  var props = veraStateProps_('SLACK');   // Slack's trail is one bundle (Settings.js); old properties still read
   var lastPost       = props.getProperty('SLACK_LAST_POST')       || 'never';
   var lastInteract   = props.getProperty('SLACK_LAST_INTERACT')   || 'never';
   var lastQueued     = props.getProperty('SLACK_LAST_QUEUED')     || 'never';

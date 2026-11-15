@@ -8,6 +8,7 @@
 //
 // Invented trips throughout.
 const fs = require('fs'), vm = require('vm');
+require('./notes_shim').installNotes(require('vm'));   // running notes (Settings.js) in every context
 require('./tripkey_helpers').rowIs(vm);   // #239: tripRowIs_ alongside this test's own key stubs
 const REPO = require('path').join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;

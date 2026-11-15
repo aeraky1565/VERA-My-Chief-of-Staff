@@ -262,10 +262,10 @@ function webLifePlaceToTripIdea_(body) {
 
 /** The weekend wish list, oldest first. */
 function lfWishes_() {
-  try { var v = JSON.parse(PropertiesService.getScriptProperties().getProperty(LF_WISHES_PROP_) || '[]'); return Array.isArray(v) ? v : []; }
+  try { var v = JSON.parse(veraNoteGet_(LF_WISHES_PROP_) || '[]'); return Array.isArray(v) ? v : []; }
   catch (e) { return []; }
 }
-function lfSaveWishes_(list) { PropertiesService.getScriptProperties().setProperty(LF_WISHES_PROP_, JSON.stringify(list.slice(-20))); }
+function lfSaveWishes_(list) { veraNoteSet_(LF_WISHES_PROP_, JSON.stringify(list.slice(-20))); }
 /** Pure: a wish added once — the same words aren't added twice. */
 function lfAddWish_(list, text, today) {
   var t = lfStr_(text, 160);

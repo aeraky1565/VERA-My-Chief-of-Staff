@@ -858,9 +858,18 @@ move writes it over the placeholder, and a placeholder is never copied in.
 property by name, never its value, in groups: settings not moved yet (each with why),
 old copies of a marker, state or cache that now live elsewhere, needed before Config
 (`VERA_SHEET_ID`, `SLACK_ALLOWED_USER_IDS`), secrets (a placeholder one is named),
-VERA's records, and VERA's running notes. **Move settings now** runs the same move as
-the editor; **Remove the old copies** deletes only old copies already in their new
-home, read back first. Secrets and running notes are never removed from there.
+VERA's records, and anything not recognised.
+- **Move settings now** runs the same move as the editor.
+- **Move running notes** moves VERA's own latches, stamps and small histories into the hidden VERA State tab.
+  - These are "already sent" markers, day plans, chat histories, place climates, and the ARIA, Coming up and Life histories.
+  - Each one is read back before its property goes.
+  - Reads fall back to the old property until then.
+  - The watchdog's keys, the nightly finish stamps, the AviationStack backoff and API health stay as properties on purpose.
+  - Slack's debug trail becomes one bundle, `VERA_STATE_SLACK`.
+- **Remove the old copies** deletes only old copies already in their new home, read back first.
+
+Secrets and anything not recognised are never removed from there.
+The nightly prune ages out notes wherever they live, but never a trip's latches.
 
 **Writes that two runs could make at once (#242).** VERA's triggers and the dashboard can run
 together, so a read-modify-write goes through `veraLocked_` (Settings.js): the per-user lock, which

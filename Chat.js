@@ -1552,7 +1552,7 @@ function buildChatContext_() {
 
 function loadChatHistory_(sessionId) {
   var key = CHAT_HISTORY_PREFIX + String(sessionId);
-  var raw = PropertiesService.getScriptProperties().getProperty(key);
+  var raw = veraNoteGet_(key);   // a running note in the VERA State tab (Settings.js)
   if (!raw) return [];
   try { return JSON.parse(raw); } catch (e) { return []; }
 }
@@ -1563,7 +1563,7 @@ function saveChatHistory_(sessionId, userMsg, replyText) {
   history.push({ role: 'assistant', content: replyText });
   var trimmed = history.slice(-(CHAT_MAX_EXCHANGES * 2));
   var key     = CHAT_HISTORY_PREFIX + String(sessionId);
-  PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(trimmed));
+  veraNoteSet_(key, JSON.stringify(trimmed));
 }
 
 // ============================================================
@@ -2872,7 +2872,7 @@ function executeActions_(rawText) {
       else if (type === 'apply_day_plan') {
         var dpTz    = Session.getScriptTimeZone();
         var dpToday = Utilities.formatDate(new Date(), dpTz, 'yyyy-MM-dd');
-        var dpJson  = PropertiesService.getScriptProperties().getProperty('day_plan_' + dpToday);
+        var dpJson  = veraNoteGet_('day_plan_' + dpToday);
         if (!dpJson) throw new Error('No day plan found for today — was the morning nudge sent today?');
         var dpPlan   = JSON.parse(dpJson);
         var dpCals   = CalendarApp.getCalendarsByName('Vera');
@@ -3042,7 +3042,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
 function clearChatHistory(sessionId) {
   sessionId = sessionId || 'dashboard';
-  PropertiesService.getScriptProperties().deleteProperty(CHAT_HISTORY_PREFIX + sessionId);
+  veraNoteDel_(CHAT_HISTORY_PREFIX + sessionId);
   Logger.log('Chat history cleared for: ' + sessionId);
 }
 

@@ -769,7 +769,7 @@ function ariaPostBookNow_(watch) {
   if (!isNotifEnabled_('aria_book_now') || !isSlackConfigured_()) return 0;
   var ch = getNotifChannel_('aria_book_now');
   if (!/^vera-/.test(ch)) return 0;
-  var props = PropertiesService.getScriptProperties(), posted = [];
+  var props = veraNotes_(), posted = [];   // a running note (Settings.js)
   try { posted = JSON.parse(props.getProperty(ARIA_POSTED_PROP_) || '[]') || []; } catch (e) { posted = []; }
   var sent = 0;
   ariaBookNowPosts_(watch, posted).forEach(function(p) {
@@ -798,7 +798,7 @@ function ariaSyncDue_(now, lastIso) {
 function maybeSyncAriaFlags_(now) {
   try {
     if (!ariaSheetId_()) return;
-    var props = PropertiesService.getScriptProperties();
+    var props = veraNotes_();   // a running note (Settings.js)
     if (!ariaSyncDue_(now || new Date(), props.getProperty('ARIA_FLAGS_SYNCED_AT'))) return;
     props.setProperty('ARIA_FLAGS_SYNCED_AT', new Date().toISOString());
     syncAriaFlags_();

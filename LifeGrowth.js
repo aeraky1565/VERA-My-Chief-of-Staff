@@ -523,8 +523,8 @@ function webLifeTrialDecide_(body) {
   });
 }
 // Did it? — asked the morning after, from yesterday's calendar.
-function lgDidItGet_() { try { var v = JSON.parse(PropertiesService.getScriptProperties().getProperty(LG_DIDIT_PROP_) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
-function lgDidItSet_(list) { PropertiesService.getScriptProperties().setProperty(LG_DIDIT_PROP_, JSON.stringify(list.slice(-20))); }
+function lgDidItGet_() { try { var v = JSON.parse(veraNoteGet_(LG_DIDIT_PROP_) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function lgDidItSet_(list) { veraNoteSet_(LG_DIDIT_PROP_, JSON.stringify(list.slice(-20))); }
 /** POST life_did_it { goalId, day, yes } */
 function webLifeDidIt_(body) {
   var gid = lfStr_(body && body.goalId, 40), day = lfYmd_(body && body.day);
@@ -544,7 +544,7 @@ function webLifeReview_() {
     return o;
   });
   var month = lgRateMonth_(today), snaps = {};
-  try { snaps = JSON.parse(PropertiesService.getScriptProperties().getProperty(LG_TIME_PROP_) || '{}') || {}; } catch (e) {}
+  try { snaps = JSON.parse(veraNoteGet_(LG_TIME_PROP_) || '{}') || {}; } catch (e) {}
   var time = snaps[month] || null;
   if (!time) {
     try {
@@ -553,7 +553,7 @@ function webLifeReview_() {
       time = lgTimeBuckets_(lgEvents_(start, end), month, nowGoals);
       snaps[month] = time;
       var keys = Object.keys(snaps).sort().slice(-12), keep = {}; keys.forEach(function(k) { keep[k] = snaps[k]; });
-      PropertiesService.getScriptProperties().setProperty(LG_TIME_PROP_, JSON.stringify(keep));
+      veraNoteSet_(LG_TIME_PROP_, JSON.stringify(keep));
     } catch (e) { time = null; }
   }
   var b = lgBalance_(rows);
