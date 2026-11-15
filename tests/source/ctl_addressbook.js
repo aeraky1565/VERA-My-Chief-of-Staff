@@ -382,9 +382,9 @@ const CONTROLS = {
   }),
   'one failed delete aborts the rest': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(
-      "    try { props.deleteProperty(k); deleted.push(k); }\n" +
+      "    try { veraNoteDel_(k); deleted.push(k); }\n" +
       "    catch (delErr) { Logger.log('pruneScriptProperties_: could not delete ' + k + ' — ' + delErr.message); }",
-      "    props.deleteProperty(k); deleted.push(k);"),
+      "    veraNoteDel_(k); deleted.push(k);"),
   }),
   'day plans are pruned after one day': b => ({
     'AddressBook.js': b['AddressBook.js'].replace('var PROP_PRUNE_DAY_PLAN_DAYS_  = 7;',

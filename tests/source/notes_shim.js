@@ -28,8 +28,10 @@ function varSrc(src, name) {
 
 /** Adds the store to ctx (an object already passed to vm.createContext). Returns ctx. */
 function loadNotes(ctx) {
-  const root = process.env.VERA_ROOT || path.join(__dirname, '..', '..');
-  const src = fs.readFileSync(path.join(root, 'Settings.js'), 'utf8');
+  // A control's copy (VERA_ROOT) may hold only the files it mutates: then the repo's.
+  const repo = path.join(__dirname, '..', '..'), root = process.env.VERA_ROOT || repo;
+  const at = fs.existsSync(path.join(root, 'Settings.js')) ? root : repo;
+  const src = fs.readFileSync(path.join(at, 'Settings.js'), 'utf8');
   if (!ctx.TABS) ctx.TABS = {};
   if (!ctx.TABS.VERA_STATE) ctx.TABS.VERA_STATE = 'VERA State';
   if (!ctx.Logger) ctx.Logger = { log: () => {} };

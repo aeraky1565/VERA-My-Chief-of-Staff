@@ -29,7 +29,7 @@ function world(over) {
     SLACK_VICTORIA_USER_ID: 'U0INVENTED2',                       // Config is a placeholder
     SAT_SHEET_ID: 'InventedSatSheet0123456789',                  // Config blank
     TP_MIGRATED: '2026-01-01',                                   // old copy, already in the bundle
-    LG_DIDIT: 'x', PACING_MODE_ACTIVE: 'true',                   // a note; an old copy already in its bundle
+    LG_DIDIT: 'NOTE-INVENTED-0008', PACING_MODE_ACTIVE: 'true',  // unrecognised; an old copy already in its bundle
     PACING_MODE_ENDS: '2026-12-01',                              // old copy NOT in its bundle
     FLIGHT_DAYS: '{"a":1}', EXPLORER_HISTORY: '[1]',             // a cache in the tab; one whose tab row differs
     day_plan_2026_11_01: '{}', LAST_NIGHTLY_RUN: 'NOTE-INVENTED-0004',  // not a note's shape; the nightly halves' stamp (kept)
