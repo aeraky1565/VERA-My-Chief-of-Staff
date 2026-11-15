@@ -37,6 +37,12 @@ const CONTROLS = [
   ['a lite-view person stays on full', b => ({ [APP]: swap(b[APP], "if(d.view==='lite'&&!d.owner){window.location.replace('dashboard-lite.html');return;}", "") }), NODE],
   ['lite’s bottom bar and All unfiltered', b => ({ [LITE]: swap(b[LITE], "  if (!veraCan_(tab)) return false;\n", "") }), NODE],
   ['the panel shows the owner a sign-out', withIndex(b => ({ [APP]: swap(b[APP], "!p.owner&&p.codes>0&&h(\"button\"", "p.codes>=0&&h(\"button\"") })), UI],
+  ['rename leaves the Access column behind', b => ({ [P]: swap(b[P], "    if (sh && plan.col) sh.getRange(1, plan.col, 1, 1).setValues([[to]]);\n", "") }), NODE],
+  ['rename skips the name rules', b => ({ [P]: swap(b[P], "    var why = peopleNameProblem_(to, d.people.filter(function(x) { return x !== p; }));\n    if (why) return { ok: false, error: why };\n    var sh = null", "    var sh = null") }), NODE],
+  ['rename makes two columns', b => ({ [P]: swap(b[P], "  if (a && b) return { col: 0, error:", "  if (false) return { col: 0, error:") }), NODE],
+  ['anyone can rename', b => ({ [P]: swap(b[P], "function webPeopleRename_(body) {\n  var no = peopleOwnerOnly_(); if (no) return no;", "function webPeopleRename_(body) {") }), NODE],
+  ['no rename route', b => ({ [W]: swap(b[W], "case 'people_rename':", "case 'people_rename_off':") }), NODE],
+  ['Rename sends only the new name', withIndex(b => ({ [APP]: swap(b[APP], "act({action:'people_rename',name:p.name,to:ren.to.trim()}", "act({action:'people_rename',to:ren.to.trim()}") })), UI],
   ['the code never shown', withIndex(b => ({ [APP]: swap(b[APP], "setShown({name:r.name,code:r.code});});}},busy==='people_add'", "});}},busy==='people_add'") })), UI],
 ];
 let allBit = true;

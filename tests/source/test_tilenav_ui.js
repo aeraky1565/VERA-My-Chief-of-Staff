@@ -1,5 +1,5 @@
 // The icon-tile navigation (VeraTileNav, shared verbatim by both dashboards), Home's pick-and-remember
-// slot card (HomeSlot, full dashboard), and the lite dashboard's eight-tab layout for Victoria.
+// spending and birthday helpers that At a glance reads (the pick-one slot is gone: test_fullhome_ui), and the lite dashboard's eight-tab layout for Victoria.
 // Every value here is invented.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), vm = require('vm');
@@ -15,8 +15,8 @@ const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
 const START = '// ---- VeraTileNav — SHARED VERBATIM', END = '// ---- /VeraTileNav ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
-const HS_START = '// ---- Home › the slot', HS_END = '"Open →"));}';
-const hsBlock = (() => { const a = APP.indexOf(HS_START), b = APP.indexOf(HS_END, a); return a === -1 || b === -1 ? '' : APP.slice(a, b + HS_END.length); })();
+const HS_START = '// ---- Home › At a glance helpers', HS_END = '\nfunction NotificationMapPanel(';   // the pick-one slot became At a glance (test_fullhome_ui)
+const hsBlock = (() => { const a = APP.indexOf(HS_START), b = APP.indexOf(HS_END, a); return a === -1 || b === -1 ? '' : APP.slice(a, b); })();
 
 console.log('\nthe shared block');
 check('both dashboards carry it, word for word', block(APP).length > 1000 && block(APP) === block(LITE));
@@ -72,13 +72,13 @@ check('Travel is My Trips, Bucket List, Profiles, Our bags and Gifts', /const LI
 check('Your assistants is on lite’s All screen', LITE.indexOf('<VeraRoster links={status && status.rosterLinks} veraHref="./" />') !== -1);
 check('no Home slot on lite', LITE.indexOf('HomeSlot') === -1);
 
-console.log('\nHome › the slot (pure)');
-check('the full dashboard mounts it on Home', APP.indexOf('React.createElement(HomeSlot,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate})') !== -1 && hsBlock.length > 1000);
+console.log('\nHome › At a glance helpers (pure)');
+check('the full dashboard shows At a glance on Home, not the pick-one slot', APP.indexOf('React.createElement(FhGlance,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate})') !== -1 && APP.indexOf('HomeSlot') === -1 && hsBlock.length > 500);
 check('Home keeps Mail & Packages, Shopping and the active trip card',
   APP.indexOf('React.createElement(MailCounterCard,{counter:mailCounter') !== -1 && APP.indexOf('"🛒 Shopping"),shopping.length===0') !== -1 && APP.indexOf('displayTrip&&/*#__PURE__*/React.createElement(ActiveTravelCard') !== -1);
+check('…and no Bills tile in At a glance', (() => { const g = APP.slice(APP.indexOf('function fhGlance_('), APP.indexOf('function FhGlance(')); return g.length > 500 && !/bill/i.test(g); })());
 const H = vm.createContext({ React: { createElement: () => null, useState: v => [v, () => {}], useEffect: () => {} } });
 vm.runInContext(hsBlock, H);
-check('the four cards, and no Bills', vm.runInContext('HS_CARDS.map(function(c){return c.id;}).join()', H) === 'coming,practice,money,birthday' && !/bill/i.test(vm.runInContext('JSON.stringify(HS_CARDS)', H)));
 H.r = { quarter: '2026-Q4', lines: { a: { plan: 500, actual: 420 }, b: { plan: 200, actual: 260 }, c: { plan: 100, actual: null } } };
 check('spending: monthly average against plan, lines without actuals skipped',
   vm.runInContext('JSON.stringify(hsSpending_(r))', H) === JSON.stringify({ plan: 700, actual: 680, left: 20, over: 1, lines: 2, quarter: '2026-Q4' }));
@@ -146,50 +146,6 @@ check('birthday: none ahead gives nothing', vm.runInContext('hsNextDate_([{Label
     ({ page, errs } = await open(width, probe, { vera_vn_career: JSON.stringify({ search: 'market' }) }));
     await tile('Search');
     check(L + ': the memory survives a reload', (await st()).cur === 'market');
-    await page.close();
-  }
-
-  // HomeSlot with invented answers from a stubbed API
-  const api = {
-    coming_up: { cards: [{ title: 'Friend’s wedding', day: '2026-11-21', time: '4:00 PM', prep: [{ label: 'Gift' }] }, { title: 'Old dinner', day: '2026-11-01', after: true }] },
-    life_growth: { today: '2026-11-03', goals: [{ id: 'G1', title: 'Spanish', focus: 'now', perWeek: 3, practice: { thisWeek: 1, practisedToday: false } }, { id: 'G2', title: 'Later', focus: 'waiting' }] },
-    budget_actuals: { quarter: '2026-Q4', lines: { a: { plan: 500, actual: 420 }, b: { plan: 200, actual: 260 } } },
-    get_important_dates: { dates: [{ Label: 'Sam’s Birthday', Person: 'Sam', daysUntil: 12, nextDate: '2026-11-15' }] },
-    get_gift_data: { ideas: [{ person: 'Sam' }] },
-  };
-  for (const width of [390, 1280]) {
-    const L = 'Home slot @' + width;
-    const probe = 'var API=' + JSON.stringify(api) + ';var CALLS=[],POSTS=[],NAV=[];function apiGet(u,t,p){CALLS.push(p.action+(p.quarter?":"+p.quarter:""));return new Promise(function(r){setTimeout(function(){r(API[p.action]);},20);});}'
-      + 'function apiPost(u,t,b){POSTS.push(b);return Promise.resolve({ok:true});}\n' + hsBlock
-      + '\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(HomeSlot,{apiUrl:"x",apiToken:"y",onNavigate:function(t){NAV.push(t);}}));';
-    let { page, errs } = await open(width, probe);
-    await wait(200);
-    const body = () => page.$eval('.hs-body', n => n.textContent);
-    const opt = async t => { await page.locator('.hs-opt', { hasText: t }).click(); await wait(200); };
-    check(L + ': four choices, Coming up first', (await page.$$eval('.hs-opt', ns => ns.map(n => n.textContent))).join('|') === '🗓️ Coming up|🌱 Practice|💰 Spending|🎂 Birthday');
-    check(L + ': Coming up shows what is ahead, not what is past', /Friend’s wedding/.test(await body()) && /Gift/.test(await body()) && !/Old dinner/.test(await body()), await body());
-    await opt('Practice');
-    check(L + ': Practice shows the Now goals only', /Spanish/.test(await body()) && /1 of 3 this week/.test(await body()) && !/Later/.test(await body()), await body());
-    await page.click('.hs-didit'); await wait(200);
-    check(L + ': Did it logs practice for that goal', await page.evaluate(() => POSTS.length === 1 && POSTS[0].action === 'life_practice_log' && POSTS[0].goalId === 'G1'));
-    await opt('Spending');
-    check(L + ': Spending is this quarter per month against plan', /\$680 of \$700/.test(await body()) && /Under plan\$20/.test(await body()) && /1 of 2/.test(await body()), await body());
-    check(L + ': it asks for this quarter', await page.evaluate(() => CALLS.some(c => /^budget_actuals:\d{4}-Q[1-4]$/.test(c))));
-    await opt('Birthday');
-    check(L + ': Birthday shows the next one with gift ideas', /Sam’s Birthday/.test(await body()) && /in 12 days/.test(await body()) && /Gift ideas saved1/.test(await body()), await body());
-    await page.click('.hs-open'); await wait(50);
-    check(L + ': Open → goes to People', await page.evaluate(() => NAV.join() === 'people'));
-    check(L + ': the pick is remembered', await page.evaluate(() => localStorage.getItem('vera_home_slot')) === 'birthday');
-    check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
-    check(L + ': no page errors', errs.length === 0, errs.join(' | '));
-    await page.close();
-    ({ page, errs } = await open(width, probe, { vera_home_slot: 'money' }));
-    await wait(200);
-    check(L + ': it reopens on the remembered card', /\$680 of \$700/.test(await body()) && (await page.$eval('.hs-opt.on', n => n.textContent)) === '💰 Spending');
-    await page.close();
-    ({ page, errs } = await open(width, probe, { vera_home_slot: 'bills' }));
-    await wait(200);
-    check(L + ': an unknown remembered card falls back to Coming up', (await page.$eval('.hs-opt.on', n => n.textContent)) === '🗓️ Coming up');
     await page.close();
   }
 

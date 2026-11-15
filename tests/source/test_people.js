@@ -82,6 +82,32 @@ console.log('\nCodes');
   check('names: required, short, letters, not taken', c.peopleNameProblem_('', []) !== '' && c.peopleNameProblem_('X'.repeat(31), []) !== '' && c.peopleNameProblem_('R0bin', []) !== '' && c.peopleNameProblem_('robin', [{ name: 'Robin' }]) === 'robin is already listed' && c.peopleNameProblem_('Robin O\'Neil-Lee', []) === '');
 }
 
+console.log('\nRename: the list and the Access column, together');
+{
+  const c = ctx({ props: { VERA_WEB_TOKEN: 'owner-shared-token' } });   // no owner_name: the owner was saved as "Owner"
+  c.veraIdentify_('owner-shared-token');
+  const robin = run(c, 'webPeopleAdd_({ name: "Robin", view: "lite" })');
+  const rec = () => JSON.parse(c.__props.VERA_USER_TOKENS);
+  const sh = c.__sheet();
+  sh.v.push(['Today', 'Home', 'full:home', false, true]);   // the owner hid one tab
+  check('the owner starts as "Owner", with a column of that name', rec().people[0].name === 'Owner' && J(sh.v[0].slice(3)) === J(['Owner', 'Robin']));
+  const r = run(c, 'webPeopleRename_({ name: "Owner", to: " Ahmed " })');
+  check('rename: the list says Ahmed', r.ok && r.name === 'Ahmed' && r.was === 'Owner' && rec().people[0].name === 'Ahmed' && rec().people[0].owner === true, J(r));
+  check('…the Access column is relabelled, so its ticks stay theirs', J(sh.v[0].slice(3)) === J(['Ahmed', 'Robin']) && sh.v[1 + 0] && sh.v[sh.v.length - 1][3] === false);
+  check('…the shared token now greets Ahmed', c.veraIdentify_('owner-shared-token').name === 'Ahmed' && run(c, 'webWhoami_()').name === 'Ahmed');
+  check('…and what Ahmed sees is unchanged (still one tab hidden)', J(run(c, 'webWhoami_()').hidden) === J(['full:home']));
+  check('…codes keep working', c.veraIdentify_(robin.code).name === 'Robin' && (c.veraIdentify_('owner-shared-token'), true));
+  check('a taken or bad name is refused, nothing changed', run(c, 'webPeopleRename_({ name: "Ahmed", to: "robin" })').ok === false && run(c, 'webPeopleRename_({ name: "Ahmed", to: "A1" })').ok === false && rec().people[0].name === 'Ahmed' && sh.v[0][3] === 'Ahmed');
+  check('no one by that name', run(c, 'webPeopleRename_({ name: "Nobody", to: "Kit" })').ok === false);
+  check('a change of case only is allowed (it is still them)', run(c, 'webPeopleRename_({ name: "Robin", to: "ROBIN" })').ok && sh.v[0][4] === 'ROBIN' && rec().people[1].name === 'ROBIN');
+  sh.v[0].push('Kit');   // a column typed by hand
+  check('both an old and a new column there: refused, nothing changed', /already has a column named Kit/.test(run(c, 'webPeopleRename_({ name: "ROBIN", to: "Kit" })').error || '') && rec().people[1].name === 'ROBIN');
+  check('pure: a hand-typed column is adopted when the old one is gone', J(c.accessRenamePlan_(['Area', 'Tab', 'Id', 'Kit'], 'Robin', 'Kit')) === J({ col: 0, error: '' }) && J(c.accessRenamePlan_(['Area', 'Tab', 'Id', 'A', 'Robin'], 'robin', 'Kit')) === J({ col: 5, error: '' }));
+  c.veraIdentify_(robin.code);
+  check('only the owner may rename', /owner/.test(run(c, 'webPeopleRename_({ name: "Ahmed", to: "Sam" })').error || '') && rec().people[0].name === 'Ahmed');
+  check('the route', /case 'people_rename':\s+return jsonOut_\(webPeopleRename_\(body\)\);/.test(WEB));
+}
+
 console.log('\nThe owner’s endpoints');
 {
   const c = ctx({ props: { VERA_WEB_TOKEN: 'owner-shared-token' }, config: { owner_name: 'Sam' } });

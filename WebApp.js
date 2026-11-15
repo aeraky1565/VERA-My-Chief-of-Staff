@@ -149,6 +149,7 @@ function doGet(e) {
       case 'system_api_health':     return jsonOut_(webSystemApiHealth_());  // System.js
       case 'whoami':                return jsonOut_(webWhoami_());          // People.js (#218)
       case 'people_list':           return jsonOut_(webPeopleList_());      // People.js (#218), owner only
+      case 'home_nightly':          return jsonOut_(webHomeNightly_());   // the full Home's System health tile
       case 'agent_health':          return jsonOut_(webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' }));  // AgentHealth.js (#247)
       case 'trip_id_check':         return jsonOut_(webTripIdCheck_());   // TripIds.js (#239): read only
       case 'trip_orphans':          return jsonOut_(webTripOrphans_());   // TripIds.js: keys that name no trip, read only
@@ -613,6 +614,7 @@ function doPost(e) {
       case 'people_code':                return jsonOut_(webPeopleNewCode_(body));
       case 'people_signout':             return jsonOut_(webPeopleSignOut_(body));
       case 'people_view':                return jsonOut_(webPeopleSetView_(body));
+      case 'people_rename':              return jsonOut_(webPeopleRename_(body));   // People.js: list, Access column, together
       case 'access_sync':                return jsonOut_(webAccessSync_(body));
       // System › Checks › Script Properties (ScriptProps.js): owner only, checked inside.
       case 'settings_move':              return jsonOut_(webSettingsMove_());
@@ -13182,3 +13184,17 @@ function webRunPerkEventPurge_() {
   return purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, false);
 }
 
+/**
+ * GET home_nightly — when the nightly run's first half last finished, and the step it
+ * stopped in if it didn't (the full Home's System health tile). Read only; never a value
+ * but these two. → { ok, at: ISO or '', stoppedAt: step name or '' }
+ */
+function webHomeNightly_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var crumb = String(props.getProperty(NIGHTLY_STEP_PROP_) || '');
+    return { ok: true, at: String(props.getProperty('LAST_NIGHTLY_RUN') || ''), stoppedAt: crumb ? crumb.split('|')[0] : '' };
+  } catch (e) {
+    return { ok: false, error: 'Couldn’t read the nightly run: ' + e.message };
+  }
+}

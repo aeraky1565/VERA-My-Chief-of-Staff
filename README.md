@@ -88,7 +88,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 
 | Area | Tiles › sub-tabs |
 |------|------------------|
-| **Home** | Today at a glance, Home slot card, ARIA banner, travel card, Log a grocery run |
+| **Home** | Two columns on a computer, one on a phone (see below) |
 | **Chat · Flags · Tasks · Projects** | Conversational chat (also Slack #vera-chat); flags with urgency; VERA + Google Tasks; projects VERA drafts (shown only while active) |
 | **PTO Planner** | Ahmed / Victoria balances, pace and clear windows · 📅 Next year: the PTO plan (#248) |
 | **Travel** | Plan (Trip Ideas, ARIA) · Trips (My Trips with summary, readiness, packing, luggage, leaving home, emails; Itinerary) · Places (Countries, Bucket List) · Travelers (Profiles, Our bags, Gifts) |
@@ -98,6 +98,14 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
 | **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Trip IDs, Script Properties) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
+
+**Full dashboard Home.**
+- **Left column:**
+  - **Today:** the shared Joint Chaos calendar (`get_todays_events`), with a chip for the next trip, or the days until home while you're on one.
+  - The active travel card, ARIA's book-now banner, Log a grocery run and Away mode side by side, and Easy Mode.
+  - **At a glance:** Coming up, Practice, Spending and Birthday all at once, one line each. A tile turns amber when it needs you: behind on the week's practice, a budget line over plan, or a birthday within 14 days with no gift ideas. Each tile opens its page. This replaces the old pick-one card.
+- **Right column, Needs you:** high and medium flags, tasks overdue or due within 3 days, plus the lite Today's perks, coupons and house jobs (the shared `liteNeedsYou_`), soonest first. Five are shown, and "See all" shows up to ten. A row opens its tab.
+- **Everything:** four across on a wide window, one per row on a phone. The tiles are Flags, Tasks, Shopping, Money (the next unpaid bill), Which card, Projects, PTO, **Mail & Packages** (with **✓ Got the mail!**), Travel and **System health**. System health covers the last nightly run (`home_nightly`), the assistants, the connections and Trip IDs; it names what to look at and opens System.
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 
@@ -2593,6 +2601,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
+| `home_nightly` | — | Full Home's System health: when the nightly run last finished, and the step it stopped in if it didn't (read only) |
 | `trip_orphans` | — | Trip IDs: the keys that name no trip, rows per tab, VERA's guess, the trips to pick from, and whether you can fix them (read only) |
 | `script_props` | — | Owner only: every Script Property by name (never a value), grouped, each with what it is and where it belongs |
 | `pto_strategy` | `year` (optional) | The PTO plan for this year or next: picks, budget, the accrual check, Use it before Dec 31, strategies and settings |
@@ -2650,7 +2659,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Trip detection for Away mode, pacing mode, miss-rate checker, capacity mode |
-| `People.js` | Sign-in codes per person (fingerprints only), the Access tab (filled from the dashboard's saved tab list, also nightly), whoami, the owner's People & access endpoints, Slack's verification token |
+| `People.js` | Sign-in codes per person (fingerprints only), the Access tab (filled from the dashboard's saved tab list, also nightly), whoami, the owner's People & access endpoints, Slack's verification token; Rename (`people_rename`) changes a name in the list and its Access column together |
 | `WorkTrips.js` | Working Trips (working remotely) and Business Trips (the employer sends you), by the trip's Context; who's working (`set_trip_working`, kept by Trip ID in the VERA State tab, defaulting to the Traveller); no PTO, busy only for the people on a trip, Employer pays, and the packing and day-plan lines for working days (Config `work_hours_<name>`, 9-18) |
 | `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Move running notes (to the VERA State tab); Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |

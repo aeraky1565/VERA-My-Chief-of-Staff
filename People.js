@@ -284,6 +284,44 @@ function webPeopleSetView_(body) {
   });
 }
 
+/**
+ * Pure: what renaming does to the Access tab's header row (row 1: Area, Tab, Id, then one
+ * column per person). → { col: the 1-based column to relabel, or 0 when nothing to change;
+ * error: why it can't }. A column already named the new name (one typed by hand) is adopted
+ * when the old one is missing; with both there, it refuses rather than make two columns.
+ */
+function accessRenamePlan_(header, from, to) {
+  var at = function(n) { var c = 0; (header || []).forEach(function(h, i) { if (i >= 3 && !c && String(h).trim().toLowerCase() === String(n).toLowerCase()) c = i + 1; }); return c; };
+  var a = at(from), b = String(from).toLowerCase() === String(to).toLowerCase() ? 0 : at(to);
+  if (a && b) return { col: 0, error: 'The Access tab already has a column named ' + to + '. Delete that column first, then rename again.' };
+  return { col: a, error: '' };
+}
+
+/**
+ * POST people_rename { name, to } (owner): renames a person everywhere VERA keeps their name,
+ * together: their entry in the list, their Access tab column (so what they see and Opens on
+ * stay theirs). Codes and view are untouched. → { ok, name, was }
+ */
+function webPeopleRename_(body) {
+  var no = peopleOwnerOnly_(); if (no) return no;
+  return veraLocked_(function() {
+    var d = peopleWithOwner_(), from = String((body || {}).name || ''), to = String((body || {}).to || '').trim();
+    var p = d.people.filter(function(x) { return x.name === from; })[0];
+    if (!p) return { ok: false, error: 'No one by that name' };
+    if (to === p.name) return { ok: true, name: p.name, was: p.name };
+    var why = peopleNameProblem_(to, d.people.filter(function(x) { return x !== p; }));
+    if (why) return { ok: false, error: why };
+    var sh = null, plan = { col: 0, error: '' };
+    try { sh = accessSheet_(false); if (sh && sh.getLastColumn() > 3) plan = accessRenamePlan_(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0], from, to); } catch (e) { sh = null; }
+    if (plan.error) return { ok: false, error: plan.error };
+    p.name = to;
+    peopleWrite_(d);
+    if (sh && plan.col) sh.getRange(1, plan.col, 1, 1).setValues([[to]]);
+    if (_veraWho_ && _veraWho_.name === from) _veraWho_.name = to;
+    return { ok: true, name: to, was: from };
+  });
+}
+
 // The dashboard's list of tabs, kept in the hidden VERA State tab so the nightly run
 // can fill the Access tab without anyone opening the dashboard.
 var ACCESS_CATALOG_KEY_ = 'ACCESS_CATALOG';

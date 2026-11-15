@@ -14925,6 +14925,7 @@ function liteCanOpen_(tab, sub) {
   var nav = 'lite_' + tab;
   return !sub || !vnGroupOf_(nav, sub) || veraCan_(nav + '/' + sub);
 }
+// ---- NeedsYou (lite Today and the full Home: what's due soonest) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Pure: days from today to a 'yyyy-MM-dd…' date (local calendar days), or null.
 function liteDays_(ymd, now) {
   var s = String(ymd || '');
@@ -14971,6 +14972,7 @@ function liteNeedsYou_(d, now) {
 }
 // Pure: the words for a number of days left.
 function liteDueText_(n) { return n < 0 ? (-n) + 'd overdue' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'; }
+// ---- /NeedsYou ----
 // Pure: Today's tiles, each with one useful line, and hot when something needs a look (due within 3 days, or overdue).
 // d: { cards, coupons, rx, bills, chores, trips } as loaded; stores: the shopping lists. null lines mean "still loading".
 function liteTiles_(d, stores, now) {

@@ -31,6 +31,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
         if (a === 'access_sync') { window.__access = { rows: 74, listSaved: true }; r = { ok: true, addedRows: 74, addedCols: [] }; }
         if (a === 'people_add') { window.__people.push({ name: body.name, owner: false, view: body.view, codes: 1, lastSeen: '', visible: 74, total: 74 }); r = { ok: true, name: body.name, code: 'TEST-CODE-ABCD-EFGH' }; }
         if (a === 'people_code') r = { ok: true, name: body.name, code: 'NEXT-CODE-ABCD-EFGH' };
+        if (a === 'people_rename') { if (body.to === 'Robin') r = { ok: false, error: 'Robin is already listed' }; else { window.__people.forEach(p => { if (p.name === body.name) p.name = body.to; }); r = { ok: true, name: body.to, was: body.name }; } }
         if (a === 'people_signout') { window.__people.forEach(p => { if (p.name === body.name) p.codes = 0; }); r = { ok: true, signedOut: 1 }; }
         return Promise.resolve({ json: () => Promise.resolve(r) });
       };
@@ -64,6 +65,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     check(L + ': sign out everywhere asks first, then signs Robin out', JSON.stringify(last) === JSON.stringify({ action: 'people_signout', name: 'Robin' }) && /0 sign-in codes/.test((await page.$$eval('#pp .pp-person', ns => ns[1].innerText.replace(/\s+/g, ' ')))));
     await page.selectOption('#pp select[aria-label="Kit\'s view"]', 'full'); await wait(200);
     check(L + ': the view switch', JSON.stringify((await page.evaluate(() => window.__posts)).slice(-1)[0]) === JSON.stringify({ action: 'people_view', name: 'Kit', view: 'full' }));
+    await page.click('#pp .pp-person:nth-of-type(1) .pp-rename-open'); await wait(100);
+    check(L + ': Rename opens a box with their name, and says what it changes', (await page.$eval('#pp .pp-rename input', n => n.value)) === 'Sam' && /their column in the Access tab/.test(await txt('.pp-rename')) && (await page.$eval('#pp .pp-rename-save', n => n.disabled)));
+    await page.fill('#pp .pp-rename input', 'Robin'); await page.click('#pp .pp-rename-save'); await wait(250);
+    check(L + ': a taken name says why, and the box stays', /Robin is already listed/.test(await page.$eval('#pp', n => n.innerText)) && !!(await page.$('#pp .pp-rename')));
+    await page.fill('#pp .pp-rename input', 'Ahmed'); await page.click('#pp .pp-rename-save'); await wait(300);
+    check(L + ': renaming posts the old and new name, then lists the new one', JSON.stringify((await page.evaluate(() => window.__posts)).slice(-1)[0]) === JSON.stringify({ action: 'people_rename', name: 'Sam', to: 'Ahmed' }) && /Ahmed Owner/.test((await page.$$eval('#pp .pp-person', ns => ns[0].innerText.replace(/\s+/g, ' ')))) && !(await page.$('#pp .pp-rename')));
+    await page.click('#pp .pp-person:nth-of-type(2) .pp-rename-open'); await wait(80); await page.click('#pp .pp-rename button:has-text("Cancel")'); await wait(80);
+    check(L + ': Cancel closes it, posting nothing', !(await page.$('#pp .pp-rename')) && (await page.evaluate(() => window.__posts)).slice(-1)[0].to === 'Ahmed');
     const first = (await page.evaluate(() => window.__posts))[0] || {};
     check(L + ': opening the panel brings the Access tab up to date first, with both dashboards’ tabs', first.action === 'access_sync' && first.catalog.some(c => /^full:/.test(c.id)) && first.catalog.some(c => /^lite:/.test(c.id)));
     check(L + ': a filled Access tab shows no warning', (await page.$('#pp .pp-access-empty')) === null);

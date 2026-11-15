@@ -88,7 +88,7 @@ function finish() {
   check('which phone: iPhone, iPad (even as a "Mac"), Android, or a computer',
         ph('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)') === 'ios' && ph('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 5) === 'ios'
         && ph('Mozilla/5.0 (Linux; Android 15; Pixel 9)') === 'android' && ph('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 0) === '' && ph('Mozilla/5.0 (Windows NT 10.0; Win64; x64)') === '');
-  check('Home shows it (full), and Today (lite)', /React\.createElement\("div",null,React\.createElement\(VeraInstallTip,null\),/.test(APP) && /<div>\n\s+<VeraInstallTip \/>/.test(LITE));
+  check('Home shows it (full), and Today (lite)', /React\.createElement\("div",\{className:"fh-home"\},React\.createElement\(VeraInstallTip,null\),/.test(APP) && /<div>\n\s+<VeraInstallTip \/>/.test(LITE));
   check('nothing new outside docs/ (Apps Script never gets it)', /^docs\/\*\*$/m.test(read('.claspignore')));
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

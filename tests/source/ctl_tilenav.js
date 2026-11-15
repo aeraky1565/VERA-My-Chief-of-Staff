@@ -31,11 +31,7 @@ const CONTROLS = [
   ['an old Cards link goes nowhere', b => ({ [L]: swap(b[L], "cards: ['finances', 'fin_cards'], ", "") })],
   ['Money › Our cards is the old tracker, not the reference', b => ({ [L]: swap(b[L], "  if (part === 'ref') return <div>", "  if (part === 'ref_off') return <div>") })],
   ['Your assistants leaves lite’s All screen', b => ({ [L]: swap(b[L], '<VeraRoster links={status && status.rosterLinks} veraHref="./" />', '') })],
-  ['Home loses the slot', full('React.createElement(HomeSlot,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate}),', '')],
-  ['Bills comes back to the slot', full("{id:'birthday',label:'🎂 Birthday'}];", "{id:'birthday',label:'🎂 Birthday'},{id:'bills',label:'🧾 Bills'}];")],
   ['spending counts lines with no actuals', full("if(x.actual==null)return;plan+=x.plan||0;", "plan+=x.plan||0;")],
-  ['the slot forgets the pick', full("setPick(id);try{localStorage.setItem('vera_home_slot',id);}catch(e){}", "setPick(id);")],
-  ['Coming up shows past events', full("var cs=(d.cards||[]).filter(function(c){return!c.after;}).slice(0,3);", "var cs=(d.cards||[]).slice(0,3);")],
   ['Birthday ignores gift ideas', full("return{label:String(d.Label||''),person:who,date:d.nextDate,days:d.daysUntil,ideas:n};", "return{label:String(d.Label||''),person:who,date:d.nextDate,days:d.daysUntil,ideas:0};")],
 ];
 
