@@ -191,6 +191,9 @@ function harness(opts) {
   if (opts.override) opts.override(ctx, calls);
 
   vm.createContext(ctx); loadSettings_(ctx);
+  // The day plan is a running note (Settings.js): no VERA State tab here, so it falls back
+  // to the fake properties, and getSpreadsheet counts only the morning email's own reads.
+  vm.runInContext('veraStoreSheet_ = function() { return null; };', ctx);
   [extractFn(CODE, 'escapeHtml_'),
    // Real, not a fake: summing a tally across the alias set is the whole of what the
    // packing lookup now does, so a stub here would leave the count untested.
