@@ -205,6 +205,10 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 `mark_coupon_used` now calls `webMarkCouponUsedKeep_`: Status `Used`, Used On (13) and Saved (14), named by `cpnEnsureCols_`; `cpnSaved_` reads "$5 off" / "$10 off $50" / "5 dollars off" and returns null for a percentage. `webGetCoupons_(e)` skips used rows unless `withUsed=1`, keeps a used row past its expiry, and returns `savedThisYear`. `purgeExpiredCoupons_` deletes a used row only when `cpnUsedOld_` (used before Jan 1 of last year); the morning email's coupon lines and `checkExpiringCoupons_` skip used ones. On the screen, `cpLive_`, `cpStores_`, `cpCounts_` and `cpForStore_` (the shopping chip, in the shared ShopList block through `props.couponsFor`) do the work.
 
+### Resell: listed, sold, drop the price (`Resell.js`, `ResellListView`)
+
+`rsStamps_(row, p, today)` is pure: from the row before the change and the request, the Listed Date / Sold Price / Sold Date / Dropped On writes. `rsApplyStamps_` runs it inside `webUpdateResellItem_` before the fields are written (so it sees the old status and price) and `rsEnsureCols_` adds the columns. `webGetResellList_` sends dates as yyyy-MM-dd. On the screen, `rsColumns_` sorts the board (To list by priority, Listed oldest first, Sold newest first), `rsNudge_` is the 14-day rule (counted from the later of listing and the last drop), and `rsCounts_` the counters.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

@@ -2086,6 +2086,16 @@ The screen (Home Front › Kitchen › Takeouts): cuisine chips, a card per rest
 
 Stays come from multi-day all-day events on the gap calendars whose title or description has a guest keyword (`getUpcomingGuests_`, PTO.js). **Hosting › Guests** (`Guests.js`, `GuestsView`) shows who's **staying now** on top (*Staying · day 2 of 5*, when they leave), then who's **coming** (*Arrives in 12 d*, dates, nights), each with links to the **guest guide** and **Meal Plan**, a headcount stepper (the household plus guests; guessed from the title, "Mom & Dad" is 2, "The Lins (4)" is 4), and the **prep list**. The list is edited once (Config `guest_prep_list`, one item per line, with a default) and every stay gets it; what's ticked for each stay and its headcount are kept in a **`Guest Prep`** tab (Stay, Item, Value, Updated), made on the first tick. **Past stays** (the last year) fold away.
 
+### Resell
+
+The `Resell List` tab (ID, Item, Category, Asking Price, Original Price, Platform, Priority, Status, Notes, Added Date) gains **`Listed Date`**, **`Sold Price`**, **`Sold Date`** and **`Dropped On`** (`Resell.js`, named the first time they're written). `update_resell_item` stamps them: listing sets Listed Date; selling sets Sold Date and the price it went for (`soldPrice`, else the asking price); lowering a listed item's asking price sets Dropped On; moving it back to To list clears all four.
+
+The screen (Home Front › Savings › Resell) has counters (**Listed value**, **Sold this year**, **Listed 14 d+**) and three columns, **To list → Listed → Sold** (side by side on a computer, stacked on a phone). **List it →** and **Sold… →** (which asks the price) move a card on; a listed card shows its days listed and, 14 days after listing or the last price drop, **drop the price?**; a sold card shows what it went for against what you paid. ⋯ edits an item (including Donated, which folds away); **＋ Add an item** starts one in To list.
+
+| Route | Params | What it does |
+|---|---|---|
+| `update_resell_item` | `id`, any of `item`, `category`, `askingPrice`, `originalPrice`, `platform`, `priority`, `status`, `notes`, `soldPrice` | Updates an item and returns the `stamps` it wrote |
+
 ### Chores for others
 
 The `ChoresForOthers` tab holds jobs for the kids (or anyone) with a reward: ID, Task, Assignee, Reward, Status (Open / Done), Added Date, Notes. Two columns follow Notes (`ChoresForOthers.js`, added and named the first time they're written): **`Done Date`** (stamped by ✓ Done) and **`Paid`** (the day the reward was paid). A reward like `$10`, `10` or `$7.50` counts as money (`cfoAmount_`); anything else ("movie night") is shown but isn't totalled.

@@ -9260,10 +9260,11 @@ function webGetResellList_() {
   if (sheet && sheet.getLastRow() >= 2) {
     var rows = sheet.getDataRange().getValues();
     var hdrs = rows[0];
+    var tz = Session.getScriptTimeZone();
     rows.slice(1).forEach(function(r) {
       if (!r[0]) return;
       var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? rsYmd_(r[i], tz) : r[i]; });   // Resell.js: dates as yyyy-MM-dd
       items.push(obj);
     });
   }
@@ -9312,6 +9313,7 @@ function webUpdateResellItem_(e) {
   var hdrs  = rows[0];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() !== id) continue;
+    var stamps = rsApplyStamps_(sheet, hdrs, rows[i], i + 1, p);   // Resell.js: Listed / Sold / Dropped dates, before the fields change
     var fields = {
       'Item':           p.item          !== undefined ? (p.item || '').trim()                                : undefined,
       'Category':       p.category      !== undefined ? p.category                                          : undefined,
@@ -9327,7 +9329,7 @@ function webUpdateResellItem_(e) {
       var col = hdrs.indexOf(key);
       if (col !== -1) sheet.getRange(i + 1, col + 1).setValue(fields[key]);
     });
-    return { ok: true };
+    return { ok: true, stamps: stamps };
   }
   return { ok: false, error: 'not found' };
 }
