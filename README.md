@@ -2009,6 +2009,8 @@ The `Morning Routine` tab holds a configurable checklist. Each item has an ID, l
 
 ### Prescriptions
 
+**Health › Prescriptions** (`PrescriptionsTab`, `Rx.js`): a **Both / Ahmed / Victoria** switch, counters (active, refill within 7 days, overdue), each prescription with a supply meter (days left of its Days Supply), the refill countdown, the pharmacy and doctor, the Rx number with 📋, **✓ Refilled today** (Last Filled today; the next Refill Date is today + Days Supply, else the last gap between fills) and Pause; paused ones fold away. The nightly `checkRefills_` raises a flag 7 days before a refill (Medium; High once overdue) that closes when the date moves on, and Victoria's refills due within 7 days also show in **Needs you on her lite Today** (the shared NeedsYou block, given the prescriptions).
+
 The `Prescriptions` tab tracks active medications for Ahmed and Victoria: medication name, dosage, frequency, doctor, pharmacy, Rx number, last filled date, refill date, and days supply. VERA's chat can add prescriptions and mark refills. Upcoming refill dates are surfaced in the chat system prompt for proactive reminders.
 
 ---
@@ -2643,7 +2645,8 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `prescriptions` | — | All active prescriptions |
+| `prescriptions` | — | All prescriptions, dates as yyyy-MM-dd |
+| `rx_refilled` | `id` | Last Filled today and the next Refill Date |
 | `add_prescription` | `person`, `medication`, `dosage`, `frequency`, `refillDate`, `notes` | Add prescription |
 | `update_prescription` | `id`, `field`, `value` | Update prescription field |
 | `delete_prescription` | `id` | Remove prescription |

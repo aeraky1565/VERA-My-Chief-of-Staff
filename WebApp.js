@@ -290,6 +290,7 @@ function doGet(e) {
       case 'add_prescription':           return jsonOut_(webAddPrescription_(e));
       case 'update_prescription':        return jsonOut_(webUpdatePrescription_(e));
       case 'delete_prescription':        return jsonOut_(webDeletePrescription_(e));
+      case 'rx_refilled':                return jsonOut_(webRxRefilled_(e));
       // Credit Card Hub (Issues #115 + #117)
       // Address Book — the shared list of people we send things to
       case 'address_book':               return jsonOut_(webGetAddressBook_());
@@ -7779,7 +7780,7 @@ function webGetPrescriptions_() {
   var rows = sheet.getDataRange().getValues();
   if (rows.length <= 1) return { ok: true, prescriptions: [] };
 
-  var prescriptions = [];
+  var prescriptions = [], tzRx = Session.getScriptTimeZone();
   for (var i = 1; i < rows.length; i++) {
     var r = rows[i];
     if (!r[0]) continue; // skip empty rows
@@ -7793,8 +7794,8 @@ function webGetPrescriptions_() {
       doctor:     r[5]  || '',
       pharmacy:   r[6]  || '',
       rxNumber:   r[7]  || '',
-      lastFilled: r[8]  || '',
-      refillDate: r[9]  || '',
+      lastFilled: rxYmd_(r[8], tzRx) || (r[8] || ''),   // Rx.js: dates as yyyy-MM-dd
+      refillDate: rxYmd_(r[9], tzRx) || (r[9] || ''),
       daysSupply: r[10] || '',
       active:     r[11] || 'Yes',
       notes:      r[12] || '',

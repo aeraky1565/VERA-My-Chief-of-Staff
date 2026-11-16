@@ -15006,6 +15006,14 @@ function liteNeedsYou_(d, now) {
     if (n == null || n < 0 || n > 7) return;
     out.push({ kind: 'coupon', id: String(x.ID || x.id || ''), title: (x.Store || x.store || 'Coupon') + ' coupon', sub: String(x.Offer || x.offer || ''), days: n, tick: false, go: ['shopping', 'coupons'] });
   });
+  // Refills (Rx.js): the lite Today passes rx, and shows the signed-in person's (Victoria's
+  // unless d.who says otherwise) that are due within 7 days or overdue.
+  ((d.rx || {}).prescriptions || []).forEach(function(x) {
+    if (String(x.active || 'Yes') !== 'Yes' || String(x.person || '') !== String(d.who || 'Victoria')) return;
+    var n = liteDays_(String(x.refillDate || '').slice(0, 10), now);
+    if (n == null || n > 7) return;
+    out.push({ kind: 'rx', id: String(x.id || ''), title: 'Refill ' + (x.medication || 'a prescription'), sub: [x.dosage, x.pharmacy].filter(Boolean).join(' · ') || 'Prescription', days: n, tick: false, go: ['family', 'prescriptions'] });
+  });
   ((d.chores || {}).chores || []).forEach(function(x) {
     var u = x.upkeep;
     if (!u || u.days == null || u.days > 3) return;
@@ -15179,7 +15187,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate, who }
   // Tiles say one useful thing each (liteTiles_). Home counts daily chores not yet ticked:
   // the Chores tab has Checked, not Status, so the old count included every chore.
   const tiles = liteTiles_({ cards: data.cards, coupons: data.coupons, rx: data.rx, bills: data.bills, chores: data.chores, trips }, shopping, _now);
-  const needs = liteNeedsYou_({ cards: data.cards, coupons: data.coupons, chores: data.chores, trip: packKey ? nextTrip : null, packing: data.packing }, _now);
+  const needs = liteNeedsYou_({ cards: data.cards, coupons: data.coupons, chores: data.chores, rx: data.rx, trip: packKey ? nextTrip : null, packing: data.packing }, _now);
   const needsLoading = data.cards === undefined || data.coupons === undefined || data.chores === undefined;
 
   async function tickNeed(n) {
@@ -15281,7 +15289,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate, who }
             <div key={n.kind + n.id} className={'lite-need-row' + (done ? ' done' : '')} data-need={n.kind}>
               {n.tick
                 ? <input type="checkbox" checked={done} disabled={done} aria-label={'Mark ' + n.title + ' done'} onChange={() => tickNeed(n)} />
-                : <span aria-hidden="true">{n.kind === 'coupon' ? '🎟️' : '🧳'}</span>}
+                : <span aria-hidden="true">{n.kind === 'coupon' ? '🎟️' : n.kind === 'rx' ? '💊' : '🧳'}</span>}
               <button type="button" className="lite-need-go" onClick={() => onNavigate(n.go[0], n.go[1])}>
                 <span style={{ minWidth: 0 }}><b>{n.title}</b><small>{n.sub}</small></span>{due}
               </button>
