@@ -2035,6 +2035,8 @@ Nightly Step 0a scans the "Joint Chaos" shared Google Calendar for birthday even
 
 The `Gift People` tab holds one row per person (default: Ahmed, Victoria). The `Gift Ideas` tab holds individual ideas linked to a person. The dashboard People tab shows per-person idea lists. Chat can add ideas via natural language.
 
+**Price, link, given** (`Gifts.js`): the Gift Ideas tab gains **`Price`**, **`Link`**, **`Given On`** and **`Occasion`** after Added Date (named on first write). **People › Gift Ideas** orders people by their next occasion (Important Dates), shows each idea as a chip with its price and a ↗ link (tap to edit), and **🎁 Bought** keeps it as given with the occasion filled in ("Birthday 2026"); the card says **Last: …** and folds the given ones (↺ to undo). Near an occasion with no idea, the card says so. Fixed along the way: a new idea disappeared from the list after saving.
+
 ---
 
 ## Career Module
@@ -2665,7 +2667,10 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `add_card_perk` / `delete_card_perk` / `toggle_card_perk` | (perk fields) | Manage card perks |
 | `add_loyalty_program` / `update_loyalty_program` / `delete_loyalty_program` | (program fields) | Manage loyalty programs |
 | `add_rewards_goal` / `update_rewards_goal` / `delete_rewards_goal` | (goal fields) | Manage rewards goals |
-| `get_gift_data` | — | Gift people + ideas |
+| `get_gift_data` | — | Gift people + ideas (with Price, Link, Given On, Occasion) |
+| `add_gift_idea` | `person`, `idea`, `price`, `link` | Adds an idea |
+| `update_gift_idea` | `id`, `idea`, `price`, `link` | Changes an idea |
+| `gift_given` | `id`, `occasion`, `undo` | Keeps it as given (or moves it back) |
 | `add_gift_person` / `delete_gift_person` | `name` | Manage gift people |
 | `add_gift_idea` / `delete_gift_idea` | `person`, `idea` | Manage gift ideas |
 | `get_important_dates` | — | All important dates |

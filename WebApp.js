@@ -320,6 +320,8 @@ function doGet(e) {
       case 'delete_gift_person':         return jsonOut_(webDeleteGiftPerson_(e));
       case 'add_gift_idea':              return jsonOut_(webAddGiftIdea_(e));
       case 'delete_gift_idea':           return jsonOut_(webDeleteGiftIdea_(e));
+      case 'update_gift_idea':           return jsonOut_(webUpdateGiftIdea_(e));
+      case 'gift_given':                 return jsonOut_(webGiftGiven_(e));
       // Important Dates (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -8925,10 +8927,11 @@ function webGetGiftData_() {
   var ideas = [];
   if (ideasSheet && ideasSheet.getLastRow() >= 2) {
     var iRows = ideasSheet.getDataRange().getValues();
-    var hdrs  = iRows[0];
+    var hdrs  = iRows[0], tzG = Session.getScriptTimeZone();
     iRows.slice(1).forEach(function(r) {
       if (!r[0]) return;
-      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); ideas.push(obj);
+      // Gifts.js: Price, Link, Given On, Occasion follow Added Date; dates as yyyy-MM-dd.
+      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? Utilities.formatDate(r[i], tzG, 'yyyy-MM-dd') : r[i]; }); ideas.push(obj);
     });
   }
   return { ok: true, people: people, ideas: ideas };
@@ -8970,8 +8973,10 @@ function webAddGiftIdea_(e) {
   var id = 'gi_' + Date.now();
   var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  ss.getSheetByName(TABS.GIFT_IDEAS).appendRow([id, person, idea, date]);
-  return { ok: true, entry: { ID: id, Person: person, Idea: idea, 'Added Date': date } };
+  var gs = ss.getSheetByName(TABS.GIFT_IDEAS), price = giPrice_(p.price), link = giLink_(p.link);   // Gifts.js
+  if (price !== '' || link) { giEnsureCols_(gs); gs.appendRow([id, person, idea, date, price, link]); }
+  else gs.appendRow([id, person, idea, date]);
+  return { ok: true, entry: { ID: id, Person: person, Idea: idea, 'Added Date': date, Price: price, Link: link } };
 }
 
 function webDeleteGiftIdea_(e) {
