@@ -249,6 +249,10 @@ Columns 5–8 (`giEnsureCols_`): Price (`giPrice_`), Link (`giLink_`, http(s) on
 
 **The screen** (main dashboard): the **card runs** sit on top, the current one (most recently sent) first, each with "N of M sent this year"; tap one to open the run. Each household card shows chips for the **city**, **people**, the **last card sent** and, when the address was never confirmed or was confirmed two or more years ago, a **stale-address** chip. Under it, each person's **next date** (📅, opens People › Important Dates) and **open gift ideas** (🎁, opens Gift Ideas), matched on the full or first name. **Bulk import** and **Check ids / Repair** sit under **⚙ Tools**.
 
+### Notes (`NotesTab`, `LinkedNotes`)
+
+Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The screen has a **📌 Pinned** row on top, **category chips** with counts, and **search** across title, content, tags and Related to. On a computer the notes are **cards**; on a phone they are a **list**. **Related to** links a note to a person, trip or project (several can be split with commas or semicolons; the form offers names already used). A linked note also shows on that person's Gift Ideas card, on the trip's Summary and under the board on the Projects tab, where you tap it to read it all. Chat is unchanged: what you tell VERA in chat is still kept in Memory.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

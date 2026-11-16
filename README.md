@@ -500,6 +500,10 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
+### Notes (`NotesTab`, `LinkedNotes`)
+
+Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The screen has a **📌 Pinned** row on top, **category chips** with counts, and **search** across title, content, tags and Related to. On a computer the notes are **cards**; on a phone they are a **list**. **Related to** links a note to a person, trip or project (several can be split with commas or semicolons; the form offers names already used). A linked note also shows on that person's Gift Ideas card, on the trip's Summary and under the board on the Projects tab, where you tap it to read it all. Chat is unchanged: what you tell VERA in chat is still kept in Memory.
+
 ### Address Book (`AddressBook.js`, `WebApp.js`)
 
 The shared list of people we send things to — Christmas cards, birthday cards,
