@@ -63,7 +63,7 @@ const AB_MARK = '// ---- AddressBookView ----';
 function abBlock(src) {
   const a = src.indexOf(AB_MARK);
   if (a === -1) throw new Error('address book block not found');
-  const ends = ['function PeopleTab(', '// ---- App ----', '// ---- ChoresView'];
+  const ends = ['function PeopleTab(', '// ---- App ----', '// ---- ChoresView', '// People › Important Dates (GiftNudge.js)'];
   const b = ends.map(e => src.indexOf(e, a)).filter(i => i !== -1).sort((x, y) => x - y)[0];
   return src.slice(a, b === undefined ? src.length : b);
 }

@@ -16,14 +16,14 @@ const CONTROLS = [
   ['expiring today counts as gone with a grace of 0', swapIn(['Code.js'], 'gone: left < 0 && left <= -keep };', 'gone: left <= -keep };')],
   ['a US date can’t be read', swapIn(['Code.js'], "  if ((m = /^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4}|\\d{2})$/.exec(s))) return ymd(m[3].length === 2 ? '20' + m[3] : m[3], m[1], m[2]);\n", '')],
   ['Feb 30 accepted', swapIn(['Code.js'], "    if (t.getUTCMonth() !== m - 1) return '';                      // e.g. Feb 30\n", '')],
-  ['the purge deletes every expired one', swapIn(['Code.js'], 'if (couponState_(couponIso_(rows[i][7], tz), today, keep).gone)', 'if (couponState_(couponIso_(rows[i][7], tz), today, keep).expired)')],
+  ['the purge deletes every expired one', swapIn(['Code.js'], ': couponState_(couponIso_(rows[i][7], tz), today, keep).gone)', ': couponState_(couponIso_(rows[i][7], tz), today, keep).expired)')],
   ['the grace week setting not kept within 0–60', swapIn(['Code.js'], 'return isNaN(v) ? 7 : Math.max(0, Math.min(60, v));', 'return isNaN(v) ? 7 : v;')],
-  ['the route sends coupons past their grace week', swapIn(['WebApp.js'], '    if (st.gone) return;\n', '')],
+  ['the route sends coupons past their grace week', swapIn(['WebApp.js'], '    if (st.gone && !used) return;\n', '')],
   ['the route leaves a US date as it is', swapIn(['WebApp.js'], '    if (st.iso) obj.Expires = st.iso;\n', '')],
   ['the purge back as the night’s last step', b => { if (b['Code.js'].indexOf(EARLY) === -1) throw new Error('anchor moved: early coupon steps');
     const s = b['Code.js'].replace(EARLY, ''); const t = "    nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);\n"; if (s.indexOf(t) === -1) throw new Error('anchor moved: tax step');
     return { 'Code.js': s.replace(t, t + "    nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);\n    nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);\n") }; }],
-  ['expired coupons stay in the live list (full)', swapIn(FULL, 'live=sorted.filter(c=>!cpExpired_(c))', 'live=sorted')],
+  ['expired coupons stay in the live list (full)', swapIn(FULL, 'if(cpUsed_(c)||cpExpired_(c))return false;', 'if(cpUsed_(c))return false;')],
   ['expired coupons stay in the live list (lite)', swapIn(LITE, 'live = sorted.filter(c => !cpExpired_(c))', 'live = sorted')],
   ['not scratched off', swapIn(ALL, "strike={textDecoration:'line-through',textDecorationColor:'#9aa6c4aa',color:'#6b7590'}", "strike={color:'#6b7590'}")],
   ['copy still on for an expired code', swapIn(ALL, "disabled:true,title:'Expired'", "disabled:false,title:'Expired'")],
