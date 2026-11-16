@@ -185,6 +185,10 @@ Snapping a flyer keeps a **thumbnail** (about 300 px, under 45,000 characters) i
 
 The **HOA** card shows when the site was last scanned and what it found, **Scan now**, **Scan history** (every logged scan: date, items, new flags), and ⚙ for the HOA link.
 
+### Chores: owners and who ticked it (`Chores.js`, `ChoresView`)
+
+The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from `_veraWho_`); `toggle_chore` writes Checked By, `add_chore` and `update_chore` take `owner`, and `resetChoresByCadence_` clears Checked By with the tick. The screen: today's ring, cadence chips, an owner filter, owner pills, who ticked it, and a ⋯ editor. No nudges; not in Needs you.
+
 ### Step 0k: `autoRestockItems_()` + `generatePantryFlags_()`
 
 `autoRestockItems_()` uses exponential moving average (EMA, configurable alpha via `pantry_ema_alpha`, default 0.3) to predict when household items will run out based on `Purchase History` tab data, and pre-adds restock items to the Shopping List. `generatePantryFlags_()` checks if a trip is approaching and items are predicted to run out during the trip. Both are gated by `pantry_enabled = 'true'`.

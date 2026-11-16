@@ -2068,7 +2068,7 @@ The **HOA** card shows when the site was last scanned and what it found, **Scan 
 
 ### Chores
 
-The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.
+The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. Two columns follow Due By (`Chores.js`, added the first time they're written): **`Owner`** (Ahmed, Victoria or Either; blank is Either) and **`Checked By`** (who ticked it, from the sign-in; cleared on untick and by the nightly reset). The screen (Home Front › Chores › Chores) opens on a ring of today's daily chores, the cadences as chips (done of total, how many left, when they reset), and an owner filter (All · Ahmed · Victoria · Either; a person's filter keeps Either too). Each chore shows its owner pill; a done one is struck through with who ticked it and when, until its reset. **⋯** changes the owner or cadence or deletes it, and the add row takes an owner. Chores stay on this screen: no nudges, and they are not in Needs you on either dashboard (upkeep jobs still are). `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.
 
 ### Vehicles
 

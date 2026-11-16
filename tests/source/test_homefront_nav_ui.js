@@ -171,7 +171,7 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
       let u = await up();
       check(L + ': upkeep sits under the routine chores, which no longer list it', u.rows.length === 3 && /Dishes/.test(u.routine) && !/HVAC|gutters|smoke/i.test(u.routine), JSON.stringify(u.rows));
       check(L + ': overdue first, then not set, then the rest; each says how often, when, and last done', /^Replace HVAC filter Every 3 months · overdue since Oct 2(, 2026)? · last Jul 2/.test(u.rows[0]) && /^Test smoke alarms Every 6 months · not done yet/.test(u.rows[1]) && /^Clean the gutters Seasonal · next Nov 30/.test(u.rows[2]), JSON.stringify(u.rows));
-      check(L + ': the "done today" count is routine chores only', /0\/1 chores done today/.test(u.routine), u.routine.slice(0, 300));
+      check(L + ': the "done today" count is routine chores only', (/0\/1[\s\S]{0,20}Today[\s\S]{0,20}1 left/.test(u.routine) || /0\/1 chores done today/.test(u.routine)), u.routine.slice(0, 300));
       check(L + ': the routine list offers only routine cadences', await page.evaluate(() => !/Quarterly|Annually|Seasonal/.test(document.getElementById('hfnprobe').innerText.split('UPKEEP')[0])));
       await page.evaluate(() => document.querySelector('#hfnprobe .hf-upkeep-row .hf-upkeep-done').click()); await wait(200);
       u = await up();

@@ -5337,11 +5337,13 @@ function resetChoresByCadence_() {
   var checkedIdx = hdrs.indexOf('Checked');
   if (cadIdx === -1 || checkedIdx === -1) return;
 
+  var byIdx = hdrs.indexOf('Checked By');   // Chores.js: cleared with the tick
   var resetCount = 0;
   for (var i = 1; i < rows.length; i++) {
     var cadence = String(rows[i][cadIdx] || '');
     if (toReset.indexOf(cadence) !== -1 && rows[i][checkedIdx]) {
       sheet.getRange(i + 1, checkedIdx + 1).setValue(false);
+      if (byIdx !== -1) sheet.getRange(i + 1, byIdx + 1).setValue('');
       resetCount++;
     }
   }

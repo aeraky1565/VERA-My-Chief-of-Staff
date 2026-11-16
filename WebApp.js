@@ -9153,7 +9153,9 @@ function webAddChore_(e) {
   var id    = 'ch_' + Date.now();
   var added = new Date().toISOString().slice(0, 10);
   sheet.appendRow([id, chore, cadence, sort, false, '', added, '', dueBy]);
-  var out = { ID: id, Chore: chore, Cadence: cadence, Sort: sort, Checked: false, 'Checked At': '', 'Added Date': added, 'Last Done': '', 'Due By': dueBy };
+  var owner = chOwner_(p.owner);   // Chores.js
+  sheet.getRange(sheet.getLastRow(), chCol_(sheet, 'Owner') + 1).setValue(owner);
+  var out = { ID: id, Chore: chore, Cadence: cadence, Sort: sort, Checked: false, 'Checked At': '', 'Added Date': added, 'Last Done': '', 'Due By': dueBy, Owner: owner, 'Checked By': '' };
   var up = hfUpkeepState_(out, hfToday_());
   if (up) out.upkeep = up;
   return { ok: true, chore: out };
@@ -9184,10 +9186,13 @@ function webToggleChore_(e) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       sheet.getRange(i + 1, checkedIdx + 1).setValue(checked);
+      var at = checked ? new Date().toISOString() : '';
       if (checkedAtIdx !== -1) {
-        sheet.getRange(i + 1, checkedAtIdx + 1).setValue(checked ? new Date().toISOString() : '');
+        sheet.getRange(i + 1, checkedAtIdx + 1).setValue(at);
       }
-      return { ok: true, id: id, checked: checked };
+      var by = checked ? chWho_() : '';   // Chores.js: who ticked it
+      sheet.getRange(i + 1, chCol_(sheet, 'Checked By') + 1).setValue(by);
+      return { ok: true, id: id, checked: checked, checkedAt: at, checkedBy: by };
     }
   }
   return { ok: false, error: 'not found' };
@@ -9209,6 +9214,7 @@ function webUpdateChore_(e) {
     if (String(rows[i][0]).trim() === id) {
       if (chore   && choreIdx   !== -1) sheet.getRange(i + 1, choreIdx   + 1).setValue(chore);
       if (cadence && cadenceIdx !== -1) sheet.getRange(i + 1, cadenceIdx + 1).setValue(cadence);
+      if (p.owner != null && p.owner !== '') sheet.getRange(i + 1, chCol_(sheet, 'Owner') + 1).setValue(chOwner_(p.owner));   // Chores.js
       return { ok: true, id: id };
     }
   }
