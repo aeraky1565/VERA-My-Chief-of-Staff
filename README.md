@@ -1967,6 +1967,14 @@ Four bento cards on the Finance tab:
 3. **Bills Status** — upcoming bills, paid/unpaid, due-day countdown
 4. **Cashflow Timeline** — projected cashflow based on recurring bills and income
 
+### Accounts: keep at least
+
+**Finances › Accounts** (`AccountsTab`, `Accounts.js`) shows no balances. It shows **this month's transfers** to Joint first (the joint accounts' minimums, split by the Summary split), a warning for **bills with no account** with **Assign**, and a compact card per account with its owner pill (A / V / J) and **Keep at least**: its bills (monthly and more often; bi-weekly as 26/12), **~estimated** bills with no amount (the average of their last 3 payments in the transactions sheet, read only, matched by the bill's words or a Config alias), and yearly, semiannual and quarterly bills **set aside monthly**. One-time bills and income don't count; a bill with neither an amount nor a payment is listed as "with no amount yet". Tap a card for its bills; ✎ moves a bill to another account.
+
+| Route | Params | What it does |
+|---|---|---|
+| `bill_estimates` | — | For bills with no amount: `{ bill: { amount, count, months } }` from the last 12 months of transactions |
+
 ### Bills Tab
 
 The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. The chat interface can mark bills paid, add new bills, and delete bills by row number.

@@ -1878,6 +1878,43 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     .rs-fld input, .rs-fld select { background: #07122b; border: 1px solid #1e3060; border-radius: 8px; padding: 8px 10px; color: #dde1f0; font: inherit; font-size: 14px; min-width: 0; }
     .rs-sheet-btns { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
     .rs-del { font: inherit; font-size: 12.5px; color: #f28b82; background: none; border: 0; cursor: pointer; margin-right: auto; padding: 8px 0; }
+    /* Finances › Accounts */
+    .ac { display: flex; flex-direction: column; gap: 10px; }
+    .ac-dim { font-size: 12px; color: #9aa6c4; }
+    .ac-err { font-size: 12.5px; color: #f28b82; }
+    .ac-sect { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: #9aa6c4; }
+    .ac-transfer { background: #0d1a33; border: 1px solid #2a3f6e; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .ac-trow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: #c9cfe3; }
+    .ac-trow b { color: #e8eaf6; font-variant-numeric: tabular-nums; }
+    .ac-big { font-size: 18px; }
+    .ac-pill { font-style: normal; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 7px; color: #0b1020; }
+    .ac-pill.a { background: #8ab4f8; } .ac-pill.v { background: #d7aefb; } .ac-pill.j { background: #81c995; }
+    .ac-warn { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #2a2410; border: 1px solid #6b5a1e; border-radius: 10px; padding: 8px 12px; font-size: 13px; color: #fcd34d; }
+    .ac-warn .btn { font-size: 12px; min-height: 32px; }
+    .ac-unlist { display: flex; flex-direction: column; }
+    .ac-head { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .ac-add { font-size: 12px; min-height: 32px; }
+    .ac-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 900px) { .ac-grid { grid-template-columns: repeat(2, 1fr); align-items: start; } }
+    .ac-card { background: #141f38; border: 1px solid #1f2c4a; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .ac-card-h { font: inherit; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: inherit; min-height: 36px; }
+    .ac-name { display: flex; flex-direction: column; font-size: 14px; font-weight: 700; color: #e8eaf6; min-width: 0; overflow-wrap: anywhere; }
+    .ac-name small { font-size: 11.5px; font-weight: 400; color: #8a94b0; }
+    .ac-keep { font-size: 13px; color: #c9cfe3; }
+    .ac-keep b { font-size: 16px; color: #e8b84c; font-variant-numeric: tabular-nums; }
+    .ac-parts { font-size: 11.5px; color: #8a94b0; }
+    .ac-bills { display: flex; flex-direction: column; border-top: 1px solid #1f2c4a; margin-top: 4px; padding-top: 4px; }
+    .ac-bill { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #172340; }
+    .ac-bill.paid { opacity: .5; }
+    .ac-bill-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .ac-bill-t b { font-size: 12.5px; color: #dde1f0; font-weight: 600; overflow-wrap: anywhere; }
+    .ac-bill-t small { font-size: 11px; color: #6b7590; }
+    .ac-bill-a { font-size: 12.5px; color: #e8b84c; font-variant-numeric: tabular-nums; }
+    .ac-bill-a.est { color: #c9a84c; font-style: italic; }
+    .ac-move { font: inherit; background: none; border: 1px solid #1e3060; border-radius: 8px; color: #9aa6c4; min-width: 32px; min-height: 30px; cursor: pointer; }
+    .ac-card-acts { display: flex; gap: 8px; justify-content: flex-end; padding-top: 6px; }
+    .ac-card-acts .btn { font-size: 12px; min-height: 32px; }
+    .ac-del { font: inherit; font-size: 12px; color: #f28b82; background: none; border: 0; cursor: pointer; }
   </style>
 <!-- build: 2026-07-09-r2 -->
 </head>
@@ -12832,196 +12869,71 @@ function HealthAcctTab(props) { var h = React.createElement;
     data && fsa.length && !data.sheetLinked ? h('span', { className: 'ha-link-hint', style: { fontSize: 12, color: '#6f7fa6', lineHeight: 1.45 } }, 'To work the FSA balance out from your claims, share the FSA sheet with VERA’s Google account (Viewer is enough) and put its id in Config as fsa_sheet_id.') : null); }
 // ---- /HealthAcct ----
 
-function AccountsTab({apiUrl,apiToken,bills,split}){
-  const[accounts,setAccounts]=React.useState([]);
-  const[loading,setLoading]=React.useState(true);
-  const[busy,setBusy]=React.useState(false);
-  const[error,setError]=React.useState('');
-  const[localBills,setLocalBills]=React.useState(null);// null = use prop; set after reassign to reflect server state immediately
-  const[modal,setModal]=React.useState(null);// null | {mode:'add'} | {mode:'edit',account:{...}}
-  const[expanded,setExpanded]=React.useState({});// accountName -> bool
-  const[editBill,setEditBill]=React.useState(null);// bill being reassigned
-
-  async function load(){
-    setLoading(true);setError('');
-    try{const d=await apiGet(apiUrl,apiToken,{action:'get_bank_accounts'});setAccounts(d.accounts||[]);}
-    catch(err){setError('Could not load accounts: '+err.message);}
-    setLoading(false);
-  }
-  React.useEffect(()=>{load();},[]);
-
-  function ownerColor(owner){return owner==='Ahmed'?'#5c9eff':owner==='Victoria'?'#c97ef2':'#2bb5a0';}
-  function ownerBg(owner){return owner==='Ahmed'?'#0d2040':owner==='Victoria'?'#1a0d30':'#0d1a10';}
-
-  // Bills assigned to each account — use localBills (refreshed after reassign) or fall back to prop
-  const effectiveBills=localBills!==null?localBills:(bills&&bills.bills||[]);
-  const allBills=effectiveBills.filter(b=>b.type!=='Income');
-  const knownNames=new Set(accounts.map(a=>a.name));
-  function billsFor(accountName){return allBills.filter(b=>b.account===accountName);}
-  const unassigned=allBills.filter(b=>!b.account||!knownNames.has(b.account));
-
-  function fmtAmt(v){if(!v&&v!==0)return'—';return'$'+Math.round(v).toLocaleString();}
-  function minBalance(accountName){
-    const bs=billsFor(accountName);
-    const total=bs.reduce(function(s,b){return s+(b.amount||0);},0);
-    const hasVar=bs.some(b=>!b.amount);
-    return{total,hasVar};
-  }
-
-  async function saveAccount(fields){
-    setBusy(true);
-    try{
-      if(modal&&modal.mode==='edit'&&modal.account){
-        await apiGet(apiUrl,apiToken,Object.assign({action:'update_bank_account',row:modal.account.row},fields));
-      } else {
-        await apiGet(apiUrl,apiToken,Object.assign({action:'add_bank_account'},fields));
-      }
-      await load();setModal(null);
-    }catch(err){setError('Save failed: '+err.message);}
-    setBusy(false);
-  }
-
-  async function deleteAccount(account){
-    if(!confirm('Delete "'+account.name+'"?'))return;
-    setBusy(true);
-    try{await apiGet(apiUrl,apiToken,{action:'delete_bank_account',row:account.row});await load();}
-    catch(err){setError('Delete failed: '+err.message);}
-    setBusy(false);
-  }
-
-  async function reassignBill(bill,newAccount){
-    setBusy(true);
-    try{
-      await apiGet(apiUrl,apiToken,{
-        action:'update_bill',row:bill.row,
-        bill:bill.bill,amount:bill.amount!=null?bill.amount:'',
-        dueDay:bill.dueDay!=null?bill.dueDay:'',
-        frequency:bill.frequency||'Monthly',
-        category:bill.category||'',account:newAccount,
-        notes:bill.notes||'',type:bill.type||'Expense'
-      });
-      // Fetch fresh bills so the UI reflects the change immediately
-      const freshData=await apiGet(apiUrl,apiToken,{action:'bills'});
-      setLocalBills(freshData&&freshData.bills||[]);
-      setEditBill(null);
-    }catch(err){setError('Reassign failed: '+err.message);}
-    setBusy(false);
-  }
-
-  function BillRow({b}){
-    var dueLabel=b.dueDay?'Due '+b.dueDay+'th':b.dueDate?b.dueDate:'';
-    var paidStyle={opacity:b.paid?0.45:1};
-    return/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'6px 0',borderBottom:'1px solid #0d1b3e',gap:8,...paidStyle}},
-      /*#__PURE__*/React.createElement("div",{style:{flex:1,fontSize:12,color:'#dde1f0'}},b.bill,b.notes&&/*#__PURE__*/React.createElement("span",{style:{color:'#4d6080',marginLeft:6,fontSize:11}},b.notes)),
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#c9a84c',fontVariantNumeric:'tabular-nums',minWidth:64,textAlign:'right'}},b.amount!=null?fmtAmt(b.amount):'—'),
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',minWidth:80,textAlign:'right'}},dueLabel),
-      /*#__PURE__*/React.createElement("span",{style:{fontSize:10,padding:'2px 7px',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',color:'#6b7fa8',background:'#0a1628'},onClick:()=>setEditBill({bill:b,currentAccount:b.account})},'✎')
-    );
-  }
-
-  function AccountCard({account}){
-    var mb=minBalance(account.name);
-    var count=billsFor(account.name).length;
-    var isOpen=!!expanded[account.name];
-    var clr=ownerColor(account.owner);
-    var bg=ownerBg(account.owner);
-    return/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:12}},
-      /*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
-        /*#__PURE__*/React.createElement("div",{style:{flex:1}},
-          /*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:14,color:'#dde1f0'}},account.name),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginTop:2}},account.institution&&account.type?account.institution+' · '+account.type:account.institution||account.type||'')
-        ),
-        /*#__PURE__*/React.createElement("span",{style:{fontSize:11,padding:'3px 10px',borderRadius:10,border:'1px solid '+clr,color:clr,background:bg}},account.owner||'—'),
-        /*#__PURE__*/React.createElement("button",{onClick:()=>setModal({mode:'edit',account}),style:{padding:'3px 8px',borderRadius:6,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:11}},'Edit'),
-        /*#__PURE__*/React.createElement("button",{onClick:()=>deleteAccount(account),disabled:busy,style:{padding:'3px 8px',borderRadius:6,background:'#1e2a3a',border:'1px solid #3a1a1a',color:'#ef5350',cursor:'pointer',fontSize:11}},'✕')
-      ),
-      /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:24,padding:'10px 0',borderTop:'1px solid #0d1b3e',borderBottom:isOpen?'1px solid #0d1b3e':'none',marginBottom:isOpen?8:0}},
-        /*#__PURE__*/React.createElement("div",null,
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}},'Min Balance Needed'),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:'#c9a84c',fontVariantNumeric:'tabular-nums'}},mb.total>0?fmtAmt(mb.total)+(mb.hasVar?'+':''):'—')
-        ),
-        /*#__PURE__*/React.createElement("div",null,
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}},'Bills'),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:'#dde1f0'}},count)
-        )
-      ),
-      count>0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c9eff',cursor:'pointer',marginTop:isOpen?0:2},onClick:()=>setExpanded(prev=>({...prev,[account.name]:!prev[account.name]}))},isOpen?'▾ Hide bills':'▸ Show bills'),
-      isOpen&&/*#__PURE__*/React.createElement("div",{style:{marginTop:6}},billsFor(account.name).sort(function(a,b){return(a.dueDay||99)-(b.dueDay||99);}).map(function(b,i){return/*#__PURE__*/React.createElement(BillRow,{key:i,b:b});}))
-    );
-  }
-
-  // Owner-level rollup for summary row
-  var _blue='#5c9eff';var _purple='#c97ef2';var _teal='#2bb5a0';
-  function billsTotal(accts){return accts.reduce(function(s,a){return s+billsFor(a.name).reduce(function(ss,b){return ss+(b.amount||0);},0);},0);}
-  var _ahmedAccts=accounts.filter(function(a){return a.owner==='Ahmed';});
-  var _victoriaAccts=accounts.filter(function(a){return a.owner==='Victoria';});
-  var _jointAccts=accounts.filter(function(a){return a.owner==='Joint';});
-  var _jointTotal=billsTotal(_jointAccts);
-  var _ahmedPct=(split&&split.ahmed!=null?split.ahmed:60)/100;
-  var _victoriaPct=(split&&split.victoria!=null?split.victoria:40)/100;
-  var _ahmedJoint=_jointTotal*_ahmedPct;
-  var _victoriaJoint=_jointTotal*_victoriaPct;
-  var _ahmedShared=0;
-  var _victoriaShared=0;
-  var _victoriaOwesAhmed=_ahmedShared*_victoriaPct;
-  var _ahmedOwesVictoria=_victoriaShared*_ahmedPct;
-  var _ahmedNet=_ahmedJoint-_victoriaOwesAhmed+_ahmedOwesVictoria;
-  var _victoriaNet=_victoriaJoint-_ahmedOwesVictoria+_victoriaOwesAhmed;
-  function _fmtD(n){return'$'+Math.abs(Math.round(n)).toLocaleString();}
-
-  if(loading)return/*#__PURE__*/React.createElement("div",{style:{padding:20,color:'#4d6080',fontSize:13}},"Loading accounts…");
-  return/*#__PURE__*/React.createElement("div",null,
-    error&&/*#__PURE__*/React.createElement("div",{style:{color:'#ef5350',fontSize:12,marginBottom:10}},error),
-    /*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#dde1f0',fontWeight:600}},"🏦 Accounts"),
-      /*#__PURE__*/React.createElement("button",{onClick:()=>setModal({mode:'add'}),style:{padding:'6px 14px',borderRadius:8,background:'#0d2040',border:'1px solid #5c9eff',color:'#5c9eff',fontSize:12,fontWeight:600,cursor:'pointer'}},"+ Add Account")
-    ),
-    // Owner summary row
-    accounts.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}},
-      [
-        {label:'Ahmed',color:_blue,accts:_ahmedAccts},
-        {label:'Victoria',color:_purple,accts:_victoriaAccts},
-        {label:'Joint',color:_teal,accts:_jointAccts}
-      ].map(function(o,i){
-        var tot=billsTotal(o.accts);
-        return/*#__PURE__*/React.createElement("div",{key:i,style:{background:'#0d1628',border:'1px solid '+o.color+'44',borderRadius:8,padding:'10px 12px'}},
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,fontWeight:700,color:o.color,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}},o.label),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:18,fontWeight:700,color:'#dde1f0',fontVariantNumeric:'tabular-nums'}},tot>0?_fmtD(tot):'—'),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',marginTop:2}},o.accts.length," account",o.accts.length!==1?'s':'')
-        );
-      })
-    ),
-    // Transfer calculation box
-    accounts.length>0&&_jointTotal>0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:14,background:'#070f1e',border:'1px solid #1e3060'}},
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',fontWeight:600,marginBottom:10}},"💰 Monthly Transfer Calculation"),
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginBottom:8}},"Joint bills: ",_fmtD(_jointTotal)," — split "+(split&&split.ahmed||60)+"/"+(split&&split.victoria||40)),
-      /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:20,flexWrap:'wrap'}},
-        /*#__PURE__*/React.createElement("div",null,
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:_blue,marginBottom:1}},"Ahmed → Joint"),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:_blue,fontVariantNumeric:'tabular-nums'}},_fmtD(_ahmedNet),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:400,marginLeft:2}},"/mo"))
-        ),
-        /*#__PURE__*/React.createElement("div",null,
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:_purple,marginBottom:1}},"Victoria → Joint"),
-          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:_purple,fontVariantNumeric:'tabular-nums'}},_fmtD(_victoriaNet),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:400,marginLeft:2}},"/mo"))
-        )
-      ),
-      (_ahmedShared>0||_victoriaShared>0)&&/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',marginTop:8,borderTop:'1px solid #1e3060',paddingTop:6}},"Includes shared card reimbursements · Edit amounts in the Summary tab")
-    ),
-    accounts.length===0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{textAlign:'center',color:'#4d6080',fontSize:13,cursor:'default'}},
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:28,marginBottom:8}},"🏦"),
-      /*#__PURE__*/React.createElement("div",null,"No accounts yet. Add your checking, savings, and credit card accounts to track bill coverage."),
-      unassigned.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginTop:8,fontSize:12,color:'#c9a84c'}},unassigned.length+" bills without an assigned account")
-    ),
-    accounts.map(function(a,i){return/*#__PURE__*/React.createElement(AccountCard,{key:i,account:a});}),
-    unassigned.length>0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:12,borderColor:'#3a2a00'}},
-      /*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:13,color:'#c9a84c',marginBottom:8}},"⚠️ Unassigned ("+unassigned.length+")"),
-      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginBottom:10}},"These bills have no account assigned or use old Ahmed/Victoria/Shared labels. Click ✎ to reassign."),
-      unassigned.sort(function(a,b){return(a.dueDay||99)-(b.dueDay||99);}).map(function(b,i){return/*#__PURE__*/React.createElement(BillRow,{key:i,b:b});})
-    ),
-    modal&&/*#__PURE__*/React.createElement(AccountFormModal,{mode:modal.mode,account:modal.account||null,busy:busy,onClose:()=>setModal(null),onSave:saveAccount}),
-    editBill&&/*#__PURE__*/React.createElement(ReassignBillModal,{bill:editBill.bill,accounts:accounts,busy:busy,onClose:()=>setEditBill(null),onSave:function(newAccount){reassignBill(editBill.bill,newAccount);}})
-  );
-}
+// Finances › Accounts (Accounts.js): this month's transfers to Joint first, then a warning for
+// bills with no account (Assign), then a compact card per account with its owner pill and
+// "Keep at least": its bills, an estimate (~, last 3 payments) for a bill with no amount, and
+// 1/12 of each yearly bill. No balances. Tap a card for its bills.
+var AC_PER_MONTH_={'monthly':1,'bi-weekly':26/12,'biweekly':26/12,'weekly':52/12,'quarterly':1/3,'semiannual':1/6,'semi-annual':1/6,'annual':1/12,'yearly':1/12};
+function acFreq_(f){var k=String(f||'Monthly').trim().toLowerCase();return k==='one-time'||k==='once'?0:AC_PER_MONTH_[k]!=null?AC_PER_MONTH_[k]:1;}
+function acYearly_(f){var k=String(f||'').trim().toLowerCase();return k==='annual'||k==='yearly'||k==='semiannual'||k==='semi-annual'||k==='quarterly';}
+// Pure: what an account should keep at least, and its parts: bills (monthly or more often),
+// estimated (bills with no amount, from their last payments), set aside (yearly / quarterly / semiannual, monthly share).
+function acMinimum_(bills,estimates){var p={bills:0,estimated:0,setAside:0,missing:[],count:0};estimates=estimates||{};
+  (bills||[]).forEach(function(b){if(b.type==='Income')return;var mult=acFreq_(b.frequency);if(!mult)return;p.count++;
+    var amt=b.amount!=null&&b.amount!==''&&!isNaN(Number(b.amount))?Number(b.amount):null,est=false;
+    if(amt==null){var e=estimates[b.bill];if(e&&e.amount!=null){amt=Number(e.amount);est=true;}else{p.missing.push(b.bill);return;}}
+    var monthly=amt*mult;if(est)p.estimated+=monthly;else if(acYearly_(b.frequency))p.setAside+=monthly;else p.bills+=monthly;});
+  p.total=Math.round(p.bills+p.estimated+p.setAside);p.bills=Math.round(p.bills);p.estimated=Math.round(p.estimated);p.setAside=Math.round(p.setAside);return p;}
+function acMoney_(n){return '$'+Math.abs(Math.round(Number(n)||0)).toLocaleString('en-US');}
+function acPill_(owner){return owner==='Ahmed'?['A','a']:owner==='Victoria'?['V','v']:['J','j'];}
+// Pure: the transfers to Joint from the joint bills and the split.
+function acTransfers_(accounts,bills,estimates,split){var joint=(accounts||[]).filter(function(a){return a.owner==='Joint';}).map(function(a){return a.name;});
+  var total=joint.reduce(function(s,n){return s+acMinimum_((bills||[]).filter(function(b){return b.account===n;}),estimates).total;},0);
+  var ah=split&&split.ahmed!=null?Number(split.ahmed):60,vi=split&&split.victoria!=null?Number(split.victoria):40;
+  return {joint:total,ahmed:Math.round(total*ah/100),victoria:Math.round(total*vi/100),split:ah+' / '+vi};}
+function AccountsTab({apiUrl,apiToken,bills,split}){var h=React.createElement;
+  var _a=React.useState([]),accounts=_a[0],setAccounts=_a[1];var _l=React.useState(true),loading=_l[0],setLoading=_l[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _e=React.useState(''),error=_e[0],setError=_e[1];var _lb=React.useState(null),localBills=_lb[0],setLocalBills=_lb[1];var _m=React.useState(null),modal=_m[0],setModal=_m[1];
+  var _x=React.useState({}),open=_x[0],setOpen=_x[1];var _eb=React.useState(null),editBill=_eb[0],setEditBill=_eb[1];var _es=React.useState({}),est=_es[0],setEst=_es[1];var _u=React.useState(false),showUn=_u[0],setShowUn=_u[1];
+  var load=function(){setLoading(true);setError('');return apiGet(apiUrl,apiToken,{action:'get_bank_accounts'}).then(function(d){setAccounts((d&&d.accounts)||[]);}).catch(function(err){setError('Could not load accounts: '+err.message);}).then(function(){setLoading(false);});};
+  React.useEffect(function(){load();apiGet(apiUrl,apiToken,{action:'bill_estimates'}).then(function(r){setEst((r&&r.estimates)||{});}).catch(function(){});},[]);
+  var all=(localBills!==null?localBills:(bills&&bills.bills||[])).filter(function(b){return b.type!=='Income';});
+  var known={};accounts.forEach(function(a){known[a.name]=true;});
+  var billsFor=function(n){return all.filter(function(b){return b.account===n;});};
+  var unassigned=all.filter(function(b){return !b.account||!known[b.account];});
+  var tr=acTransfers_(accounts,all,est,split);
+  var save=function(fields){setBusy(true);var q=modal&&modal.mode==='edit'&&modal.account?Object.assign({action:'update_bank_account',row:modal.account.row},fields):Object.assign({action:'add_bank_account'},fields);
+    apiGet(apiUrl,apiToken,q).then(load).then(function(){setModal(null);}).catch(function(err){setError('Save failed: '+err.message);}).then(function(){setBusy(false);});};
+  var del=function(a){if(!window.confirm('Delete "'+a.name+'"?'))return;setBusy(true);apiGet(apiUrl,apiToken,{action:'delete_bank_account',row:a.row}).then(load).catch(function(err){setError('Delete failed: '+err.message);}).then(function(){setBusy(false);});};
+  var reassign=function(b,to){setBusy(true);apiGet(apiUrl,apiToken,{action:'update_bill',row:b.row,bill:b.bill,amount:b.amount!=null?b.amount:'',dueDay:b.dueDay!=null?b.dueDay:'',frequency:b.frequency||'Monthly',category:b.category||'',account:to,notes:b.notes||'',type:b.type||'Expense'})
+    .then(function(){return apiGet(apiUrl,apiToken,{action:'bills'});}).then(function(f){setLocalBills((f&&f.bills)||[]);setEditBill(null);}).catch(function(err){setError('Reassign failed: '+err.message);}).then(function(){setBusy(false);});};
+  var billRow=function(b){var e=b.amount==null&&est[b.bill];return h('div',{key:(b.row||'')+b.bill,className:'ac-bill'+(b.paid?' paid':''),'data-bill':b.bill},
+    h('span',{className:'ac-bill-t'},h('b',null,b.bill),h('small',null,[b.dueDay?'due '+b.dueDay:'',b.frequency&&b.frequency!=='Monthly'?b.frequency:'',b.paid?'paid':''].filter(Boolean).join(' · '))),
+    h('span',{className:'ac-bill-a'+(e?' est':'')},b.amount!=null?acMoney_(b.amount):e?'~'+acMoney_(e.amount):'—'),
+    h('button',{type:'button',className:'ac-move','aria-label':'Move '+b.bill+' to another account',onClick:function(){setEditBill(b);}},'✎'));};
+  if(loading)return h('div',{className:'ac-dim'},'Loading accounts…');
+  return h('div',{className:'ac'},
+    error&&h('div',{className:'ac-err'},error),
+    accounts.length>0&&tr.joint>0&&h('div',{className:'ac-transfer'},h('div',{className:'ac-sect'},'💸 This month’s transfers'),
+      h('div',{className:'ac-trow'},h('span',null,'Joint bills'),h('b',null,acMoney_(tr.joint))),
+      h('div',{className:'ac-trow'},h('span',null,'Ahmed → Joint ',h('i',{className:'ac-pill a'},'A')),h('b',{className:'ac-big'},acMoney_(tr.ahmed))),
+      h('div',{className:'ac-trow'},h('span',null,'Victoria → Joint ',h('i',{className:'ac-pill v'},'V')),h('b',{className:'ac-big'},acMoney_(tr.victoria))),
+      h('div',{className:'ac-dim'},'split '+tr.split)),
+    unassigned.length>0&&h('div',{className:'ac-warn'},h('span',null,'⚠ '+unassigned.length+' bill'+(unassigned.length===1?'':'s')+' with no account'),
+      h('button',{type:'button',className:'btn ac-assign',onClick:function(){if(unassigned.length===1)setEditBill(unassigned[0]);else setShowUn(!showUn);}},showUn?'Hide':'Assign')),
+    showUn&&unassigned.length>1&&h('div',{className:'ac-unlist'},unassigned.map(billRow)),
+    h('div',{className:'ac-head'},h('div',{className:'ac-sect'},'Accounts'),h('button',{type:'button',className:'btn ac-add',onClick:function(){setModal({mode:'add'});}},'＋ Add account')),
+    !accounts.length&&h('div',{className:'ac-dim'},'No accounts yet. Add your checking and savings accounts to see what each should keep.'),
+    h('div',{className:'ac-grid'},accounts.map(function(a){var bs=billsFor(a.name),m=acMinimum_(bs,est),pill=acPill_(a.owner),isOpen=!!open[a.name];
+      return h('div',{key:a.row||a.name,className:'ac-card','data-account':a.name},
+        h('button',{type:'button',className:'ac-card-h','aria-expanded':isOpen,onClick:function(){var n=Object.assign({},open);n[a.name]=!isOpen;setOpen(n);}},
+          h('span',{className:'ac-name'},a.name,h('small',null,[a.institution,a.type].filter(Boolean).join(' · '))),h('i',{className:'ac-pill '+pill[1],title:a.owner||'Joint'},pill[0])),
+        h('div',{className:'ac-keep'},m.count?h(React.Fragment,null,h('span',null,'Keep at least '),h('b',null,(m.estimated?'~':'')+acMoney_(m.total)),h('span',{className:'ac-dim'},' · '+m.count+' bill'+(m.count===1?'':'s'))):h('span',{className:'ac-dim'},'No bills on this account')),
+        m.count>0&&h('div',{className:'ac-parts'},[m.bills?acMoney_(m.bills)+' bills':'',m.estimated?'~'+acMoney_(m.estimated)+' estimated':'',m.setAside?acMoney_(m.setAside)+' yearly set-aside':'',m.missing.length?m.missing.length+' with no amount yet':''].filter(Boolean).join(' · ')),
+        isOpen&&h('div',{className:'ac-bills'},bs.slice().sort(function(x,y){return (x.dueDay||99)-(y.dueDay||99);}).map(billRow),
+          h('div',{className:'ac-card-acts'},h('button',{type:'button',className:'btn ac-edit',onClick:function(){setModal({mode:'edit',account:a});}},'Edit account'),h('button',{type:'button',className:'ac-del',disabled:busy,onClick:function(){del(a);}},'Delete'))));})),
+    modal&&h(AccountFormModal,{mode:modal.mode,account:modal.account||null,busy:busy,onClose:function(){setModal(null);},onSave:save}),
+    editBill&&h(ReassignBillModal,{bill:editBill,accounts:accounts,busy:busy,onClose:function(){setEditBill(null);},onSave:function(to){reassign(editBill,to);}}));}
 function AccountFormModal({mode,account,busy,onClose,onSave}){
   const[form,setForm]=React.useState(account?{name:account.name,institution:account.institution,type:account.type,owner:account.owner,notes:account.notes}:{name:'',institution:'',type:'Checking',owner:'Joint',notes:''});
   function set(k,v){setForm(p=>({...p,[k]:v}));}

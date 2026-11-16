@@ -209,6 +209,10 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 `rsStamps_(row, p, today)` is pure: from the row before the change and the request, the Listed Date / Sold Price / Sold Date / Dropped On writes. `rsApplyStamps_` runs it inside `webUpdateResellItem_` before the fields are written (so it sees the old status and price) and `rsEnsureCols_` adds the columns. `webGetResellList_` sends dates as yyyy-MM-dd. On the screen, `rsColumns_` sorts the board (To list by priority, Listed oldest first, Sold newest first), `rsNudge_` is the 14-day rule (counted from the later of listing and the last drop), and `rsCounts_` the counters.
 
+### Accounts: keep at least (`Accounts.js`, `AccountsTab`)
+
+`webBillEstimates_` (`bill_estimates`) takes the bills with no amount, reads 12 months of transactions with `bsReadTransactions_` (read only) and returns `acEstimates_`: per bill, the average of its last 3 money-out payments, matched with `bsWords_` or a Config alias. On the screen, `acMinimum_` adds bills, ~estimated and set-aside (`acFreq_` turns a frequency into a monthly share; one-time is 0), and `acTransfers_` splits the joint accounts' minimums.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

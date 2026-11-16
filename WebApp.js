@@ -157,6 +157,7 @@ function doGet(e) {
       case 'set_trip_working':      return jsonOut_(webSetTripWorking_(e.parameter));   // WorkTrips.js: who works on a Working/Business Trip
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
+      case 'bill_estimates':        return jsonOut_(webBillEstimates_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
       case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
