@@ -1476,6 +1476,7 @@ function nightlyRun() {
 
     // Also previously unguarded.
     nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);
+    nightlyStep_(ctx, 'checkTaxLate_', checkTaxLate_);   // Tax.js: two weeks later than last year
 
     // The night now ends here. Everything from checkHealthAppointments_ onwards
     // lives in nightlyRunTail, on its own trigger an hour later — see that function

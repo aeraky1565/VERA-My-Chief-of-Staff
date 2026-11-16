@@ -2137,6 +2137,15 @@ The full screen (Home Front › Savings › Coupons) has counters (**Expire this
 | `get_coupons` | `withUsed` (`1` for the full screen) | Coupons with `expired`, `daysLeft`, `removeOn`, `percent`; used ones (`used`, `usedOn`, `saved`) only with `withUsed=1`; `savedThisYear` |
 | `mark_coupon_used` | `id`, `saved` (optional) | Keeps the coupon as Used with today and what it saved |
 
+### Tax documents
+
+**Finances › Tax** (`TaxTab`, `Tax.js`): a ring of the documents in for the tax year, **Filing due Apr 15 · N days** (the year after the tax year), per-person chips with what's still not received, and each document with a step row (**Not received → Received → Verified → Uploaded**; tap a step to set it). The first time a document leaves Not received, **`Received On`** (a column after Notes, named on first write) is stamped, so next year's copy (same form, issuer and owner) says **Usually arrives late Jan**; still missing two weeks after that, the nightly `checkTaxLate_` raises a **Medium flag** (`tax_late_<id>`), which closes once it arrives. Once every document is Verified and some aren't uploaded yet, the screen and the full Home's Needs you say **Send the documents to <preparer>** (not after the preparer's status is Filed). The preparer card, copying last year's list and the giving summary stay.
+
+| Route | Params | What it does |
+|---|---|---|
+| `get_tax_documents` | `year` | Documents with `receivedOn`, and `usual` / `expected` / `daysLate` from last year's copy |
+| `tax_needs` | — | The Needs you row for last tax year, or null |
+
 ### Contracts + Expiry Flagging
 
 The `Contracts` tab tracks active agreements: name, category, counterparty, start/end dates, auto-renewal flag, notice period, monthly cost, status, and document link. `checkContracts_()` runs nightly and generates flags for contracts approaching expiry (within the notice period + a buffer) or already expired. Chat can add, update, and log actions against contracts.

@@ -503,6 +503,7 @@ function doGet(e) {
       case 'add_tax_document':    return jsonOut_(webAddTaxDocument_(e));
       case 'update_tax_document': return jsonOut_(webUpdateTaxDocument_(e));
       case 'delete_tax_document': return jsonOut_(webDeleteTaxDocument_(e));
+      case 'tax_needs':           return jsonOut_(webTaxNeeds_());
       case 'copy_tax_year':       return jsonOut_(webCopyTaxYear_(e));
       // Tax Preparer (Issue #174)
       case 'get_tax_preparer':    return jsonOut_(webGetTaxPreparer_(e));
@@ -11460,28 +11461,15 @@ function webListTripsWithBudgets_() {
 // ─── TAX DOCUMENTS ────────────────────────────────────────────────────────────
 
 function webGetTaxDocuments_(e) {
-  var ss  = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sh  = ss.getSheetByName(TABS.TAX_DOCUMENTS);
-  if (!sh || sh.getLastRow() < 2) return { ok: true, documents: [] };
-  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, TAX_DOCUMENT_HEADERS.length).getValues();
+  // Tax.js: every document with Received On, and per document when it usually arrives
+  // (last year's copy) and how late it is; the year filter applies after, so last year counts.
+  var all = txAllDocs_();
   var yearFilter = e && e.parameter && e.parameter.year ? String(e.parameter.year) : null;
-  var docs = rows
-    .filter(function(r) { return r[0]; })
-    .filter(function(r) { return !yearFilter || String(r[1]) === yearFilter; })
-    .map(function(r) {
-      return {
-        id:          r[0],
-        taxYear:     r[1],
-        formType:    r[2],
-        issuer:      r[3],
-        account:     r[4],
-        category:    r[5],
-        status:      r[6] || 'not_received',
-        docLink:     r[7],
-        owner:       r[8] || 'Ahmed',
-        notes:       r[9]
-      };
-    });
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), usual = txUsual_(all, today);
+  var docs = all.filter(function(d) { return !yearFilter || String(d.taxYear) === yearFilter; }).map(function(d) {
+    var u = usual[d.id];
+    return Object.assign({}, d, u ? { usual: txWhen_(u.expected), expected: u.expected, daysLate: u.daysLate } : {});
+  });
   return { ok: true, documents: docs };
 }
 
@@ -11514,7 +11502,7 @@ function webUpdateTaxDocument_(e) {
   if (p.issuer    !== undefined) sh.getRange(row, 4).setValue(p.issuer);
   if (p.account   !== undefined) sh.getRange(row, 5).setValue(p.account);
   if (p.category  !== undefined) sh.getRange(row, 6).setValue(p.category);
-  if (p.status    !== undefined) sh.getRange(row, 7).setValue(p.status);
+  if (p.status    !== undefined) { txStampReceived_(sh, row, String(sh.getRange(row, 7).getValue() || 'not_received'), p.status); sh.getRange(row, 7).setValue(p.status); }   // Tax.js
   if (p.docLink   !== undefined) sh.getRange(row, 8).setValue(p.docLink);
   if (p.owner     !== undefined) sh.getRange(row, 9).setValue(p.owner);
   if (p.notes     !== undefined) sh.getRange(row, 10).setValue(p.notes);
