@@ -2046,6 +2046,12 @@ VERA's chat interface auto-captures career wins when Ahmed mentions launches, re
 
 ## Home Front Module
 
+### Household cheat sheet
+
+Home Front › House › Household is the `HouseholdInfo` tab: Section, Subsection, Label, Value, Notes and LastUpdated, plus two columns added the first time you save a line: **`Private`** (Yes/No) and **`Emergency`** (Yes). Every line marked Emergency (⭐) also shows on the pinned **🚨 In an emergency** card at the top. A private value is masked (••••1234) until you tap 👁, and the sitter guide masks it too unless you include private lines. A line whose Private cell is blank is guessed from its label (IDs, account, policy and member numbers, PINs), the guide's old rule, so nothing that was hidden before shows; once you switch it, your choice wins (`hfGuidePrivate_`, shared by both dashboards).
+
+The screen has search (labels, values, notes, section names; never a private value), section tiles on a phone and a section list on a computer, 📋 copy on every line, countdowns for date values ("Lease ends · in 7 months"), and a **re-check** chip on a section nothing has changed in for 12 months; **Still right ✓** (`household_section_checked`) stamps today on that section's lines. Tap a line to edit it in a sheet with the ⭐ and Private switches. A dismissable row suggests common lines you don't have yet (Wi-Fi password, gas shut-off, trash day, vet…). A subsection whose lines name an active contract's company (or whose name matches it) links to Finances › Contracts ("Renews in 23 d · in Contracts"). The Print button is gone: the **🧾 Sitter guide** (Hosting) prints, copies and downloads a guide made from these lines.
+
 ### Chores
 
 The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.

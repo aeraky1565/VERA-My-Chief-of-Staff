@@ -5701,6 +5701,8 @@ function GatheringsView(props){var h=React.createElement;var today=props.today||
 var HF_GUIDE_PRESETS=[['sitter','Sitter'],['guests','Guests'],['custom','Custom']];
 // Pure: a value printed masked unless numbers are switched on. Whole words, so "Provider" is not an "id".
 function hfGuideSensitive_(label){return /(^|[^a-z])(id|ssn|vin|pin)([^a-z]|$)|#|number|account|policy|member/i.test(String(label||''));}
+// Pure: a line is private by its own switch (HouseholdInfo's Private column); a line never set is guessed from its label.
+function hfGuidePrivate_(r){return r&&(r.private===true||(r.private!==false&&hfGuideSensitive_(r.label)));}
 function hfGuideMask_(v){var t=String(v==null?'':v);return t.length<=4?'••••':'••••'+t.slice(-4);}
 // Pure: which sections a preset ticks. Sitter: everything but money and paperwork. Guests: the practical bits.
 function hfGuidePreset_(names,preset){var out={};(names||[]).forEach(function(n){
@@ -5710,7 +5712,7 @@ function hfGuidePreset_(names,preset){var out={};(names||[]).forEach(function(n)
 function hfGuideBuild_(data,picked,opts){opts=opts||{};
   var sections=((data&&data.sections)||[]).filter(function(s){return picked&&picked[s.section];}).map(function(s){
     return {name:s.section,subsections:(s.subsections||[]).map(function(ss){return {name:ss.subsection||'',rows:(ss.rows||[]).filter(function(r){return String(r.value||'').trim();}).map(function(r){
-      return {label:r.label,value:!opts.secrets&&hfGuideSensitive_(r.label)?hfGuideMask_(r.value):String(r.value),notes:r.notes||''};})};}).filter(function(ss){return ss.rows.length;})};})
+      return {label:r.label,value:!opts.secrets&&hfGuidePrivate_(r)?hfGuideMask_(r.value):String(r.value),notes:r.notes||''};})};}).filter(function(ss){return ss.rows.length;})};})
     .filter(function(s){return s.subsections.length;});
   return {title:opts.title||'Our home: the guide',note:String(opts.note||'').trim(),sections:sections};}
 // Pure: as plain text, for a message.

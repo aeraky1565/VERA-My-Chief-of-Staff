@@ -50,7 +50,7 @@ const CONTROLS = [
   ['a to-do date is not counted back', both("function hfTodoDueC_(date,before){return date?hfAddDaysC_(date,-(Number(before)||0)):'';}", "function hfTodoDueC_(date,before){return date||'';}"), UI],
   ['Send to Shopping ignores the store picked', both("{action:'gathering_to_shopping',tabId:tab,items:g.shopping}", "{action:'gathering_to_shopping',tabId:(stores&&stores[0]||{}).id,items:g.shopping}"), UI],
   ['Gatherings is not in Hosting', both("{id:'hosting',label:'Hosting',icon:'🎉',items:['guests','gatherings','guide']}", "{id:'hosting',label:'Hosting',icon:'🎉',items:['guests','guide']}"), UI],
-  ['the guide prints account numbers by default', both("value:!opts.secrets&&hfGuideSensitive_(r.label)?hfGuideMask_(r.value):String(r.value)", "value:String(r.value)"), UI],
+  ['the guide prints account numbers by default', both("value:!opts.secrets&&hfGuidePrivate_(r)?hfGuideMask_(r.value):String(r.value)", "value:String(r.value)"), UI],
   ['a provider counts as an ID', both("/(^|[^a-z])(id|ssn|vin|pin)([^a-z]|$)|#|number|account|policy|member/i", "/id|ssn|vin|pin|#|number|account|policy|member/i"), UI],
   ['the guide includes every section', both("filter(function(s){return picked&&picked[s.section];})", "filter(function(s){return true;})"), UI],
   ['the guide page is not escaped', both("function hfEsc_(t){return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}", "function hfEsc_(t){return String(t==null?'':t);}"), UI],

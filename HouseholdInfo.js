@@ -1,7 +1,36 @@
 // ============================================================
 // HouseholdInfo.js — Household cheat sheet
-// Sheet: HouseholdInfo | columns: Section, Subsection, Label, Value, Notes, LastUpdated
+// Sheet: HouseholdInfo | columns: Section, Subsection, Label, Value, Notes, LastUpdated,
+//                         Private, Emergency
+// Private: Yes / No, or blank (blank = guessed from the label: IDs, account, policy and member
+//   numbers; the dashboard's hfGuidePrivate_). Emergency: Yes puts the line on the pinned card.
 // ============================================================
+
+var HH_COLS_ = 8;
+var HH_HEADERS_ = ['Section', 'Subsection', 'Label', 'Value', 'Notes', 'LastUpdated', 'Private', 'Emergency'];
+
+/** Pure: a Yes/No cell as true / false, blank as null (not set). */
+function hhFlag_(v) {
+  if (v === true) return true;
+  if (v === false) return false;
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  if (s === 'yes' || s === 'true' || s === 'y') return true;
+  if (s === 'no' || s === 'false' || s === 'n') return false;
+  return null;
+}
+
+/** Names the two new columns on a sheet made before they existed. */
+function hhEnsureCols_(sheet) {
+  if (sheet.getMaxColumns() < HH_COLS_) sheet.insertColumnsAfter(sheet.getMaxColumns(), HH_COLS_ - sheet.getMaxColumns());
+  var head = sheet.getRange(1, 7, 1, 2).getValues()[0];
+  if (!String(head[0]).trim() || !String(head[1]).trim()) sheet.getRange(1, 7, 1, 2).setValues([['Private', 'Emergency']]);
+}
+
+/** A flag param from the dashboard: 'true' / 'false', or absent (keep what's there). */
+function hhParam_(p, prev) {
+  if (p === undefined || p === null || p === '') return prev;
+  return String(p) === 'true' ? 'Yes' : 'No';
+}
 
 function getHouseholdInfoData_() {
   const ss    = getSpreadsheet();
@@ -14,7 +43,8 @@ function getHouseholdInfoData_() {
   }
 
   const numRows = sheet.getLastRow() - 1;
-  const data    = sheet.getRange(2, 1, numRows, 6).getValues();
+  const width   = Math.min(HH_COLS_, sheet.getMaxColumns());
+  const data    = sheet.getRange(2, 1, numRows, width).getValues();
 
   const sectionOrder = [];
   const sectionMap   = {};
@@ -51,6 +81,9 @@ function getHouseholdInfoData_() {
       notes:     notes,
       section:   section,
       subsection: subsection,
+      updated:   lastUpdated,
+      private:   hhFlag_(row[6]),
+      star:      hhFlag_(row[7]) === true,
     });
   });
 
@@ -86,9 +119,13 @@ function webUpdateHouseholdRow_(e) {
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.HOUSEHOLD_INFO);
   if (!sheet) return { ok: false, error: 'HouseholdInfo sheet not found' };
+  if (rowNum > sheet.getLastRow()) return { ok: false, error: 'That line is gone; reload' };
 
+  hhEnsureCols_(sheet);
+  const prev  = sheet.getRange(rowNum, 7, 1, 2).getValues()[0];
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  sheet.getRange(rowNum, 1, 1, 6).setValues([[section, subsection, label, value, notes, today]]);
+  sheet.getRange(rowNum, 1, 1, HH_COLS_).setValues([[section, subsection, label, value, notes, today,
+    hhParam_(e.parameter.private, prev[0]), hhParam_(e.parameter.star, prev[1])]]);
   return { ok: true };
 }
 
@@ -105,9 +142,31 @@ function webAddHouseholdRow_(e) {
   const sheet = ss.getSheetByName(TABS.HOUSEHOLD_INFO);
   if (!sheet) return { ok: false, error: 'HouseholdInfo sheet not found' };
 
+  hhEnsureCols_(sheet);
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  sheet.appendRow([section, subsection, label, value, notes, today]);
+  sheet.appendRow([section, subsection, label, value, notes, today,
+    hhParam_(e.parameter.private, ''), hhParam_(e.parameter.star, '')]);
   return { ok: true };
+}
+
+/**
+ * GET household_section_checked?section=… — "Still right ✓": stamps today on every line of a
+ * section, so it stops being marked for a re-check. Changes nothing else.
+ */
+function webHouseholdSectionChecked_(e) {
+  const section = String((e.parameter || {}).section || '').trim();
+  if (!section) return { ok: false, error: 'section required' };
+  const sheet = getSpreadsheet().getSheetByName(TABS.HOUSEHOLD_INFO);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'HouseholdInfo sheet not found' };
+  const n = sheet.getLastRow() - 1;
+  const names = sheet.getRange(2, 1, n, 1).getValues();
+  const dates = sheet.getRange(2, 6, n, 1).getValues();
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  let count = 0;
+  names.forEach(function(r, i) { if (String(r[0]).trim() === section) { dates[i][0] = today; count++; } });
+  if (!count) return { ok: false, error: 'No section called ' + section };
+  sheet.getRange(2, 6, n, 1).setValues(dates);
+  return { ok: true, section: section, lines: count, updated: today };
 }
 
 function webDeleteHouseholdRow_(e) {
@@ -132,7 +191,7 @@ function setupHouseholdInfoSheet_() {
     return;
   }
   const sheet = ss.insertSheet(TABS.HOUSEHOLD_INFO);
-  const headers = ['Section', 'Subsection', 'Label', 'Value', 'Notes', 'LastUpdated'];
+  const headers = HH_HEADERS_.slice();
   sheet.appendRow(headers);
   sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   sheet.setColumnWidths(1, 2, 160);
@@ -165,6 +224,6 @@ function setupHouseholdInfoSheet_() {
     ['Key Docs Location',   '',                 'Passports',        'Location description',        '', today],
     ['Key Docs Location',   '',                 'Birth Certificates','Location description',       '', today],
   ];
-  if (samples.length) sheet.getRange(2, 1, samples.length, 6).setValues(samples);
+  if (samples.length) sheet.getRange(2, 1, samples.length, 6).setValues(samples);   // Private / Emergency left blank
   Logger.log('HouseholdInfo sheet created with ' + samples.length + ' sample rows.');
 }

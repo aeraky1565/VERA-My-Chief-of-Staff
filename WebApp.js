@@ -508,6 +508,7 @@ function doGet(e) {
       case 'update_household_row':  return jsonOut_(webUpdateHouseholdRow_(e));
       case 'add_household_row':     return jsonOut_(webAddHouseholdRow_(e));
       case 'delete_household_row':  return jsonOut_(webDeleteHouseholdRow_(e));
+      case 'household_section_checked': return jsonOut_(webHouseholdSectionChecked_(e));   // HouseholdInfo.js — "Still right ✓"
       // Trip Gift List (Issue #187)
       case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
       case 'past_trips':        return jsonOut_(webListPastTrips_());
