@@ -343,7 +343,7 @@ function doGet(e) {
       case 'delete_chore_for_others':    return jsonOut_(webDeleteChoreForOthers_(e));
       case 'chore_for_others_paid':      return jsonOut_(webPayChoresForOthers_(e));
       // Coupons (Issue #173)
-      case 'get_coupons':        return jsonOut_(webGetCoupons_());
+      case 'get_coupons':        return jsonOut_(webGetCoupons_(e));
       case 'delete_coupon':      return jsonOut_(webDeleteCoupon_(e));
       case 'mark_coupon_used':   return jsonOut_(webMarkCouponUsed_(e));
       // Mail/Package Counter (Issue #175)
@@ -11827,9 +11827,11 @@ function webDeleteChoreForOthers_(e) {
  * GET get_coupons — the Coupons sheet's rows as JSON. Each says whether it has expired
  * (expired, daysLeft, removeOn: couponState_, Code.js); Expires comes back as yyyy-MM-dd
  * when it can be read. A coupon past its grace week is left out, as the nightly purge
- * would have deleted it.
+ * would have deleted it. Used coupons (Coupons.js) are left out too, unless withUsed=1 (the
+ * full Coupons screen): then they come with used, usedOn and saved, and savedThisYear totals them.
  */
-function webGetCoupons_() {
+function webGetCoupons_(e) {
+  var withUsed = String(((e && e.parameter) || {}).withUsed || '') === '1';
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.COUPONS);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, coupons: [] };
@@ -11837,10 +11839,15 @@ function webGetCoupons_() {
   var hdrs = rows[0];
   var tz   = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), keep = couponKeepDays_();
   var col  = hdrs.indexOf('Expires');
-  var coupons = [];
+  var coupons = [], savedThisYear = 0;
   rows.slice(1).filter(function(r) { return r[0]; }).forEach(function(r) {
+    var used = String(r[10]).trim() === 'Used';
+    var usedOn = used ? couponIso_(r[CPN_USED_COL_ - 1], tz) : '';
+    var saved = used && r[CPN_SAVED_COL_ - 1] !== '' && r[CPN_SAVED_COL_ - 1] != null && !isNaN(Number(r[CPN_SAVED_COL_ - 1])) ? Number(r[CPN_SAVED_COL_ - 1]) : null;
+    if (used && usedOn.slice(0, 4) === today.slice(0, 4) && saved) savedThisYear += saved;
+    if (used && !withUsed) return;
     var st = couponState_(couponIso_(col === -1 ? '' : r[col], tz), today, keep);
-    if (st.gone) return;
+    if (st.gone && !used) return;
     var obj = {};
     hdrs.forEach(function(h, i) {
       obj[h] = r[i] instanceof Date
@@ -11849,9 +11856,11 @@ function webGetCoupons_() {
     });
     if (st.iso) obj.Expires = st.iso;
     obj.expired = st.expired; obj.daysLeft = st.daysLeft; obj.removeOn = st.removeOn;
+    if (used) { obj.used = true; obj.usedOn = usedOn; obj.saved = saved; obj.expired = false; }
+    obj.percent = cpnIsPercent_(obj.Discount);
     coupons.push(obj);
   });
-  return { ok: true, today: today, keepDays: keep, coupons: coupons };
+  return { ok: true, today: today, keepDays: keep, coupons: coupons, savedThisYear: Math.round(savedThisYear * 100) / 100 };
 }
 
 /**
@@ -11913,10 +11922,11 @@ function webDeleteCoupon_(e) {
 }
 
 /**
- * GET mark_coupon_used?id=… — deletes the coupon row immediately (used = gone).
+ * GET mark_coupon_used?id=…&saved=… — keeps the coupon as Used, with today and what it saved
+ * (Coupons.js). It drops out of every list but the full screen's Used fold and its total.
  */
 function webMarkCouponUsed_(e) {
-  return webDeleteCoupon_(e);   // same behaviour: remove the row
+  return webMarkCouponUsedKeep_(e);
 }
 
 // ─── MAIL/PACKAGE COUNTER (Issue #175) ────────────────────────────────────────

@@ -2418,6 +2418,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       couponSheet.getRange(2, 1, couponSheet.getLastRow() - 1, COUPON_HEADERS.length)
         .getValues().forEach(function(r) {
           if (!r[7]) return;  // no expiry
+          if (String(r[10]).trim() === 'Used') return;  // used coupons are kept for Saved this year (Coupons.js)
           var exp = new Date(r[7]); exp.setHours(0, 0, 0, 0);
           var d   = Math.round((exp - todayCp) / 86400000);
           if (d >= 0 && d <= 3) {
@@ -5453,9 +5454,11 @@ function purgeExpiredCoupons_() {
   if (!sheet || sheet.getLastRow() < 2) return;
   var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), keep = couponKeepDays_();
   var rows = sheet.getDataRange().getValues(), removed = 0;
-  // Scan backward; col index 7 = Expires (0-based)
+  // Scan backward; col index 7 = Expires (0-based). A used coupon (Status, index 10) stays for
+  // the Saved this year total and goes once it was used before last year (cpnUsedOld_, Coupons.js).
   for (var i = rows.length - 1; i >= 1; i--) {
-    if (couponState_(couponIso_(rows[i][7], tz), today, keep).gone) { sheet.deleteRow(i + 1); removed++; }
+    var used = String(rows[i][10]).trim() === 'Used';
+    if (used ? cpnUsedOld_(rows[i][CPN_USED_COL_ - 1], tz, today) : couponState_(couponIso_(rows[i][7], tz), today, keep).gone) { sheet.deleteRow(i + 1); removed++; }
   }
   Logger.log('purgeExpiredCoupons_: removed ' + removed + ' coupon(s) more than ' + keep + ' day(s) past expiry.');
 }

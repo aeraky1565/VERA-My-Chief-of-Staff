@@ -12,7 +12,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const CODE = read('Code.js'), WEB = read('WebApp.js'), APP = read('docs/app.js'), LITE = read('docs/dashboard-lite.html');
+const CODE = read('Code.js'), WEB = read('WebApp.js'), APP = read('docs/app.js'), LITE = read('docs/dashboard-lite.html'), CPN = read('Coupons.js');
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n)) : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
 const J = JSON.stringify;
@@ -24,7 +24,7 @@ function ctx(extra) {
     Utilities: { formatDate: d => isoOf(d) }, Session: { getScriptTimeZone: () => 'America/New_York' },
     getConfigValues: () => ({}), CONFIG: { SHEET_ID: 'x' }, TABS: { COUPONS: 'Coupons' } }, extra || {});
   vm.createContext(c);
-  vm.runInContext(['couponIso_', 'couponState_', 'couponKeepDays_', 'purgeExpiredCoupons_'].map(n => fnSrc(CODE, n)).join('\n') + '\n' + fnSrc(WEB, 'webGetCoupons_'), c);
+  vm.runInContext(CPN + '\n' + ['couponIso_', 'couponState_', 'couponKeepDays_', 'purgeExpiredCoupons_'].map(n => fnSrc(CODE, n)).join('\n') + '\n' + fnSrc(WEB, 'webGetCoupons_'), c);
   return c;
 }
 const C = ctx();

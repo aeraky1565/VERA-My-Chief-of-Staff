@@ -2110,6 +2110,15 @@ The `Purchase History` tab logs grocery and household purchases with item name, 
 
 The Coupons tab (Shopping › Coupons, full and lite) lists live coupons first, soonest to expire on top. A coupon expires the day after its date; it then moves into an **Expired** group at the bottom, scratched off, with its copy buttons off, the day it goes and **Delete now**. The full dashboard shows the group open, lite keeps it closed. Seven days after expiry (Config `coupon_keep_expired_days`, 0–60) the nightly `purgeExpiredCoupons_` deletes the row, and `get_coupons` stops sending it that day even if the purge was skipped. Both use `couponIso_` and `couponState_` (Code.js), which read a sheet date, `yyyy-MM-dd` or `M/D/YYYY`. The coupon steps run early in `nightlyRun`, right after the important dates, so the time budget doesn't drop them.
 
+**Used coupons are kept** (`Coupons.js`): ✓ Mark as Used sets Status to `Used` and fills two columns after Added, **`Used On`** and **`Saved`** (named the first time they're written). A "$5 off" coupon saves $5 by itself; a "% off" one asks how much it saved (Skip leaves it blank). Used coupons drop out of lite and Needs you (`get_coupons` sends them only with `withUsed=1`), the expiry flags and the morning email; the purge keeps them until they were used before last year.
+
+The full screen (Home Front › Savings › Coupons) has counters (**Expire this week**, **Live**, **Saved this year**), chips for each store and **Online**, live coupons soonest first with their codes, the Expired group, and a **Used · N** fold of this year's used coupons and what each saved. A store's shopping list shows **🎟 N coupons for <store>** when it has live ones; tapping it opens Coupons on that store.
+
+| Route | Params | What it does |
+|---|---|---|
+| `get_coupons` | `withUsed` (`1` for the full screen) | Coupons with `expired`, `daysLeft`, `removeOn`, `percent`; used ones (`used`, `usedOn`, `saved`) only with `withUsed=1`; `savedThisYear` |
+| `mark_coupon_used` | `id`, `saved` (optional) | Keeps the coupon as Used with today and what it saved |
+
 ### Contracts + Expiry Flagging
 
 The `Contracts` tab tracks active agreements: name, category, counterparty, start/end dates, auto-renewal flag, notice period, monthly cost, status, and document link. `checkContracts_()` runs nightly and generates flags for contracts approaching expiry (within the notice period + a buffer) or already expired. Chat can add, update, and log actions against contracts.
