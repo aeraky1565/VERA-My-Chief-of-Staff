@@ -1609,7 +1609,7 @@ the files they belong to, and nothing is reimplemented here.
 
 | Section | Entries |
 |---------|---------|
-| 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
+| 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbOwnerToken` (logs the owner's dashboard token, `VERA_WEB_TOKEN`), `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
 | 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbMapsStaticKey`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbTripPlaces`, `tbFlightStatus` |
 | 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbNetWorth`, `tbCareer`, `tbWishLists`, `tbProjects`, `tbProjectHealth` |

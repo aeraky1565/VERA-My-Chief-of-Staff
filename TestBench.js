@@ -98,6 +98,18 @@ function tbSystemHealth() {
   debugSystemHealth();
 }
 
+/**
+ * The owner's dashboard token (Script Property VERA_WEB_TOKEN), for signing a device back
+ * into the full dashboard when the token isn't to hand and the Script Properties list is
+ * too long to scroll on a phone. Only someone who can open this project can run it, and
+ * they can already read every Script Property; nothing here is reachable from the web app.
+ */
+function tbOwnerToken() {
+  tbBanner_('Owner token');
+  var t = PropertiesService.getScriptProperties().getProperty('VERA_WEB_TOKEN') || '';
+  Logger.log(t ? 'VERA_WEB_TOKEN: ' + t : 'VERA_WEB_TOKEN is not set. Set one in Project Settings › Script Properties.');
+}
+
 /** Weather API: geocoding plus a live forecast fetch. */
 function tbWeather() {
   tbBanner_('Weather API');
