@@ -241,6 +241,10 @@ Column 8 is List (`mrEnsureListCol_`, `mrList_`: Weekday, Weekend or '' for both
 
 Columns 5–8 (`giEnsureCols_`): Price (`giPrice_`), Link (`giLink_`, http(s) only), Given On, Occasion. `update_gift_idea` and `gift_given` (undo=1 clears) are the writes; `add_gift_idea` takes price and link; `get_gift_data` sends dates as yyyy-MM-dd. The App's add handler now keeps the server's `entry` (it read `idea`, so a new idea vanished). On the screen, `giOrder_`/`giNext_` order people by their next occasion and `giOccasion_` words the occasion.
 
+### Important Dates: next 30 days, no gift idea yet (`GiftNudge.js`, `DatesHome`)
+
+`gnWanted_` takes `webGetImportantDates_` and `webGetGiftData_`: a birthday or anniversary (`gnIsOccasion_`) 0–14 days away whose person has no idea that isn't given. `checkNoGiftIdea_` keeps a Low `no_gift_<id>_<year>` flag for each through `upsertKeyedFlags_`. `DatesHome` wraps `ImportantDatesView` (unchanged, the By person view) with `dhSoon_`, `dhYears_` and `dhByMonth_`.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

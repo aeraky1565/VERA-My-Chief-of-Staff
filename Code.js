@@ -1332,6 +1332,7 @@ function nightlyRun() {
     // After the sync, not before, so a date newly placed on the calendar is also
     // considered for a flag on the same run.
     nightlyStep_(ctx, 'checkImportantDates_', checkImportantDates_);
+    nightlyStep_(ctx, 'checkNoGiftIdea_', checkNoGiftIdea_);   // GiftNudge.js: an occasion in 14 days, no gift idea
 
     // Coupon expiry flags, then remove coupons past their grace week (Issue #173). Early, and
     // cheap: as the night's last step it was the first one the time budget dropped.

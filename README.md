@@ -2027,6 +2027,8 @@ The `Prescriptions` tab tracks active medications for Ahmed and Victoria: medica
 
 The `Important Dates` tab stores birthdays, anniversaries, and meaningful dates with: ID, Date (MM-DD for recurring), Label, Person, Recurring flag, Lead Time Days (default 30), Notes, and Last Actioned Year. VERA generates advance-warning flags within the lead-time window and automatically marks items as actioned each year after flagging.
 
+**People › Important Dates** (`DatesHome`) opens on the **next 30 days** as cards with a countdown, who, and the age someone turns or the anniversary's years (when the date has a year); a birthday or anniversary within 14 days with no open gift idea says **No gift idea yet · Add one**, which opens Gift Ideas. **By month** lists the next 12 months; **By person** is the full editor (add, edit, rules, calendar import) as before. The nightly `checkNoGiftIdea_` (`GiftNudge.js`, after `checkImportantDates_`) raises a **Low flag** for the same case, which closes once an idea is added.
+
 ### Auto-sync from Joint Chaos Calendar
 
 Nightly Step 0a scans the "Joint Chaos" shared Google Calendar for birthday events arriving within the next 30 days. Any birthday not already in the Important Dates tab is auto-added with recurring=true and a 30-day lead time. The calendar name match is case-insensitive; if no "Joint Chaos" calendar is found, the step is skipped gracefully.
