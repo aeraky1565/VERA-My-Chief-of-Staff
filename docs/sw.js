@@ -5,7 +5,7 @@
 // an update reaches every installed icon the next time it opens. Only the offline
 // page and the icons are kept. Requests to other sites (VERA's Apps Script, Google)
 // are left alone.
-var VERA_SW_CACHE = 'vera-shell-v1';
+var VERA_SW_CACHE = 'vera-shell-v2';   // v2: pages are checked with the site on every open
 var VERA_SW_SHELL = ['offline.html', 'icons/vera-full-192.png', 'icons/vera-lite-192.png'];
 
 self.addEventListener('install', function (event) {
@@ -24,7 +24,9 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;            // VERA's backend and anything else: untouched
   if (req.mode === 'navigate') {                               // a page: the network, else "No connection"
-    event.respondWith(fetch(req).catch(function () { return caches.match('offline.html'); }));
+    // no-cache: ask the site whether the page changed (a cheap check) instead of reusing the
+    // browser's copy, which GitHub Pages allows for 10 minutes; so a release shows on the next open.
+    event.respondWith(fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).catch(function () { return caches.match('offline.html'); }));
     return;
   }
   if (VERA_SW_SHELL.some(function (p) { return url.pathname.slice(-p.length) === p; })) {

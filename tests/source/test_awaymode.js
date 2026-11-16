@@ -246,7 +246,7 @@ console.log('\nThe senders');
 console.log('\nThe dashboard');
 {
   const home = fnSrc(APP, 'HomeTab');
-  check('Home shows the Away banner', /React\.createElement\(AwayBanner,\{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate\}\)/.test(home));
+  check('Home shows the Away banner (as a tile beside Log a grocery run while off)', /React\.createElement\(AwayBanner,\{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate,variant:'tile'\}\)/.test(home) && /if\(!st\.on&&variant==='tile'\)return/.test(APP));
   check('…and the old Vacation Mode banner is gone', !/Vacation Mode/.test(home) && !/showVacation/.test(home) && /showPacing&&/.test(home));
   const b = fnSrc(APP, 'AwayBanner');
   check('the banner reads away_status and the switch posts away_set', /action:'away_status'/.test(b) && /apiPost\(apiUrl,apiToken,\{action:'away_set',on:on/.test(b));

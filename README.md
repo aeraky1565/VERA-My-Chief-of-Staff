@@ -105,7 +105,12 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
   - The active travel card, ARIA's book-now banner, Log a grocery run and Away mode side by side, and Easy Mode.
   - **At a glance:** Coming up, Practice, Spending and Birthday all at once, one line each. A tile turns amber when it needs you: behind on the week's practice, a budget line over plan, or a birthday within 14 days with no gift ideas. Each tile opens its page. This replaces the old pick-one card.
 - **Right column, Needs you:** high and medium flags, tasks overdue or due within 3 days, plus the lite Today's perks, coupons and house jobs (the shared `liteNeedsYou_`), soonest first. Five are shown, and "See all" shows up to ten. A row opens its tab.
-- **Everything:** four across on a wide window, one per row on a phone. The tiles are Flags, Tasks, Shopping, Money (the next unpaid bill), Which card, Projects, PTO, **Mail & Packages** (with **✓ Got the mail!**), Travel and **System health**. System health covers the last nightly run (`home_nightly`), the assistants, the connections and Trip IDs; it names what to look at and opens System.
+- **Everything:** compact tiles, each with one or two lines, amber when it needs you; four across on a computer, two on a phone.
+  - **Flags** (open, high, the top one), **Tasks** (overdue, next), **Shopping** (the two biggest lists), **Money** (groceries against plan, the next bill).
+  - **Which card**, **Projects** (steps left), **PTO** (both balances, next time off), **Mail & Packages** (with **✓ Got the mail!**), **Travel** (the next trip, packing done).
+  - **System health** covers the last nightly run (`home_nightly`), the assistants, the connections and Trip IDs; it names what to look at and opens System.
+- **On a phone:** a bar at the bottom (**Home · Flags · Tasks · Chat · Travel · Money · All**) replaces the top row of tabs and the status strip, with badges for open flags and overdue tasks. **All** lists every tab in groups. Home starts with a greeting, then Today and the actions, Needs you (three, "See all" for more), At a glance and the tiles.
+- **Updates:** pages are checked with the site every time they open (the service worker asks with `no-cache`), so a release shows on the next open.
 
 **On the home screen (#243).** Both dashboards install as home-screen apps from the browser, with no app store: on iPhone, Safari › Share › Add to Home Screen; on Android, Chrome's Install app. The full dashboard's icon is the gold V; the lite one says VERA in blue. Each opens full screen on its own dashboard, and shows "No connection" when offline (nothing is cached, so updates arrive by themselves). On iPhone, enter your sign-in code once more in the installed app.
 

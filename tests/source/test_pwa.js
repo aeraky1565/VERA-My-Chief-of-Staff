@@ -48,10 +48,10 @@ console.log('\nThe service worker');
   const listeners = {}, cached = {}, fetched = [];
   const c = { URL, Promise, setTimeout,
     self: { location: { origin: 'https://example.test' }, addEventListener: (t, f) => { listeners[t] = f; }, skipWaiting: () => Promise.resolve(), clients: { claim: () => Promise.resolve() } },
-    caches: { open: () => Promise.resolve({ addAll: list => { list.forEach(k => { cached[k] = 'cached:' + k; }); return Promise.resolve(); } }), match: r => Promise.resolve(cached[typeof r === 'string' ? r : r.url.replace('https://example.test/docs/', '')] || null), keys: () => Promise.resolve(['vera-shell-v0', 'vera-shell-v1', 'other']), delete: () => Promise.resolve(true) },
+    caches: { open: () => Promise.resolve({ addAll: list => { list.forEach(k => { cached[k] = 'cached:' + k; }); return Promise.resolve(); } }), match: r => Promise.resolve(cached[typeof r === 'string' ? r : r.url.replace('https://example.test/docs/', '')] || null), keys: () => Promise.resolve(['vera-shell-v0', 'vera-shell-v1', 'vera-shell-v2', 'other']), delete: () => Promise.resolve(true) },
   };
   let online = true;
-  c.fetch = r => { fetched.push(typeof r === 'string' ? r : r.url); return online ? Promise.resolve('network:' + (r.url || r)) : Promise.reject(new Error('offline')); };
+  const opts = []; c.fetch = (r, o) => { fetched.push(typeof r === 'string' ? r : r.url); opts.push(o || null); return online ? Promise.resolve('network:' + (r.url || r)) : Promise.reject(new Error('offline')); };
   vm.createContext(c); vm.runInContext(SW.replace(/\bself\.addEventListener/g, 'self.addEventListener'), c);
   const ev = req => { const e = { request: req, responded: null, respondWith: p => { e.responded = p; }, waitUntil: p => { e.waited = p; } }; listeners.fetch(e); return e; };
   (async () => {
@@ -60,6 +60,7 @@ console.log('\nThe service worker');
     cached['index.html'] = 'cached:index.html';   // even with an old copy around, the page comes fresh
     const page = ev({ method: 'GET', mode: 'navigate', url: 'https://example.test/docs/index.html' });
     check('a page comes from the network, never an old copy', (await page.responded) === 'network:https://example.test/docs/index.html');
+    check('…checked with the site every time, not the browser’s 10-minute copy', J(opts[opts.length - 1]) === J({ cache: 'no-cache', credentials: 'same-origin' }), J(opts));
     delete cached['index.html'];
     online = false;
     const off = ev({ method: 'GET', mode: 'navigate', url: 'https://example.test/docs/index.html' });
@@ -73,7 +74,7 @@ console.log('\nThe service worker');
     check('the icons come from the cache', (await ev({ method: 'GET', mode: 'no-cors', url: 'https://example.test/docs/icons/vera-full-192.png' }).responded) === 'cached:icons/vera-full-192.png');
     const deleted = []; c.caches.delete = k => { deleted.push(k); return Promise.resolve(true); };
     const act = { waitUntil: p => { act.p = p; } }; listeners.activate(act); await act.p;
-    check('a new version clears the old shell, and only VERA’s', J(deleted) === J(['vera-shell-v0']));
+    check('a new version clears the old shells, and only VERA’s', J(deleted) === J(['vera-shell-v0', 'vera-shell-v1']));
     finish();
   })();
 }

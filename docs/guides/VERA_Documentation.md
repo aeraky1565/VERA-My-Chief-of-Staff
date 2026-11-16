@@ -985,7 +985,10 @@ Change only column B. The full list of keys is in the appendix (§22).
   - **Needs you:** `FhNeeds` and `fhNeeds_` list high flags (Today) and medium ones (Soon), and tasks that are overdue or due within 3 days. They add `liteNeedsYou_` from the new **NeedsYou** shared block (shared with lite) over `cards`, `get_coupons` and `get_chores`. Rows are soonest first, five shown and ten at most.
   - **Tiles:** Flags, Tasks, Shopping, `FhMoneyTile` (`bills`, the next unpaid one), `FhCardTile` (`cvCheat_`), Projects, PTO, `MailCounterCard` (with Got the mail!), Travel and `FhHealth`.
     - `FhHealth` uses `fhHealth_` over `home_nightly` (new, read only: `LAST_NIGHTLY_RUN`, plus the `NIGHTLY_STEP` it stopped in), `agent_health`, `system_api_health` and `trip_id_check`.
-  - **Tests:** `test_fullhome_ui.js` and `ctl_fullhome.js`.
+  - **Tiles:** one compact `FhTile` look for all ten, from pure helpers (`fhFlagsTile_`, `fhTasksTile_`, `fhShopTile_`, `fhMoneyTile_`, `fhProjTile_`, `fhPtoTile_`, `fhMailTile_`, `fhTravelTile_`, `fhHealth_`).
+  - **Phone (under 620px):** `FullBottomBar` (`FULL_BAR`) and `FullAllView` (`FULL_ALL_GROUPS`, activeTab `'all'`) replace the top row and status strip; hidden tabs are left out (`veraCan_`). The greeting uses whoami's name. Needs you shows 3 (`fhNeedsShown_`). On the phone the order is Today and actions, then Needs you, then At a glance (CSS `order`).
+  - **Fresh pages:** `docs/sw.js` fetches pages with `cache: 'no-cache'` (shell cache `vera-shell-v2`).
+  - **Tests:** `test_fullhome_ui.js`, `test_fullphone_ui.js`, `ctl_fullhome.js` and `ctl_fullphone.js`.
 - **Lite, simplified (`dashboard-lite.html`, lite only):**
   - **The bottom bar:** `LiteBottomBar`, built from `LITE_BAR`, replaces the top row of tabs. Its buttons are Today, Lists (Shopping › Lists), Chat, Trips (Travel) and All.
   - **The All screen:** `LiteAllView`, built from `LITE_ALL_GROUPS`, lists every area as `[tab, sub]`.

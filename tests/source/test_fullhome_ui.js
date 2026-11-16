@@ -39,14 +39,15 @@ check('Needs you’s helpers are one shared block, byte-identical in both dashbo
 check('the pick-one card is gone from the full dashboard', APP.indexOf('function HomeSlot(') === -1 && APP.indexOf('HS_CARDS') === -1);
 check('index.html is rebuilt with the new Home', IDX.includes('function FhGlance(') && IDX.includes('.fh-cols {'));
 check('the nightly route is wired, read only', /case 'home_nightly':\s*return jsonOut_\(webHomeNightly_\(\)\)/.test(WEB) && !/setProperty|deleteProperty/.test(fnSrc(WEB, 'webHomeNightly_')));
-check('the mail card keeps its Got the mail! button', /'✓ Got the mail!'/.test(fnSrc(APP, 'MailCounterCard')) && /React\.createElement\(MailCounterCard,\{counter:mailCounter/.test(fnSrc(APP, 'HomeTab')));
+check('the mail tile keeps its Got the mail! button', /'✓ Got the mail!'/.test(fnSrc(APP, 'FhMailTile')) && /React\.createElement\(FhMailTile,\{counter:mailCounter,busy:mailCounterBusy,onReset:onResetMailCounter/.test(fnSrc(APP, 'HomeTab')));
+check('no old big-number cards left on Home', !/bento-card-main|MailCounterCard/.test(fnSrc(APP, 'HomeTab')) && APP.indexOf('function MailCounterCard(') === -1);
 
 // ---- pure, in node ----------------------------------------------------------------
 const ctx = { console, Date, Math, JSON, Object, Array, String, Number, RegExp, isNaN, VERA_GOTO_: {} };
 vm.createContext(ctx);
 const CARDVALUE = (() => { const a = APP.indexOf('// ---- CardValue'); const b = APP.indexOf('// ---- /CardValue ----', a); return a === -1 ? '' : APP.slice(a, b); })();
 const HUB = (() => { const a = APP.indexOf('// ---- CardHub'); const b = APP.indexOf('// ---- /CardHub ----', a); return a === -1 ? '' : APP.slice(a, b); })();
-['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
+['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_', 'fhFlagsTile_', 'fhTasksTile_', 'fhShopTile_', 'fhProjTile_', 'fhPtoTile_', 'fhMailTile_', 'fhMoneyTile_', 'fhTravelTile_', 'fhNeedsShown_', 'fhGreeting_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
 vm.runInContext(NA, ctx);
 try { vm.runInContext(CARDVALUE + '\n' + HUB.replace(/function CardHub[\s\S]*$/, ''), ctx); } catch (e) {}
 
@@ -55,6 +56,28 @@ check('the next trip, with the days to it', ctx.fhTripChip_([{ label: 'Lisbon', 
 check('on a trip: the days until home', ctx.fhTripChip_([{ label: 'Lisbon', startDate: '2027-03-25', endDate: '2027-03-31' }], '2027-03-27') === '🏠 Home in 4 days');
 check('no trips: nothing', ctx.fhTripChip_([], '2027-03-15') === '' && ctx.fhTravelLine_([], '2027-03-15') === 'No trips planned');
 check('Travel says the same, without the icon', ctx.fhTravelLine_([{ label: 'Lisbon', startDate: '2027-03-16' }], '2027-03-15') === 'Lisbon tomorrow');
+
+console.log('\nEverything: each tile’s lines, and when it’s amber');
+{
+  const T = (o, lines, hot) => J(o.lines) === J(lines) && o.hot === hot;
+  const f = ctx.fhFlagsTile_([{ flag: 'Renew passport', urgency: 'High' }, { flag: 'Low one', urgency: 'Low' }, { flag: 'Shut', urgency: 'High', resolved: true }]);
+  check('Flags: open and high, then the top one; amber with a high flag', T(f, ['2 open · 1 high', 'Renew passport'], true), J(f));
+  check('…none: All clear', T(ctx.fhFlagsTile_([]), ['All clear'], false));
+  check('Tasks: overdue first, then Next; amber when overdue', T(ctx.fhTasksTile_([{ task: 'Call the plumber', isOverdue: true }, { task: 'B', dueDate: '2027-04-01' }]), ['1 overdue', 'Next: Call the plumber'], true)
+        && T(ctx.fhTasksTile_([{ task: 'A' }, { task: 'B', dueDate: '2027-04-01' }]), ['2 open', 'Next: B'], false));
+  check('Shopping: lists with nothing left say so', J(ctx.fhShopTile_([{ storeName: 'Aldi', items: [{ done: true }] }]).lines) === J(['Nothing to buy']));
+  check('Shopping: the two lists with most to buy', T(ctx.fhShopTile_([{ storeName: 'Target', items: [{ done: false }, { done: true }] }, { storeName: 'Costco', items: [{}, {}, {}] }, { storeName: 'Aldi', items: [] }]), ['Costco · 3', 'Target · 1'], false));
+  check('Projects: two active, with steps left', T(ctx.fhProjTile_([{ projectName: 'Garage', tasks: [{ status: 'Open' }] }, { projectName: 'Kitchen', tasks: [{ status: 'Open' }, { status: 'Open' }, { status: 'Done' }] }, { projectName: 'Done one', tasks: [{ status: 'Done' }] }]), ['Kitchen · 2 left', 'Garage · 1'], false));
+  check('PTO: both balances, then the next time off', T(ctx.fhPtoTile_({ ahmedStats: { remaining: { vacationDays: 12 }, nextPTO: { label: 'Lisbon', daysUntil: 10 } }, victoriaStats: { remaining: { vacationDays: 9 } } }), ['Ahmed 12d · Victoria 9d', 'Next: Lisbon, in 10 days'], false));
+  check('Mail: pieces and packages, amber while waiting; clear when empty', T(ctx.fhMailTile_({ pieces: 2, packages: 1 }), ['2 pieces · 1 package'], true) && T(ctx.fhMailTile_({ pieces: 0, packages: 0 }), ['Mailbox is clear'], false));
+  const NOWM = new Date(2027, 2, 15, 9, 0);
+  check('Money: groceries against plan, then the next bill; amber when groceries are over', T(ctx.fhMoneyTile_({ bills: [{ bill: 'Internet', dueDay: 24 }] }, { lines: { 'Groceries & household': { plan: 600, actual: 640 } } }, NOWM), ['Groceries $640 of $600', 'Internet · due in 9 days'], true));
+  check('…a bill due within 3 days is amber too', ctx.fhMoneyTile_({ bills: [{ bill: 'Water', dueDay: 16 }] }, { noUploads: true }, NOWM).hot === true);
+  check('Travel: the trip, then packing; amber within 3 days with packing left', T(ctx.fhTravelTile_([{ label: 'Lisbon', startDate: '2027-03-17' }], '2027-03-15', { items: [{ status: 'bag' }, { checked: true }, { status: 'ready' }] }), ['Lisbon in 2 days', 'Packing 2 of 3'], true)
+        && ctx.fhTravelTile_([{ label: 'Lisbon', startDate: '2027-03-25' }], '2027-03-15', { items: [{ status: 'ready' }] }).hot === false);
+  check('Needs you: 3 on a phone, 5 on a computer', ctx.fhNeedsShown_(false) === 3 && ctx.fhNeedsShown_(true) === 5);
+  check('the greeting follows the hour', ctx.fhGreeting_(new Date(2027, 0, 1, 8)) === 'Good morning' && ctx.fhGreeting_(new Date(2027, 0, 1, 14)) === 'Good afternoon' && ctx.fhGreeting_(new Date(2027, 0, 1, 20)) === 'Good evening');
+}
 
 console.log('\nAt a glance');
 const NOW = new Date(2027, 2, 15, 9, 0);   // Mon 15 Mar 2027
@@ -151,17 +174,19 @@ const PROPS = {
     check('…spending over on a line and a birthday with no ideas are amber', tiles[2][1] && tiles[3][1] && /Sam’s birthday · in 5 days/.test(tiles[3][2]), J(tiles));
     check('no pick-one card', !(await page.$('.hs-slot')) && !(await page.$('.hs-pick')));
     const needs = await page.$$eval('.fh-nr', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ')));
-    check('Needs you: five, soonest first, with See all', needs.length === 5 && /Overdue task 7/.test(needs[0]) && /See all 10/.test(t), J(needs));
+    check('Needs you: five on a computer, three on a phone, soonest first, with See all', needs.length === (width < 620 ? 3 : 5) && /Overdue task 7/.test(needs[0]) && /See all 10/.test(t), J(needs));
     await page.click('.fh-more'); await wait(60);
     check('…See all shows the rest, the lite Today’s coupon among them', (await page.$$('.fh-nr')).length === 10 && !!(await page.$('.fh-nr[data-kind="coupon"]')) && /Fresh Market coupon/.test(await page.$eval('.fh-nr[data-kind="coupon"]', n => n.innerText)));
     await page.click('.fh-nr[data-kind="flag"]'); await wait(30);
     check('…a flag row opens Flags', (await page.evaluate(() => window.__nav)).includes('flags'));
-    const every = await page.$$eval('.fh-grid > *', ns => ns.map(n => (n.querySelector('.bento-card-title') || n).innerText.trim().split('\n')[0]));
-    check('Everything: the ten, Mail and System health among them', ['Active Flags', 'Tasks', 'Shopping', 'Money', 'Which card', 'Projects', 'PTO', 'Mail & Packages', 'Travel', 'System health'].every(w => every.some(x => x.toLowerCase().indexOf(w.toLowerCase()) !== -1)), J(every));
+    const every = await page.$$eval('.fh-grid > *', ns => ns.map(n => (n.querySelector('.fh-tile-t, .bento-card-title') || n).innerText.trim().split('\n')[0]));
+    check('Everything: compact tiles only, no big-number cards', !(await page.$('.fh-grid .bento-card-main')) && (await page.$$('.fh-grid > .fh-tile')).length === 10, J(every));
+    check('…flags and tasks say what needs you, amber', /2 open · 1 high/.test(await page.$eval('.fh-tile[data-tile="flags"]', n => n.innerText)) && (await page.$eval('.fh-tile[data-tile="tasks"]', n => n.className)).includes('hot'));
+    check('Everything: the ten, Mail and System health among them', ['Flags', 'Tasks', 'Shopping', 'Money', 'Which card', 'Projects', 'PTO', 'Mail & Packages', 'Travel', 'System health'].every(w => every.some(x => x.toLowerCase().indexOf(w.toLowerCase()) !== -1)), J(every));
     check('…the mail card has Got the mail!', /Got the mail!/.test(t));
     await page.click('text=✓ Got the mail!'); await wait(30);
     check('…and it resets the counter', (await page.evaluate(() => window.__nav)).includes('reset-mail'));
-    check('Travel tile: the next trip', /Lisbon in 10 days/.test(await page.$eval('.fh-travel', n => n.innerText)));
+    check('Travel tile: the next trip', /Lisbon in 10 days/.test(await page.$eval('.fh-tile[data-tile="travel"]', n => n.innerText)));
     const health = await page.$eval('.fh-health', n => [n.className, n.innerText.replace(/\s+/g, ' ')]);
     check('System health: what to look at', /hot/.test(health[0]) && /1 to look at/.test(health[1]) && /TESS late/.test(health[1]), J(health));
     await page.click('.fh-health'); await wait(30);
@@ -171,10 +196,10 @@ const PROPS = {
     const box = s => page.$eval(s, n => { const r = n.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width)]; });
     const L = await box('.fh-left'), R = await box('.fh-right');
     if (width >= 1000) check('two columns: Today on the left, Needs you on the right', R[0] > L[0] + L[2] - 2 && Math.abs(R[1] - L[1]) < 4, J([L, R]));
-    else check('a phone: one column, Needs you under Today', R[1] > L[1] && Math.abs(R[0] - L[0]) < 4, J([L, R]));
-    const tops = await page.$$eval('.fh-grid > .bento-card', ns => ns.slice(0, 4).map(n => Math.round(n.getBoundingClientRect().top)));
+    else { const T = await box('.fh-today'), G = await box('.fh-glance'); check('a phone: one column, Today, then Needs you, then At a glance (the mockup’s order)', T[1] < R[1] && R[1] < G[1] && Math.abs(R[0] - T[0]) < 4, J([T, R, G])); }
+    const tops = await page.$$eval('.fh-grid > .fh-tile', ns => ns.slice(0, 4).map(n => Math.round(n.getBoundingClientRect().top)));
     if (width >= 1200) check('four tiles across', new Set(tops).size === 1, J(tops));
-    if (width < 620) check('one tile per row on a phone', new Set(tops).size === 4, J(tops));
+    if (width < 620) check('two tiles across on a phone', tops[0] === tops[1] && tops[2] === tops[3] && tops[1] < tops[2], J(tops));
     check('no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     if (process.env.FH_SHOT) await page.screenshot({ path: process.env.FH_SHOT + width + '.png', fullPage: true });
     await page.close();

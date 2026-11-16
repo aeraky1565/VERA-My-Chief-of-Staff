@@ -75,7 +75,7 @@ check('no Home slot on lite', LITE.indexOf('HomeSlot') === -1);
 console.log('\nHome › At a glance helpers (pure)');
 check('the full dashboard shows At a glance on Home, not the pick-one slot', APP.indexOf('React.createElement(FhGlance,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate})') !== -1 && APP.indexOf('HomeSlot') === -1 && hsBlock.length > 500);
 check('Home keeps Mail & Packages, Shopping and the active trip card',
-  APP.indexOf('React.createElement(MailCounterCard,{counter:mailCounter') !== -1 && APP.indexOf('"🛒 Shopping"),shopping.length===0') !== -1 && APP.indexOf('displayTrip&&/*#__PURE__*/React.createElement(ActiveTravelCard') !== -1);
+  APP.indexOf('React.createElement(FhMailTile,{counter:mailCounter') !== -1 && APP.indexOf("title:'Shopping',lines:t.lines") !== -1 && APP.indexOf('displayTrip&&/*#__PURE__*/React.createElement(ActiveTravelCard') !== -1);
 check('…and no Bills tile in At a glance', (() => { const g = APP.slice(APP.indexOf('function fhGlance_('), APP.indexOf('function FhGlance(')); return g.length > 500 && !/bill/i.test(g); })());
 const H = vm.createContext({ React: { createElement: () => null, useState: v => [v, () => {}], useEffect: () => {} } });
 vm.runInContext(hsBlock, H);

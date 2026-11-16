@@ -19,7 +19,7 @@ check('🔔 opens System on Notifications', /onClick:\(\)=>\{setSystemSub\('noti
 check('System is a top tab, and opening it loads the documents', /\{id:'life',label:'Life'\},\{id:'system',label:'System'\}\];/.test(APP) && /VERA_MAIN_TABS\.map\(t=>t\.id\)\.filter\(tab=>veraCan_\(tab\)\)\.map\(tab=>/.test(APP) && /if\(tab==='system'\)\{loadResources\(apiUrl,apiToken\);\}/.test(APP) && /tab==='system'\?`🛠 System`/.test(APP));
 check('Documents load with their used-by lines', /apiGet\(url,token,\{action:'system_documents'\}\)/.test(APP));
 check('Home no longer has the Feature Flags or Milestones cards', !/"⚙️ Feature Flags"/.test(fnBody(APP, 'HomeTab')) && !/onNavigate\('milestones'\)/.test(fnBody(APP, 'HomeTab')) && /"⚙️ Feature Flags"/.test(fnBody(APP, 'SysFeatureFlags')));
-check('Home’s Projects card shows only with an active project', /if\(activeProjs\.length===0\)return null;/.test(fnBody(APP, 'HomeTab')));
+check('Home’s Projects tile names the active projects, or says there are none (the mockup’s tile)', /title:'Projects',lines:t\.lines/.test(fnBody(APP, 'HomeTab')) && /\['No active projects'\]/.test(APP));
 check('the ⚙ connection settings stay', /className:"btn-settings",onClick:\(\)=>setShowSettings\(true\)/.test(APP));
 
 const DOCS = { ok: true, resources: [

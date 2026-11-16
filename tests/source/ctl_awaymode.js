@@ -40,7 +40,7 @@ const CONTROLS = [
   ['a locked row can be changed', b => ({ [W]: swap(b[W], "  if (entry.locked) return { ok: false, error: 'locked' };\n  setConfigRow_('notif_' + key + '_while_away', value);", "  setConfigRow_('notif_' + key + '_while_away', value);") })],
   ['the banner shows the trip key', b => ({ [A]: swap(b[A], 'trip: awayTripLabel_(a.trip), started', 'trip: a.trip, started') })],
   ['a past date is accepted', b => ({ [W]: swap(b[W], "  if (on && until && until < awayToday_()) return { ok: false, error: 'that date has already passed' };\n", "") })],
-  ['Home without the Away banner', b => ({ [APP]: swap(b[APP], ",React.createElement(AwayBanner,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate})", "") })],
+  ['Home without the Away banner', b => ({ [APP]: swap(b[APP], ",React.createElement(AwayBanner,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate,variant:'tile'})", "") })],
   ['the While away setting never saves', b => ({ [APP]: swap(b[APP], "api({action:'set_notif_while_away',key:key,value:value})", "Promise.resolve({ok:true})") })],
 ];
 let allBit = true;
