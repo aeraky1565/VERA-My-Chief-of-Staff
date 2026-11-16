@@ -46,6 +46,10 @@ var AUTO_FLAG_KINDS_ = [
   { prefix: 'POINTS|STATUS|',    clears: 'Clears once the renewal date passes or moves.' },
   { prefix: 'POINTS|',           clears: 'Clears once the points no longer need it.' },
   { prefix: 'CARDFEE|',          clears: 'Clears once the fee month passes.' },
+  { prefix: 'no_gift_',          clears: 'Clears once a gift idea is added for them, or the day passes.' },
+  { prefix: 'home_service_overdue_', clears: 'Clears once the service is logged as done.' },
+  { prefix: 'rx_refill_',        clears: 'Clears once the refill is marked in Health › Prescriptions.' },
+  { prefix: 'tax_late_',         clears: 'Clears once the document is marked received in Finances › Tax.' },
 ];
 
 /** Pure: the automatic kind a flag key belongs to ({prefix, clears}), or null for a one-off flag. */

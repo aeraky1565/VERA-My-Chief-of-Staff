@@ -2360,7 +2360,7 @@ function flagArea_(f){var s=String((f&&f.source)||'');for(var i=0;i<FLAG_AREAS_.
 var FLAG_GOTO_PREFIX_=[['vehicle_renewal_','home_front','vehicles'],['vehicle_miles_','home_front','vehicles'],['warranty_expiry_','home_front','steward'],
   ['UPKEEP|','home_front','chores'],['ONHAND|','home_front','meal_plan'],['MEALPREP|','home_front','meal_plan'],['HSAFSA|','finances','hsafsa'],['PPURCH|','finances','planned'],
   ['FAMPLAN|','health','family_planning'],['MYTRIP|','travel','trips'],['trip_decision_','travel','trips'],['trip_premise_','travel','trips'],['FLIGHTCHG|','travel','itinerary'],
-  ['ARIA|','travel','aria'],['PROJECT|','projects',''],['AGENT_HEALTH|','system','agent_health'],['PTOPLAN|','pto','nextyear']];
+  ['ARIA|','travel','aria'],['PROJECT|','projects',''],['AGENT_HEALTH|','system','agent_health'],['PTOPLAN|','pto','nextyear'],['home_service_overdue_','home_front','steward'],['rx_refill_','health','prescriptions'],['tax_late_','finances','tax']];
 var FLAG_GOTO_SOURCE_=[[/^tax$/i,'finances','tax'],[/contract/i,'finances','contracts'],[/card perk/i,'finances','cards'],[/coupon/i,'home_front','coupons'],
   [/budget|bill|^finance/i,'finances','billscash'],[/career/i,'career',''],[/gift|important date/i,'people',''],[/fitness|gym/i,'health','fitness']];
 var FLAG_PLACE_NAMES_={home_front:'Home Front',finances:'Finances',health:'Health',travel:'Travel',projects:'Projects',system:'System',career:'Career',people:'People',
