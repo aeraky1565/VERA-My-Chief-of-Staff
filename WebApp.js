@@ -11770,7 +11770,10 @@ function webDeleteChoreForOthers_(e) {
 }
 
 /**
- * GET get_coupons — returns all rows from Coupons sheet as JSON array.
+ * GET get_coupons — the Coupons sheet's rows as JSON. Each says whether it has expired
+ * (expired, daysLeft, removeOn: couponState_, Code.js); Expires comes back as yyyy-MM-dd
+ * when it can be read. A coupon past its grace week is left out, as the nightly purge
+ * would have deleted it.
  */
 function webGetCoupons_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
@@ -11778,17 +11781,23 @@ function webGetCoupons_() {
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, coupons: [] };
   var rows = sheet.getDataRange().getValues();
   var hdrs = rows[0];
-  var tz   = Session.getScriptTimeZone();
-  var coupons = rows.slice(1).filter(function(r) { return r[0]; }).map(function(r) {
+  var tz   = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), keep = couponKeepDays_();
+  var col  = hdrs.indexOf('Expires');
+  var coupons = [];
+  rows.slice(1).filter(function(r) { return r[0]; }).forEach(function(r) {
+    var st = couponState_(couponIso_(col === -1 ? '' : r[col], tz), today, keep);
+    if (st.gone) return;
     var obj = {};
     hdrs.forEach(function(h, i) {
       obj[h] = r[i] instanceof Date
         ? Utilities.formatDate(r[i], tz, 'yyyy-MM-dd')
         : r[i];
     });
-    return obj;
+    if (st.iso) obj.Expires = st.iso;
+    obj.expired = st.expired; obj.daysLeft = st.daysLeft; obj.removeOn = st.removeOn;
+    coupons.push(obj);
   });
-  return { ok: true, coupons: coupons };
+  return { ok: true, today: today, keepDays: keep, coupons: coupons };
 }
 
 /**

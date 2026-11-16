@@ -2919,6 +2919,24 @@ function TaxTab({ apiUrl, apiToken }) {
 
 // ---- Coupons ----------------------------------------------------------------
 
+// ---- CpExpiredGroup (shared: app.js and dashboard-lite.html, byte-identical) ----
+// Coupons past their date: scratched off under Expired for the grace week (couponState_ on the server), then gone.
+function cpExpired_(c){if(c.expired===true)return true;if(c.expired===false)return false;if(!c.Expires)return false;var t=new Date();t.setHours(0,0,0,0);var d=Math.round((new Date(c.Expires+'T00:00:00')-t)/864e5);return !isNaN(d)&&d<0;}
+function cpNice_(iso){var d=iso?new Date(iso+'T00:00:00'):null;return d&&!isNaN(d)?d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'';}
+function cpRemoveOn_(c){if(c.removeOn)return c.removeOn;var d=c.Expires?new Date(c.Expires+'T00:00:00'):null;if(!d||isNaN(d))return '';d.setDate(d.getDate()+7);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function CpExpiredGroup({gone,open,onToggle,busy,onDelete,compact}){var h=React.createElement,strike={textDecoration:'line-through',textDecorationColor:'#9aa6c4aa',color:'#6b7590'};
+  return h('div',{className:'cp-expired',style:{display:'flex',flexDirection:'column',gap:10,marginTop:8}},
+    h('button',{type:'button',className:'cp-exp-toggle','aria-expanded':open,onClick:onToggle,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,width:'100%',background:'none',border:0,borderTop:'1px dashed #2a3550',padding:'10px 2px 0',color:'#9aa6c4',fontSize:12.5,cursor:'pointer',textAlign:'left',fontFamily:'inherit'}},
+      h('span',null,h('b',{style:{color:'#e8eaf6',fontWeight:600}},'Expired ('+gone.length+')'),compact?null:' · removed 7 days after they expire'),h('span',null,open?'Hide ▴':'Show ▾')),
+    open&&gone.map(function(c){var codes=[['Offer Code',c['Offer Code']],['Customer Code',c['Customer Code']]].filter(function(x){return x[1];});
+      return h('div',{key:c.ID,className:'card cp-gone','data-coupon':c.ID,style:{border:'1px dashed #2a3550',background:'transparent',display:'flex',flexDirection:'column',gap:6}},
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h('span',{className:'cp-gone-store',style:Object.assign({fontWeight:700,fontSize:15},strike)},c.Store||'—'),c.Channel&&h('span',{style:{fontSize:11,background:'#1e2a4a',color:'#8ab4f8',borderRadius:4,padding:'2px 6px',opacity:.5}},c.Channel),c.Discount&&h('span',{style:Object.assign({fontSize:12,fontWeight:700},strike)},c.Discount)),
+        c.Offer&&h('div',{style:Object.assign({fontSize:13},strike)},c.Offer),
+        h('span',{className:'cp-gone-chip',style:{alignSelf:'flex-start',fontSize:11,fontWeight:600,color:'#c4c9d6',background:'#2a2a2a',borderRadius:4,padding:'2px 7px'}},'Expired '+cpNice_(c.Expires)),
+        codes.map(function(x){return h('div',{key:x[0],style:{display:'flex',gap:6,alignItems:'center',fontSize:13}},h('span',{style:{color:'#8ab4f8',minWidth:90}},x[0]+':'),h('span',{style:Object.assign({fontFamily:'monospace',letterSpacing:1},strike)},x[1]),h('button',{type:'button',className:'cp-gone-copy',disabled:true,title:'Expired','aria-label':'Copy (expired)',style:{background:'none',border:0,fontSize:14,color:'#3d4763',cursor:'not-allowed',padding:'0 4px'}},'📋'));}),
+        h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}},cpRemoveOn_(c)&&h('span',{className:'cp-gone-when',style:{fontSize:11.5,color:'#6b7590'}},'Goes on '+cpNice_(cpRemoveOn_(c))),
+          h('button',{type:'button',className:'cp-gone-del',disabled:busy,onClick:function(){onDelete(c.ID);},style:{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid #4a2020',background:'none',color:'#f28b82',cursor:'pointer'}},'Delete now')));}));}
+// ---- end CpExpiredGroup ----
 function CouponsLiteTab({ apiUrl, apiToken }) {
   const [coupons,     setCoupons]     = React.useState([]);
   const [loading,     setLoading]     = React.useState(false);
@@ -3001,6 +3019,7 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
     setBusy(false);
   }
 
+  const [showExp, setShowExp] = React.useState(false);   // lite keeps Expired closed
   // Sort: soonest expiry first, no-expiry last, expired at bottom
   const sorted = [...coupons].sort((a, b) => {
     const now = new Date(); now.setHours(0,0,0,0);
@@ -3010,6 +3029,7 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
     const dB  = db ? Math.round((db - now) / 86400000) : 9999;
     return (dA < 0 ? 99999 : dA) - (dB < 0 ? 99999 : dB);
   });
+  const gone = sorted.filter(cpExpired_), live = sorted.filter(c => !cpExpired_(c));
 
   return (
     <div>
@@ -3022,7 +3042,7 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
         >
           {uploading ? '⏳ Extracting…' : '📷 Add Coupon'}
         </button>
-        <span style={{ fontSize: 12, color: '#6b7280' }}>{sorted.length} coupon{sorted.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 12, color: '#6b7280' }}>{live.length} coupon{live.length !== 1 ? 's' : ''}</span>
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
       </div>
 
@@ -3035,7 +3055,7 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
         </div>
       )}
 
-      {sorted.map(c => {
+      {live.map(c => {
         const exp      = expiryInfo(c.Expires);
         const expiring = exp.days !== null && exp.days >= 0 && exp.days <= 3;
         const expired  = exp.days !== null && exp.days < 0;
@@ -3108,6 +3128,8 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
           </div>
         );
       })}
+
+      {gone.length > 0 && <CpExpiredGroup gone={gone} open={showExp} onToggle={() => setShowExp(!showExp)} busy={busy} onDelete={handleDelete} compact={true} />}
 
       {/* Confirmation modal */}
       {confirmForm && (

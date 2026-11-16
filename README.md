@@ -1020,7 +1020,7 @@ happening. `checkMonthlyReview_`, `sendHealthPerformanceInsightMonthly_`,
 
 | Trigger | Covers |
 |---|---|
-| `nightlyRun`, `NIGHTLY_RUN_HOUR` | everything through `purgeExpiredCoupons_` |
+| `nightlyRun`, `NIGHTLY_RUN_HOUR` | everything through `checkTaxDocuments_` |
 | `nightlyRunTail`, an hour later | `checkHealthAppointments_` → `runExplorer_` |
 
 > Splitting at the tidier `=== Critical path done — flags written ===` banner was
@@ -2061,6 +2061,10 @@ The nightly run raises one flag per vehicle per dated item (Registration, Insura
 ### Pantry + Auto-Restock
 
 The `Purchase History` tab logs grocery and household purchases with item name, normalised name, category, quantity, unit, store, and price. When `pantry_enabled=true`, VERA uses an exponential moving average model (`pantry_ema_alpha` default 0.3) to predict when items will run out and auto-adds them to the shopping list `pantry_restock_days_ahead` days before predicted depletion.
+
+### Coupons + Expiry
+
+The Coupons tab (Shopping › Coupons, full and lite) lists live coupons first, soonest to expire on top. A coupon expires the day after its date; it then moves into an **Expired** group at the bottom, scratched off, with its copy buttons off, the day it goes and **Delete now**. The full dashboard shows the group open, lite keeps it closed. Seven days after expiry (Config `coupon_keep_expired_days`, 0–60) the nightly `purgeExpiredCoupons_` deletes the row, and `get_coupons` stops sending it that day even if the purge was skipped. Both use `couponIso_` and `couponState_` (Code.js), which read a sheet date, `yyyy-MM-dd` or `M/D/YYYY`. The coupon steps run early in `nightlyRun`, right after the important dates, so the time budget doesn't drop them.
 
 ### Contracts + Expiry Flagging
 

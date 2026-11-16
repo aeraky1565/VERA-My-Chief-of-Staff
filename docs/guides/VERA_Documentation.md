@@ -161,6 +161,10 @@ Reads the `Gym Log` tab and the calendar within the configured `gym_tracker_look
 
 `checkFitnessConsistency_()` evaluates gym session count vs the `fitness_weekly_target` Config key. If behind pace by the configured `fitness_low_flag_day` (default Wednesday = day 4), writes a Low-urgency flag. `checkFitnessTravelGap_()` checks if a trip is approaching and automatically creates gym session placeholder events in the VERA calendar for the travel period. Both are gated by `fitness_enabled = 'true'`.
 
+### Coupons: `checkExpiringCoupons_()` + `purgeExpiredCoupons_()`
+
+`checkExpiringCoupons_()` flags a coupon expiring within 3 days. The Coupons tab (Shopping › Coupons, full and lite) lists live coupons first, soonest to expire on top. A coupon expires the day after its date; it then moves into an **Expired** group at the bottom, scratched off, with its copy buttons off, the day it goes and **Delete now**. The full dashboard shows the group open, lite keeps it closed. Seven days after expiry (Config `coupon_keep_expired_days`, 0–60) the nightly `purgeExpiredCoupons_` deletes the row, and `get_coupons` stops sending it that day even if the purge was skipped. Both use `couponIso_` and `couponState_` (Code.js), which read a sheet date, `yyyy-MM-dd` or `M/D/YYYY`. The coupon steps run early in `nightlyRun`, right after the important dates, so the time budget doesn't drop them.
+
 ### Step 0k: `autoRestockItems_()` + `generatePantryFlags_()`
 
 `autoRestockItems_()` uses exponential moving average (EMA, configurable alpha via `pantry_ema_alpha`, default 0.3) to predict when household items will run out based on `Purchase History` tab data, and pre-adds restock items to the Shopping List. `generatePantryFlags_()` checks if a trip is approaching and items are predicted to run out during the trip. Both are gated by `pantry_enabled = 'true'`.

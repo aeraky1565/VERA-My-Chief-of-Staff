@@ -1333,6 +1333,11 @@ function nightlyRun() {
     // considered for a flag on the same run.
     nightlyStep_(ctx, 'checkImportantDates_', checkImportantDates_);
 
+    // Coupon expiry flags, then remove coupons past their grace week (Issue #173). Early, and
+    // cheap: as the night's last step it was the first one the time budget dropped.
+    nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);
+    nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);
+
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
     nightlyStep_(ctx, 'resetChoresByCadence_', resetChoresByCadence_);
     // Upkeep (quarterly, seasonal, yearly chores) overdue or due within a week: a Low flag or a task.
@@ -1469,10 +1474,6 @@ function nightlyRun() {
 
     // Also previously unguarded.
     nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);
-
-    // Step 0n-ii: Coupon expiry flags + purge expired rows (Issue #173)
-    nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);
-    nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);
 
     // The night now ends here. Everything from checkHealthAppointments_ onwards
     // lives in nightlyRunTail, on its own trigger an hour later — see that function
@@ -5399,26 +5400,60 @@ function checkExpiringCoupons_() {
 }
 
 /**
- * Deletes coupon rows where expiry date is strictly before today (i.e. ≥1 day past).
- * Called nightly from nightlyRun() so expired coupons disappear the day after expiry.
+ * Pure: a coupon's Expires cell as 'yyyy-MM-dd', or '' when it can't be read. Takes a sheet
+ * Date (read in the script's time zone), 'yyyy-MM-dd', or a US 'M/D/YYYY' (or 'M/D/YY').
+ */
+function couponIso_(raw, tz) {
+  var ymd = function(y, m, d) {
+    y = Number(y); m = Number(m); d = Number(d);
+    if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 2000 && y <= 2100)) return '';
+    var t = new Date(Date.UTC(y, m - 1, d));
+    if (t.getUTCMonth() !== m - 1) return '';                      // e.g. Feb 30
+    return y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+  };
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? '' : Utilities.formatDate(raw, tz, 'yyyy-MM-dd');
+  var s = String(raw == null ? '' : raw).trim(), m;
+  if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|T|\s)/.exec(s))) return ymd(m[1], m[2], m[3]);
+  if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})$/.exec(s))) return ymd(m[3].length === 2 ? '20' + m[3] : m[3], m[1], m[2]);
+  return '';
+}
+
+/**
+ * Pure: where a coupon stands today. An expired coupon (the day after its date) stays,
+ * scratched off, for `keep` days, then it's gone: hidden from the tab and deleted nightly.
+ * → { iso, daysLeft, expired, removeOn, gone } (daysLeft null when there's no readable date).
+ */
+function couponState_(iso, todayIso, keep) {
+  if (!iso) return { iso: '', daysLeft: null, expired: false, removeOn: '', gone: false };
+  var at = function(x) { var p = x.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); };
+  var left = Math.round((at(iso) - at(todayIso)) / 86400000);
+  var off = new Date(at(iso) + keep * 86400000);
+  var removeOn = off.getUTCFullYear() + '-' + ('0' + (off.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + off.getUTCDate()).slice(-2);
+  return { iso: iso, daysLeft: left, expired: left < 0, removeOn: removeOn, gone: left < 0 && left <= -keep };
+}
+
+/** Config coupon_keep_expired_days: how long an expired coupon stays, scratched off (default 7, 0–60). */
+function couponKeepDays_() {
+  var v = parseInt((getConfigValues() || {})['coupon_keep_expired_days'], 10);
+  return isNaN(v) ? 7 : Math.max(0, Math.min(60, v));
+}
+
+/**
+ * Deletes coupons whose grace week is over (couponState_ .gone: `keep` days after the
+ * expiry date). Called nightly; webGetCoupons_ hides the same ones, so a skipped night
+ * leaves nothing behind on the tab.
  */
 function purgeExpiredCoupons_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.COUPONS);
   if (!sheet || sheet.getLastRow() < 2) return;
-  var today = new Date(); today.setHours(0, 0, 0, 0);
-  var rows  = sheet.getDataRange().getValues();
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), keep = couponKeepDays_();
+  var rows = sheet.getDataRange().getValues(), removed = 0;
   // Scan backward; col index 7 = Expires (0-based)
   for (var i = rows.length - 1; i >= 1; i--) {
-    var raw    = rows[i][7];
-    var expiry = raw ? new Date(raw) : null;
-    if (expiry) {
-      expiry.setHours(0, 0, 0, 0);
-      var daysPast = Math.floor((today - expiry) / 86400000);
-      if (daysPast >= 1) sheet.deleteRow(i + 1);
-    }
+    if (couponState_(couponIso_(rows[i][7], tz), today, keep).gone) { sheet.deleteRow(i + 1); removed++; }
   }
-  Logger.log('purgeExpiredCoupons_: scan complete.');
+  Logger.log('purgeExpiredCoupons_: removed ' + removed + ' coupon(s) more than ' + keep + ' day(s) past expiry.');
 }
 
 // ============================================================
