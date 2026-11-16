@@ -974,6 +974,7 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 ## 20. Dashboards, Navigation & Notifications
 
+- **Recurring tasks:** the task form's Repeats has the presets and **Custom…**: Every [N] [days / weeks / months / years], saved as e.g. "Every 2 years", with the next date shown before saving. The server reads it with `parseCadence_` (WebApp.js) and works out the next due date in `computeNextDueDate_`; months and years keep month ends (`addMonthsClamped_`: Jan 31 → Feb 28). `cadenceProblem_` refuses an unreadable repeat when a task is added or edited; an old one still repeats monthly when completed, and opens in the form as Custom with a warning. The dashboard's copy (`tcParse_`, `tcNext_`) is checked against the server by `test_cadence.js`.
 - **Two dashboards:** `docs/index.html` (built from `docs/app.js` by `docs/build.js`, React inlined) and `docs/dashboard-lite.html` (Victoria's, compiled in the browser). Shared blocks are copied byte-for-byte between them and tests enforce it.
 - **Tile navigation:** each area groups its sub-tabs into tiles (`VN_GROUPS`, `FIN_GROUPS`, `HF_GROUPS`, `LF_GROUPS`, `SYS_SUBS`). The lite dashboard keeps eight tabs underneath: Today, Chat, Shopping, Home, Travel, Money, Family, Projects.
 - **Full Home (`docs/app.js`, the Fh components, with their styles in `docs/index.html`):**

@@ -2110,7 +2110,7 @@ Every tab is created automatically by `setupVERA()` → `createSheetTabs()`. Hea
 | Tab Name | Constant Key | Purpose | Auto-managed? |
 |----------|-------------|---------|---------------|
 | Flags | `FLAGS` | All generated flags (all states) | Written nightly by Claude + sub-modules |
-| Tasks | `TASKS` | Open and completed VERA tasks | User-managed; recurring tasks auto-recreated |
+| Tasks | `TASKS` | Open and completed VERA tasks | User-managed; recurring tasks auto-recreated: a preset (Daily … Yearly), a weekday, or Custom “Every N days/weeks/months/years” (the task form shows the next date; month ends stay at the end; an unreadable repeat is refused on save) |
 | Metrics | `METRICS` | VERA health counts (tasks/calendar/flags) | Written nightly by `writeSummarySnapshot()` |
 | Summaries | `SUMMARIES` | External life data feed (Finance, Fitness, etc.) | `[AUTO]` rows written nightly; manual rows preserved |
 | Config | `CONFIG` | Key/value configuration pairs | User-managed |

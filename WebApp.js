@@ -1236,7 +1236,7 @@ function findTaskRow_(id) {
 /**
  * Given a base date and a recurring frequency string, returns the next Date.
  * Understands: Daily, Weekly, Bi-Weekly, Monthly, Quarterly, Semi-Annual,
- * Yearly/Annual, "Every N days/weeks/months", and plain "N days/weeks/months".
+ * Yearly/Annual, and "Every N days/weeks/months/years" (also without "every"): parseCadence_.
  * Returns null if the recurring string is empty or unrecognised as recurring.
  */
 var DAY_NAMES_ = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -1269,6 +1269,39 @@ function isWeekdayAnchored_(recurringStr) {
   return s === 'weekly' || parseDayOfWeek_(s) !== -1;
 }
 
+/**
+ * Pure: what a cadence means. → { unit: 'day'|'week'|'month'|'year', n }, { weekday }, { none: true }
+ * for no repeat, or null when it can't be read. Understands the presets (Daily … Yearly) and
+ * "Every N days/weeks/months/years" (also without "every"), N from 1 to 99.
+ */
+function parseCadence_(recurringStr) {
+  var s = String(recurringStr == null ? '' : recurringStr).trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!s || s === 'no' || s === 'false' || s === '0') return { none: true };
+  var wd = parseDayOfWeek_(s);
+  if (wd !== -1) return { weekday: wd };
+  var named = { 'daily': ['day', 1], 'weekly': ['week', 1], 'bi-weekly': ['week', 2], 'biweekly': ['week', 2], 'fortnightly': ['week', 2],
+    'every other week': ['week', 2], 'monthly': ['month', 1], 'quarterly': ['month', 3], 'semi-annual': ['month', 6], 'semi annual': ['month', 6],
+    'semiannual': ['month', 6], 'yearly': ['year', 1], 'annual': ['year', 1], 'annually': ['year', 1], 'every year': ['year', 1] };
+  if (named[s]) return { unit: named[s][0], n: named[s][1] };
+  var m = s.match(/^(?:every )?(?:(\d{1,2}) ?)?(day|week|month|year)s?$/);
+  if (m && (m[1] == null || +m[1] >= 1)) return { unit: m[2], n: m[1] == null ? 1 : +m[1] };
+  return null;
+}
+
+/** Pure: '' when VERA can read a cadence, else why not (a new task's cadence is checked on save). */
+function cadenceProblem_(recurringStr) {
+  return parseCadence_(recurringStr) ? '' : 'VERA can’t read the repeat "' + String(recurringStr).trim() + '". Pick a preset, or Custom: every N days, weeks, months or years.';
+}
+
+/** Pure: a date N months on, kept on the same day or the month's last day (Jan 31 → Feb 28 → Mar 31). */
+function addMonthsClamped_(date, n) {
+  var d = new Date(date), day = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + n);
+  var last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return d;
+}
+
 function computeNextDueDate_(fromDate, recurringStr) {
   var s = String(recurringStr || '').trim().toLowerCase();
   if (!s || s === 'no' || s === 'false' || s === '0') return null;
@@ -1283,34 +1316,12 @@ function computeNextDueDate_(fromDate, recurringStr) {
     return nextWeekday_(base, targetDay);
   }
 
-  if (s === 'daily') {
-    next.setDate(next.getDate() + 1);
-  } else if (s === 'weekly') {
-    next.setDate(next.getDate() + 7);
-  } else if (s === 'bi-weekly' || s === 'biweekly' || s === 'every 2 weeks' || s === 'fortnightly') {
-    next.setDate(next.getDate() + 14);
-  } else if (s === 'monthly') {
-    next.setMonth(next.getMonth() + 1);
-  } else if (s === 'quarterly' || s === 'every 3 months') {
-    next.setMonth(next.getMonth() + 3);
-  } else if (s === 'semi-annual' || s === 'semi annual' || s === 'every 6 months') {
-    next.setMonth(next.getMonth() + 6);
-  } else if (s === 'yearly' || s === 'annual' || s === 'annually' || s === 'every year') {
-    next.setFullYear(next.getFullYear() + 1);
-  } else {
-    // "every N days/weeks/months" or "N days/weeks/months"
-    var m;
-    if ((m = s.match(/^(?:every\s+)?(\d+)\s*days?$/))) {
-      next.setDate(next.getDate() + parseInt(m[1]));
-    } else if ((m = s.match(/^(?:every\s+)?(\d+)\s*weeks?$/))) {
-      next.setDate(next.getDate() + parseInt(m[1]) * 7);
-    } else if ((m = s.match(/^(?:every\s+)?(\d+)\s*months?$/))) {
-      next.setMonth(next.getMonth() + parseInt(m[1]));
-    } else {
-      // Unknown string but non-empty — treat as monthly
-      next.setMonth(next.getMonth() + 1);
-    }
-  }
+  var c = parseCadence_(s);
+  if (!c) c = { unit: 'month', n: 1 };   // an old, unreadable value keeps its old meaning (monthly); new ones are refused on save
+  if (c.unit === 'day')   next.setDate(next.getDate() + c.n);
+  if (c.unit === 'week')  next.setDate(next.getDate() + 7 * c.n);
+  if (c.unit === 'month') next = addMonthsClamped_(next, c.n);
+  if (c.unit === 'year')  next = addMonthsClamped_(next, 12 * c.n);
   return next;
 }
 
@@ -1398,6 +1409,8 @@ function webAddTask_(e) {
   const notes     =  (e.parameter && e.parameter.notes)     || '';
   const recurring =  (e.parameter && e.parameter.recurring) || '';
   if (!taskText) throw new Error('Task text is required');
+  const why = cadenceProblem_(recurring);
+  if (why) throw new Error(why);
 
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.TASKS);
@@ -1421,6 +1434,7 @@ function webAddTask_(e) {
 
 function webUpdateTask_(e) {
   const id      = (e.parameter && e.parameter.id)      || '';
+  if (e.parameter && e.parameter.recurring != null) { const why = cadenceProblem_(e.parameter.recurring); if (why) throw new Error(why); }
   const found   = findTaskRow_(id);
 
   // TASK_HEADERS: ID(1) | Task(2) | Added Date(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)

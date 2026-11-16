@@ -63,7 +63,7 @@ function ctx(flags, tasks) {
   vm.createContext(c);
   vm.runInContext(FT, c);
   ['findFlagRow_', 'findTaskRow_', 'webAcknowledge_', 'webSnooze_', 'webResolve_', 'webGetFlags_', 'webCompleteTask_', 'webDeleteTask_', 'webAddTask_', 'webUpdateTask_', 'webGetTasks_',
-   'computeNextDueDate_', 'isWeekdayAnchored_', 'parseDayOfWeek_', 'nextWeekday_', 'formatDateVal_'].forEach(n => { try { vm.runInContext(fn(WEB, n), c); } catch (e) { if (n !== 'formatDateVal_') throw e; } });
+   'computeNextDueDate_', 'parseCadence_', 'cadenceProblem_', 'addMonthsClamped_', 'isWeekdayAnchored_', 'parseDayOfWeek_', 'nextWeekday_', 'formatDateVal_'].forEach(n => { try { vm.runInContext(fn(WEB, n), c); } catch (e) { if (n !== 'formatDateVal_') throw e; } });
   if (typeof c.formatDateVal_ !== 'function') c.formatDateVal_ = v => String(v || '');
   vm.runInContext('var DAY_NAMES_ = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];', c);
   vm.runInContext(fn(CODE, 'flagDueCell_'), c);
