@@ -103,7 +103,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 - **Left column:**
   - **Today:** the shared Joint Chaos calendar (`get_todays_events`), with a chip for the next trip, or the days until home while you're on one.
   - The active travel card, ARIA's book-now banner, Log a grocery run and Away mode side by side, and Easy Mode.
-  - **At a glance:** Coming up, Practice, Spending and Birthday all at once, one line each. A tile turns amber when it needs you: behind on the week's practice, a budget line over plan, or a birthday within 14 days with no gift ideas. Each tile opens its page. This replaces the old pick-one card.
+  - **At a glance:** one card, picked by what needs you most: a birthday within 14 days with no gift ideas, then spending over plan, then practice behind for the week, otherwise Coming up. It's amber when it needs you and opens its page. Four small chips let you peek at the others (the urgent one has a dot); a peek lasts until you leave Home.
 - **Right column, Needs you:** high and medium flags, tasks overdue or due within 3 days, plus the lite Today's perks, coupons and house jobs (the shared `liteNeedsYou_`), soonest first. Five are shown, and "See all" shows up to ten. A row opens its tab.
 - **Everything:** compact tiles, each with one or two lines, amber when it needs you; four across on a computer, two on a phone.
   - **Flags** (open, high, the top one), **Tasks** (overdue, next), **Shopping** (the two biggest lists), **Money** (groceries against plan, the next bill).

@@ -47,7 +47,7 @@ const ctx = { console, Date, Math, JSON, Object, Array, String, Number, RegExp, 
 vm.createContext(ctx);
 const CARDVALUE = (() => { const a = APP.indexOf('// ---- CardValue'); const b = APP.indexOf('// ---- /CardValue ----', a); return a === -1 ? '' : APP.slice(a, b); })();
 const HUB = (() => { const a = APP.indexOf('// ---- CardHub'); const b = APP.indexOf('// ---- /CardHub ----', a); return a === -1 ? '' : APP.slice(a, b); })();
-['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_', 'fhFlagsTile_', 'fhTasksTile_', 'fhShopTile_', 'fhProjTile_', 'fhPtoTile_', 'fhMailTile_', 'fhMoneyTile_', 'fhTravelTile_', 'fhNeedsShown_', 'fhGreeting_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
+['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhGlancePick_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_', 'fhFlagsTile_', 'fhTasksTile_', 'fhShopTile_', 'fhProjTile_', 'fhPtoTile_', 'fhMailTile_', 'fhMoneyTile_', 'fhTravelTile_', 'fhNeedsShown_', 'fhGreeting_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
 vm.runInContext(NA, ctx);
 try { vm.runInContext(CARDVALUE + '\n' + HUB.replace(/function CardHub[\s\S]*$/, ''), ctx); } catch (e) {}
 
@@ -102,6 +102,18 @@ check('calm: nothing amber; empty states say what they mean', !calm.some(t => t.
 check('loading: each says Loading, nothing amber', ctx.fhGlance_({}, NOW).every(t => t.line === null && !t.hot));
 check('a failed read says so on its own tile only', ctx.fhGlance_({ coming: { error: 'x' }, money: LOADED.money }, NOW)[0].line === 'Couldn’t load');
 check('each opens its page', J(g.map(t => t.nav)) === J(['life', 'life', 'finances', 'people']));
+
+console.log('\nAt a glance: one card, the most urgent');
+{
+  const T = (ids) => ids.map(id => ({ id, hot: true }));
+  const pick = (hot) => ctx.fhGlancePick_(['coming', 'practice', 'money', 'birthday'].map(id => ({ id, hot: hot.includes(id) })));
+  check('a birthday with no ideas comes first', pick(['practice', 'money', 'birthday']) === 'birthday');
+  check('…then spending over plan', pick(['practice', 'money']) === 'money');
+  check('…then practice behind', pick(['practice']) === 'practice');
+  check('…otherwise Coming up (also while loading)', pick([]) === 'coming' && ctx.fhGlancePick_(ctx.fhGlance_({}, NOW)) === 'coming');
+  check('from the real rules: with the invented data, the birthday', ctx.fhGlancePick_(g) === 'birthday', J(g.map(x => [x.id, x.hot])));
+  check('a hidden page’s card isn’t picked', ctx.fhGlancePick_([{ id: 'coming', hot: false }, { id: 'practice', hot: true }]) === 'practice' && ctx.fhGlancePick_([{ id: 'practice', hot: false }]) === 'practice');
+}
 
 console.log('\nNeeds you');
 const FLAGS = [{ id: 'F1', flag: 'Renew passport', urgency: 'High' }, { id: 'F2', flag: 'Low thing', urgency: 'Low' }, { id: 'F3', flag: 'Done one', urgency: 'High', resolved: true }, { id: 'F4', flag: 'Insurance card', urgency: 'Medium' }];
@@ -163,15 +175,25 @@ const PROPS = {
       try { localStorage.setItem('vera_install_tip_done', '1'); } catch (e) {}
       document.body.innerHTML = '<div id="fhprobe" style="padding:0 16px"></div>';
       const p = Object.assign({}, props, { apiUrl: 'https://vera.test/exec', apiToken: 't', onNavigate: tab => window.__nav.push(tab), onViewItinerary: () => {}, onResetMailCounter: () => window.__nav.push('reset-mail') });
-      ReactDOM.createRoot(document.getElementById('fhprobe')).render(React.createElement(HomeTab, p));
+      window.__home = () => window.__root.render(React.createElement(HomeTab, p));
+      window.__root = ReactDOM.createRoot(document.getElementById('fhprobe')); window.__home();
     }, { replies: REPLIES, props: PROPS });
     await wait(400);
     const t = await page.$eval('#fhprobe', n => n.innerText);
     check('no page errors', !errors.length, errors.join('; '));
     check('Today: the Joint Chaos events and the trip chip', /📅 Today ·/.test(t) && /Team standup/.test(t) && /9:00 AM – 9:30 AM · Zoom/.test(t) && /✈️ Lisbon in 10 days/.test(t), t.slice(0, 300));
-    const tiles = await page.$$eval('.fh-gt', ns => ns.map(n => [n.dataset.tile, n.className.includes('hot'), n.innerText.replace(/\s+/g, ' ')]));
-    check('At a glance: four tiles at once', J(tiles.map(x => x[0])) === J(['coming', 'practice', 'money', 'birthday']), J(tiles));
-    check('…spending over on a line and a birthday with no ideas are amber', tiles[2][1] && tiles[3][1] && /Sam’s birthday · in 5 days/.test(tiles[3][2]), J(tiles));
+    const cards = await page.$$eval('.fh-gt', ns => ns.map(n => [n.dataset.tile, n.className.includes('hot'), n.innerText.replace(/\s+/g, ' ')]));
+    check('At a glance: one card, the most urgent (a birthday with no gift ideas), amber', cards.length === 1 && cards[0][0] === 'birthday' && cards[0][1] && /Sam’s birthday · in 5 days/.test(cards[0][2]), J(cards));
+    const chips = await page.$$eval('.fh-gchip', ns => ns.map(n => [n.dataset.chip, n.getAttribute('aria-pressed'), !!n.querySelector('.fh-gdot')]));
+    check('…four chips to peek, the urgent one marked', J(chips) === J([['coming', 'false', false], ['practice', 'false', false], ['money', 'false', false], ['birthday', 'true', true]]), J(chips));
+    await page.click('.fh-gchip[data-chip="money"]'); await wait(40);
+    check('…a chip shows another card', (await page.$eval('.fh-gt', n => n.dataset.tile)) === 'money' && /\$840 of \$900 a month/.test(await page.$eval('.fh-gt', n => n.innerText)));
+    await page.click('.fh-gt'); await wait(30);
+    check('…and the card opens its page', (await page.evaluate(() => window.__nav)).includes('finances'));
+    await page.click('.fh-gchip[data-chip="money"]'); await wait(40);
+    await page.evaluate(() => { window.__root.render(React.createElement('div')); }); await wait(30);   // leave Home…
+    await page.evaluate(() => window.__home()); await wait(300);                                         // …and come back
+    check('…a peek lasts only until you leave Home: back, it picks by urgency again', (await page.$eval('.fh-gt', n => n.dataset.tile)) === 'birthday');
     check('no pick-one card', !(await page.$('.hs-slot')) && !(await page.$('.hs-pick')));
     const needs = await page.$$eval('.fh-nr', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ')));
     check('Needs you: five on a computer, three on a phone, soonest first, with See all', needs.length === (width < 620 ? 3 : 5) && /Overdue task 7/.test(needs[0]) && /See all 10/.test(t), J(needs));

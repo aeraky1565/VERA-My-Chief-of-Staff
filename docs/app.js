@@ -11531,11 +11531,22 @@ function FhGlance({apiUrl,apiToken,onNavigate}){var h=React.createElement;var[d,
     apiGet(apiUrl,apiToken,{action:'life_growth'}).then(put('practice')).catch(bad('practice'));
     apiGet(apiUrl,apiToken,{action:'budget_actuals',quarter:hsQuarter_(new Date())}).then(put('money')).catch(bad('money'));
     Promise.all([apiGet(apiUrl,apiToken,{action:'get_important_dates'}),apiGet(apiUrl,apiToken,{action:'get_gift_data'}).catch(function(){return{};})]).then(function(r){put('birthday')({next:hsNextDate_((r[0]||{}).dates,(r[1]||{}).ideas)});}).catch(bad('birthday'));},[apiUrl,apiToken]);
+  // A peek at another card lasts until you leave Home; the next visit picks again by urgency.
+  var[peek,setPeek]=React.useState(null);
   var tiles=fhGlance_(d,new Date()).filter(function(t){return veraCan_(t.nav);});if(!tiles.length)return null;
+  var urgent=fhGlancePick_(tiles),t=tiles.filter(function(x){return x.id===(peek||urgent);})[0]||tiles[0];
   return h('section',{className:'fh-glance','aria-label':'At a glance'},h('div',{className:'fh-sect'},'At a glance'),
-    h('div',{className:'fh-ggrid'},tiles.map(function(t){return h('button',{key:t.id,type:'button',className:'fh-gt'+(t.hot?' hot':''),'data-tile':t.id,onClick:function(){onNavigate(t.nav);}},
+    h('button',{type:'button',className:'fh-gt fh-gt-one'+(t.hot?' hot':''),'data-tile':t.id,onClick:function(){onNavigate(t.nav);}},
       h('span',{className:'fh-gt-h'},h('span',null,t.head),h('small',null,t.where+' ›')),
-      h('span',{className:'fh-gt-l'},t.line==null?'Loading…':t.line),t.sub?h('span',{className:'fh-gt-s'},t.sub):null);})));}
+      h('span',{className:'fh-gt-l'},t.line==null?'Loading…':t.line),t.sub?h('span',{className:'fh-gt-s'},t.sub):null),
+    h('div',{role:'group','aria-label':'Show another',className:'fh-gchips'},tiles.map(function(x){var on=x.id===t.id;
+      return h('button',{key:x.id,type:'button','data-chip':x.id,'aria-pressed':on,'aria-label':x.head.replace(/^\S+\s/,'')+(x.id===urgent&&x.hot?' (needs you)':''),className:'fh-gchip'+(on?' on':''),onClick:function(){setPeek(x.id);}},
+        x.head.split(' ')[0],x.id===urgent&&x.hot?h('span',{className:'fh-gdot','aria-hidden':'true'}):null);})));}
+// Pure: which At a glance card to show: the most urgent (a birthday with no gift ideas, spending over
+// plan, practice behind), else Coming up.
+function fhGlancePick_(tiles){var hot=function(id){return (tiles||[]).some(function(t){return t.id===id&&t.hot;});};
+  var order=['birthday','money','practice'];for(var i=0;i<order.length;i++)if(hot(order[i]))return order[i];
+  return (tiles||[]).some(function(t){return t.id==='coming';})?'coming':((tiles||[])[0]||{}).id;}
 
 // Pure: Needs you on the full Home: high and medium flags, tasks overdue or due within 3 days, then what
 // the lite Today lists (perks, coupons, upkeep chores: liteNeedsYou_), soonest first. At most 10.

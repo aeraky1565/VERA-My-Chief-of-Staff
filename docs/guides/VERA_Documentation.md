@@ -981,7 +981,7 @@ Change only column B. The full list of keys is in the appendix (§22).
   - **Today:** `FhToday` reads `get_todays_events`, the Joint Chaos calendar only. `fhTripChip_` gives the next trip, or the days until home while you're away.
   - **At a glance:** `FhGlance` and `fhGlance_` read `coming_up`, `life_growth`, `budget_actuals` (via `hsSpending_`) and `get_important_dates` with `get_gift_data` (via `hsNextDate_`).
     - A tile is amber when practice is behind (the sessions still needed are at least the days left in the week), when any budget line is over plan, or when a birthday is within 14 days with no ideas.
-    - This replaces the pick-one `HomeSlot`.
+    - One card shows: `fhGlancePick_` takes the first hot one of Birthday, Spending, Practice, else Coming up. Chips peek at the others for this visit only. This replaces the pick-one `HomeSlot`.
   - **Needs you:** `FhNeeds` and `fhNeeds_` list high flags (Today) and medium ones (Soon), and tasks that are overdue or due within 3 days. They add `liteNeedsYou_` from the new **NeedsYou** shared block (shared with lite) over `cards`, `get_coupons` and `get_chores`. Rows are soonest first, five shown and ten at most.
   - **Tiles:** Flags, Tasks, Shopping, `FhMoneyTile` (`bills`, the next unpaid one), `FhCardTile` (`cvCheat_`), Projects, PTO, `MailCounterCard` (with Got the mail!), Travel and `FhHealth`.
     - `FhHealth` uses `fhHealth_` over `home_nightly` (new, read only: `LAST_NIGHTLY_RUN`, plus the `NIGHTLY_STEP` it stopped in), `agent_health`, `system_api_health` and `trip_id_check`.
