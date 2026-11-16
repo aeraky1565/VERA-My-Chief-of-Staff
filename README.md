@@ -2141,6 +2141,8 @@ The full screen (Home Front › Savings › Coupons) has counters (**Expire this
 
 The `Contracts` tab tracks active agreements: name, category, counterparty, start/end dates, auto-renewal flag, notice period, monthly cost, status, and document link. `checkContracts_()` runs nightly and generates flags for contracts approaching expiry (within the notice period + a buffer) or already expired. Chat can add, update, and log actions against contracts.
 
+**Warn me N days ahead** is the `Notice Period Days` column, per contract, **60 by default** (a blank or unreadable cell reads as 60; `ctWarnDays_`, `Contracts.js`). **Finances › Contracts** shows counters (renewing soon, active, per month), category chips, the contracts inside their own window first with **Shop around → Task** (one Task "Get quotes for …", due a week before the end, never in the past), **Renewed** (optionally a new end date) and **Cancel**; each card shows its window and lets you change it; the rest follow by end date and ended ones fold away.
+
 ---
 
 ## Slack Integration
@@ -2671,7 +2673,8 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `vehicle_body` | `id`, `body` | The card's icon: sedan, suv, truck, van or coupe (#245) |
 | `get_contracts` | — | All contracts with expiry status |
 | `add_contract` / `update_contract` / `delete_contract` | (contract fields) | Manage contracts |
-| `log_contract_action` | `id`, `action` | Log an action against a contract |
+| `log_contract_action` | `id`, `outcome` (`Renewed` / `Terminated`), `newEndDate` | Log an action against a contract (`outcome` because the route name already uses `action`) |
+| `contract_shop_around` | `id` | Makes (or keeps) the Task to get quotes |
 | `get_guests` | — | House guests from the calendar: `guests` (now and coming) with `stayKey`, `checked` and `people`, `past` (the last year), and the `prep` list |
 | `guest_prep_check` | `stay`, `item`, `on` | Ticks or unticks a prep item for one stay |
 | `guest_people` | `stay`, `n` | How many guests a stay has (1–20) |

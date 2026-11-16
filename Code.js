@@ -3057,7 +3057,7 @@ function checkContracts_() {
     var counterparty  = String(row[3]).trim();
     var endDateRaw    = row[5];
     var autoRenews    = String(row[6]).trim();
-    var noticeDays    = parseInt(row[7], 10) || 30;
+    var noticeDays    = ctWarnDays_(row[7]);   // Contracts.js: warn me N days ahead, 60 by default
     var status        = String(row[9]).trim();
 
     if (!id || !name || status === 'Expired' || status === 'Terminated' || status === 'Renewed') return;
@@ -4103,7 +4103,7 @@ function getContracts_() {
     var endDateRaw = row[5];
     var endDate    = endDateRaw ? new Date(endDateRaw) : null;
     var daysUntil  = endDate ? Math.round((endDate - today) / 86400000) : null;
-    var noticeDays = parseInt(row[7], 10) || 30;
+    var noticeDays = ctWarnDays_(row[7]);   // Contracts.js: 60 by default
     var alertStatus;
     if (daysUntil === null) {
       alertStatus = 'OK';

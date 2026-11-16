@@ -392,6 +392,7 @@ function doGet(e) {
       case 'update_contract':     return jsonOut_(webUpdateContract_(e));
       case 'delete_contract':     return jsonOut_(webDeleteContract_(e));
       case 'log_contract_action': return jsonOut_(webLogContractAction_(e));
+      case 'contract_shop_around': return jsonOut_(webContractShopAround_(e));
       // House Guests (Issue #150)
       case 'get_guests':    return jsonOut_(webGetGuests_());
       case 'guest_prep_check': return jsonOut_(webGuestPrepCheck_(e));
@@ -9357,7 +9358,7 @@ function webAddContract_(e) {
     (p.startDate    || ''),
     (p.endDate      || ''),
     (p.autoRenews   || 'Unknown'),
-    parseInt(p.noticeDays, 10) || 30,
+    ctWarnDays_(p.noticeDays),   // Contracts.js: warn me N days ahead, 60 by default
     p.monthlyCost !== '' && p.monthlyCost !== undefined ? Number(p.monthlyCost) : '',
     (p.status       || 'Active'),
     (p.docLink      || ''),
@@ -9384,7 +9385,7 @@ function webUpdateContract_(e) {
         'Start Date':         p.startDate,
         'End Date':           p.endDate,
         'Auto-Renews':        p.autoRenews,
-        'Notice Period Days': p.noticeDays !== undefined ? (parseInt(p.noticeDays, 10) || 30) : undefined,
+        'Notice Period Days': p.noticeDays !== undefined ? ctWarnDays_(p.noticeDays) : undefined,
         'Monthly Cost':       p.monthlyCost !== undefined ? (p.monthlyCost !== '' ? Number(p.monthlyCost) : '') : undefined,
         'Status':             p.status,
         'Document Link':      p.docLink,
@@ -9423,7 +9424,9 @@ function webDeleteContract_(e) {
 function webLogContractAction_(e) {
   var p      = e.parameter || {};
   var id     = (p.id || '').trim();
-  var action = (p.action || '').trim(); // 'Renewed' | 'Terminated'
+  // 'Renewed' | 'Terminated'. Sent as outcome: the route name already uses action (a second action
+  // in the same URL never arrived). action is still read for older callers.
+  var action = String(p.outcome || (p.action !== 'log_contract_action' ? p.action : '') || '').trim();
   var newEndDate = (p.newEndDate || '').trim(); // for renewals
   if (!id || !action) return { ok: false, error: 'id and action required' };
 
