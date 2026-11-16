@@ -199,7 +199,7 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 ### Step 0k: `autoRestockItems_()` + `generatePantryFlags_()`
 
-`autoRestockItems_()` uses exponential moving average (EMA, configurable alpha via `pantry_ema_alpha`, default 0.3) to predict when household items will run out based on `Purchase History` tab data, and pre-adds restock items to the Shopping List. `generatePantryFlags_()` checks if a trip is approaching and items are predicted to run out during the trip. Both are gated by `pantry_enabled = 'true'`.
+`autoRestockItems_()` uses exponential moving average (EMA, configurable alpha via `pantry_ema_alpha`, default 0.3) to predict when household items will run out based on `Purchase History` tab data, and pre-adds **staples** (Config `pantry_staples`, `pantryStaples_`) to the Shopping List; other due items are left for the Pantry screen to suggest. `webPantry_` (`pantry`) adds each item's aisle (`pantryAisle_`), staple flag, days until it runs out, and the list it's already on (`pantryOnLists_`, which reads `🤖` lines through `pantryLineName_` and skips checked-off ones); `pantry_staple` and `pantry_add` (no duplicates; usual store, else the first list) are its writes. `generatePantryFlags_()` checks if a trip is approaching and items are predicted to run out during the trip. Both are gated by `pantry_enabled = 'true'`.
 
 ### Step 0l: `inferCapacityMode_()`
 
@@ -1317,6 +1317,7 @@ System › Checks › **Agent health**, next to API health: whether each Claude 
 | monthly_review_enabled | true | MonthlyReview.js | Generate monthly life review on 1st of each month |
 | pantry_enabled | false | Pantry.js | Enable purchase history + auto-restock tracking |
 | pantry_restock_days_ahead | 7 | Pantry.js | Days ahead to predict and flag restock items |
+| pantry_staples | — | Pantry.js | Items VERA adds to the list by itself (☆ on the Pantry screen) |
 | pantry_ema_alpha | 0.3 | Pantry.js | EMA learning rate for pantry consumption model (higher = adapts faster) |
 | google_tasks_enabled | true | WebApp.js | Fetch Google Tasks in dashboard and chat |
 | morning_routine_enabled | true | WebApp.js (status) | Show Morning Routine tab in dashboard |

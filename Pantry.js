@@ -502,8 +502,11 @@ function autoRestockItems_() {
     Logger.log('autoRestockItems_: disabled (pantry_enabled != true)'); return;
   }
   var daysAhead = parseInt(cfg['pantry_restock_days_ahead'] || '7', 10) || 7;
-  var due       = getItemsDue_(daysAhead);
-  if (!due.length) { Logger.log('autoRestockItems_: no items due in ' + daysAhead + ' days'); return; }
+  // Only staples (Kitchen › Pantry ☆) go on the list by themselves; the rest are suggestions
+  // the Pantry screen offers with one tap.
+  var staples   = pantryStaples_(cfg);
+  var due       = getItemsDue_(daysAhead).filter(function(i) { return staples.indexOf(i.normalized) !== -1; });
+  if (!due.length) { Logger.log('autoRestockItems_: no staples due in ' + daysAhead + ' days'); return; }
 
   // Fetch current shopping list to avoid duplicates
   var currentList = {};
@@ -555,6 +558,73 @@ function autoRestockItems_() {
   });
 
   Logger.log('autoRestockItems_: added=[' + added.join(', ') + '] skipped=[' + skipped.join(', ') + ']');
+}
+
+// ─── PANTRY SCREEN ───────────────────────────────────────────
+// Kitchen › Pantry: every tracked item with its aisle, whether it's a staple, and whether
+// it's already on a shopping list; one tap adds it to the store you usually buy it at.
+
+/** Pure: the staples from Config pantry_staples (comma-separated), as normalized names. */
+function pantryStaples_(cfg) {
+  return String((cfg && cfg['pantry_staples']) || '').split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+}
+
+/** Pure: a list line as a pantry name ('🤖 milk (est. ~Oct 30)' → 'milk'). */
+function pantryLineName_(text) {
+  return normalizeItemName_(String(text || '').replace(/^\uD83E\uDD16\s*/, '').replace(/\s*\(est\..*?\)\s*$/, ''));
+}
+
+/** Pure: per pantry name, the store list it's already on (not checked off). */
+function pantryOnLists_(lists) {
+  var on = {};
+  (lists || []).forEach(function(st) {
+    (st.items || []).forEach(function(i) { if (i.done) return; var n = pantryLineName_(i.text); if (n && !on[n]) on[n] = st.storeName; });
+  });
+  return on;
+}
+
+/** GET pantry — {ok, items:[stats + aisle, staple, onList, daysUntil, store], stores:[names], daysAhead}. */
+function webPantry_() {
+  var cfg = getConfigValues(), staples = pantryStaples_(cfg);
+  var daysAhead = parseInt(cfg['pantry_restock_days_ahead'] || '7', 10) || 7;
+  var lists = [], listErr = '';
+  try { lists = getShoppingList_(); } catch (e) { listErr = e.message; }
+  var on = pantryOnLists_(lists), today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var items = getPurchaseStats_().map(function(it) {
+    var d = it.estimatedNext ? Math.round((new Date(it.estimatedNext + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) : null;
+    return Object.assign({}, it, {
+      aisle: pantryAisle_(it.normalized), staple: staples.indexOf(it.normalized) !== -1, onList: on[it.normalized] || '',
+      daysUntil: d, store: d != null && d <= daysAhead ? (it.lastStore || '') : ''
+    });
+  });
+  var res = { ok: true, items: items, stores: lists.map(function(s) { return s.storeName; }), daysAhead: daysAhead };
+  if (listErr) res.listError = listErr;
+  return res;
+}
+
+/** GET pantry_staple — name, on (true/false): marks or unmarks a staple in Config pantry_staples. */
+function webPantryStaple_(e) {
+  var p = (e && e.parameter) || {}, name = normalizeItemName_(p.name || '');
+  if (!name) throw new Error('name required');
+  var on = String(p.on) !== 'false', list = pantryStaples_(getConfigValues()).filter(function(n) { return n !== name; });
+  if (on) list.push(name);
+  list.sort();
+  setConfigRow_('pantry_staples', list.join(', '), 'Pantry items VERA puts on the list by itself (Kitchen › Pantry ☆)');
+  return { ok: true, name: name, staple: on, staples: list };
+}
+
+/** GET pantry_add — name, store (optional: else the first list): adds it unless it's already on a list. */
+function webPantryAdd_(e) {
+  var p = (e && e.parameter) || {}, name = normalizeItemName_(p.name || '');
+  if (!name) throw new Error('name required');
+  var lists = getShoppingList_();
+  if (!lists.length) throw new Error('No shopping lists found');
+  var already = pantryOnLists_(lists)[name];
+  if (already) return { ok: true, name: name, store: already, already: true };
+  var want = String(p.store || '').trim().toLowerCase();
+  var st = lists.filter(function(s) { return String(s.storeName).trim().toLowerCase() === want; })[0] || lists[0];
+  addShoppingItem_(st.tabId, name);
+  return { ok: true, name: name, store: st.storeName, already: false };
 }
 
 // ─── TRIP-AWARE FLAGS ─────────────────────────────────────────

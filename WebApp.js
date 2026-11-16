@@ -266,6 +266,9 @@ function doGet(e) {
       case 'log_habit':                return jsonOut_(webLogHabit_(e));
       case 'unlog_habit':              return jsonOut_(webUnlogHabit_(e));
       case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
+      case 'pantry':                   return jsonOut_(webPantry_());
+      case 'pantry_staple':            return jsonOut_(webPantryStaple_(e));
+      case 'pantry_add':               return jsonOut_(webPantryAdd_(e));
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
       // Career tab

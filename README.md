@@ -2092,7 +2092,9 @@ The nightly run raises one flag per vehicle per dated item (Registration, Insura
 
 ### Pantry + Auto-Restock
 
-The `Purchase History` tab logs grocery and household purchases with item name, normalised name, category, quantity, unit, store, and price. When `pantry_enabled=true`, VERA uses an exponential moving average model (`pantry_ema_alpha` default 0.3) to predict when items will run out and auto-adds them to the shopping list `pantry_restock_days_ahead` days before predicted depletion.
+The `Purchase History` tab logs grocery and household purchases with item name, normalised name, category, quantity, unit, store, and price. When `pantry_enabled=true`, VERA uses an exponential moving average model (`pantry_ema_alpha` default 0.3) to predict when items will run out. Only **staples** (Config `pantry_staples`, marked ☆ on the Pantry screen) are added to the shopping list by themselves, `pantry_restock_days_ahead` days before predicted depletion; everything else is a suggestion you add with one tap.
+
+**Kitchen › Pantry** (`pantry` route, `PantryView`): counters (running out within the window, tracked, on a list), **Running out soon** first, each with **🛒 Add to <usual store>** (`pantry_add`, which never adds a duplicate and falls back to the first list) or **✓ On the <store> list** when a list already has it (VERA's `🤖 … (est. …)` lines count; checked-off lines don't), then everything else grouped by aisle, folded, with a search. ☆ marks or unmarks a staple (`pantry_staple`).
 
 ### Coupons + Expiry
 
@@ -2259,7 +2261,8 @@ Add these rows to the `Config` tab (`Setting` | `Value`). All keys are read via 
 | `fitness_travel_block_time` | `07:00` | Fitness | Start time for auto-created trip gym sessions |
 | `fitness_travel_block_duration` | `60` | Fitness | Duration in minutes for auto-created trip gym sessions |
 | `pantry_enabled` | `false` | Pantry | Enable purchase history + auto-restock predictions |
-| `pantry_restock_days_ahead` | `7` | Pantry | Days ahead to predict and auto-add items to shopping list |
+| `pantry_restock_days_ahead` | `7` | Pantry | Days ahead to predict, auto-add staples, and show Running out soon |
+| `pantry_staples` | — | Pantry | Comma-separated items VERA adds to the list by itself (set with ☆ on the Pantry screen) |
 | `pantry_ema_alpha` | `0.3` | Pantry | EMA learning rate (higher = adapts faster to recent habits) |
 | `pacing_enabled` | `true` | Pacing | Enable pacing and Away mode detection |
 | `pacing_flag_threshold` | `3` | Pacing | Number of unacknowledged Med/High flags to trigger pacing check |
@@ -2580,6 +2583,9 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `gym_skip` | `id` | Mark gym session as skipped |
 | `gym_backfill` | `startDate`, `endDate` | Backfill gym sessions from calendar |
 | `purchase_history` | — | Purchase history + consumption predictions |
+| `pantry` | — | Tracked items with aisle, staple, `onList`, `daysUntil` and usual `store`; the list names; the window |
+| `pantry_staple` | `name`, `on` | Marks or unmarks a staple |
+| `pantry_add` | `name`, `store` | Adds an item to that store's list unless a list already has it |
 | `log_purchase_run` | `items` (JSON) | Log a grocery run |
 | `purchase_suggestions` | — | Pantry auto-restock suggestions |
 | `career` | — | The whole Career tab (ladder, readiness, evidence, intents, contacts, package, brand, exchange) |
