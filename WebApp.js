@@ -259,6 +259,7 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
+      case 'workout_add':              return jsonOut_(webWorkoutAdd_(e));
       // Habits / Year in Review (Issue #179)
       case 'get_year_review':          return jsonOut_(webGetYearReview_(e));
       case 'add_habit':                return jsonOut_(webAddHabit_(e));
@@ -7675,7 +7676,7 @@ function findMorningRoutineRow_(id) {
 // ---- Gym Log (Issue #97) ---------------------------------------------------
 
 function webGetGymLog_() {
-  return { ok: true, sessions: getGymLog_() };
+  return { ok: true, sessions: getGymLog_(), target: wkTarget_(getConfigValues()) };   // Workouts.js: the weekly target
 }
 
 function webLogGymAttend_(e, attended) {

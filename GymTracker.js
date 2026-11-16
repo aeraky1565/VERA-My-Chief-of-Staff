@@ -37,8 +37,7 @@ function checkGymSessions_() {
     var events = cal.getEvents(windowStart, now);
     for (var ei = 0; ei < events.length; ei++) {
       var ev   = events[ei];
-      var desc = (ev.getDescription() || '').toUpperCase();
-      if (desc.indexOf('EXERCISE') === -1) continue;
+      if (!wkIsWorkout_(ev.getTitle(), ev.getDescription())) continue;   // Workouts.js: EXERCISE, or Run / Swim / Class / Yoga…
       if (ev.getEndTime() > now) continue; // still in progress
 
       var dateStr   = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
@@ -77,15 +76,16 @@ function checkGymSessions_() {
     if (existingIds[s.id]) continue; // already logged
     existingIds[s.id] = true;        // dedup within this run
 
-    // Gym Log row: ID | Event Title | Event Date | Attended | Logged At
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, GYM_LOG_HEADERS.length)
-      .setValues([[s.id, s.title, s.date, '', '']]);
+    // Gym Log row: ID | Event Title | Event Date | Attended | Logged At | Type (Workouts.js)
+    wkEnsureCols_(sheet);
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, WK_TYPE_COL_)
+      .setValues([[s.id, s.title, s.date, '', '', wkType_(s.title) || 'Gym']]);
 
     flags.push({
       source:  'Gym Tracker',
-      flag:    'Gym check-in: ' + s.title + ' (' + s.date + ')',
-      reason:  'Your scheduled workout has passed. Did you attend? ' +
-               'Open Health → Fitness to log Yes or No.',
+      flag:    'Did you go? ' + s.title + ' (' + s.date + ')',
+      reason:  'Your scheduled workout has passed. ' +
+               'Open Health → Fitness to log Yes or No; it counts toward the weekly target.',
       urgency: 'Low',
       key:     s.id,
     });
@@ -114,7 +114,7 @@ function getGymLog_() {
   var sheet = getSpreadsheet().getSheetByName(TABS.GYM_LOG);
   if (!sheet || sheet.getLastRow() < 2) return [];
 
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, GYM_LOG_HEADERS.length).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(WK_MIN_COL_, sheet.getMaxColumns())).getValues();   // + Type, Minutes (Workouts.js)
   return data
     .map(function(row, i) {
       return {
@@ -125,6 +125,8 @@ function getGymLog_() {
                     : String(row[2] || '').trim().substring(0, 10),
         attended: String(row[3] || '').trim(),
         loggedAt: String(row[4] || '').trim(),
+        type:     String(row[WK_TYPE_COL_ - 1] || '').trim() || wkType_(row[1]) || 'Gym',
+        minutes:  parseInt(row[WK_MIN_COL_ - 1], 10) || null,
         rowNum:   i + 2,
       };
     })
@@ -243,8 +245,7 @@ function backfillGymSessions_(lookbackDays) {
     var events = cal.getEvents(start, now);
     for (var ei = 0; ei < events.length; ei++) {
       var ev   = events[ei];
-      var desc = (ev.getDescription() || '').toUpperCase();
-      if (desc.indexOf('EXERCISE') === -1) continue;
+      if (!wkIsWorkout_(ev.getTitle(), ev.getDescription())) continue;   // Workouts.js
       if (ev.getEndTime() > now) continue;
       var dateStr   = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
       var safeTitle = ev.getTitle().replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20).toLowerCase();
@@ -268,8 +269,9 @@ function backfillGymSessions_(lookbackDays) {
     var s = candidates[i];
     if (existingIds[s.id]) { skipped++; continue; }
     existingIds[s.id] = true;
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, GYM_LOG_HEADERS.length)
-      .setValues([[s.id, s.title, s.date, '', '']]);
+    wkEnsureCols_(sheet);
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, WK_TYPE_COL_)
+      .setValues([[s.id, s.title, s.date, '', '', wkType_(s.title) || 'Gym']]);
     added++;
   }
 

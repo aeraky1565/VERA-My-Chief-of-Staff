@@ -233,6 +233,10 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 Column 8 is List (`mrEnsureListCol_`, `mrList_`: Weekday, Weekend or '' for both). `morning_routine_add` takes `list`; `generate_morning_routine` takes `list`, builds `mrPrompt_(list)` and deletes only VERA rows on that list (an old VERA row with no list counts as Weekday); `morning_routine_move` takes `list` and swaps with the neighbour on it (`mrInList_`). The nightly reset is unchanged. On the screen, `mrShown_` picks the list's items and `mrTodayListUI_` the opening list.
 
+### Fitness: other workouts, ＋ Workout, week dots (`Workouts.js`, `GymLogTab`)
+
+`checkGymSessions_` and `backfillGymSessions_` now take any event `wkIsWorkout_` accepts (EXERCISE in the description, or `wkType_` reads a workout title, `WK_NOT_` ruling out errands, reunions and meetings) and write its Type (column 6). `workout_add` logs one as attended (column 7 is Minutes). `gym_log` adds `wkTarget_`. The consistency check counts every attended workout. On the screen, `wkWeek_`, `wkStreak_` and `wkMonth_` do the numbers.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

@@ -492,6 +492,8 @@ Nightly Step 0a scans the "Joint Chaos" shared Google Calendar for birthday even
 
 ### Gym Tracker (`GymTracker.js`)
 
+**Other workouts count too** (`Workouts.js`): besides `EXERCISE` in the description, an event whose title starts with a workout word (Run, Swim, Yoga, Class, Spin, Bike, Hike, Tennis, Gym, Workout…, optionally after Morning / Evening / Lunch…) is logged with the same **"Did you go?"** check-in; "Run errands", "Class reunion" and meetings aren't. The Gym Log gains **`Type`** and **`Minutes`** (named on first write). **Health › Fitness** (Ahmed) shows this week's dots against the weekly target (Config `fitness_weekly_target`, 4 by default), the streak of weeks that met it, this month's count, the check-ins, **＋ Workout** for one you didn't plan (type, minutes, a past day if you like; `workout_add`) and recent workouts.
+
 Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events with `EXERCISE` in the description that have already ended. Each new session is logged to the `Gym Log` tab and a check-in flag is written. The fitness consistency checker (`Fitness.js`) runs in parallel and generates a Low flag on the configured day of the week (default Wednesday) if the weekly session count is below `fitness_weekly_target`.
 
 ### Finance Overview Dashboard (`Finance.js`)
@@ -2515,7 +2517,7 @@ VERA detects special prefixes in Google Calendar event titles to trigger specifi
 |--------|--------------|-------------|--------------|
 | `DR:` | `DR: Ahmed - Annual Physical` | `HealthTracker.js` | Event is tracked as a health appointment; last-visit date and next-due date are computed; nightly flags generated when overdue or approaching |
 | `DR:` | `DR: Victoria - Dentist Cleaning - Dr. Patel` | `HealthTracker.js` | Same as above; third segment after ` - ` is treated as provider name; optional `interval:N` in description overrides default interval |
-| `EXERCISE` (in description) | Any event with `EXERCISE` in the description field | `GymTracker.js` | Session is logged to the Gym Log tab and a check-in flag is written; used for gym consistency tracking and pattern recognition |
+| `EXERCISE` (in description), or a workout title | Any event with `EXERCISE` in the description field, or a title starting Run, Swim, Yoga, Class… | `GymTracker.js` | Session is logged to the Gym Log tab and a check-in flag is written; used for gym consistency tracking and pattern recognition |
 | `TRIP:` | `TRIP: Alaska Cruise` | Convention | Calendar events prefixed with TRIP: signal a travel period; used alongside the Itinerary tab for trip organisation |
 | Birthday (in Joint Chaos calendar) | `Ahmed's Birthday` | `ImportantDates.js` | Auto-synced to Important Dates tab with recurring=true and 30-day lead time |
 
@@ -2632,7 +2634,8 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `morning_routine_add` | `item` | Add routine item |
 | `morning_routine_delete` | `id` | Remove routine item |
 | `morning_routine_move` | `id`, `direction` | Reorder routine item |
-| `gym_log` | — | Gym session log |
+| `gym_log` | — | Gym and workout log with `type`, `minutes`, and the weekly `target` |
+| `workout_add` | `type`, `minutes`, `date` | Logs a workout you did (attended) |
 | `gym_attend` | `id` | Mark gym session as attended |
 | `gym_skip` | `id` | Mark gym session as skipped |
 | `gym_backfill` | `startDate`, `endDate` | Backfill gym sessions from calendar |
