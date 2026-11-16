@@ -393,6 +393,9 @@ function doGet(e) {
       case 'log_contract_action': return jsonOut_(webLogContractAction_(e));
       // House Guests (Issue #150)
       case 'get_guests':    return jsonOut_(webGetGuests_());
+      case 'guest_prep_check': return jsonOut_(webGuestPrepCheck_(e));
+      case 'guest_people':  return jsonOut_(webGuestPeople_(e));
+      case 'guest_prep_list': return jsonOut_(webGuestPrepList_(e));
       case 'get_todays_events': return jsonOut_(webGetTodaysEvents_());
       // Traveler Profiles / Visa Checker (Issue #123)
       case 'get_profiles':    return jsonOut_(webGetProfiles_());
@@ -2049,9 +2052,7 @@ function webTriggerBuffer_(e) {
  */
 function webGetGuests_() {
   try {
-    var cfg    = readPTOConfig_();
-    var guests = getUpcomingGuests_(cfg);
-    return { ok: true, guests: guests };
+    return webGuests_();   // Guests.js: stays with prep ticks and headcount, past stays, the prep list
   } catch (e) {
     Logger.log('webGetGuests_ error: ' + e.message);
     return { ok: true, guests: [], error: e.message };

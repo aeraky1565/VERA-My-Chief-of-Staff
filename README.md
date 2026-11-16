@@ -2082,6 +2082,10 @@ The screen (Home Front › Kitchen › Recipes) has a search (name, ingredient, 
 
 The screen (Home Front › Kitchen › Takeouts): cuisine chips, a card per restaurant (last ordered first) with stars you tap to rate, the cuisine and **our usual** (dishes ordered 2+ times, most first; else the 4★+ ones) with who each is for (A, V, A+V), **Last ordered … · N times**, 📞 and Menu ↗. **✓ We ordered** records today and, if you tick them, which dishes (twice in a day counts once). The dish list folds open: who it's for, stars, delete, and add a dish.
 
+### Guests
+
+Stays come from multi-day all-day events on the gap calendars whose title or description has a guest keyword (`getUpcomingGuests_`, PTO.js). **Hosting › Guests** (`Guests.js`, `GuestsView`) shows who's **staying now** on top (*Staying · day 2 of 5*, when they leave), then who's **coming** (*Arrives in 12 d*, dates, nights), each with links to the **guest guide** and **Meal Plan**, a headcount stepper (the household plus guests; guessed from the title, "Mom & Dad" is 2, "The Lins (4)" is 4), and the **prep list**. The list is edited once (Config `guest_prep_list`, one item per line, with a default) and every stay gets it; what's ticked for each stay and its headcount are kept in a **`Guest Prep`** tab (Stay, Item, Value, Updated), made on the first tick. **Past stays** (the last year) fold away.
+
 ### Chores for others
 
 The `ChoresForOthers` tab holds jobs for the kids (or anyone) with a reward: ID, Task, Assignee, Reward, Status (Open / Done), Added Date, Notes. Two columns follow Notes (`ChoresForOthers.js`, added and named the first time they're written): **`Done Date`** (stamped by ✓ Done) and **`Paid`** (the day the reward was paid). A reward like `$10`, `10` or `$7.50` counts as money (`cfoAmount_`); anything else ("movie night") is shown but isn't totalled.
@@ -2641,7 +2645,10 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `get_contracts` | — | All contracts with expiry status |
 | `add_contract` / `update_contract` / `delete_contract` | (contract fields) | Manage contracts |
 | `log_contract_action` | `id`, `action` | Log an action against a contract |
-| `get_guests` | — | Upcoming house guests |
+| `get_guests` | — | House guests from the calendar: `guests` (now and coming) with `stayKey`, `checked` and `people`, `past` (the last year), and the `prep` list |
+| `guest_prep_check` | `stay`, `item`, `on` | Ticks or unticks a prep item for one stay |
+| `guest_people` | `stay`, `n` | How many guests a stay has (1–20) |
+| `guest_prep_list` | `items` (one per line) | The standard prep list every stay gets (Config `guest_prep_list`) |
 | `get_profiles` / `save_profile` / `delete_profile` | (profile fields) | Manage traveler profiles |
 | `get_growth` | — | Books, courses, skills |
 | `add_book` / `update_book` / `delete_book` | (book fields) | Manage reading list |

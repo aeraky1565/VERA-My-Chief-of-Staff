@@ -1142,9 +1142,10 @@ function classifyPTOBlock_(weekdays, startDate, endDate) {
  * Used for the Guests subtab and morning email ticker (Issue #150).
  *
  * @param  {Object} cfg  From readPTOConfig_()
+ * @param  {number} [backDays]  Also look this many days back (the Guests screen's past stays); default 0.
  * @returns {Array} [{ label, arrivalDate, departureDate, durationDays, daysAway, calendarName }]
  */
-function getUpcomingGuests_(cfg) {
+function getUpcomingGuests_(cfg, backDays) {
   var guestKeywords = cfg.guestKeywords || [];
   if (guestKeywords.length === 0) return []; // safety: never return everything without a keyword filter
 
@@ -1152,6 +1153,7 @@ function getUpcomingGuests_(cfg) {
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var end = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
+  var from = new Date(today.getTime() - (Math.max(0, parseInt(backDays, 10) || 0)) * 24 * 60 * 60 * 1000);
 
   // Scan gap calendars only (excludes work/PTO calendar)
   var gapCalNames = (cfg.gapCalendarsRaw || '').split(',')
@@ -1165,7 +1167,7 @@ function getUpcomingGuests_(cfg) {
     var cal = getCalendarByName_(gapCalNames[c]);
     if (!cal) continue;
 
-    var events = cal.getEvents(today, end);
+    var events = cal.getEvents(from, end);
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
       if (!ev.isAllDayEvent()) continue;

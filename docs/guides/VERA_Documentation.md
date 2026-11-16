@@ -197,6 +197,10 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 `takeout_ordered` (`webTakeoutOrdered_`) writes today and the count on the restaurant (columns 7–8) and on each dish named at that restaurant (columns 7–8; column 6 is For), counting a second order the same day once. `toFor_` reads Ahmed / Victoria / Both (A, V, B too); `add_takeout_item` and `update_takeout_item` store it, and the update refuses a row whose dish name doesn't match. On the screen, `toUsual_` picks our usual, `toSorted_` and `toCuisines_` do the order and chips (cuisines merged by case), and `toLast_` the last-ordered line.
 
+### Guests: prep list, headcount, past stays (`Guests.js`, `GuestsView`)
+
+`getUpcomingGuests_(cfg, backDays)` now takes an optional look-back (default 0, so the morning ticker, chat and On hand are unchanged). `webGuests_` (behind `get_guests`) asks for 365 days, splits stays that ended before today into `past`, and adds each stay's `stayKey` (title + arrival day), ticked items (only those still on the list) and `people` (saved, else `gpGuessGuests_`). `gpList_` reads Config `guest_prep_list`; `gpSet_` writes one Guest Prep row under `veraLocked_`, making the tab on first use. On the screen, `guState_` gives day N of M / arrives in N days / past, and `guSplit_` orders now and coming.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.
