@@ -2070,6 +2070,12 @@ The **HOA** card shows when the site was last scanned and what it found, **Scan 
 
 The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. Two columns follow Due By (`Chores.js`, added the first time they're written): **`Owner`** (Ahmed, Victoria or Either; blank is Either) and **`Checked By`** (who ticked it, from the sign-in; cleared on untick and by the nightly reset). The screen (Home Front › Chores › Chores) opens on a ring of today's daily chores, the cadences as chips (done of total, how many left, when they reset), and an owner filter (All · Ahmed · Victoria · Either; a person's filter keeps Either too). Each chore shows its owner pill; a done one is struck through with who ticked it and when, until its reset. **⋯** changes the owner or cadence or deletes it, and the add row takes an owner. Chores stay on this screen: no nudges, and they are not in Needs you on either dashboard (upkeep jobs still are). `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.
 
+### Recipes
+
+The `Recipes` tab: Name, Cuisine, Servings, Prep Time, Link, Ingredients (separated by `;`), Tags, Notes, and a **`Photo`** column after Notes (`Recipes.js`, named the first time it's written). The photo is the recipe link's preview image (`og:image`, else `twitter:image`), fetched when a recipe is added and, for older ones, by `recipe_photos` (8 per call, asked for once when the screen opens and a linked recipe has none). A link with no image is marked `none` so it isn't fetched again.
+
+The screen (Home Front › Kitchen › Recipes) has a search (name, ingredient, tag), chips (**All**, **Quick ≤ 30 min**, each cuisine, **Not made lately**: never made, or 60+ days ago and not planned), and a card per recipe: photo, cuisine, time · servings · ingredients · **last made** (from Meal Plan, skipped dinners don't count) or **planned** or *never planned*. **🗓 Plan it** opens a picker of the days from today to next Sunday with free dinners marked; picking one writes the recipe into Meal Plan (`set_meal`, Home Cooked), and a planned day asks before replacing it. **🛒 Add N to the list** sends the ingredients to Shopping; **Open ↗** opens the link.
+
 ### Chores for others
 
 The `ChoresForOthers` tab holds jobs for the kids (or anyone) with a reward: ID, Task, Assignee, Reward, Status (Open / Done), Added Date, Notes. Two columns follow Notes (`ChoresForOthers.js`, added and named the first time they're written): **`Done Date`** (stamped by ✓ Done) and **`Paid`** (the day the reward was paid). A reward like `$10`, `10` or `$7.50` counts as money (`cfoAmount_`); anything else ("movie night") is shown but isn't totalled.
@@ -2511,8 +2517,9 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `cashflow` | `months` | Cashflow timeline |
 | `tx_aliases` | — | Transaction merchant aliases |
 | `set_tx_alias` | `merchant`, `alias` | Set a merchant alias |
-| `recipes` | — | All recipes |
+| `recipes` | — | All recipes, with `photo`, `lastMade` and `nextPlanned` (from Meal Plan) |
 | `recipe_to_shopping` | `row` | Add recipe ingredients to shopping list |
+| `recipe_photos` | — | Fills the Photo of up to 8 linked recipes from their preview image; returns `filled` and `left` |
 | `meal_plan` | `weekStart`, `weeks` | Meal plan; `weeks=2` returns this week and next in one call |
 | `set_meal` | `day`, `weekStart`, `mealName`, `type` | Set a dinner for a day |
 | `update_meal_status` | `day`, `weekStart`, `status` | Update meal status |

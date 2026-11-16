@@ -175,6 +175,7 @@ function doGet(e) {
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
+      case 'recipe_photos':         return jsonOut_(webRecipePhotos_());
       case 'meal_plan':             return jsonOut_(webGetMealPlan_(e));
       case 'set_meal':              return jsonOut_(webSetMeal_(e));
       case 'update_meal_status':    return jsonOut_(webUpdateMealStatus_(e));
@@ -3605,8 +3606,14 @@ function webGetRecipes_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.RECIPES);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, recipes: [] };
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(RC_PHOTO_COL_, sheet.getMaxColumns())).getValues();
   var recipes = [];
+  // Last made / next planned from Meal Plan (Recipes.js). A failure there never costs the list.
+  var made = {};
+  try {
+    var mp = getSpreadsheet().getSheetByName(TABS.MEAL_PLAN);
+    if (mp) made = rcMealDates_(_readMealPlanRows_(mp), Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+  } catch (err) { made = {}; }
   data.forEach(function(row, idx) {
     var name = String(row[0] || '').trim();
     if (!name) return;
@@ -3620,6 +3627,9 @@ function webGetRecipes_() {
       ingredients: String(row[5] || '').trim(),
       tags:        String(row[6] || '').trim(),
       notes:       String(row[7] || '').trim(),
+      photo:       /^https:\/\//.test(String(row[8] || '')) ? String(row[8]).trim() : '',
+      lastMade:    (made[name.toLowerCase()] || {}).lastMade || '',
+      nextPlanned: (made[name.toLowerCase()] || {}).nextPlanned || '',
     });
   });
   return { ok: true, recipes: recipes };
@@ -3654,6 +3664,9 @@ function webAddRecipe_(e) {
     (p.tags         || '').trim(),
     (p.notes        || '').trim(),
   ]]);
+  // The photo from the link (Recipes.js); 'none' when the page has no preview image.
+  var link = (p.link || '').trim();
+  if (link) { rcEnsurePhotoCol_(sheet); sheet.getRange(sheet.getLastRow(), RC_PHOTO_COL_).setValue(rcFetchPhoto_(link) || 'none'); }
   return { ok: true, name: name, action: 'created' };
 }
 

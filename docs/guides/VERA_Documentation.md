@@ -189,6 +189,10 @@ The **HOA** card shows when the site was last scanned and what it found, **Scan 
 
 The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from `_veraWho_`); `toggle_chore` writes Checked By, `add_chore` and `update_chore` take `owner`, and `resetChoresByCadence_` clears Checked By with the tick. The screen: today's ring, cadence chips, an owner filter, owner pills, who ticked it, and a ⋯ editor. No nudges; not in Needs you.
 
+### Recipes: photos, last made, Plan it (`Recipes.js`, `RecipeView`)
+
+`rcOgImage_` reads a page's `og:image` / `twitter:image` (either attribute order, made absolute https, `&amp;` decoded); `rcFetchPhoto_` fetches the link. `add_recipe` stores the photo in column 9 (`Photo`), and `recipe_photos` (`webRecipePhotos_`) fills up to 8 missing ones per call, writing `none` for a page without one. `recipes` joins Meal Plan through `rcMealDates_`: per name (case-insensitive), the last date on or before today and the next planned date, skipping Skipped dinners; a Meal Plan failure leaves both blank. On the screen, `rcMinutes_` reads prep times ("1 hr 15 min", "1h15m", "45"), `rcFilter_` does the search and chips, `rcLine_` the card line, and `rcPickDays_` the Plan it days (today to next Sunday, free or with their dinner).
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.
