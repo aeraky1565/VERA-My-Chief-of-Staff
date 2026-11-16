@@ -99,7 +99,7 @@ function readPTOConfig_() {
     // Covers: Memorial Day, Independence Day, Labor Day, Thanksgiving Day,
     // Christmas Day, New Year's Day, MLK Day, Presidents' Day, Veterans Day,
     // Juneteenth, Columbus Day, Company Holiday, Floating Holiday, etc.
-    holidayKeywords:       (raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure')
+    holidayKeywords:       (raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure,New Year')
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     // Events in the work calendar whose titles contain any of these strings are
     // completely skipped — not counted as PTO or company holidays.
@@ -162,7 +162,7 @@ function readVictoriaPTOConfig_() {
     gapCalendarsRaw:   shared['gap_calendars'] || 'AE&VV - Our Joint Chaos',
     milestoneKeywords: (shared['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
-    holidayKeywords:   (raw['holiday_keywords'] || shared['holiday_keywords'] || 'Day,Holiday,Floating,Closure')
+    holidayKeywords:   (raw['holiday_keywords'] || shared['holiday_keywords'] || 'Day,Holiday,Floating,Closure,New Year')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     ignoreKeywords:    (raw['ignore_keywords'] || shared['ignore_keywords'] || 'Pay Day')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),

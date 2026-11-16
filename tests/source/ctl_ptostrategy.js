@@ -12,6 +12,10 @@ const S = 'PTOStrategy.js', NODE = 'test_ptostrategy.js', UI = 'test_ptostrategy
 const one = (f, from, to) => b => ({ [f]: swap(b[f], from, to) });
 const ui = (from, to) => b => ({ 'docs/app.js': swap(b['docs/app.js'], from, to), 'docs/index.html': swap(b['docs/index.html'], from, to), 'docs/dashboard-lite.html': swap(b['docs/dashboard-lite.html'], from, to) });
 const CONTROLS = [
+  ['Ahmed is assumed the federal list again', one(S, "function ptsAssumedHolidays_(pid, y) { return pid === 'ahmed' ? ptsVerizonHolidays_(y) : ptsFederalHolidays_(y); }", "function ptsAssumedHolidays_(pid, y) { return ptsFederalHolidays_(y); }"), NODE],
+  ['Verizon’s list loses the Friday after Thanksgiving', one(S, "  put(ptsAdd_(tg, 1), 'Day after Thanksgiving');\n", ''), NODE],
+  ['New Year’s (V) not a holiday on the work calendar', one('PTO.js', "(raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure,New Year')", "(raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure')"), NODE],
+  ['a person with nothing posted gets the federal list', one(S, "holidays: assumed ? ptsAssumedHolidays_(p.id, year) : got.holidays,", "holidays: assumed ? ptsFederalHolidays_(year) : got.holidays,"), NODE],
   ['Saturday holidays not moved to Friday', one(S, "return w === 6 ? ptsAdd_(iso, -1) : w === 0 ? ptsAdd_(iso, 1) : iso;", "return w === 0 ? ptsAdd_(iso, 1) : iso;"), NODE],
   ['a break can start a day early for free', one(S, "    if (allOff(ptsAdd_(s, -1))) continue;                  // could start a day earlier for free\n", ''), NODE],
   ['breaks over a locked trip', one(S, "if (ptsInRanges_(s, e, p.busy) || ptsInRanges_(s, e, p.blackouts)) { ok = false; break; }", "if (ptsInRanges_(s, e, p.blackouts)) { ok = false; break; }"), NODE],

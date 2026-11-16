@@ -7,7 +7,8 @@
 //   - candidates: a run of days off made by taking 1+ PTO days next to weekends and
 //     holidays, for both of you together and for each of you on your own. Each
 //     person's holidays come from their work calendar; where next year's aren't
-//     posted yet, the US federal list stands in, marked "assumed";
+//     posted yet, a stand-in list is used, marked "assumed": Verizon's
+//     yearly holidays for Ahmed, the US federal list for Victoria;
 //   - a plan: a strategy picks from them within each person's budget. The budget is
 //     next year's allowance plus what rolls over, personal time first (it expires),
 //     less the PTO held for pencilled trips, the buffer and any days to keep;
@@ -83,6 +84,31 @@ function ptsFederalHolidays_(y) {
   put(ptsObserved_(ptsYmd_(y, 12, 25)), 'Christmas Day');
   return out;
 }
+
+/**
+ * Pure: the holidays Verizon gives every year (Ahmed's assumed list, until next year's are on his
+ * Verizon calendar) → {ymd: label}: New Year's Day, Martin Luther King Jr. Day, Memorial Day,
+ * Independence Day, Labor Day, Thanksgiving and the Friday after, Christmas Day. A weekend holiday
+ * moves as the federal one does (2026: July 4 is a Saturday, so Friday July 3).
+ */
+function ptsVerizonHolidays_(y) {
+  var out = {};
+  var put = function(iso, label) { if (iso.slice(0, 4) === String(y)) out[iso] = label; };
+  put(ptsObserved_(ptsYmd_(y, 1, 1)), 'New Year’s Day');
+  put(ptsObserved_(ptsYmd_(y + 1, 1, 1)), 'New Year’s Day (observed)');
+  put(ptsNthDow_(y, 1, 1, 3), 'Martin Luther King Jr. Day');
+  put(ptsNthDow_(y, 5, 1, -1), 'Memorial Day');
+  put(ptsObserved_(ptsYmd_(y, 7, 4)), 'Independence Day');
+  put(ptsNthDow_(y, 9, 1, 1), 'Labor Day');
+  var tg = ptsNthDow_(y, 11, 4, 4);
+  put(tg, 'Thanksgiving');
+  put(ptsAdd_(tg, 1), 'Day after Thanksgiving');
+  put(ptsObserved_(ptsYmd_(y, 12, 25)), 'Christmas Day');
+  return out;
+}
+
+/** Pure: a person's assumed holidays: Verizon's list for Ahmed, the federal list for anyone else. */
+function ptsAssumedHolidays_(pid, y) { return pid === 'ahmed' ? ptsVerizonHolidays_(y) : ptsFederalHolidays_(y); }
 
 // ---- pure: settings ---------------------------------------------------------------
 
@@ -508,7 +534,7 @@ function ptsPerson_(p, year, today) {
   var capFor = function(y) { return annual * ((y + '-01-01') > ACCRUAL_CAP_SWITCH_DATE_ ? 1.25 : 1.5); };
   if (p.id === 'ahmed') { accrual = { annual: annual, day: cfg.accrualDay || 16, cap: capFor(year) }; capCarry = Math.floor(capFor(year + 1) - annual / 10); }
   else { var mc = Number((getConfigValues() || {}).victoria_pto_max_carryover); if (isFinite(mc) && mc > 0) capCarry = mc; }
-  return { cfg: cfg, holidays: assumed ? ptsFederalHolidays_(year) : got.holidays, assumed: assumed, booked: got.booked, bookedDays: got.bookedDays,
+  return { cfg: cfg, holidays: assumed ? ptsAssumedHolidays_(p.id, year) : got.holidays, assumed: assumed, booked: got.booked, bookedDays: got.bookedDays,
     remVac: got.remVac, remPersH: got.remPersH, capCarry: capCarry, accrual: accrual };
 }
 

@@ -34,6 +34,21 @@ console.log('\nfederal holidays');
   check('2022: Jan 1 on a Saturday leaves 2022 without a New Year’s Day', !Object.keys(P.ptsFederalHolidays_(2022)).some(d => d.startsWith('2022-01-0')));
 }
 
+console.log('\nVerizon’s yearly holidays (Ahmed’s assumed list)');
+{
+  const v26 = P.ptsVerizonHolidays_(2026);
+  check('2026 matches the Verizon calendar: the 8 days, July 4 on a Saturday taken Friday Jul 3',
+    J(Object.keys(v26).sort()) === J(['2026-01-01', '2026-01-19', '2026-05-25', '2026-07-03', '2026-09-07', '2026-11-26', '2026-11-27', '2026-12-25']), J(v26));
+  const v27 = P.ptsVerizonHolidays_(2027);
+  check('2027: Thanksgiving and the Friday after, Christmas on a Saturday taken Fri Dec 24, New Year’s 2028 on Fri Dec 31',
+    v27['2027-11-25'] && v27['2027-11-26'] === 'Day after Thanksgiving' && v27['2027-12-24'] === 'Christmas Day' && /New Year/.test(v27['2027-12-31'] || ''), J(v27));
+  check('not Verizon days: Presidents’, Juneteenth, Columbus, Veterans', ['2027-02-15', '2027-06-18', '2027-10-11', '2027-11-11'].every(d => !v27[d]));
+  check('Ahmed is assumed Verizon’s list, Victoria the federal one', J(P.ptsAssumedHolidays_('ahmed', 2027)) === J(v27) && J(P.ptsAssumedHolidays_('victoria', 2027)) === J(P.ptsFederalHolidays_(2027)));
+  check('…and that’s what a person with nothing posted gets', /holidays: assumed \? ptsAssumedHolidays_\(p\.id, year\) : got\.holidays/.test(PTS));
+  const PTO = read('PTO.js');
+  check('“New Year’s (V)” on the work calendar counts as a holiday: New Year is a default keyword', (PTO.match(/'Day,Holiday,Floating,Closure,New Year'/g) || []).length === 2);
+}
+
 const FED = P.ptsFederalHolidays_(2027);
 const AH = Object.assign({}, FED, { '2027-11-26': 'Day after Thanksgiving' });
 const person = (id, hol, extra) => Object.assign({ id, name: id === 'ahmed' ? 'Ahmed' : 'Victoria', holidays: hol, assumed: false, busy: [], blackouts: [] }, extra || {});
