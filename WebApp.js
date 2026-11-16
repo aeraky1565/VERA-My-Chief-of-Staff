@@ -490,6 +490,9 @@ function doGet(e) {
       case 'add_health_appointment':     return jsonOut_(webAddHealthAppointment_(e));
       case 'update_health_appointment':  return jsonOut_(webUpdateHealthAppointment_(e));
       case 'delete_health_appointment':  return jsonOut_(webDeleteHealthAppointment_(e));
+      case 'appt_contact':               return jsonOut_(webApptContact_(e));
+      case 'appt_booked':                return jsonOut_(webApptBooked_(e));
+      case 'appt_book':                  return jsonOut_(webApptBook_(e));
       case 'log_health_visit':           return jsonOut_(webLogHealthVisit_(e));
       // Trip Budget (Issue #96)
       case 'get_trip_budget':            return jsonOut_(webGetTripBudget_(e));
@@ -11051,7 +11054,7 @@ function webFetchResourceContent_(e) {
 // ============================================================
 
 function webGetHealthAppointments_() {
-  return { ok: true, appointments: getHealthAppointments_() };
+  return { ok: true, appointments: apcMerged_() };   // Appts.js: with the typed doctor, phone and booking
 }
 
 /**

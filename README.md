@@ -463,6 +463,8 @@ resolve correctly without touching them.
 
 ### Health Appointment Tracker (`HealthTracker.js`)
 
+**Health › Appointments** (`HealthAppointmentsTab`, `Appts.js`): a **Both / Ahmed / Victoria** switch; **Needs booking** first (overdue first, then due within 30 days) with **Book it → Task** (one Task "Call Dr. Lin to book an eye exam", the phone in its notes) and **Booked ✓**; then **Booked** (marked, or already on the calendar); up-to-date ones fold away. Each person + appointment type has a typed **Doctor** and **Phone** (Doctor ✎), kept in an **`Appointment Contacts`** tab (Person, Type, Doctor, Phone, Booked On) made on first save; without a typed doctor, the calendar's provider shows. A booking counts until a visit after it appears on the calendar. Log visit still adds today's visit to the calendar.
+
 Scans all Google Calendars for events prefixed with `DR:`. Title format: `DR: Ahmed - Annual Physical` or `DR: Victoria - Dentist Cleaning - Dr. Patel`. VERA derives the person, appointment type, provider, last visit date, and scheduled next date — then computes days until the next appointment is due based on default intervals. Flags are generated nightly when appointments are approaching or overdue.
 
 Default intervals (months):
@@ -2721,7 +2723,10 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `pto_plan_follow` (POST) | `id`, `what` (`away` / `trip`), `on` | Away mode on the break's first day, or a pencilled trip in My Trips |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
-| `health_appointments` | — | All tracked health appointments with next-due dates |
+| `health_appointments` | — | All tracked health appointments with next-due dates, `doctor`, `phone`, `booked` |
+| `appt_contact` | `person`, `type`, `doctor`, `phone` | Saves the typed doctor and phone |
+| `appt_booked` | `person`, `type`, `on` (`''` clears) | Marks it booked (today by default) |
+| `appt_book` | `person`, `type` | Makes (or keeps) the Task to call and book |
 | `add_health_appointment` / `update_health_appointment` / `delete_health_appointment` | (appointment fields) | Manage health appointments |
 | `log_health_visit` | `type`, `date` | Create DR: calendar event for a completed visit |
 | `sync_life_plan_doc` | — | Sync Life Plan Google Doc to sheet |

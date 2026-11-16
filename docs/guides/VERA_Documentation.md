@@ -225,6 +225,10 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 `rx_refilled` (`webRxRefilled_`) writes Last Filled and `rxNext_` (Days Supply, else the last gap, else blank). `checkRefills_` runs after `checkTaxLate_` and keeps one `rx_refill_<id>` flag per active prescription due within 7 days through `upsertKeyedFlags_`. The shared NeedsYou block takes an optional `rx` (the lite Today passes it; the full Home doesn't) and lists `d.who`'s refills (Victoria by default) due within 7 days. On the screen, `rxCounts_`, `rxSupply_` and `rxWhen_` do the numbers.
 
+### Appointments: typed doctor and phone, Book it, Booked (`Appts.js`, `HealthAppointmentsTab`)
+
+`webGetHealthAppointments_` returns `apcMerged_`: the calendar's `getHealthAppointments_` plus the Appointment Contacts row (`apcKey_`: person + type, any case) — `doctor` (typed, else the calendar provider), `phone` (`apcPhone_`), `bookedOn` and `booked` (`apcBooked_`: no visit on or after it). `appt_book` writes one open Task tagged `VERA appt book:<key>` with `apcTaskText_`. On the screen, `apGroups_` splits needs booking / booked / up to date.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.
