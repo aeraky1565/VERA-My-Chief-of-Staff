@@ -2076,6 +2076,12 @@ The `Recipes` tab: Name, Cuisine, Servings, Prep Time, Link, Ingredients (separa
 
 The screen (Home Front › Kitchen › Recipes) has a search (name, ingredient, tag), chips (**All**, **Quick ≤ 30 min**, each cuisine, **Not made lately**: never made, or 60+ days ago and not planned), and a card per recipe: photo, cuisine, time · servings · ingredients · **last made** (from Meal Plan, skipped dinners don't count) or **planned** or *never planned*. **🗓 Plan it** opens a picker of the days from today to next Sunday with free dinners marked; picking one writes the recipe into Meal Plan (`set_meal`, Home Cooked), and a planned day asks before replacing it. **🛒 Add N to the list** sends the ingredients to Shopping; **Open ↗** opens the link.
 
+### Takeouts
+
+`Takeout Restaurants` (Name, Cuisine, Phone, Website, Rating, Notes) gains **`Last Ordered`** and **`Times Ordered`**; `Takeout Items` (Restaurant, Item, Description, Rating, Notes) gains **`For`** (Ahmed, Victoria or Both), **`Last Ordered`** and **`Times Ordered`** (`Takeouts.js`, named the first time they're written).
+
+The screen (Home Front › Kitchen › Takeouts): cuisine chips, a card per restaurant (last ordered first) with stars you tap to rate, the cuisine and **our usual** (dishes ordered 2+ times, most first; else the 4★+ ones) with who each is for (A, V, A+V), **Last ordered … · N times**, 📞 and Menu ↗. **✓ We ordered** records today and, if you tick them, which dishes (twice in a day counts once). The dish list folds open: who it's for, stars, delete, and add a dish.
+
 ### Chores for others
 
 The `ChoresForOthers` tab holds jobs for the kids (or anyone) with a reward: ID, Task, Assignee, Reward, Status (Open / Done), Added Date, Notes. Two columns follow Notes (`ChoresForOthers.js`, added and named the first time they're written): **`Done Date`** (stamped by ✓ Done) and **`Paid`** (the day the reward was paid). A reward like `$10`, `10` or `$7.50` counts as money (`cfoAmount_`); anything else ("movie night") is shown but isn't totalled.
@@ -2528,7 +2534,7 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `update_meal_status` | `day`, `weekStart`, `status` | Update meal status |
 | `move_meal` | `fromDay`, `toDay`, `fromWeekStart`, `toWeekStart` | Move a dinner to another day; swaps if the target is taken |
 | `suggest_meals` | — | AI-suggest full week of dinners |
-| `takeouts` | — | Favourite takeout restaurants with items |
+| `takeouts` | — | Favourite takeout restaurants with items, `lastOrdered`, `timesOrdered` and each dish's `for` |
 | `homesteward` | — | Home items with service status |
 | `homesteward_service` | `row` | Record service for a home item |
 | `home_item_links` | `row`, `item`, `receipt`, `manual` | Set a home item's receipt and manual links |
@@ -2685,6 +2691,9 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `resolve` | `id` | Resolve a flag |
 | `add_takeout_restaurant` | `name`, `cuisine`, `phone`, `website`, `rating`, `notes` | Add takeout restaurant |
 | `delete_takeout_restaurant` | `name` | Remove takeout restaurant and all its items |
+| `takeout_ordered` (POST) | `name`, `dishes` | Records an order today on the restaurant and the dishes named |
+| `update_takeout_item` (POST) | `row`, `item`, `for`, `rating` | Who a dish is for and its stars; refuses a row that moved |
+| `update_takeout_restaurant` (POST) | `name`, `rating` | A restaurant's stars |
 | `add_takeout_item` | `restaurantName`, `item`, `description`, `rating`, `notes` | Add item to a takeout restaurant |
 | `delete_takeout_item` | `restaurantName`, `item` | Remove a takeout item |
 | `log_purchase_run` | `items` (JSON array) | Log a grocery/purchase run to Purchase History |

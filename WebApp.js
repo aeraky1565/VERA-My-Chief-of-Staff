@@ -648,6 +648,9 @@ function doPost(e) {
       case 'delete_takeout_restaurant':  return jsonOut_(webDeleteTakeoutRestaurant_(body));
       case 'add_takeout_item':           return jsonOut_(webAddTakeoutItem_(body));
       case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
+      case 'takeout_ordered':            return jsonOut_(webTakeoutOrdered_(body));
+      case 'update_takeout_item':        return jsonOut_(webUpdateTakeoutItem_(body));
+      case 'update_takeout_restaurant':  return jsonOut_(webUpdateTakeoutRestaurant_(body));
       // Purchase History (Issue #111)
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
       case 'receipt_scan':               return jsonOut_(webReceiptScan_(body));
@@ -3764,7 +3767,7 @@ function webGetTakeouts_() {
   var iSheet  = ss.getSheetByName(TABS.TAKEOUT_ITEMS);
   var restaurants = [];
   if (rSheet && rSheet.getLastRow() >= 2) {
-    var rData = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, TAKEOUT_RESTAURANT_HEADERS.length).getValues();
+    var rData = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, Math.min(TO_R_TIMES_, rSheet.getMaxColumns())).getValues();   // + Last Ordered, Times (Takeouts.js)
     rData.forEach(function(row, idx) {
       var name = String(row[0] || '').trim();
       if (!name) return;
@@ -3776,12 +3779,14 @@ function webGetTakeouts_() {
         website: String(row[3] || '').trim(),
         rating:  row[4] !== '' ? Number(row[4]) : null,
         notes:   String(row[5] || '').trim(),
+        lastOrdered: toYmd_(row[TO_R_LAST_ - 1]),
+        timesOrdered: parseInt(row[TO_R_TIMES_ - 1], 10) || 0,
         items:   [],
       });
     });
   }
   if (iSheet && iSheet.getLastRow() >= 2) {
-    var iData = iSheet.getRange(2, 1, iSheet.getLastRow() - 1, TAKEOUT_ITEM_HEADERS.length).getValues();
+    var iData = iSheet.getRange(2, 1, iSheet.getLastRow() - 1, Math.min(TO_I_TIMES_, iSheet.getMaxColumns())).getValues();   // + For, Last Ordered, Times (Takeouts.js)
     iData.forEach(function(row, idx) {
       var restName = String(row[0] || '').trim();
       var itemName = String(row[1] || '').trim();
@@ -3794,6 +3799,9 @@ function webGetTakeouts_() {
           description: String(row[2] || '').trim(),
           rating:      row[3] !== '' ? Number(row[3]) : null,
           notes:       String(row[4] || '').trim(),
+          'for':       toFor_(row[TO_I_FOR_ - 1]),
+          lastOrdered: toYmd_(row[TO_I_LAST_ - 1]),
+          timesOrdered: parseInt(row[TO_I_TIMES_ - 1], 10) || 0,
         });
       }
     });
@@ -3851,6 +3859,8 @@ function webAddTakeoutItem_(body) {
     body.rating ? Number(body.rating) : '',
     ((body.notes       || '')).trim(),
   ]]);
+  var who = toFor_(body['for']);   // Takeouts.js
+  if (who) { toEnsureCols_(sheet, TO_I_FOR_, ['For', 'Last Ordered', 'Times Ordered']); sheet.getRange(sheet.getLastRow(), TO_I_FOR_).setValue(who); }
   return { ok: true, action: 'created', item: item };
 }
 
