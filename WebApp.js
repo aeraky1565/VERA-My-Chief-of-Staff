@@ -337,6 +337,7 @@ function doGet(e) {
       case 'complete_chore_for_others':  return jsonOut_(webCompleteChoreForOthers_(e));
       case 'update_chore_for_others':    return jsonOut_(webUpdateChoreForOthers_(e));
       case 'delete_chore_for_others':    return jsonOut_(webDeleteChoreForOthers_(e));
+      case 'chore_for_others_paid':      return jsonOut_(webPayChoresForOthers_(e));
       // Coupons (Issue #173)
       case 'get_coupons':        return jsonOut_(webGetCoupons_());
       case 'delete_coupon':      return jsonOut_(webDeleteCoupon_(e));
@@ -11781,6 +11782,12 @@ function webUpdateChoreForOthers_(e) {
     if (p[f] !== undefined) fields[f] = p[f];
   });
   return updateChoreForOthers_(id, fields);
+}
+
+/** GET chore_for_others_paid — id (one chore) or assignee (all their done, unpaid ones): stamps Paid. */
+function webPayChoresForOthers_(e) {
+  var p = e.parameter || {};
+  return payChoresForOthers_(String(p.id || '').trim(), String(p.assignee || '').trim());
 }
 
 function webDeleteChoreForOthers_(e) {

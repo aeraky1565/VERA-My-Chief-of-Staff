@@ -2070,6 +2070,12 @@ The **HOA** card shows when the site was last scanned and what it found, **Scan 
 
 The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. Two columns follow Due By (`Chores.js`, added the first time they're written): **`Owner`** (Ahmed, Victoria or Either; blank is Either) and **`Checked By`** (who ticked it, from the sign-in; cleared on untick and by the nightly reset). The screen (Home Front › Chores › Chores) opens on a ring of today's daily chores, the cadences as chips (done of total, how many left, when they reset), and an owner filter (All · Ahmed · Victoria · Either; a person's filter keeps Either too). Each chore shows its owner pill; a done one is struck through with who ticked it and when, until its reset. **⋯** changes the owner or cadence or deletes it, and the add row takes an owner. Chores stay on this screen: no nudges, and they are not in Needs you on either dashboard (upkeep jobs still are). `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.
 
+### Chores for others
+
+The `ChoresForOthers` tab holds jobs for the kids (or anyone) with a reward: ID, Task, Assignee, Reward, Status (Open / Done), Added Date, Notes. Two columns follow Notes (`ChoresForOthers.js`, added and named the first time they're written): **`Done Date`** (stamped by ✓ Done) and **`Paid`** (the day the reward was paid). A reward like `$10`, `10` or `$7.50` counts as money (`cfoAmount_`); anything else ("movie night") is shown but isn't totalled.
+
+The screen (Home Front › Chores › For Others) shows counters (open, done this month, rewards owed), a person filter, **Rewards owed** per person with one **Paid $N** button, the open jobs with ✓ Done, and a **Done · N this month** fold where each money reward says paid or not, with its own Paid. The ⋯ sheet edits a job, and has **Not done yet** (for a done one) and Delete. A money reward done 7 or more days ago and still unpaid puts **"Pay Sam $15 (2 chores)"** in Needs you on the full Home (not on the lite Today).
+
 ### Vehicles
 
 The `Vehicles` tab tracks cars/bikes with: nickname, year, make, model, VIN, license plate, driver, current mileage, oil change interval and history, registration/insurance/warranty expiry dates, emission and safety inspection expiry, tyre replacement history and interval, and service schedule. The dashboard can log oil changes, service visits, mileage updates, tyre changes, and inspection events.
@@ -2597,6 +2603,9 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `import_calendar_birthdays` | — | Import birthdays from Joint Chaos calendar |
 | `get_chores` | — | All chores with cadence and check status |
 | `add_chore` / `delete_chore` / `toggle_chore` / `update_chore` | (chore fields) | Manage chores |
+| `get_chores_for_others` | — | Jobs for others, with Done Date, Paid and the reward as dollars (`amount`) |
+| `add_chore_for_others` / `update_chore_for_others` / `complete_chore_for_others` / `delete_chore_for_others` | (job fields) | Manage jobs for others; complete stamps Done Date |
+| `chore_for_others_paid` | `id` or `assignee` | Marks one job's reward paid, or all of a person's done, unpaid ones; returns the ids and total |
 | `financial_goals` | — | Financial goals with progress |
 | `add_financial_goal` / `update_financial_goal` / `delete_financial_goal` | (goal fields) | Manage financial goals |
 | `simulate_scenario` | `goalId`, `changeType`, `amount` | What-if scenario calculation |
