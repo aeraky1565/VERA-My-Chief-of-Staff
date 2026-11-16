@@ -49,6 +49,11 @@ const CONTROLS = [
   ['no nightly route', b => ({ 'WebApp.js': swap(b['WebApp.js'], "case 'home_nightly':", "case 'home_nightly_off':") })],
   ['one column on a computer', css(".fh-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);", ".fh-cols { display: grid; grid-template-columns: 1fr;")],
   ['the phone loses the mockup’s order (Needs you before At a glance)', css("      .fh-glance { order: 3; }\n", "")],
+  ['Mail back after Shopping (the old order)', ui("React.createElement(FhMailTile,{counter:mailCounter,busy:mailCounterBusy,onReset:onResetMailCounter,onNavigate:onNavigate}),(function(){var t=fhProjTile_(", "(function(){var t=fhProjTile_(")],
+  ['no FSA & HSA tile', ui(",React.createElement(FhHsaTile,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate})", "")],
+  ['FSA & HSA never amber', ui("if(f.warn)hot=true;", "")],
+  ['FSA & HSA shows last year’s used-up FSA', ui("return x.daysLeft==null||x.daysLeft>=0;", "return true;")],
+  ['FSA & HSA opens Finances on its summary', ui("VERA_GOTO_.finances='hsafsa';onNavigate('finances');", "onNavigate('finances');")],
   ['tiles stay two across on a wide window', css(".fh-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }", ".fh-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }")],
 ];
 let allBit = true;

@@ -106,9 +106,9 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
   - **At a glance:** one card, picked by what needs you most: a birthday within 14 days with no gift ideas, then spending over plan, then practice behind for the week, otherwise Coming up. It's amber when it needs you and opens its page. Four small chips let you peek at the others (the urgent one has a dot); a peek lasts until you leave Home.
 - **Right column, Needs you:** high and medium flags, tasks overdue or due within 3 days, plus the lite Today's perks, coupons and house jobs (the shared `liteNeedsYou_`), soonest first. Five are shown, and "See all" shows up to ten. A row opens its tab.
 - **Everything:** compact tiles, each with one or two lines, amber when it needs you; four across on a computer, two on a phone.
-  - **Flags** (open, high, the top one), **Tasks** (overdue, next), **Shopping** (the two biggest lists), **Money** (groceries against plan, the next bill).
-  - **Which card**, **Projects** (steps left), **PTO** (both balances, next time off), **Mail & Packages** (with **✓ Got the mail!**), **Travel** (the next trip, packing done).
-  - **System health** covers the last nightly run (`home_nightly`), the assistants, the connections and Trip IDs; it names what to look at and opens System.
+  - In this order: **Flags** (open, high, the top one), **Tasks** (overdue, next), **Mail & Packages** (with **✓ Got the mail!**), **Projects** (steps left), **Shopping** (the two biggest lists), **Which card**.
+  - Then **Travel** (the next trip, packing done), **PTO** (both balances, next time off), **Money** (groceries against plan, the next bill), **FSA & HSA** (this plan year's FSA money left and its use-by date, amber when some would be lost; the HSA balance; opens Finances › FSA & HSA).
+  - Last, **System health** covers the last nightly run (`home_nightly`), the assistants, the connections and Trip IDs; it names what to look at and opens System.
 - **On a phone:** a bar at the bottom (**Home · Flags · Tasks · Chat · Travel · Money · All**) replaces the top row of tabs and the status strip, with badges for open flags and overdue tasks. **All** lists every tab in groups. Home starts with a greeting, then Today and the actions, Needs you (three, "See all" for more), At a glance and the tiles.
 - **Updates:** pages are checked with the site every time they open (the service worker asks with `no-cache`), so a release shows on the next open.
 

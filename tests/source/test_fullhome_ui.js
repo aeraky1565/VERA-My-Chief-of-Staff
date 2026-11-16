@@ -47,7 +47,7 @@ const ctx = { console, Date, Math, JSON, Object, Array, String, Number, RegExp, 
 vm.createContext(ctx);
 const CARDVALUE = (() => { const a = APP.indexOf('// ---- CardValue'); const b = APP.indexOf('// ---- /CardValue ----', a); return a === -1 ? '' : APP.slice(a, b); })();
 const HUB = (() => { const a = APP.indexOf('// ---- CardHub'); const b = APP.indexOf('// ---- /CardHub ----', a); return a === -1 ? '' : APP.slice(a, b); })();
-['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhGlancePick_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_', 'fhFlagsTile_', 'fhTasksTile_', 'fhShopTile_', 'fhProjTile_', 'fhPtoTile_', 'fhMailTile_', 'fhMoneyTile_', 'fhTravelTile_', 'fhNeedsShown_', 'fhGreeting_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
+['hsMoney_', 'hsQuarter_', 'hsSpending_', 'hsNextDate_', 'fhDate_', 'fhTripChip_', 'fhGlance_', 'fhGlancePick_', 'fhNeeds_', 'fhMoneyLine_', 'fhHealth_', 'fhTravelLine_', 'fhFlagsTile_', 'fhTasksTile_', 'fhShopTile_', 'fhProjTile_', 'fhPtoTile_', 'fhMailTile_', 'fhMoneyTile_', 'fhHsaTile_', 'fhTravelTile_', 'fhNeedsShown_', 'fhGreeting_'].forEach(n => vm.runInContext(fnSrc(APP, n), ctx));
 vm.runInContext(NA, ctx);
 try { vm.runInContext(CARDVALUE + '\n' + HUB.replace(/function CardHub[\s\S]*$/, ''), ctx); } catch (e) {}
 
@@ -75,6 +75,11 @@ console.log('\nEverything: each tile’s lines, and when it’s amber');
   check('…a bill due within 3 days is amber too', ctx.fhMoneyTile_({ bills: [{ bill: 'Water', dueDay: 16 }] }, { noUploads: true }, NOWM).hot === true);
   check('Travel: the trip, then packing; amber within 3 days with packing left', T(ctx.fhTravelTile_([{ label: 'Lisbon', startDate: '2027-03-17' }], '2027-03-15', { items: [{ status: 'bag' }, { checked: true }, { status: 'ready' }] }), ['Lisbon in 2 days', 'Packing 2 of 3'], true)
         && ctx.fhTravelTile_([{ label: 'Lisbon', startDate: '2027-03-25' }], '2027-03-15', { items: [{ status: 'ready' }] }).hot === false);
+  const HSA = { ok: true, fsa: [{ year: 2027, balance: 1240, useBy: '2027-12-31', daysLeft: 290, warn: false }, { year: 2026, balance: 80, useBy: '2027-03-15', daysLeft: -1, warn: false }], hsa: { balance: 6315.4 } };
+  check('FSA & HSA: this plan year’s FSA left and its use-by date, then the HSA', T(ctx.fhHsaTile_(HSA), ['FSA $1,240 left · use by Dec 31', 'HSA $6,315'], false), J(ctx.fhHsaTile_(HSA)));
+  check('…a plan year past its use-by date isn’t shown', T(ctx.fhHsaTile_({ fsa: [{ balance: 80, useBy: '2027-03-15', daysLeft: -1 }], hsa: { balance: 100 } }), ['HSA $100'], false));
+  check('…amber when FSA money would be lost', ctx.fhHsaTile_({ fsa: [{ balance: 300, useBy: '2027-03-31', daysLeft: 16, warn: true }], hsa: null }).hot === true);
+  check('…a blank FSA balance asks for it; nothing set up says so', T(ctx.fhHsaTile_({ fsa: [{ balance: '', useBy: '2027-12-31', daysLeft: 290 }], hsa: null }), ['FSA: add the balance'], false) && T(ctx.fhHsaTile_({ fsa: [], hsa: null }), ['No FSA or HSA set up'], false));
   check('Needs you: 3 on a phone, 5 on a computer', ctx.fhNeedsShown_(false) === 3 && ctx.fhNeedsShown_(true) === 5);
   check('the greeting follows the hour', ctx.fhGreeting_(new Date(2027, 0, 1, 8)) === 'Good morning' && ctx.fhGreeting_(new Date(2027, 0, 1, 14)) === 'Good afternoon' && ctx.fhGreeting_(new Date(2027, 0, 1, 20)) === 'Good evening');
 }
@@ -145,6 +150,7 @@ const REPLIES = {
   bills: { bills: [{ bill: 'Internet', amount: 80, dueDay: new Date().getDate() + 1 > 28 ? 28 : new Date().getDate() + 1 }] },
   home_nightly: { ok: true, at: new Date().toISOString(), stoppedAt: '' },
   agent_health: H.agents, system_api_health: H.api, trip_id_check: { ok: true, totals: { blank: 0, mismatched: 0 }, tabs: [] },
+  health_accounts: { ok: true, fsa: [{ year: 2027, balance: 1240, useBy: '2027-12-31', daysLeft: 290, warn: false }], hsa: { balance: 6315 } },
   away_status: { on: false }, aria_book: { ok: true, items: [] },
 };
 const today = new Date(), iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -202,9 +208,13 @@ const PROPS = {
     await page.click('.fh-nr[data-kind="flag"]'); await wait(30);
     check('…a flag row opens Flags', (await page.evaluate(() => window.__nav)).includes('flags'));
     const every = await page.$$eval('.fh-grid > *', ns => ns.map(n => (n.querySelector('.fh-tile-t, .bento-card-title') || n).innerText.trim().split('\n')[0]));
-    check('Everything: compact tiles only, no big-number cards', !(await page.$('.fh-grid .bento-card-main')) && (await page.$$('.fh-grid > .fh-tile')).length === 10, J(every));
+    check('Everything: compact tiles only, no big-number cards', !(await page.$('.fh-grid .bento-card-main')) && (await page.$$('.fh-grid > .fh-tile')).length === 11, J(every));
+    check('Everything: in your order, System health last', J(every.slice(0, 10)) === J(['Flags', 'Tasks', 'Mail & Packages', 'Projects', 'Shopping', 'Which card', 'Travel', 'PTO', 'Money', 'FSA & HSA']) && /System health/.test(every[10]), J(every));
+    check('FSA & HSA tile: what’s left and the HSA', /FSA \$1,240 left · use by Dec 31/.test(await page.$eval('.fh-tile[data-tile="hsa"]', n => n.innerText)) && /HSA \$6,315/.test(await page.$eval('.fh-tile[data-tile="hsa"]', n => n.innerText)));
+    await page.click('.fh-tile[data-tile="hsa"]'); await wait(30);
+    check('…opens Finances › FSA & HSA', (await page.evaluate(() => window.__nav)).includes('finances') && (await page.evaluate(() => VERA_GOTO_.finances)) === 'hsafsa');
     check('…flags and tasks say what needs you, amber', /2 open · 1 high/.test(await page.$eval('.fh-tile[data-tile="flags"]', n => n.innerText)) && (await page.$eval('.fh-tile[data-tile="tasks"]', n => n.className)).includes('hot'));
-    check('Everything: the ten, Mail and System health among them', ['Flags', 'Tasks', 'Shopping', 'Money', 'Which card', 'Projects', 'PTO', 'Mail & Packages', 'Travel', 'System health'].every(w => every.some(x => x.toLowerCase().indexOf(w.toLowerCase()) !== -1)), J(every));
+    check('Everything: the eleven, Mail and System health among them', ['Flags', 'Tasks', 'Shopping', 'Money', 'Which card', 'Projects', 'PTO', 'Mail & Packages', 'Travel', 'FSA & HSA', 'System health'].every(w => every.some(x => x.toLowerCase().indexOf(w.toLowerCase()) !== -1)), J(every));
     check('…the mail card has Got the mail!', /Got the mail!/.test(t));
     await page.click('text=✓ Got the mail!'); await wait(30);
     check('…and it resets the counter', (await page.evaluate(() => window.__nav)).includes('reset-mail'));
@@ -214,7 +224,7 @@ const PROPS = {
     await page.click('.fh-health'); await wait(30);
     check('…opens System', (await page.evaluate(() => window.__nav)).includes('system'));
     const got = await page.evaluate(() => window.__gets);
-    check('it reads the routes it shows, and writes nothing', ['get_todays_events', 'coming_up', 'life_growth', 'budget_actuals', 'get_important_dates', 'cards', 'get_coupons', 'get_chores', 'bills', 'home_nightly', 'agent_health', 'system_api_health', 'trip_id_check'].every(a => got.includes(a)), J(got));
+    check('it reads the routes it shows, and writes nothing', ['get_todays_events', 'coming_up', 'life_growth', 'budget_actuals', 'get_important_dates', 'cards', 'get_coupons', 'get_chores', 'bills', 'home_nightly', 'agent_health', 'system_api_health', 'trip_id_check', 'health_accounts'].every(a => got.includes(a)), J(got));
     const box = s => page.$eval(s, n => { const r = n.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width)]; });
     const L = await box('.fh-left'), R = await box('.fh-right');
     if (width >= 1000) check('two columns: Today on the left, Needs you on the right', R[0] > L[0] + L[2] - 2 && Math.abs(R[1] - L[1]) < 4, J([L, R]));
