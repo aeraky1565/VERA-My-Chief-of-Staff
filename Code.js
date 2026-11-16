@@ -1337,6 +1337,7 @@ function nightlyRun() {
     // cheap: as the night's last step it was the first one the time budget dropped.
     nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);
     nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);
+    nightlyStep_(ctx, 'purgeOldFlyers_', purgeOldFlyers_);   // Neighborhood.js: more than 30 days past
 
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
     nightlyStep_(ctx, 'resetChoresByCadence_', resetChoresByCadence_);

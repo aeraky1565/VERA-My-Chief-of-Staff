@@ -2058,6 +2058,14 @@ Home Front › House › Warranties & Service reads the `Home Items` tab (`homes
 
 **Overdue service (`checkHomeServiceOverdue_`, `HomeSteward.js`, nightly after the warranty check).** Each overdue item gets one Medium flag (`home_service_overdue_<item>`, closed once the date moves on) and one Task, "🔧 Service: <item>", due on the service date. The Task's due date follows a snooze, no second Task is made, and recording the service marks it Done. The morning nudge (`checkHomeServiceDue_`) is unchanged.
 
+### Neighborhood
+
+Home Front › House › Neighborhood is one list in date order: **This week** (today to 6 days out), **Later** (further out, recurring, or undated), **Past** (up to 30 days ago), and **HOA**. A flyer card shows the photo's thumbnail (tap to see it larger), the when, place and type, and three RSVP chips: **Going**, **Interested**, **Skip** (stored as Not Going). **Going puts the event on the Joint Chaos calendar** (a 2-hour event with a time, else all day) and keeps its id in the flyer's new `Event ID` column; any other answer, or tapping Going again to clear it, deletes VERA's event (`nbSyncRsvp_`, `Neighborhood.js`). Without a date or without a calendar named "…Joint Chaos" the answer is still saved and the screen says why nothing went on the calendar. "Add to calendar" (`flyer_to_calendar`) also uses Joint Chaos now.
+
+Snapping a flyer keeps a **thumbnail** (about 300 px, under 45,000 characters) in the new `Photo` column; VERA can only read Google Drive, so nothing is written there. Flyers more than 30 days past are cleared nightly (`purgeOldFlyers_`; never a recurring or undated one). `get_flyers` now returns dates as yyyy-MM-dd and keeps row numbers right past a blank row.
+
+The **HOA** card shows when the site was last scanned and what it found, **Scan now**, **Scan history** (every logged scan: date, items, new flags), and ⚙ for the HOA link.
+
 ### Chores
 
 The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.

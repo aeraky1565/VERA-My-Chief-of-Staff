@@ -11943,6 +11943,12 @@ function webSaveFlyer_(body) {
       Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'),
       (b.notes       || '').toString().trim()
     ]);
+    // The flyer's thumbnail (Neighborhood.js), kept in its row.
+    if (b.photo) {
+      if (!nbPhotoOk_(b.photo)) return { ok: true, id: id, warning: 'The photo was too big to keep; the flyer is saved without it.' };
+      nbEnsureCols_(sh);
+      sh.getRange(sh.getLastRow(), NB_PHOTO_COL_).setValue(String(b.photo));
+    }
     return { ok: true, id: id };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -11959,9 +11965,12 @@ function webGetFlyers_() {
     if (!sheet || sheet.getLastRow() < 2) return { ok: true, flyers: [] };
     var rows = sheet.getDataRange().getValues();
     var hdrs = rows[0];
-    var flyers = rows.slice(1).filter(function(r) { return r[0]; }).map(function(r, idx) {
-      var obj = { _row: idx + 2 };
-      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? r[i].toISOString() : r[i]; });
+    var tzF  = Session.getScriptTimeZone();
+    // Every row keeps its sheet row (a blank ID row in between must not shift the numbers), and a
+    // Date cell comes back as yyyy-MM-dd: an ISO timestamp made "2026-11-21T00:00…+T00:00:00" unreadable.
+    var flyers = rows.slice(1).map(function(r, idx) { return { r: r, row: idx + 2 }; }).filter(function(x) { return x.r[0]; }).map(function(x) {
+      var obj = { _row: x.row };
+      hdrs.forEach(function(h, i) { obj[h] = h === 'Date' ? nbYmd_(x.r[i], tzF) : x.r[i] instanceof Date ? x.r[i].toISOString() : x.r[i]; });
       return obj;
     });
     // Sort: upcoming + recurring first, past last
@@ -12014,11 +12023,15 @@ function webUpdateFlyerStatus_(e) {
     var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.NEIGHBORHOOD_FLYERS);
     if (!sheet) return { ok: false, error: 'Sheet not found' };
     // Status is column 10 (index 9, 1-based = 10)
+    if (row > sheet.getLastRow()) return { ok: false, error: 'That flyer is gone; reload' };
     var hdrs   = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     var colIdx = hdrs.indexOf('Status');
     if (colIdx < 0) colIdx = 9; // fallback: column J
     sheet.getRange(row, colIdx + 1).setValue(status);
-    return { ok: true };
+    // Going puts it on Joint Chaos; anything else takes VERA's event off (Neighborhood.js).
+    var cal = { calendar: 'none' };
+    try { cal = nbSyncRsvp_(sheet, row, status); } catch (calErr) { cal = { calendar: 'none', error: 'The answer is saved, but the calendar couldn’t be changed: ' + calErr.message }; }
+    return { ok: true, status: status, calendar: cal.calendar, warning: cal.error || '' };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -12037,7 +12050,7 @@ function webFlyerToCalendar_(e) {
     var location = (p.location || '').toString().trim();
     var desc     = (p.description || '').toString().trim();
     if (!dateStr) return { ok: false, error: 'date param required (YYYY-MM-DD)' };
-    var cal = CalendarApp.getDefaultCalendar();
+    var cal = nbJointCal_() || CalendarApp.getDefaultCalendar();   // Joint Chaos, so you both see it
     if (timeStr) {
       var start = new Date(dateStr + 'T' + timeStr + ':00');
       var end   = new Date(start.getTime() + 2 * 3600 * 1000); // 2-hour default
