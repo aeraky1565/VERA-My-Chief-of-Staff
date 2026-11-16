@@ -6816,9 +6816,50 @@ function abAddressLines(h) {
   const town = [h.city, h.state, h.postalCode].filter(Boolean).join(' ');
   return [street, town, h.country].filter(Boolean);
 }
+// People › Address book: the card runs on top (the current one first), a chip row per household
+// (city, people, last card, a stale address), and each person's next date and open gift ideas,
+// linking to People › Important Dates and Gift Ideas. Bulk import and Check ids sit under ⚙ Tools.
+// Pure: each event with how many households are on it and how many were sent this year, the most
+// recently sent first (an event with nothing sent yet goes last).
+function abRuns_(events, households, mailings, year) {
+  return (events || []).map(function (ev) {
+    var k = String(ev || '').toLowerCase(), on = {}, sent = {}, last = '';
+    (mailings || []).forEach(function (m) {
+      if (String(m.event || '').toLowerCase() !== k) return;
+      on[m.householdId] = true;
+      if (abIsSent(m)) { if (String(m.sent).slice(0, 4) === year) sent[m.householdId] = true; if (String(m.sent) > last) last = String(m.sent); }
+    });
+    var ids = (households || []).map(function (h) { return h.id; });
+    return { event: ev, onList: ids.filter(function (id) { return on[id]; }).length, sent: ids.filter(function (id) { return sent[id]; }).length, last: last };
+  }).sort(function (a, b) { return String(b.last).localeCompare(String(a.last)); });
+}
+// Pure: the most recent mailing actually sent to a household, or null.
+function abLastCard_(items) {
+  return (items || []).filter(abIsSent).sort(function (a, b) { return String(b.sent).localeCompare(String(a.sent)); })[0] || null;
+}
+// Pure: whether the address wants checking: never confirmed, or confirmed two or more years ago.
+function abStale_(h, now) {
+  var y = parseInt(String(h && h.addressConfirmed || '').slice(0, 4), 10);
+  return !y || (now || new Date()).getFullYear() - y >= 2;
+}
+// Pure: per person, their soonest upcoming date and how many gift ideas are still open. A date or
+// idea matches on the full name or the first name, ignoring case.
+function abPersonLinks_(members, dates, ideas) {
+  var keys = function (n) { var f = String(n || '').trim().toLowerCase(); return [f, f.split(/\s+/)[0]]; };
+  return (members || []).map(function (p) {
+    var k = keys(p.name), hit = function (who) { var w = String(who || '').trim().toLowerCase(); return !!w && k.indexOf(w) !== -1; };
+    var next = (dates || []).filter(function (d) { return hit(d.Person) && d.daysUntil != null && d.daysUntil >= 0; }).sort(function (a, b) { return a.daysUntil - b.daysUntil; })[0] || null;
+    var open = (ideas || []).filter(function (i) { return hit(i.Person) && !String(i['Given On'] || '').trim(); }).length;
+    return { name: p.name, next: next, ideas: open };
+  });
+}
 function AddressBookView({
   apiUrl,
-  apiToken
+  apiToken,
+  dates,
+  ideas,
+  onOpenDates,
+  onOpenGifts
 }) {
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState('');
@@ -6988,6 +7029,7 @@ function AddressBookView({
     const g = h.relationship || 'Other';
     (groups[g] = groups[g] || []).push(h);
   });
+  const runs = abRuns_(events, households, mailings, thisYear);
   const groupNames = AB_RELATIONSHIPS.filter(r => groups[r]).concat(Object.keys(groups).filter(g => AB_RELATIONSHIPS.indexOf(g) === -1));
   const inp = {
     background: '#0d1a2e',
@@ -7045,14 +7087,37 @@ function AddressBookView({
   }, "+ Household"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowImport(v => !v),
     disabled: busy,
-    className: 'subtab-btn' + (showImport ? ' active' : '')
-  }, "⬆️ Bulk import")), error && /*#__PURE__*/React.createElement("div", {
+    title: "Bulk import and id checks",
+    className: 'subtab-btn ab-tools-btn' + (showImport ? ' active' : '')
+  }, "⚙ Tools")), error && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: '#f87171',
       marginBottom: 10
     }
-  }, "⚠️ ", error), showImport && /*#__PURE__*/React.createElement("div", {
+  }, "⚠️ ", error), !event && runs.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "ab-runs"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ab-sect"
+  }, "Card runs"), /*#__PURE__*/React.createElement("div", {
+    className: "ab-run-row"
+  }, runs.map((r, i) => /*#__PURE__*/React.createElement("button", {
+    key: r.event,
+    type: "button",
+    className: 'ab-run' + (i === 0 ? ' current' : ''),
+    "data-event": r.event,
+    onClick: () => {
+      setUnsentOnly('year');
+      setEvent(r.event);
+    }
+  }, /*#__PURE__*/React.createElement("b", null, r.event), /*#__PURE__*/React.createElement("small", null, i === 0 ? 'Current · ' : '', r.sent, " of ", r.onList, " sent this year"), /*#__PURE__*/React.createElement("span", {
+    className: "ab-bar"
+  }, /*#__PURE__*/React.createElement("i", {
+    style: {
+      width: (r.onList ? Math.round(r.sent / r.onList * 100) : 0) + '%'
+    }
+  })))))), showImport && /*#__PURE__*/React.createElement("div", {
+    className: "ab-tools",
     style: {
       background: '#101c33',
       border: '1px solid #1e3060',
@@ -7227,7 +7292,9 @@ function AddressBookView({
     const isOpen = !!open[h.id];
     // A confidently wrong address is the real failure of a card list, so an
     // unconfirmed one is worth a quiet marker — not a flag, not an email.
-    const staleConfirm = h.addressConfirmed ? new Date().getFullYear() - parseInt(String(h.addressConfirmed).slice(0, 4), 10) >= 2 : true;
+    const staleConfirm = abStale_(h);
+    const lastCard = abLastCard_(allItems);
+    const links = abPersonLinks_(members, dates, ideas);
     return /*#__PURE__*/React.createElement("div", {
       key: h.id,
       style: {
@@ -7302,12 +7369,35 @@ function AddressBookView({
         color: '#8ab4f8',
         fontWeight: 600
       }
-    }, "+ Add the names") : members.length + (members.length === 1 ? ' person' : ' people'), sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') + ', last ' + sentItems[0].sent : ' · nothing sent yet', planItems.length ? ' · ' + planItems.length + ' planned' : '', staleConfirm && /*#__PURE__*/React.createElement("span", {
-      title: "Worth checking this address is still right",
-      style: {
-        color: '#c9a84c'
-      }
-    }, ' · address ' + (h.addressConfirmed ? 'confirmed ' + h.addressConfirmed : 'never confirmed')))), /*#__PURE__*/React.createElement("div", {
+    }, "+ Add the names") : members.length + (members.length === 1 ? ' person' : ' people'), sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') : ' · nothing sent yet', planItems.length ? ' · ' + planItems.length + ' planned' : ''), /*#__PURE__*/React.createElement("div", {
+      className: "ab-chips"
+    }, (h.city || h.country) && /*#__PURE__*/React.createElement("span", {
+      className: "ab-chip"
+    }, "📍 ", h.city || h.country), /*#__PURE__*/React.createElement("span", {
+      className: "ab-chip"
+    }, "👥 ", members.length), lastCard ? /*#__PURE__*/React.createElement("span", {
+      className: "ab-chip ab-last"
+    }, "✉️ ", lastCard.event, " · ", lastCard.sent) : /*#__PURE__*/React.createElement("span", {
+      className: "ab-chip dim"
+    }, "✉️ No card yet"), staleConfirm && /*#__PURE__*/React.createElement("span", {
+      className: "ab-chip warn ab-stale",
+      title: "Worth checking this address is still right"
+    }, h.addressConfirmed ? 'Address confirmed ' + String(h.addressConfirmed).slice(0, 4) : 'Address never confirmed')), links.some(l => l.next || l.ideas) && /*#__PURE__*/React.createElement("div", {
+      className: "ab-links",
+      onClick: e => e.stopPropagation()
+    }, links.map(l => /*#__PURE__*/React.createElement("span", {
+      key: l.name,
+      className: "ab-person",
+      "data-person": l.name
+    }, l.next && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      className: "ab-link ab-date",
+      onClick: () => onOpenDates && onOpenDates(l.name)
+    }, "📅 ", l.next.Label, " · ", l.next.daysUntil === 0 ? 'today' : l.next.daysUntil === 1 ? 'tomorrow' : 'in ' + l.next.daysUntil + ' d'), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      className: "ab-link ab-ideas",
+      onClick: () => onOpenGifts && onOpenGifts(l.name)
+    }, "🎁 ", l.ideas ? l.ideas + (l.ideas === 1 ? ' idea' : ' ideas') + ' for ' + String(l.name).split(' ')[0] : 'No ideas for ' + String(l.name).split(' ')[0]))))), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         gap: 6,
@@ -8101,7 +8191,7 @@ function DatesHome(props){var h=React.createElement;var _v=React.useState('soon'
     view==='month'&&h('div',{className:'dh-months'},dhByMonth_(dates,now).map(function(m){return h('div',{key:m.key,className:'dh-month','data-month':m.key},h('div',{className:'dh-sect'},m.label),
       m.dates.map(function(d){var y=dhYears_(d);return h('div',{key:(d.ID||'')+d.nextDate,className:'dh-row'},h('span',{className:'dh-day'},String(d.nextDate).slice(8,10).replace(/^0/,'')),h('span',{className:'dh-row-t'},h('b',null,d.Label),h('small',null,[d.Person,y?y.word:''].filter(Boolean).join(' · '))),h('span',{className:'dh-in'},dhWhen_(d.daysUntil)));}));})),
     view==='person'&&h(ImportantDatesView,{dates:dates,loading:props.loading,busy:props.busy,onAdd:props.onAdd,onUpdate:props.onUpdate,onDelete:props.onDelete,onPreviewCalendar:props.onPreviewCalendar,onImportCalendar:props.onImportCalendar,calPreviews:props.calPreviews,calPreviewLoading:props.calPreviewLoading}));}
-function PeopleTab({onUpdateGiftIdea,onGiftGiven,apiUrl,apiToken,giftData,giftLoading,busy,onAddGiftPerson,onDeleteGiftPerson,onAddGiftIdea,onDeleteGiftIdea,datesData,datesLoading,onAddImportantDate,onUpdateImportantDate,onDeleteImportantDate,onPreviewCalendarBirthdays,onImportCalendarBirthdays,calPreviews,calPreviewLoading,wishListsData,wishListsLoading,onRefreshWishLists,features}){const feat=features||{};const allSubTabs=[{id:'dates',label:'📅 Important Dates',hint:'Add birthdays and anniversaries to Google Calendar as <strong>Birthday: Name</strong> or <strong>Anniversary: Name</strong>. VERA imports them automatically. You can also add dates manually below.'},{id:'gifts',label:'🎁 Gift Ideas'},{id:'wishlists',label:'🎄 Wish Lists',featureKey:'wishlists'},{id:'people',label:'👤 People'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('dates');const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement(VeraTileNav,{name:'people',label:'People',tabs:subTabs,sub:sub,onPick:setSub,after:/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})}),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='dates'&&/*#__PURE__*/React.createElement(DatesHome,{ideas:giftData&&giftData.ideas||[],onOpenGifts:function(){setSub('gifts');},dates:datesData&&datesData.dates||[],loading:!!datesLoading,busy:busy,onAdd:onAddImportantDate,onUpdate:onUpdateImportantDate,onDelete:onDeleteImportantDate,onPreviewCalendar:onPreviewCalendarBirthdays,onImportCalendar:onImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading}),sub==='gifts'&&/*#__PURE__*/React.createElement(GiftIdeasView,{people:giftData&&giftData.people||[],ideas:giftData&&giftData.ideas||[],dates:datesData&&datesData.dates||[],loading:!!giftLoading,busy:busy,onAddPerson:onAddGiftPerson,onDeletePerson:onDeleteGiftPerson,onAddIdea:onAddGiftIdea,onDeleteIdea:onDeleteGiftIdea,onUpdateIdea:onUpdateGiftIdea,onGiven:onGiftGiven}),sub==='wishlists'&&/*#__PURE__*/React.createElement(WishListsView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='people'&&/*#__PURE__*/React.createElement(AddressBookView,{apiUrl:apiUrl,apiToken:apiToken}));}// ---- ChoresView --------------------------------------------------------------
+function PeopleTab({apiUrl,apiToken,onUpdateGiftIdea,onGiftGiven,giftData,giftLoading,busy,onAddGiftPerson,onDeleteGiftPerson,onAddGiftIdea,onDeleteGiftIdea,datesData,datesLoading,onAddImportantDate,onUpdateImportantDate,onDeleteImportantDate,onPreviewCalendarBirthdays,onImportCalendarBirthdays,calPreviews,calPreviewLoading,wishListsData,wishListsLoading,onRefreshWishLists,features}){const feat=features||{};const allSubTabs=[{id:'dates',label:'📅 Important Dates',hint:'Add birthdays and anniversaries to Google Calendar as <strong>Birthday: Name</strong> or <strong>Anniversary: Name</strong>. VERA imports them automatically. You can also add dates manually below.'},{id:'gifts',label:'🎁 Gift Ideas'},{id:'wishlists',label:'🎄 Wish Lists',featureKey:'wishlists'},{id:'people',label:'👤 People'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('dates');const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement(VeraTileNav,{name:'people',label:'People',tabs:subTabs,sub:sub,onPick:setSub,after:/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})}),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='dates'&&/*#__PURE__*/React.createElement(DatesHome,{ideas:giftData&&giftData.ideas||[],onOpenGifts:function(){setSub('gifts');},dates:datesData&&datesData.dates||[],loading:!!datesLoading,busy:busy,onAdd:onAddImportantDate,onUpdate:onUpdateImportantDate,onDelete:onDeleteImportantDate,onPreviewCalendar:onPreviewCalendarBirthdays,onImportCalendar:onImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading}),sub==='gifts'&&/*#__PURE__*/React.createElement(GiftIdeasView,{people:giftData&&giftData.people||[],ideas:giftData&&giftData.ideas||[],dates:datesData&&datesData.dates||[],loading:!!giftLoading,busy:busy,onAddPerson:onAddGiftPerson,onDeletePerson:onDeleteGiftPerson,onAddIdea:onAddGiftIdea,onDeleteIdea:onDeleteGiftIdea,onUpdateIdea:onUpdateGiftIdea,onGiven:onGiftGiven}),sub==='wishlists'&&/*#__PURE__*/React.createElement(WishListsView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='people'&&/*#__PURE__*/React.createElement(AddressBookView,{apiUrl:apiUrl,apiToken:apiToken,dates:datesData&&datesData.dates||[],ideas:giftData&&giftData.ideas||[],onOpenDates:function(){setSub('dates');},onOpenGifts:function(){setSub('gifts');}}));}// ---- ChoresView --------------------------------------------------------------
 // Routine chores only: quarterly, seasonal and yearly ones are upkeep, listed by date under them (HfUpkeep).
 const CADENCES=['Daily','Weekly','Biweekly','Monthly','Bimonthly'];const CADENCE_META={Daily:{label:'☀️ Daily',reset:'Resets nightly'},Weekly:{label:'📅 Weekly',reset:'Resets every Friday'},Biweekly:{label:'🗓️ Biweekly',reset:'Resets every other Friday'},Monthly:{label:'📆 Monthly',reset:'Resets last day of month'},Bimonthly:{label:'🔄 Bimonthly',reset:'Resets every other month'},Quarterly:{label:'📊 Quarterly',reset:'Resets end of each quarter'},Annually:{label:'🏆 Annually',reset:'Resets Dec 31'},Seasonal:{label:'🌿 Seasonal',reset:'No auto-reset'}};// Home Front › Chores: today's ring, the cadences as chips (how many left, when they reset), an
 // owner filter, each chore with its owner (Ahmed, Victoria or Either), done ones struck through with

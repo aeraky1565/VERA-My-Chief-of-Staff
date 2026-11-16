@@ -245,6 +245,10 @@ Columns 5–8 (`giEnsureCols_`): Price (`giPrice_`), Link (`giLink_`, http(s) on
 
 `gnWanted_` takes `webGetImportantDates_` and `webGetGiftData_`: a birthday or anniversary (`gnIsOccasion_`) 0–14 days away whose person has no idea that isn't given. `checkNoGiftIdea_` keeps a Low `no_gift_<id>_<year>` flag for each through `upsertKeyedFlags_`. `DatesHome` wraps `ImportantDatesView` (unchanged, the By person view) with `dhSoon_`, `dhYears_` and `dhByMonth_`.
 
+### Address book: card runs and household cards (`AddressBookView`)
+
+**The screen** (main dashboard): the **card runs** sit on top, the current one (most recently sent) first, each with "N of M sent this year"; tap one to open the run. Each household card shows chips for the **city**, **people**, the **last card sent** and, when the address was never confirmed or was confirmed two or more years ago, a **stale-address** chip. Under it, each person's **next date** (📅, opens People › Important Dates) and **open gift ideas** (🎁, opens Gift Ideas), matched on the full or first name. **Bulk import** and **Check ids / Repair** sit under **⚙ Tools**.
+
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 
 `Done Date` and `Paid` follow Notes, named on first write (`cfoEnsureCols_`). `complete_chore_for_others` stamps Done Date; `chore_for_others_paid` (`payChoresForOthers_`) stamps Paid for one `id` or every done, unpaid job of an `assignee`, and refuses an id that's open or already paid. `cfoAmount_` reads `$10` / `7.50` / `5 dollars` as money and anything else as not. On the screen, `cfoOwed_` totals rewards owed per person and `cfoCounts_` gives the counters. `cfoNeeds_` adds a Needs you row on the full Home (`FhNeeds` also reads `get_chores_for_others`) for a person with a money reward done 7+ days ago and still unpaid; it opens For Others.

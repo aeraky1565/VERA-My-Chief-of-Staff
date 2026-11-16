@@ -506,6 +506,8 @@ The shared list of people we send things to — Christmas cards, birthday cards,
 invitations to the children's things. Lives under **People → 👤 People** in the main
 dashboard and as its own **📒 Address Book** tab in the mobile one.
 
+**The screen** (main dashboard): the **card runs** sit on top, the current one (most recently sent) first, each with "N of M sent this year"; tap one to open the run. Each household card shows chips for the **city**, **people**, the **last card sent** and, when the address was never confirmed or was confirmed two or more years ago, a **stale-address** chip. Under it, each person's **next date** (📅, opens People › Important Dates) and **open gift ideas** (🎁, opens Gift Ideas), matched on the full or first name. **Bulk import** and **Check ids / Repair** sit under **⚙ Tools**.
+
 **It is a different spreadsheet on purpose.** It is shared with Victoria on its own,
 without handing over finances, health and career with it.
 

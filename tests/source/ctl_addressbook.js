@@ -419,7 +419,7 @@ const CONTROLS = {
   // ---- the dashboards ------------------------------------------------------
   'the People sub-tab goes back to "Coming soon"': b => ({
     'docs/app.js': b['docs/app.js'].replace(
-      "sub==='people'&&/*#__PURE__*/React.createElement(AddressBookView,{apiUrl:apiUrl,apiToken:apiToken})",
+      /sub==='people'&&\/\*#__PURE__\*\/React\.createElement\(AddressBookView,\{apiUrl:apiUrl,apiToken:apiToken[^\n]*?\}\}\)/,
       "sub==='people'&&/*#__PURE__*/React.createElement(\"div\",{className:\"empty-state\"},\"Coming soon\")"),
   }),
   'PeopleTab is no longer given the credentials': b => ({

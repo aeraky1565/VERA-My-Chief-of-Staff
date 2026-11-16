@@ -1973,7 +1973,7 @@ console.log('\nThe dashboards');
   check('…and renders the address book instead',
         /sub==='people'&&\/\*#__PURE__\*\/React\.createElement\(AddressBookView/.test(SRC.App));
   check('…with the credentials it needs to load itself',
-        /React\.createElement\(AddressBookView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(SRC.App));
+        /React\.createElement\(AddressBookView,\{apiUrl:apiUrl,apiToken:apiToken[,}]/.test(SRC.App));
   check('PeopleTab accepts them', /function PeopleTab\(\{apiUrl,apiToken,/.test(SRC.App));
   check('…and the parent passes them down',
         /React\.createElement\(PeopleTab,\{apiUrl:apiUrl,apiToken:apiToken,/.test(SRC.App));
