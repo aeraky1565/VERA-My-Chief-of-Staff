@@ -18,7 +18,7 @@ FILES.forEach(f => { src[f] = fs.readFileSync(path.resolve(ROOT, f), 'utf8'); })
 const RULES = [
   ['sub-tab is named "Warranties & Service"', s => /Warranties & Service/.test(s)],
   ['the old "🏠 Steward" label is gone',       s => !/🏠 Steward/.test(s)],
-  ['the warranty banner exists',               s => /warranty-banner/.test(s)],
+  ['warranties ending are counted up top',     s => /warranty-banner/.test(s) || /'Warranty ending'/.test(s)],   // lite: the banner; full: the counters (#tab redesign)
   ['badge has a red tier at 14 days',          s => /days\s*<=\s*14\)\s*return\s*\{\s*label:\s*`🔴 Expires/.test(s)
                                                  || /days<=14\)return\{label:`🔴 Expires/.test(s)],
   ['badge has an amber tier at 60 days',       s => /days\s*<=\s*60\)\s*return\s*\{\s*label:\s*`🟡 Expires/.test(s)

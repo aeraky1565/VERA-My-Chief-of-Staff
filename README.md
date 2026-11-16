@@ -2052,6 +2052,12 @@ Home Front › House › Household is the `HouseholdInfo` tab: Section, Subsecti
 
 The screen has search (labels, values, notes, section names; never a private value), section tiles on a phone and a section list on a computer, 📋 copy on every line, countdowns for date values ("Lease ends · in 7 months"), and a **re-check** chip on a section nothing has changed in for 12 months; **Still right ✓** (`household_section_checked`) stamps today on that section's lines. Tap a line to edit it in a sheet with the ⭐ and Private switches. A dismissable row suggests common lines you don't have yet (Wi-Fi password, gas shut-off, trash day, vet…). A subsection whose lines name an active contract's company (or whose name matches it) links to Finances › Contracts ("Renews in 23 d · in Contracts"). The Print button is gone: the **🧾 Sitter guide** (Hosting) prints, copies and downloads a guide made from these lines.
 
+### Warranties & Service
+
+Home Front › House › Warranties & Service reads the `Home Items` tab (`homesteward`), which gains two columns after Notes, named the first time a link is saved: **`Receipt`** and **`Manual`** (http(s) links, set from **＋ Links** on a card or when adding an item; `home_item_links`). The screen opens on three counters (Overdue, Due ≤ 14 d, Warranty ending), then the items in the order they need you: overdue service, service due within 14 days, a warranty ending within 60 days; everything else folds under **Later**. A card shows the interval and dates, a meter of how much of the warranty is used, **✓ Done today** (records the service and schedules the next, as before), **Snooze 1 wk** where something is due (`home_item_snooze`: Next Service a week from today), and the 📎 Receipt / 📘 Manual buttons.
+
+**Overdue service (`checkHomeServiceOverdue_`, `HomeSteward.js`, nightly after the warranty check).** Each overdue item gets one Medium flag (`home_service_overdue_<item>`, closed once the date moves on) and one Task, "🔧 Service: <item>", due on the service date. The Task's due date follows a snooze, no second Task is made, and recording the service marks it Done. The morning nudge (`checkHomeServiceDue_`) is unchanged.
+
 ### Chores
 
 The `Chores` tab holds household chores with cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly), sort order, and checked/checked-at timestamps. `resetChoresByCadence_()` runs nightly and resets chores whose cadence interval has elapsed. Chores are surfaced in the pacing miss-rate checker — overdue chores contribute to pacing mode activation.
@@ -2501,6 +2507,9 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `takeouts` | — | Favourite takeout restaurants with items |
 | `homesteward` | — | Home items with service status |
 | `homesteward_service` | `row` | Record service for a home item |
+| `home_item_links` | `row`, `item`, `receipt`, `manual` | Set a home item's receipt and manual links |
+| `home_item_snooze` | `row`, `item` | Move a home item's next service a week from today |
+| `household_section_checked` | `section` | Mark a cheat-sheet section as still right |
 | `ideas` | — | All ideas (including Thought Inbox) |
 | `add_idea` | `idea`, `category`, `tags` | Add idea |
 | `update_idea` | `id`, `field`, `value` | Update idea field |

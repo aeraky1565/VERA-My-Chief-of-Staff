@@ -136,7 +136,8 @@ async function mount(page, items) {
       await mount(page, ITEMS);
       const banner = await page.evaluate(() =>
         (document.querySelector('.warranty-banner') || {}).textContent || '');
-      check('the warranty banner renders', /1 warranty ending within 60 days/.test(banner), banner);
+      if (kind === 'lite') check('the warranty banner renders (lite)', /1 warranty ending within 60 days/.test(banner), banner);
+      else check('the warranty ending is counted up top', /Warranty ending\s*1/i.test(await page.evaluate(() => document.getElementById('hprobe').innerText)));
       const listText = await page.evaluate(() => document.getElementById('hprobe').innerText);
       check('the badge agrees with it rather than saying Valid',
             /Expires in 46d/.test(listText), listText.slice(0, 300));
@@ -157,7 +158,7 @@ async function mount(page, items) {
   for (const [name, src] of Object.entries(files)) {
     check(name + ': sub-tab renamed',        /Warranties & Service/.test(src));
     check(name + ": no '🏠 Steward' left",   !/🏠 Steward/.test(src));
-    check(name + ': has the warranty banner', /warranty-banner/.test(src));
+    check(name + ': counts warranties ending up top', /lite/.test(name) ? /warranty-banner/.test(src) : /'Warranty ending'/.test(src));   // lite keeps its banner
     check(name + ': badge red tier at 14',    /days\s*<=\s*14\) return \{ label: `🔴 Expires/.test(src) ||
                                               /days<=14\)return\{label:`🔴 Expires/.test(src), 'threshold missing');
     check(name + ': badge amber tier at 60',  /days\s*<=\s*60\) return \{ label: `🟡 Expires/.test(src) ||

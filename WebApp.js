@@ -190,6 +190,8 @@ function doGet(e) {
       case 'takeouts':              return jsonOut_(webGetTakeouts_());
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
+      case 'home_item_links':       return jsonOut_(webHomeItemLinks_(e));     // HomeSteward.js
+      case 'home_item_snooze':      return jsonOut_(webHomeItemSnooze_(e));    // HomeSteward.js
       case 'ideas':                 return jsonOut_(webGetIdeas_());
       case 'add_idea':              return jsonOut_(webAddIdea_(e));
       case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
@@ -3855,7 +3857,8 @@ function webGetHomesteward_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
-  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+  // Up to Manual (HomeSteward.js: Receipt and Manual follow Notes).
+  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(HS_MANUAL_COL_, sheet.getMaxColumns())).getValues();
   var today = new Date(); today.setHours(0, 0, 0, 0);
   var tz    = Session.getScriptTimeZone();
 
@@ -3882,6 +3885,8 @@ function webGetHomesteward_() {
       nextService:    fmtDate(row[5]),
       intervalMonths: row[6] !== '' ? Number(row[6]) : null,
       notes:          String(row[7] || '').trim(),
+      receipt:        String(row[8] || '').trim(),
+      manual:         String(row[9] || '').trim(),
       warrantyDays:   daysDiff(row[3]),
       serviceDays:    daysDiff(row[5]),
     });
@@ -3917,6 +3922,8 @@ function webRecordService_(e) {
     );
     eventId = calEvent.getId();
   }
+  // An overdue service's Task (HomeSteward.js) is done now.
+  try { hsSyncTask_(String(sheet.getRange(rowNum, 1).getValue() || ''), '', true); } catch (err) { Logger.log('record service task: ' + err.message); }
   return { ok: true, lastService: todayStr, nextService: nextStr, calEventId: eventId };
 }
 
@@ -3941,6 +3948,12 @@ function webAddHomeItem_(e) {
     p.intervalMonths !== undefined ? (Number(p.intervalMonths) || '') : '',
     (p.notes || '').trim(),
   ]]);
+  // The receipt and manual links (HomeSteward.js), only when given, so the tab gains the columns when first used.
+  if ((p.receipt || '').trim() || (p.manual || '').trim()) {
+    if (!hsLinkOk_(p.receipt) || !hsLinkOk_(p.manual)) return { ok: true, item: item, action: 'created', warning: 'The links weren’t saved: a link has to start with http:// or https://' };
+    hsEnsureLinkCols_(sheet);
+    sheet.getRange(sheet.getLastRow(), HS_RECEIPT_COL_, 1, 2).setValues([[(p.receipt || '').trim(), (p.manual || '').trim()]]);
+  }
   return { ok: true, item: item, action: 'created' };
 }
 

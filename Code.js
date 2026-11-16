@@ -1435,6 +1435,7 @@ function nightlyRun() {
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     nightlyStep_(ctx, 'checkContracts_', checkContracts_);
     nightlyStep_(ctx, 'checkWarrantiesExpiring_', checkWarrantiesExpiring_);
+    nightlyStep_(ctx, 'checkHomeServiceOverdue_', checkHomeServiceOverdue_);   // HomeSteward.js: flag + Task
     // Issue #126: one flag per CD maturing in the next 30 days, read from the planner
     // sheet (NetWorth.js). The mapping seed is a no-op after its first run.
     nightlyStep_(ctx, 'seedNetWorthMappingConfig_', seedNetWorthMappingConfig_);

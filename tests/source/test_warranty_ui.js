@@ -34,21 +34,19 @@ const ITEMS = [
       return new Promise(res => setTimeout(() => res({
         text: host.innerText,
         banner: (host.querySelector('.warranty-banner') || {}).textContent || '',
+        order: Array.from(host.querySelectorAll('.hs-card')).map(n => n.dataset.item),
       }), 300));
     }, { items: ITEMS });
 
     if (r.error) { fail++; console.log('  FAIL ' + r.error); await page.close(); continue; }
 
-    check('the warranty banner appears', r.banner.length > 0, r.text.slice(0, 200));
-    check('…counting only the one inside 60 days', /1 warranty ending within 60 days/.test(r.banner), r.banner);
-    check('…naming it', /Watch battery/.test(r.banner), r.banner);
-    check('…and not the 2031 one', !/Fridge/.test(r.banner), r.banner);
-    check('the service banner still works', /1 item due for service within 14 days/.test(r.text),
-          r.text.slice(0, 300));
+    // The redesign: counters on top instead of banners, and the items in the order they need you.
+    check('the counters: one warranty ending (the 2031 one isn’t), one service due', /Warranty ending\s*1/i.test(r.text) && /Due ≤ 14 d\s*1/i.test(r.text) && /Overdue\s*0/i.test(r.text), r.text.slice(0, 200));
+    check('…the due one first, then the ending warranty; the distant one under Later', r.order.join() === 'Boiler,Watch battery' && /Later · 1/.test(r.text), r.order.join());
     check('the badge agrees with the banner rather than saying Valid',
           /Expires in 46d/.test(r.text) && !/Watch battery[\s\S]{0,40}Valid/.test(r.text), r.text.slice(0, 500));
-    check('a genuinely distant warranty still reads Valid', /Fridge[\s\S]{0,40}Valid/.test(r.text),
-          r.text.slice(0, 600));
+    const later = await page.evaluate(() => { const b = document.querySelector('#wprobe .hs-later'); if (b) b.click(); return new Promise(res => setTimeout(() => res(document.querySelector('#wprobe').innerText), 150)); });
+    check('a genuinely distant warranty still reads Valid (under Later)', /Fridge[\s\S]{0,80}Valid/.test(later), later.slice(0, 600));
 
     // empty state
     const e = await page.evaluate(() => {
