@@ -286,6 +286,7 @@ function ptsPlan_(input) {
     var keep = (st.keep && st.keep[p.id]) || b.keep || 0;
     var total = (b.vacation || 0) + (b.carry || 0) + (b.personal || 0);
     budget[p.id] = { vacation: b.vacation || 0, carry: b.carry || 0, personal: b.personal || 0, booked: b.booked || 0, reserved: reserved, buffer: buffer, keep: keep,
+      taken: b.taken == null ? null : b.taken, ahead: b.ahead == null ? null : b.ahead, balance: b.taken == null ? null : Math.round((total - (b.booked || 0)) * 10) / 10,
       capCarry: b.capCarry == null ? null : b.capCarry, accrual: b.accrual || null, accepted: 0, planned: 0 };
     left[p.id] = total - (b.booked || 0) - reserved - buffer - keep;
     slots[p.id] = { longWeekend: PTS_SLOTS_.longWeekend, midSizeWeek: PTS_SLOTS_.midSizeWeek, bigPivot: PTS_SLOTS_.bigPivot };
@@ -399,8 +400,8 @@ function ptsPlan_(input) {
   if (st.picks === 'top') { var all = picks.concat(moreOut).sort(ptsRank_); picks = all.slice(0, st.topN).sort(function(a, b) { return a.start < b.start ? -1 : 1; }); moreOut = []; }
   else if (st.picks === 'all') { picks = picks.concat(moreOut).sort(ptsRank_).slice(0, 60).sort(function(a, b) { return a.start < b.start ? -1 : 1; }); moreOut = []; }
   people.forEach(roll);
-  return { year: year, from: from, picks: picks, more: moreOut.slice(0, 12), skipped: skipped.slice(0, 20), reserves: reserves, budget: budget, slotsLeft: slots,
-    settings: st, people: people.map(function(p) { return { id: p.id, name: p.name, assumed: !!p.assumed, holidays: p.holidays, blackouts: p.blackouts, busy: p.busy }; }), locked: input.locked || [] };
+  return { year: year, today: today, from: from, picks: picks, more: moreOut.slice(0, 12), skipped: skipped.slice(0, 20), reserves: reserves, budget: budget, slotsLeft: slots,
+    settings: st, people: people.map(function(p) { return { id: p.id, name: p.name, assumed: !!p.assumed, holidays: p.holidays, blackouts: p.blackouts, busy: p.busy, pto: p.pto || {} }; }), locked: input.locked || [] };
 }
 
 /**
@@ -510,20 +511,46 @@ function ptsSaved_() {
 }
 function ptsCell_(v) { return v instanceof Date && !isNaN(v.getTime()) ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(v == null ? '' : v).trim().slice(0, 10); }
 
+/**
+ * Pure: PTO on the work calendar split the way the PTO tab counts it: taken (Used) and booked
+ * ahead (Planned), in days (a personal-time event's hours ÷ 8). events: getPTOEvents_'s list.
+ */
+function ptsUsage_(events) {
+  var t = 0, a = 0;
+  (events || []).forEach(function(ev) {
+    var d = ev.type === 'PTO-Personal' ? (ev.hours || 0) / 8 : ev.type === 'Vacation' ? (ev.weekdays || 0) : 0;
+    if (ev.status === 'Used') t += d; else a += d;
+  });
+  return { taken: Math.round(t * 10) / 10, ahead: Math.round(a * 10) / 10 };
+}
+
+/**
+ * Pure: each day of the year a person is off on PTO from the work calendar, 't' before today
+ * (taken) or 'b' from today on (booked ahead). Weekends and holidays cost no PTO, so they're left out.
+ */
+function ptsPtoDays_(person, ranges, year, today) {
+  var out = {};
+  (ranges || []).forEach(function(r) {
+    for (var d = r[0]; d && d <= (r[1] || r[0]); d = ptsAdd_(d, 1)) if (d.slice(0, 4) === String(year) && !ptsOff_(person, d)) out[d] = d < today ? 't' : 'b';
+  });
+  return out;
+}
+
 /** One person's view of a year: holidays (real or assumed), booked PTO, budget. Cached for 6 hours. */
 function ptsPerson_(p, year, today) {
   var cfg = p.id === 'ahmed' ? readPTOConfig_() : readVictoriaPTOConfig_();
-  var cache = null, key = 'pts_' + p.id + '_' + year + '_' + today, got = null;
+  var cache = null, key = 'pts2_' + p.id + '_' + year + '_' + today, got = null;
   try { cache = CacheService.getScriptCache(); got = JSON.parse(cache.get(key) || 'null'); } catch (e) {}
   if (!got) {
-    var holidays = {}, booked = [], bookedDays = 0, remVac = null, remPersH = null;
+    var holidays = {}, booked = [], bookedDays = 0, remVac = null, remPersH = null, usage = { taken: 0, ahead: 0 };
     try {
       var res = getPTOEvents_(Object.assign({}, cfg, { year: year }));
       (res.holidays || []).forEach(function(h) { holidays[h.date] = h.label; });
       (res.events || []).forEach(function(ev) { booked.push([ev.startDate, ev.endDate]); bookedDays += ev.type === 'PTO-Personal' ? (ev.hours || 0) / 8 : (ev.weekdays || 0); });
+      usage = ptsUsage_(res.events);
       if (year === cfg.year) { var stats = computePTOStats_(res, cfg, new Date()); remVac = stats.remaining.vacationDays; remPersH = stats.remaining.personalHours; }
     } catch (e) { Logger.log('pto_strategy: ' + p.name + '’s work calendar couldn’t be read for ' + year); }
-    got = { holidays: holidays, booked: booked, bookedDays: bookedDays, remVac: remVac, remPersH: remPersH };
+    got = { holidays: holidays, booked: booked, bookedDays: bookedDays, remVac: remVac, remPersH: remPersH, usage: usage };
     try { cache.put(key, JSON.stringify(got), 21600); } catch (e) {}
   }
   var assumed = Object.keys(got.holidays).length < 3;
@@ -535,7 +562,7 @@ function ptsPerson_(p, year, today) {
   if (p.id === 'ahmed') { accrual = { annual: annual, day: cfg.accrualDay || 16, cap: capFor(year) }; capCarry = Math.floor(capFor(year + 1) - annual / 10); }
   else { var mc = Number((getConfigValues() || {}).victoria_pto_max_carryover); if (isFinite(mc) && mc > 0) capCarry = mc; }
   return { cfg: cfg, holidays: assumed ? ptsAssumedHolidays_(p.id, year) : got.holidays, assumed: assumed, booked: got.booked, bookedDays: got.bookedDays,
-    remVac: got.remVac, remPersH: got.remPersH, capCarry: capCarry, accrual: accrual };
+    remVac: got.remVac, remPersH: got.remPersH, usage: got.usage || { taken: 0, ahead: 0 }, capCarry: capCarry, accrual: accrual };
 }
 
 /** Pure: a Trip Idea that says it's a working or business trip (its title or must-haves). */
@@ -574,8 +601,10 @@ function ptsInputs_(year, today, st) {
   var people = PTS_PEOPLE_.map(function(p) {
     var v = ptsPerson_(p, year, today), cfg = v.cfg;
     var thisYear = year === Number(today.slice(0, 4));
-    var carry = 0, vacation = cfg.vacationDays, personal = Math.floor((cfg.personalHours || 0) / 8);
-    if (year === cfg.year) { vacation = v.remVac != null ? v.remVac : cfg.vacationDays + cfg.rolloverDays; personal = Math.floor((v.remPersH != null ? v.remPersH : cfg.personalHours) / 8); }
+    var carry = 0, vacation = cfg.vacationDays, personal = Math.floor((cfg.personalHours || 0) / 8), taken = null, ahead = null;
+    // The current year starts from the allowance, then what's taken and booked ahead comes off,
+    // landing on the balance the PTO tab shows today.
+    if (year === cfg.year) { carry = cfg.rolloverDays || 0; personal = Math.round((cfg.personalHours || 0) / 8 * 10) / 10; taken = v.usage.taken; ahead = v.usage.ahead; }
     else if (year === cfg.year + 1) {
       var now = ptsPerson_(p, cfg.year, today);
       var left = now.remVac != null ? now.remVac : 0;
@@ -586,7 +615,9 @@ function ptsInputs_(year, today, st) {
     Object.keys(saved).forEach(function(id) { var s = saved[id]; if (s.status === 'accepted' && (s.who === p.id || s.who === 'joint')) busy = busy.filter(function(b) { return !(b[0] >= s.start && b[1] <= s.end); }); });
     // The month-by-month cap check needs the Jan 1 balance, so it runs for a year that hasn't started.
     return { id: p.id, name: p.name, holidays: v.holidays, assumed: v.assumed, blackouts: [], busy: busy, booked: thisYear ? [] : v.booked,
-      budget: { vacation: vacation, carry: carry, personal: personal, booked: thisYear ? 0 : Math.round(v.bookedDays), buffer: cfg.bufferDays || 0, keep: 0,
+      pto: ptsPtoDays_(v, v.booked, year, today),
+      budget: { vacation: vacation, carry: carry, personal: personal, booked: taken != null ? Math.round((taken + ahead) * 10) / 10 : thisYear ? 0 : Math.round(v.bookedDays),
+        taken: taken, ahead: ahead, buffer: cfg.bufferDays || 0, keep: 0,
         capCarry: v.capCarry, accrual: thisYear ? null : v.accrual } };
   });
   return { year: year, today: today, settings: st, people: people, locked: locked, pencilled: ptsPencilled_(today), saved: saved };

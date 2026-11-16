@@ -90,7 +90,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 |------|------------------|
 | **Home** | Two columns on a computer, one on a phone (see below) |
 | **Chat · Flags · Tasks · Projects** | Conversational chat (also Slack #vera-chat); flags with urgency; VERA + Google Tasks; projects VERA drafts (shown only while active) |
-| **PTO Planner** | Ahmed / Victoria balances, pace and clear windows · 📅 Next year: the PTO plan (#248) |
+| **PTO Planner** | Ahmed / Victoria balances, pace and clear windows · 📅 Next year: the PTO plan (#248); switched to the current year, it marks PTO taken (solid) and booked ahead (outlined) with initials, and the budget runs from the allowance through Taken so far and Booked ahead to today's balance |
 | **Travel** | Plan (Trip Ideas, ARIA) · Trips (My Trips with summary, readiness, packing, luggage, leaving home, emails; Itinerary) · Places (Countries, Bucket List) · Travelers (Profiles, Our bags, Gifts) |
 | **Finances** | Overview (Summary + quarterly check-in) · Day to day (Budget + What-if, Bills & cashflow, Groceries + receipt runs, Phone plan) · Long term (Net worth, Goals, Planned Purchases, FSA & HSA) · Paperwork (Accounts, Cards, Contracts, Tax) |
 | **Shopping · Home Front** | Store lists with Done shopping · House (household, steward, vehicles, neighbourhood, leaving home), Chores, Kitchen (meal plan, recipes, pantry, takeouts), Hosting, Savings |

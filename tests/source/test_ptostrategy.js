@@ -265,6 +265,47 @@ console.log('\nthe wiring');
   check('fix: the Config seeder writes pto_-prefixed keys', /\['pto_gap_calendars',/.test(CODE) && !/\['gap_calendars',/.test(CODE) && /\['pto_holiday_keywords',/.test(CODE));
 }
 
+console.log('\nthe current year: what’s taken and booked ahead');
+{
+  const u = P.ptsUsage_([{ type: 'Vacation', weekdays: 5, status: 'Used' }, { type: 'PTO-Personal', hours: 12, status: 'Used' }, { type: 'Vacation', weekdays: 4, status: 'Planned' }, { type: 'Other', weekdays: 9, status: 'Used' }]);
+  check('taken (Used) and booked ahead (Planned), as the PTO tab counts them: personal hours ÷ 8', J(u) === J({ taken: 6.5, ahead: 4 }), J(u));
+  const H26 = P.ptsFederalHolidays_(2026);
+  const d = P.ptsPtoDays_({ holidays: H26 }, [['2026-11-13', '2026-11-17'], ['2026-11-25', '2026-11-27'], ['2025-12-30', '2026-01-02']], 2026, '2026-11-16');
+  check('each PTO day: before today taken, from today booked', d['2026-11-13'] === 't' && d['2026-11-16'] === 'b' && d['2026-11-17'] === 'b' && d['2026-11-25'] === 'b', J(d));
+  check('…weekends and holidays cost no PTO, so aren’t marked', !d['2026-11-14'] && !d['2026-11-15'] && !d['2026-11-26'] && !d['2026-01-01']);
+  check('…only this year’s days', !Object.keys(d).some(k => !k.startsWith('2026')) && d['2026-01-02'] === 't');
+  // ptsInputs_ over invented calendars: this year starts from the allowance.
+  const c = ctx({ readPTOConfig_: () => ({}), getUpcomingTravel_: () => [] });
+  c.ptsSaved_ = () => ({}); c.ptsPencilled_ = () => [];
+  const CFG = { ahmed: { year: 2026, vacationDays: 20, rolloverDays: 4, personalHours: 48, bufferDays: 2 }, victoria: { year: 2026, vacationDays: 20, rolloverDays: 2, personalHours: 0, bufferDays: 2 } };
+  const BK = { ahmed: [['2026-04-06', '2026-04-10'], ['2026-12-28', '2026-12-31']], victoria: [['2026-04-06', '2026-04-10']] };
+  c.ptsPerson_ = (pp, y) => ({ cfg: CFG[pp.id], holidays: P.ptsFederalHolidays_(y), assumed: false, booked: y === 2026 ? BK[pp.id] : [['2027-02-12', '2027-02-12']], bookedDays: 1,
+    remVac: pp.id === 'ahmed' ? 6 : 7, remPersH: pp.id === 'ahmed' ? 48 : 0, usage: pp.id === 'ahmed' ? { taken: 13, ahead: 5 } : { taken: 13, ahead: 2 }, capCarry: pp.id === 'ahmed' ? 25 : null, accrual: null });
+  const plan = c.ptsPlan_(c.ptsInputs_(2026, '2026-11-16', c.ptsSettings_({})));
+  const a = plan.budget.ahmed, v = plan.budget.victoria;
+  check('this year’s budget starts from the allowance: vacation, carried over, personal', a.vacation === 20 && a.carry === 4 && a.personal === 6 && v.carry === 2, J(a));
+  check('…then taken so far and booked ahead come off', a.taken === 13 && a.ahead === 5 && v.taken === 13 && v.ahead === 2 && a.booked === 18);
+  check('…landing on today’s balance, the PTO tab’s number (remaining vacation + personal)', a.balance === 12 && v.balance === 7, J([a.balance, v.balance]));
+  check('the plan knows today, and nothing is suggested before it', plan.today === '2026-11-16' && plan.picks.every(k => k.start > '2026-11-16'));
+  const pa = plan.people.find(x => x.id === 'ahmed').pto;
+  check('each person’s PTO days go to the grid: April taken, late December booked', pa['2026-04-06'] === 't' && pa['2026-12-28'] === 'b' && pa['2026-12-31'] === 'b' && Object.keys(pa).length === 9, J(pa));
+  const next = c.ptsPlan_(c.ptsInputs_(2027, '2026-11-16', c.ptsSettings_({})));
+  check('next year: one “already booked” number as before, and its booked days show as booked ahead', next.budget.ahmed.taken === null && next.budget.ahmed.balance === null && next.budget.ahmed.booked === 1 && next.people[0].pto['2027-02-12'] === 'b');
+}
+
+console.log('\nthe year grid: PTO by initials (shared block)');
+{
+  const APPJS = read('docs/app.js'), LITEJS = read('docs/dashboard-lite.html');
+  const fn = (s, name) => { const a = s.indexOf('function ' + name + '('); if (a === -1) return ''; let d = 0, j = s.indexOf('{', s.indexOf(')', a)); for (; j < s.length; j++) { if (s[j] === '{') d++; else if (s[j] === '}' && --d === 0) break; } return s.slice(a, j + 1); };
+  const g = {}; vm.createContext(g); vm.runInContext(fn(APPJS, 'psPto_'), g);
+  const plan = { people: [{ id: 'ahmed', name: 'Ahmed', pto: { '2026-04-06': 't', '2026-12-28': 'b', '2026-02-13': 't' } }, { id: 'victoria', name: 'Victoria', pto: { '2026-04-06': 't', '2026-12-24': 'b' } }] };
+  const m = g.psPto_(plan, 'all');
+  check('initials on each day, AV when both are off', m['2026-04-06'].w === 'AV' && m['2026-04-06'].s === 't' && m['2026-12-28'].w === 'A' && m['2026-12-28'].s === 'b' && m['2026-12-24'].w === 'V');
+  check('Together shows only days you’re both off', J(Object.keys(g.psPto_(plan, 'joint'))) === J(['2026-04-06']));
+  check('Ahmed shows his days (A and AV), Victoria hers', J(Object.keys(g.psPto_(plan, 'ahmed')).sort()) === J(['2026-02-13', '2026-04-06', '2026-12-28']) && J(Object.keys(g.psPto_(plan, 'victoria')).sort()) === J(['2026-04-06', '2026-12-24']));
+  check('…the same in lite', fn(LITEJS, 'psPto_') === fn(APPJS, 'psPto_') && fn(APPJS, 'psPto_').length > 100);
+}
+
 console.log('\nthe year grid fills only days that cost PTO');
 {
   const APPJS = read('docs/app.js'), LITEJS = read('docs/dashboard-lite.html');

@@ -28,6 +28,14 @@ const useIt = P.ptsUseItBefore_([{ id: 'ahmed', name: 'Ahmed', holidays: Object.
 const presets = {}; Object.keys(P.PTS_PRESETS_).forEach(k => { presets[k] = { label: P.PTS_PRESETS_[k].label, about: P.PTS_PRESETS_[k].about }; });
 const RESP = { ok: true, today: '2026-11-26', defaultYear: 2027, years: [2026, 2027], plan: PLAN, useIt: JSON.parse(JSON.stringify(useIt)), presets, settings: PLAN.settings };
 
+// The current year (2026, today Nov 16): PTO taken and booked from the work calendars.
+const H26 = P.ptsFederalHolidays_(2026), T26 = '2026-11-16';
+const BK26 = { ahmed: [['2026-04-06', '2026-04-10'], ['2026-11-25', '2026-11-25'], ['2026-12-28', '2026-12-31']], victoria: [['2026-04-06', '2026-04-10'], ['2026-11-25', '2026-11-25'], ['2026-12-24', '2026-12-24']] };
+const PLAN26 = JSON.parse(JSON.stringify(P.ptsPlan_({ year: 2026, today: T26, settings: P.ptsSettings_({}), locked: [], pencilled: [], saved: {},
+  people: ['ahmed', 'victoria'].map(id => ({ id, name: id === 'ahmed' ? 'Ahmed' : 'Victoria', holidays: H26, busy: BK26[id], pto: P.ptsPtoDays_({ holidays: H26 }, BK26[id], 2026, T26),
+    budget: { vacation: 20, carry: id === 'ahmed' ? 4 : 2, personal: id === 'ahmed' ? 6 : 0, booked: id === 'ahmed' ? 18 : 15, taken: 13, ahead: id === 'ahmed' ? 5 : 2, buffer: 2, capCarry: id === 'ahmed' ? 25 : null } })) })));
+const RESP26 = Object.assign({}, RESP, { today: T26, plan: PLAN26, settings: PLAN26.settings });
+
 console.log('\nthe block and the wiring');
 {
   const blk = s => { const a = s.indexOf('// ---- PtoStrategyView'), b = s.indexOf('// ---- end PtoStrategyView ----'); return a === -1 ? '' : s.slice(a, b); };
@@ -38,7 +46,7 @@ console.log('\nthe block and the wiring');
   check('each person’s own view shows their plan', /stats\.plan&&stats\.plan\.breaks&&stats\.plan\.breaks\.length>0&&React\.createElement\(PtoPersonPlan/.test(APP));
 }
 
-async function mount(browser, file, width, props) {
+async function mount(browser, file, width, props, resp) {
   const page = await browser.newPage({ viewport: { width, height: 1100 } });
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   if (file === 'index.html') await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'load' });
@@ -60,7 +68,7 @@ async function mount(browser, file, width, props) {
       return Promise.resolve({ json: () => Promise.resolve(JSON.parse(JSON.stringify(body))) }); };
     const host = document.createElement('div'); host.id = 'ps'; host.style.padding = '0 12px'; document.body.prepend(host);
     ReactDOM.createRoot(host).render(React.createElement(PtoStrategyView, Object.assign({ apiUrl: 'https://vera.test/exec', apiToken: 't' }, props)));
-  }, { RESP, props: props || {} });
+  }, { RESP: resp || RESP, props: props || {} });
   await wait(400);
   return { page, errs };
 }
@@ -87,6 +95,7 @@ async function mount(browser, file, width, props) {
     check(L + ': “take by” steps for the capped balance, each ticked', tb.length > 0 && tb.every(t => /^✓ \d+ by [A-Z][a-z]{2} \d+$/.test(t)), tb.join(' | '));
     check(L + ': the budget names accruals lost', /Accruals lost at the cap/.test(await page.$eval('#ps .ps-budget', n => n.textContent)));
     check(L + ': Use it before Dec 31, with this year’s breaks', /Use it before Dec 31/.test(await page.$eval('#ps .ps-useit', n => n.textContent).catch(() => '')) && (await page.$$('#ps .ps-useit .ps-pick')).length === useIt.picks.length);
+    check(L + ': 2027 has no PTO marks yet and no “before today”', (await page.$$('#ps .ps-grid .ps-pto, #ps .ps-grid .ps-past')).length === 0 && !/before today/.test(await page.$eval('#ps .ps-legend', n => n.textContent)) && /Already booked/.test(await page.$eval('#ps .ps-budget', n => n.textContent)));
     check(L + ': the year grid shows holidays, the locked trip, the reserve and the picks', (await page.$$('#ps .ps-grid .ps-h, #ps .ps-grid .ps-ha')).length >= 10 && (await page.$$('#ps .ps-grid .ps-l')).length === 10 && (await page.$$('#ps .ps-grid .ps-p')).length > 0 && (await page.$$('#ps .ps-grid .ps-k')).length > 0);
     // Accept
     const open = PLAN.picks.find(c => c.status === 'suggested');
@@ -117,6 +126,28 @@ async function mount(browser, file, width, props) {
     c = await calls();
     check(L + ': Advanced saves only what changed', c.some(x => x.action === 'pto_strategy_settings' && x.overrides && x.overrides.maxPto === 3 && x.overrides.blackouts && x.overrides.blackouts.ahmed === '2027-03-22..2027-03-31' && !('minRatio' in x.overrides)), JSON.stringify(c));
     check(L + ': no sideways scroll, no page errors', !(await sideways()) && !errs.length, errs.join(' | '));
+    await page.close();
+    // 2026: the year so far
+    ({ page, errs } = await mount(browser, file, width, {}, RESP26));
+    const cells = () => page.$$eval('#ps .ps-grid .ps-pto', ns => ns.map(n => [n.title.slice(0, 10), n.textContent, n.classList.contains('ps-pto-t') ? 't' : 'b', getComputedStyle(n).opacity]));
+    let pc = await cells();
+    const at = d => pc.find(x => x[0] === d) || [];
+    check(L + ' 2026: PTO days by initials: both off is AV, taken solid', at('2026-04-06')[1] === 'AV' && at('2026-04-06')[2] === 't' && pc.length === 11, JSON.stringify(pc));
+    check(L + ' 2026: …booked ahead outlined: Thanksgiving Wed both, his Dec 28–31, her Dec 24', at('2026-11-25')[1] === 'AV' && at('2026-11-25')[2] === 'b' && at('2026-12-28')[1] === 'A' && at('2026-12-24')[1] === 'V' && at('2026-12-24')[2] === 'b');
+    check(L + ' 2026: …a taken day stays readable, other days before today are dimmed, today is marked', Number(at('2026-04-06')[3]) > 0.8 && (await page.$$eval('#ps .ps-grid .ps-past:not(.ps-pto)', ns => ns.length && ns.every(n => Number(getComputedStyle(n).opacity) < 0.5))) && (await page.$$('#ps .ps-grid .ps-today')).length === 1);
+    const leg = await page.$eval('#ps .ps-legend', n => n.textContent);
+    check(L + ' 2026: the legend: PTO taken (A / V / AV), booked ahead, before today', /PTO taken \(A \/ V \/ AV\)/.test(leg) && /PTO booked ahead/.test(leg) && /before today/.test(leg), leg);
+    const bud = await page.$eval('#ps .ps-budget', n => n.textContent);
+    check(L + ' 2026: the budget: taken so far and booked ahead, no “already booked”', /Taken so far−13−13/.test(bud) && /Booked ahead−5−2/.test(bud) && !/Already booked/.test(bud), bud.slice(0, 300));
+    check(L + ' 2026: …and it lands on today’s balance, as the PTO tab', /= today’s balance \(Ahmed 12, Victoria 7\), the same as the PTO tab/.test(bud));
+    check(L + ' 2026: nothing suggested before today', PLAN26.picks.every(k => k.start > T26) && (await page.$$('#ps .ps-grid .ps-past.ps-k')).length === 0);
+    await page.click('#ps .ps-filter button:nth-of-type(2)'); await wait(80);   // Together
+    pc = await cells();
+    check(L + ' 2026: Together shows only the days you’re both off', pc.length === 6 && pc.every(x => x[1] === 'AV'), JSON.stringify(pc));
+    await page.click('#ps .ps-filter button:nth-of-type(4)'); await wait(80);   // Victoria
+    pc = await cells();
+    check(L + ' 2026: Victoria shows hers', pc.length === 7 && pc.every(x => x[1].indexOf('V') !== -1));
+    check(L + ' 2026: no sideways scroll, no page errors', !(await sideways()) && !errs.length, errs.join(' | '));
     await page.close();
     // the lite card
     ({ page, errs } = await mount(browser, file, width, { compact: true, me: 'victoria' }));

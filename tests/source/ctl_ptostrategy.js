@@ -47,6 +47,14 @@ const CONTROLS = [
   ['a trip’s weekend is filled again', ui("soft=(k==='l'||k==='p'||k==='w')&&psFree_(plan,iso);", "soft=false;"), NODE],
   ['holidays don’t count as free', ui("return w===0||w===6||(plan.people||[]).some(function(p){return!!(p.holidays||{})[iso];});}", "return w===0||w===6;}"), NODE],
   ['the outline isn’t explained', ui("'outline: a trip’s weekend or holiday (no PTO)'", "''"), NODE],
+  // The current year: PTO taken and booked ahead
+  ['every PTO day is booked ahead, none taken', one(S, "out[d] = d < today ? 't' : 'b';", "out[d] = 'b';"), NODE],
+  ['weekends and holidays marked as PTO', one(S, "if (d.slice(0, 4) === String(year) && !ptsOff_(person, d)) out[d]", "if (d.slice(0, 4) === String(year)) out[d]"), NODE],
+  ['this year back to the remaining balance (no taken / booked ahead)', one(S, "taken = v.usage.taken; ahead = v.usage.ahead; }", "}"), NODE],
+  ['Together shows any PTO day', ui("(filter==='joint'?ppl.length>1&&x.ids.length===ppl.length:", "(filter==='joint'?true:"), UI],
+  ['the past isn’t dimmed', ui("dim=past?{opacity:pt&&pt.s==='t'?0.9:0.38}:{}", "dim={}"), UI],
+  ['Already booked still shown for this year', ui("[['Taken so far','taken',-1,true,false,true],['Booked ahead','ahead',-1,true,false,true]]:[['Already booked','booked',-1]]", "[['Already booked','booked',-1]]:[['Already booked','booked',-1]]"), UI],
+  ['no balance line', ui("names.some(function(p){return (bud[p.id]||{}).balance!=null;})&&h('div',{className:'ps-balance'", "false&&h('div',{className:'ps-balance'"), UI],
 ];
 let allBit = true;
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the
