@@ -22,7 +22,7 @@ check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\
 check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(props\.initialSub&&LF_SUBS\.some\(function\(x\)\{return x\.id===props\.initialSub;\}\)\)return props\.initialSub;/.test(APP));
 check('Health no longer has Year in Review (it is Growth › Habits)', !/id:'year_in_review'/.test(APP) && /if\(sub==='habits'\)return h\(YearInReviewTab,/.test(APP));
 check('My Trips’ upcoming cards and the Trip Idea page show lessons', /t\.label\),\/\*#__PURE__\*\/React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:t\.label\}\)/.test(APP) && /renderLessons:function\(idea\)\{return React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:\[idea\.title,idea\.where\]\.join\(' '\)\}\)/.test(APP));
-check('Finances › Tax is offered the year’s receipted donations', /React\.createElement\(LifeTaxGiving,\{apiUrl:apiUrl,apiToken:apiToken,year:year\}\)/.test(APP));
+check('Finances › Tax is offered the year’s receipted donations', /(?:React\.createElement|\bh)\(LifeTaxGiving,\{apiUrl:apiUrl,apiToken:apiToken,year:year\}\)/.test(APP));
 
 const INTERESTS = { ok: true, stop: ['trip', 'the', 'and', 'our', 'weekend', 'skip', 'to', 'in', 'of', 'a'],
   places: [{ id: 'I3', ids: ['I2', 'I3'], text: 'Corner bakery', person: 'Victoria', category: 'Food', lastDate: '2026-04-01', count: 2, notes: 'the almond one' },
