@@ -250,7 +250,7 @@ function doGet(e) {
       case 'accept_recommendation':    return jsonOut_(webAcceptRecommendation_(e));
       case 'chat':                     return jsonOut_(webProcessChat_(e));
       case 'confirm_enrich':           return jsonOut_(webConfirmEnrich_(e));
-      case 'generate_morning_routine': return jsonOut_(webGenerateMorningRoutine_());
+      case 'generate_morning_routine': return jsonOut_(webGenerateMorningRoutine_(e));
       case 'morning_routine':          return jsonOut_(webGetMorningRoutine_());
       case 'morning_routine_toggle':   return jsonOut_(webToggleMorningRoutineItem_(e));
       case 'morning_routine_add':      return jsonOut_(webAddMorningRoutineItem_(e));
@@ -7491,17 +7491,11 @@ function webConfirmEnrich_(e) {
  * GET ?action=generate_morning_routine&token=<VERA_WEB_TOKEN>
  * Returns: { ok: true, items: [...] } — full updated list from sheet
  */
-function webGenerateMorningRoutine_() {
-  var prompt =
-    'You are VERA, a personal chief of staff AI. Generate a personalized morning routine checklist.\n' +
-    'Follow these frameworks:\n' +
-    '1. The 10-10-10 Framework: Three 10-min blocks — Input (read a book or saved article, no news/social media), ' +
-    'Movement (10-min walk outside for morning sunlight), Stillness (5-10 min breath meditation).\n' +
-    '2. Administrative Sweep: Check VERA FLAGS for high-priority alerts; scan today\'s calendar for surprises.\n' +
-    '3. Physical anchors: hydrate (full glass of water), light/air exposure.\n\n' +
-    'Return a JSON array of 7-10 concise checklist item strings (under 60 chars each, no markdown, no numbers).\n' +
-    'Example: ["Drink a full glass of water", "Step outside for 10 minutes", "Read for 10 minutes"]\n' +
-    'Return ONLY the JSON array, nothing else.';
+function webGenerateMorningRoutine_(e) {
+  // Routine.js: one list at a time (Weekday by default); VERA's earlier items on that list are
+  // replaced, yours stay, and the other list is untouched.
+  var list = mrList_(((e && e.parameter) || {}).list) || 'Weekday';
+  var prompt = mrPrompt_(list);
   var generatedTexts = callClaudeJson_(prompt, []);
   if (!Array.isArray(generatedTexts)) generatedTexts = [];
   if (generatedTexts.length === 0) return { ok: false, error: 'Claude returned no items' };
@@ -7509,11 +7503,13 @@ function webGenerateMorningRoutine_() {
   var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
   if (!sheet) throw new Error('Morning Routine tab not found — run createSheetTabs() first');
 
-  // Delete all existing vera-sourced rows (bottom-to-top to keep row indices valid)
+  mrEnsureListCol_(sheet);
+  // Delete VERA's earlier rows on this list (an old VERA row with no list counts as Weekday),
+  // bottom-to-top to keep row indices valid.
   if (sheet.getLastRow() > 1) {
-    var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, MR_LIST_COL_).getValues();
     for (var i = allRows.length - 1; i >= 0; i--) {
-      if (String(allRows[i][2] || '') === 'vera') sheet.deleteRow(i + 2);
+      if (String(allRows[i][2] || '') === 'vera' && (mrList_(allRows[i][MR_LIST_COL_ - 1]) || 'Weekday') === list) sheet.deleteRow(i + 2);
     }
   }
 
@@ -7532,9 +7528,9 @@ function webGenerateMorningRoutine_() {
   var dateStr   = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
   var addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   generatedTexts.forEach(function(text, idx) {
-    var itemId = 'ROUTINE-' + dateStr + 'V-' + String(idx).padStart(2, '0');
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, MORNING_ROUTINE_HEADERS.length)
-         .setValues([[itemId, text, 'vera', idx + 1, false, '', addedDate]]);
+    var itemId = 'ROUTINE-' + dateStr + (list === 'Weekend' ? 'W' : 'V') + '-' + String(idx).padStart(2, '0');
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, MR_LIST_COL_)
+         .setValues([[itemId, text, 'vera', idx + 1, false, '', addedDate, list]]);
   });
 
   return webGetMorningRoutine_(); // Return full updated list sorted by Sort
@@ -7551,7 +7547,7 @@ function webGenerateMorningRoutine_() {
 function webGetMorningRoutine_() {
   var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, MORNING_ROUTINE_HEADERS.length).getValues();
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(MR_LIST_COL_, sheet.getMaxColumns())).getValues();   // + List (Routine.js)
   var items = rows
     .filter(function(r) { return String(r[0] || '').trim() !== ''; })
     .map(function(r) {
@@ -7563,6 +7559,7 @@ function webGetMorningRoutine_() {
         checked:   r[4] === true || String(r[4]).toLowerCase() === 'true',
         checkedAt: String(r[5] || ''),
         addedDate: String(r[6] || ''),
+        list:      mrList_(r[MR_LIST_COL_ - 1]),
       };
     })
     .sort(function(a, b) { return a.sort - b.sort; });
@@ -7593,6 +7590,7 @@ function webToggleMorningRoutineItem_(e) {
 function webAddMorningRoutineItem_(e) {
   var text   = ((e.parameter && e.parameter.text)   || '').trim();
   var source =  (e.parameter && e.parameter.source) || 'manual';
+  var list   = mrList_(e.parameter && e.parameter.list);   // Routine.js: '' shows on both
   if (!text) throw new Error('Item text is required');
   var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
   if (!sheet) throw new Error('Morning Routine tab not found');
@@ -7612,9 +7610,10 @@ function webAddMorningRoutineItem_(e) {
     sorts.forEach(function(r) { var n = parseInt(r[0], 10) || 0; if (n > maxSort) maxSort = n; });
   }
   var addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, MORNING_ROUTINE_HEADERS.length)
-       .setValues([[itemId, text, source, maxSort + 1, false, '', addedDate]]);
-  return { ok: true, id: itemId, action: 'added' };
+  mrEnsureListCol_(sheet);
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, MR_LIST_COL_)
+       .setValues([[itemId, text, source, maxSort + 1, false, '', addedDate, list]]);
+  return { ok: true, id: itemId, action: 'added', list: list };
 }
 
 /**
@@ -7638,7 +7637,10 @@ function webMoveMorningRoutineItem_(e) {
   var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, action: 'no_change' };
   var numRows = sheet.getLastRow() - 1;
-  var data    = sheet.getRange(2, 1, numRows, 4).getValues(); // [ID, Item, Source, Sort]
+  var data    = sheet.getRange(2, 1, numRows, Math.min(MR_LIST_COL_, sheet.getMaxColumns())).getValues(); // [ID, Item, Source, Sort, …, List]
+  // Routine.js: moving within a list swaps with the next item shown on that list.
+  var onList = (e.parameter && e.parameter.list) || '';
+  if (onList) data = data.filter(function(r) { return mrInList_(r[MR_LIST_COL_ - 1], onList); });
   data.sort(function(a, b) { return (parseInt(a[3], 10) || 0) - (parseInt(b[3], 10) || 0); });
   var idx = -1;
   for (var i = 0; i < data.length; i++) { if (String(data[i][0]) === id) { idx = i; break; } }

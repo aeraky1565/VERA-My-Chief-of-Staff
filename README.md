@@ -2009,6 +2009,8 @@ During active trips, `checkFitnessTravelGap_()` checks whether any gym sessions 
 
 The `Morning Routine` tab holds a configurable checklist. Each item has an ID, label, sort order, and checked/checked-at fields. The nightly run resets all items to unchecked. Items can be added, reordered, or deleted via the dashboard; VERA can generate a personalised routine via `?action=generate_morning_routine`.
 
+**Two lists** (`Routine.js`): a **`List`** column after Added Date (named on first write) says **Weekday** or **Weekend**; an item with no list (from before) shows on both. **Health › Morning Routine** opens on today's list (Saturday and Sunday are Weekend), with a ring of what's done, ticks, adding to this list or both, **✨ VERA makes my weekday / weekend** (only VERA's items on that list are replaced; the weekend prompt is a slower morning) and a **Reorder** mode (↑ ↓ within the list, × to remove). No minutes per step.
+
 ### Prescriptions
 
 **Health › Prescriptions** (`PrescriptionsTab`, `Rx.js`): a **Both / Ahmed / Victoria** switch, counters (active, refill within 7 days, overdue), each prescription with a supply meter (days left of its Days Supply), the refill countdown, the pharmacy and doctor, the Rx number with 📋, **✓ Refilled today** (Last Filled today; the next Refill Date is today + Days Supply, else the last gap between fills) and Pause; paused ones fold away. The nightly `checkRefills_` raises a flag 7 days before a refill (Medium; High once overdue) that closes when the date moves on, and Victoria's refills due within 7 days also show in **Needs you on her lite Today** (the shared NeedsYou block, given the prescriptions).
@@ -2624,8 +2626,8 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `accept_recommendation` | `id` | Accept recommendation → add to itinerary |
 | `chat` | `message`, `session` | Send chat message, receive VERA response |
 | `confirm_enrich` | — | Confirm email parser enrichment |
-| `morning_routine` | — | Morning routine checklist |
-| `generate_morning_routine` | — | AI-generate personalised morning routine |
+| `morning_routine` | — | Morning routine checklist, each item with its `list` |
+| `generate_morning_routine` | `list` (Weekday / Weekend) | AI-generate one list; VERA's earlier items on it are replaced |
 | `morning_routine_toggle` | `id` | Toggle routine item checked |
 | `morning_routine_add` | `item` | Add routine item |
 | `morning_routine_delete` | `id` | Remove routine item |
