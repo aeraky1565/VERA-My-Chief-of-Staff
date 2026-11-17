@@ -22,7 +22,8 @@ jobs:
   fast:
     name: node tests + controls
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The node tests and controls take about 9 minutes now; 10 cut them off.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
