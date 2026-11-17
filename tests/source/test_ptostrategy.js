@@ -43,8 +43,8 @@ console.log('\nVerizon’s yearly holidays (Ahmed’s assumed list)');
   check('2027: Thanksgiving and the Friday after, Christmas on a Saturday taken Fri Dec 24, New Year’s 2028 on Fri Dec 31',
     v27['2027-11-25'] && v27['2027-11-26'] === 'Day after Thanksgiving' && v27['2027-12-24'] === 'Christmas Day' && /New Year/.test(v27['2027-12-31'] || ''), J(v27));
   check('not Verizon days: Presidents’, Juneteenth, Columbus, Veterans', ['2027-02-15', '2027-06-18', '2027-10-11', '2027-11-11'].every(d => !v27[d]));
-  check('Ahmed is assumed Verizon’s list, Victoria the federal one', J(P.ptsAssumedHolidays_('ahmed', 2027)) === J(v27) && J(P.ptsAssumedHolidays_('victoria', 2027)) === J(P.ptsFederalHolidays_(2027)));
-  check('…and that’s what a person with nothing posted gets', /holidays: assumed \? ptsAssumedHolidays_\(p\.id, year\) : got\.holidays/.test(PTS));
+  check('both of you get Verizon’s list (Victoria too, for now)', J(P.ptsAssumedHolidays_('ahmed', 2027)) === J(v27) && J(P.ptsAssumedHolidays_('victoria', 2027)) === J(v27) && v27['2027-11-25'] && v27['2027-11-26'] && !v27['2027-11-11']);
+  check('…always, whatever the work calendar holds (its all-day events include pay days)', /holidays: ptsAssumedHolidays_\(p\.id, year\), assumed: assumed,/.test(PTS) && /var assumed = false;/.test(PTS) && !/got\.holidays\).length < 3/.test(PTS));
   const PTO = read('PTO.js');
   check('“New Year’s (V)” on the work calendar counts as a holiday: New Year is a default keyword', (PTO.match(/'Day,Holiday,Floating,Closure,New Year'/g) || []).length === 2);
 }
@@ -182,7 +182,7 @@ console.log('\nthis year, when, and reminders');
   check('leftovers: personal plus vacation over the cap; none when it all rolls', u.people[0].total === 3 && u.people[1].total === 0, J(u.people));
   check('…with up to three breaks this year that fit them', u.picks.length > 0 && u.picks.length <= 3 && u.picks.every(c => c.start > '2026-11-13' && (c.pto.ahmed || []).length <= 3 && !c.pto.victoria));
   check('plan due on the trigger day', P.ptsPlanDue_('2026-11-25', '11-25', [{ assumed: true }]) && !P.ptsPlanDue_('2026-11-24', '11-25', [{ assumed: true }]));
-  check('…or from October once everyone’s holidays are real', P.ptsPlanDue_('2026-10-20', '11-25', [{ assumed: false }, { assumed: false }]) && !P.ptsPlanDue_('2026-09-20', '11-25', [{ assumed: false }]));
+  check('…not before, even in October (the holidays are a fixed list)', !P.ptsPlanDue_('2026-10-20', '11-25') && !P.ptsPlanDue_('2026-11-24', '11-25') && P.ptsPlanDue_('2026-12-01', '11-25'));
   const st = P.ptsSettings_({});
   const acc = [{ id: 'joint:2027-05-28:2027-05-28', label: 'Memorial weekend', pto: { ahmed: ['2027-05-28'], victoria: ['2027-05-28'] } }, { id: 'ahmed:2027-11-22:2027-11-26', label: 'Thanksgiving week', pto: { ahmed: ['2027-11-22', '2027-11-23', '2027-11-24', '2027-11-25', '2027-11-26'] } }];
   const names = { ahmed: 'Ahmed', victoria: 'Victoria' };
@@ -297,7 +297,7 @@ console.log('\nthe year grid: PTO by initials (shared block)');
 {
   const APPJS = read('docs/app.js'), LITEJS = read('docs/dashboard-lite.html');
   const fn = (s, name) => { const a = s.indexOf('function ' + name + '('); if (a === -1) return ''; let d = 0, j = s.indexOf('{', s.indexOf(')', a)); for (; j < s.length; j++) { if (s[j] === '{') d++; else if (s[j] === '}' && --d === 0) break; } return s.slice(a, j + 1); };
-  const g = {}; vm.createContext(g); vm.runInContext(fn(APPJS, 'psPto_'), g);
+  const g = {}; vm.createContext(g); vm.runInContext(fn(APPJS, 'psWeekend_') + '\n' + fn(APPJS, 'psPto_'), g);
   const plan = { people: [{ id: 'ahmed', name: 'Ahmed', pto: { '2026-04-06': 't', '2026-12-28': 'b', '2026-02-13': 't' } }, { id: 'victoria', name: 'Victoria', pto: { '2026-04-06': 't', '2026-12-24': 'b' } }] };
   const m = g.psPto_(plan, 'all');
   check('initials on each day, AV when both are off', m['2026-04-06'].w === 'AV' && m['2026-04-06'].s === 't' && m['2026-12-28'].w === 'A' && m['2026-12-28'].s === 'b' && m['2026-12-24'].w === 'V');
@@ -314,7 +314,7 @@ console.log('\nthe year grid fills only days that cost PTO');
   const plan = { people: [{ id: 'a', holidays: { '2027-07-05': 'Independence Day (observed)' } }, { id: 'b', holidays: {} }] };
   check('a weekend or anyone’s holiday is free; a working day isn’t', g.psFree_(plan, '2027-07-03') && g.psFree_(plan, '2027-07-04') && g.psFree_(plan, '2027-07-05') && !g.psFree_(plan, '2027-07-06'));
   check('a trip or a reserve on a free day is an outline, not a fill', /soft=\(k==='l'\|\|k==='p'\|\|k==='w'\)&&psFree_\(plan,iso\)/.test(APPJS) && /background:mk&&!soft\?mk\.bg:/.test(APPJS) && /soft\?'1\.5px solid '\+\(mk\.edge\|\|mk\.bg\)/.test(APPJS));
-  check('…the legend says what the outline means, and the pencilled colour is its own', /outline: a trip’s weekend or holiday \(no PTO\)/.test(APPJS) && /p:\{bg:'#22d3ee'/.test(APPJS));
+  check('…the legend says what the outline means, and the pencilled colour is its own', /outline: a holiday during a trip \(no PTO\)/.test(APPJS) && /p:\{bg:'#22d3ee'/.test(APPJS));
   check('…the same in lite (the shared block)', src(LITEJS, 'psFree_') === src(APPJS, 'psFree_') && LITEJS.indexOf("soft=(k==='l'||k==='p'||k==='w')&&psFree_(plan,iso)") !== -1);
 }
 

@@ -202,6 +202,17 @@ console.log('\nThe consumers use the injected scan, and still work without one')
 }
 
 // ============================================================================
+console.log('\na pay day is never a holiday');
+{
+  const ev = (title, d) => ({ getTitle: () => title, isAllDayEvent: () => true, getAllDayStartDate: () => new Date(d + 'T00:00:00'), getAllDayEndDate: () => new Date(d + 'T00:00:00') });
+  const c = harness({ eventsByCal: { Work: [ev('Payday', '2027-01-15'), ev('Pay Day', '2027-01-29'), ev('Pay-day', '2027-02-12'), ev('Thanksgiving Day', '2027-11-25'), ev('Day after Thanksgiving', '2027-11-26')] } });
+  vm.runInContext(extractFn(PTO, 'countWeekdays_'), c);
+  vm.runInContext(extractFn(PTO, 'getPTOEvents_'), c);
+  vm.runInContext('var res = getPTOEvents_(' + JSON.stringify({ calendarName: 'Work', year: 2027, ignoreKeywords: [], holidayKeywords: ['day', 'holiday'], milestoneKeywords: [] }) + ');', c);
+  const got = vm.runInContext('res.holidays.map(function(h){return h.date;})', c);
+  check('Payday, Pay Day and Pay-day are not holidays, even with no ignore list; Thanksgiving and the day after are', JSON.stringify(got) === JSON.stringify(['2027-11-25', '2027-11-26']), JSON.stringify(got));
+}
+
 console.log('\ngetPTOEvents_ reads each getter once per event, not once per pass');
 {
   const counts = {};

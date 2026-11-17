@@ -5,10 +5,9 @@
 //
 // PTO Planner › 📅 Next year (and a Time off card in lite):
 //   - candidates: a run of days off made by taking 1+ PTO days next to weekends and
-//     holidays, for both of you together and for each of you on your own. Each
-//     person's holidays come from their work calendar; where next year's aren't
-//     posted yet, a stand-in list is used, marked "assumed": Verizon's
-//     yearly holidays for Ahmed, the US federal list for Victoria;
+//     holidays, for both of you together and for each of you on your own. Both of you
+//     use Verizon's yearly holiday list (ptsVerizonHolidays_), never the work calendar's
+//     all-day events, which also hold pay days and the like;
 //   - a plan: a strategy picks from them within each person's budget. The budget is
 //     next year's allowance plus what rolls over, personal time first (it expires),
 //     less the PTO held for pencilled trips, the buffer and any days to keep;
@@ -107,8 +106,8 @@ function ptsVerizonHolidays_(y) {
   return out;
 }
 
-/** Pure: a person's assumed holidays: Verizon's list for Ahmed, the federal list for anyone else. */
-function ptsAssumedHolidays_(pid, y) { return pid === 'ahmed' ? ptsVerizonHolidays_(y) : ptsFederalHolidays_(y); }
+/** Pure: a person's holidays: Verizon's yearly list, for both of you (Victoria's too, for now). */
+function ptsAssumedHolidays_(pid, y) { return ptsVerizonHolidays_(y); }
 
 // ---- pure: settings ---------------------------------------------------------------
 
@@ -460,11 +459,10 @@ function ptsUseItBefore_(people, today, settings) {
   return { year: y, people: rows, picks: picks, any: rows.some(function(r) { return r.total > 0; }) };
 }
 
-/** Pure: is the plan due to be announced? From the trigger day, or earlier once every person's holidays are real. */
-function ptsPlanDue_(today, trigger, people) {
+/** Pure: is the plan due to be announced? From the trigger day (the holidays are a fixed list, so nothing to wait for). */
+function ptsPlanDue_(today, trigger) {
   var t = String(today).slice(0, 4) + '-' + (trigger || '11-25');
-  if (today >= t) return true;
-  return String(today).slice(5, 7) >= '10' && (people || []).length > 0 && people.every(function(p) { return !p.assumed; });
+  return today >= t;
 }
 
 /** Pure: the "request it at work" flags wanted today for accepted picks. pending(id, person) → still not on their work calendar. */
@@ -553,7 +551,9 @@ function ptsPerson_(p, year, today) {
     got = { holidays: holidays, booked: booked, bookedDays: bookedDays, remVac: remVac, remPersH: remPersH, usage: usage };
     try { cache.put(key, JSON.stringify(got), 21600); } catch (e) {}
   }
-  var assumed = Object.keys(got.holidays).length < 3;
+  // Holidays always come from Verizon's list: the work calendar's all-day events include pay
+  // days and other non-holidays, and three of them were enough to replace the real list.
+  var assumed = false;
   // Ahmed's vacation accrues monthly (Jan–Oct) against a cap (PTO.js computeAccrualCapStatus_):
   // 150% of the annual days, 125% from 2026-12-31. What may roll over is what still leaves
   // room for next January's accrual.
@@ -561,7 +561,7 @@ function ptsPerson_(p, year, today) {
   var capFor = function(y) { return annual * ((y + '-01-01') > ACCRUAL_CAP_SWITCH_DATE_ ? 1.25 : 1.5); };
   if (p.id === 'ahmed') { accrual = { annual: annual, day: cfg.accrualDay || 16, cap: capFor(year) }; capCarry = Math.floor(capFor(year + 1) - annual / 10); }
   else { var mc = Number((getConfigValues() || {}).victoria_pto_max_carryover); if (isFinite(mc) && mc > 0) capCarry = mc; }
-  return { cfg: cfg, holidays: assumed ? ptsAssumedHolidays_(p.id, year) : got.holidays, assumed: assumed, booked: got.booked, bookedDays: got.bookedDays,
+  return { cfg: cfg, holidays: ptsAssumedHolidays_(p.id, year), assumed: assumed, booked: got.booked, bookedDays: got.bookedDays,
     remVac: got.remVac, remPersH: got.remPersH, usage: got.usage || { taken: 0, ahead: 0 }, capCarry: capCarry, accrual: accrual };
 }
 

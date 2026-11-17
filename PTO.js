@@ -398,6 +398,8 @@ function getPTOEvents_(cfg) {
 
   /** Returns true if the title looks like a company holiday (allowlist). */
   function isHoliday_(titleLower) {
+    // A pay day is never a holiday, though "Day" is a holiday keyword.
+    if (/\bpay[\s-]?day\b/.test(titleLower)) return false;
     for (var k = 0; k < holidayKws.length; k++) {
       if (holidayKws[k] && titleLower.indexOf(holidayKws[k]) !== -1) return true;
     }

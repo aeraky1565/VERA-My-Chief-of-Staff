@@ -12,10 +12,13 @@ const S = 'PTOStrategy.js', NODE = 'test_ptostrategy.js', UI = 'test_ptostrategy
 const one = (f, from, to) => b => ({ [f]: swap(b[f], from, to) });
 const ui = (from, to) => b => ({ 'docs/app.js': swap(b['docs/app.js'], from, to), 'docs/index.html': swap(b['docs/index.html'], from, to), 'docs/dashboard-lite.html': swap(b['docs/dashboard-lite.html'], from, to) });
 const CONTROLS = [
-  ['Ahmed is assumed the federal list again', one(S, "function ptsAssumedHolidays_(pid, y) { return pid === 'ahmed' ? ptsVerizonHolidays_(y) : ptsFederalHolidays_(y); }", "function ptsAssumedHolidays_(pid, y) { return ptsFederalHolidays_(y); }"), NODE],
+  ['Ahmed is assumed the federal list again', one(S, "function ptsAssumedHolidays_(pid, y) { return ptsVerizonHolidays_(y); }", "function ptsAssumedHolidays_(pid, y) { return ptsFederalHolidays_(y); }"), NODE],
+  ['Victoria back on the federal list', one(S, "function ptsAssumedHolidays_(pid, y) { return ptsVerizonHolidays_(y); }", "function ptsAssumedHolidays_(pid, y) { return pid === 'ahmed' ? ptsVerizonHolidays_(y) : ptsFederalHolidays_(y); }"), NODE],
   ['Verizon’s list loses the Friday after Thanksgiving', one(S, "  put(ptsAdd_(tg, 1), 'Day after Thanksgiving');\n", ''), NODE],
   ['New Year’s (V) not a holiday on the work calendar', one('PTO.js', "(raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure,New Year')", "(raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure')"), NODE],
-  ['a person with nothing posted gets the federal list', one(S, "holidays: assumed ? ptsAssumedHolidays_(p.id, year) : got.holidays,", "holidays: assumed ? ptsFederalHolidays_(year) : got.holidays,"), NODE],
+  ['the work calendar’s holidays used again', one(S, "holidays: ptsAssumedHolidays_(p.id, year), assumed: assumed,", "holidays: Object.keys(got.holidays).length >= 3 ? got.holidays : ptsAssumedHolidays_(p.id, year), assumed: assumed,"), NODE],
+  ['the plan announced from October again', one(S, "  return today >= t;\n}", "  return today >= t || String(today).slice(5, 7) >= '10';\n}"), NODE],
+  ['a pay day counted as a holiday', one('PTO.js', "    if (/\\bpay[\\s-]?day\\b/.test(titleLower)) return false;\n", ''), 'test_ptosnapshot.js'],
   ['Saturday holidays not moved to Friday', one(S, "return w === 6 ? ptsAdd_(iso, -1) : w === 0 ? ptsAdd_(iso, 1) : iso;", "return w === 0 ? ptsAdd_(iso, 1) : iso;"), NODE],
   ['a break can start a day early for free', one(S, "    if (allOff(ptsAdd_(s, -1))) continue;                  // could start a day earlier for free\n", ''), NODE],
   ['breaks over a locked trip', one(S, "if (ptsInRanges_(s, e, p.busy) || ptsInRanges_(s, e, p.blackouts)) { ok = false; break; }", "if (ptsInRanges_(s, e, p.blackouts)) { ok = false; break; }"), NODE],
@@ -33,7 +36,7 @@ const CONTROLS = [
   ['a blank buffer becomes zero', one(S, "  var num = function(v, lo, hi) { if (v === '' || v === null || v === undefined) return null;", "  var num = function(v, lo, hi) {"), NODE],
   ['request flags ignore the long lead', one(S, "var lead = (days.length >= 5 ? st.leadWeeksLong : st.leadWeeks) * 7", "var lead = st.leadWeeks * 7"), NODE],
   ['request flags stay once it’s on the work calendar', one(S, "if (today < by || today > first || !pending(c, pid)) return;", "if (today < by || today > first) return;"), NODE],
-  ['plan announced before the trigger', one(S, "  if (today >= t) return true;", "  return true;"), NODE],
+  ['plan announced before the trigger', one(S, "  return today >= t;\n}", "  return true;\n}"), NODE],
   ['Accept twice makes two events', one(S, "    if (saved[id] && saved[id].status === 'accepted') return { ok: true, id: id, already: true };\n", ''), NODE],
   ['no Away mode on the day', one(S, "if (s.status === 'accepted' && s.away && s.start === today && typeof awaySet_ === 'function')", "if (false)"), NODE],
   ['an accepted break can be skipped', one(S, "    if (saved[id] && saved[id].status === 'accepted') return { ok: false, error: 'Remove it first; it’s accepted' };\n", ''), NODE],
@@ -46,7 +49,7 @@ const CONTROLS = [
   // The grid fills only days that cost PTO
   ['a trip’s weekend is filled again', ui("soft=(k==='l'||k==='p'||k==='w')&&psFree_(plan,iso);", "soft=false;"), NODE],
   ['holidays don’t count as free', ui("return w===0||w===6||(plan.people||[]).some(function(p){return!!(p.holidays||{})[iso];});}", "return w===0||w===6;}"), NODE],
-  ['the outline isn’t explained', ui("'outline: a trip’s weekend or holiday (no PTO)'", "''"), NODE],
+  ['the outline isn’t explained', ui("'outline: a holiday during a trip (no PTO)'", "''"), NODE],
   // The current year: PTO taken and booked ahead
   ['every PTO day is booked ahead, none taken', one(S, "out[d] = d < today ? 't' : 'b';", "out[d] = 'b';"), NODE],
   ['weekends and holidays marked as PTO', one(S, "if (d.slice(0, 4) === String(year) && !ptsOff_(person, d)) out[d]", "if (d.slice(0, 4) === String(year)) out[d]"), NODE],
@@ -55,6 +58,8 @@ const CONTROLS = [
   ['the past isn’t dimmed', ui("dim=past?{opacity:pt&&pt.s==='t'?0.9:0.38}:{}", "dim={}"), UI],
   ['Already booked still shown for this year', ui("[['Taken so far','taken',-1,true,false,true],['Booked ahead','ahead',-1,true,false,true]]:[['Already booked','booked',-1]]", "[['Already booked','booked',-1]]:[['Already booked','booked',-1]]"), UI],
   ['no balance line', ui("names.some(function(p){return (bud[p.id]||{}).balance!=null;})&&h('div',{className:'ps-balance'", "false&&h('div',{className:'ps-balance'"), UI],
+  ['weekends marked in the year grid again', ui("for(var d=a;d<=b;d=psAdd_(d,1)){if(psWeekend_(d))continue;", "for(var d=a;d<=b;d=psAdd_(d,1)){"), UI],
+  ['weekend PTO marked in the year grid again', ui("Object.keys(p.pto||{}).forEach(function(d){if(psWeekend_(d))return;var x=m[d]", "Object.keys(p.pto||{}).forEach(function(d){var x=m[d]"), UI],
 ];
 let allBit = true;
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the

@@ -14,6 +14,29 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+// The year grid never paints a weekend as a holiday: weekends cost no PTO.
+{
+  const fnSrc = (src, name) => { const a = src.indexOf('function ' + name + '('); let d = 0, j = src.indexOf('{', src.indexOf(')', a)); for (; j < src.length; j++) { if (src[j] === '{') d++; else if (src[j] === '}' && --d === 0) break; } return src.slice(a, j + 1); };
+  [['docs/app.js', APP], ['docs/dashboard-lite.html', LITE]].forEach(([label, src]) => {
+    const G = { Date, Object, Array, String, Number }; vm.createContext(G);
+    vm.runInContext(['psD_', 'psAdd_', 'psDays_', 'psShows_', 'psWeekend_', 'psMarks_', 'psPto_', 'psNice_', 'psShort_', 'psWhy_'].map(n => fnSrc(src, n)).join('\n') + '\n' + (src.match(/var PS_RANK=\{[^}]*\};/) || [''])[0] + '\n' + (src.match(/var PS_MON=\[[^\]]*\],PS_DOW=\[[^\]]*\];/) || [''])[0], G);
+    const m = G.psMarks_({ people: [{ id: 'ahmed', holidays: { '2027-11-25': 'Thanksgiving', '2027-11-27': 'Saturday thing', '2027-12-26': 'Sunday thing' } }], picks: [], locked: [], reserves: [] }, 'joint');
+    check(label + ': a holiday on a Saturday or Sunday isn’t painted; a weekday one is', m['2027-11-25'] === 'h' && !m['2027-11-27'] && !m['2027-12-26'], JSON.stringify(m));
+    const t = G.psMarks_({ people: [], picks: [], locked: [{ start: '2027-04-16', end: '2027-04-19', who: null, work: [] }], reserves: [{ start: '2027-06-25', end: '2027-06-28' }] }, 'joint');
+    check(label + ': a trip or a hold over a weekend marks only the weekdays', JSON.stringify(Object.keys(t).sort()) === JSON.stringify(['2027-04-16', '2027-04-19', '2027-06-25', '2027-06-28']), JSON.stringify(t));
+    const pt = G.psPto_({ people: [{ id: 'ahmed', name: 'Ahmed', pto: { '2027-07-02': 'b', '2027-07-03': 'b', '2027-07-04': 'b', '2027-07-05': 'b' } }] }, 'all');
+    check(label + ': PTO on the work calendar skips the weekend too', JSON.stringify(Object.keys(pt).sort()) === JSON.stringify(['2027-07-02', '2027-07-05']), JSON.stringify(Object.keys(pt)));
+    const plan = { people: [{ id: 'ahmed', name: 'Ahmed', holidays: { '2027-11-25': 'Thanksgiving' }, pto: { '2027-03-03': 'b' } }, { id: 'victoria', name: 'Victoria', assumed: true, holidays: { '2027-11-25': 'Thanksgiving', '2027-11-11': 'Veterans Day' } }],
+      locked: [{ label: 'Lisbon', start: '2027-04-16', end: '2027-04-19', who: null, work: [] }, { label: 'Expo', start: '2027-05-03', end: '2027-05-04', who: ['ahmed'], work: ['ahmed'] }],
+      reserves: [{ label: 'Beach week', start: '2027-06-25', end: '2027-06-28' }], picks: [{ label: 'A long weekend in January', who: 'joint', status: 'suggested', pto: { ahmed: ['2027-01-08'], victoria: ['2027-01-08'] } }] };
+    const why = d => G.psWhy_(plan, 'joint', d);
+    check(label + ': why — a shared holiday names it and says both of you (assumed if either is)', /Thanksgiving \(both of you\)/.test(why('2027-11-25')) && /Assumed holiday/.test(why('2027-11-25')), why('2027-11-25'));
+    check(label + ': why — one person’s holiday names that person', /Veterans Day \(Victoria\)/.test(why('2027-11-11')), why('2027-11-11'));
+    check(label + ': why — a trip, working away, a hold, a pick, PTO on the work calendar, a weekend', /Trip: Lisbon/.test(why('2027-04-16')) && /Working away: Expo \(no PTO\)/.test(why('2027-05-03')) && /Held for a pencilled trip: Beach week/.test(why('2027-06-25')) &&
+      /Suggested day off: A long weekend in January \(together\)/.test(why('2027-01-08')) && /PTO booked on the work calendar \(Ahmed\)/.test(why('2027-03-03')) && /Weekend: never costs PTO/.test(why('2027-04-17')) && /nothing planned/.test(why('2027-03-10')));
+  });
+}
+
 // The plan, from the real planner.
 const P = { console }; vm.createContext(P); vm.runInContext(fs.readFileSync(path.join(ROOT, 'PTOStrategy.js'), 'utf8'), P);
 const FED = P.ptsFederalHolidays_(2027), AH = Object.assign({}, FED, { '2027-11-26': 'Day after Thanksgiving' });
@@ -96,7 +119,10 @@ async function mount(browser, file, width, props, resp) {
     check(L + ': the budget names accruals lost', /Accruals lost at the cap/.test(await page.$eval('#ps .ps-budget', n => n.textContent)));
     check(L + ': Use it before Dec 31, with this year’s breaks', /Use it before Dec 31/.test(await page.$eval('#ps .ps-useit', n => n.textContent).catch(() => '')) && (await page.$$('#ps .ps-useit .ps-pick')).length === useIt.picks.length);
     check(L + ': 2027 has no PTO marks yet and no “before today”', (await page.$$('#ps .ps-grid .ps-pto, #ps .ps-grid .ps-past')).length === 0 && !/before today/.test(await page.$eval('#ps .ps-legend', n => n.textContent)) && /Already booked/.test(await page.$eval('#ps .ps-budget', n => n.textContent)));
-    check(L + ': the year grid shows holidays, the locked trip, the reserve and the picks', (await page.$$('#ps .ps-grid .ps-h, #ps .ps-grid .ps-ha')).length >= 10 && (await page.$$('#ps .ps-grid .ps-l')).length === 10 && (await page.$$('#ps .ps-grid .ps-p')).length > 0 && (await page.$$('#ps .ps-grid .ps-k')).length > 0);
+    check(L + ': the year grid shows holidays, the locked trip, the reserve and the picks', (await page.$$('#ps .ps-grid .ps-h, #ps .ps-grid .ps-ha')).length >= 10 && (await page.$$('#ps .ps-grid .ps-l')).length === 6 && (await page.$$('#ps .ps-grid .ps-p')).length > 0 && (await page.$$('#ps .ps-grid .ps-k')).length > 0);
+    check(L + ': the grid says to tap a day', /Tap a day to see why it’s marked/.test(await page.$eval('#ps .ps-why', n => n.innerText)));
+    await page.click('#ps .ps-grid .ps-l'); await page.waitForTimeout(40);
+    check(L + ': tapping a day says why it’s marked', /Trip: Lisbon/.test(await page.$eval('#ps .ps-why', n => n.innerText)) && /Trip: Lisbon/.test(await page.$eval('#ps .ps-grid .ps-l', n => n.title)));
     // Accept
     const open = PLAN.picks.find(c => c.status === 'suggested');
     await page.click('#ps .ps-pick[data-pick="' + open.id + '"] .ps-accept'); await wait(300);
@@ -129,7 +155,7 @@ async function mount(browser, file, width, props, resp) {
     await page.close();
     // 2026: the year so far
     ({ page, errs } = await mount(browser, file, width, {}, RESP26));
-    const cells = () => page.$$eval('#ps .ps-grid .ps-pto', ns => ns.map(n => [n.title.slice(0, 10), n.textContent, n.classList.contains('ps-pto-t') ? 't' : 'b', getComputedStyle(n).opacity]));
+    const cells = () => page.$$eval('#ps .ps-grid .ps-pto', ns => ns.map(n => [n.dataset.date, n.textContent, n.classList.contains('ps-pto-t') ? 't' : 'b', getComputedStyle(n).opacity]));
     let pc = await cells();
     const at = d => pc.find(x => x[0] === d) || [];
     check(L + ' 2026: PTO days by initials: both off is AV, taken solid', at('2026-04-06')[1] === 'AV' && at('2026-04-06')[2] === 't' && pc.length === 11, JSON.stringify(pc));
