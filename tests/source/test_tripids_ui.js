@@ -63,7 +63,7 @@ window.CALLS = []; window.POSTS = []; window.CONFIRMS = []; window.SAY = ${JSON.
 var STATE = ${JSON.stringify(STATES[state])}, ORPH = ${JSON.stringify(opts.orphans || ORPHANS)}, REPLY = ${JSON.stringify(opts.reply || {})};
 window.confirm = function(m) { window.CONFIRMS.push(m); return window.SAY === 'yes'; };
 function apiGet(u, t, p) { window.CALLS.push(p); if (p.action === 'trip_orphans') return Promise.resolve(JSON.parse(JSON.stringify(ORPH))); return STATE.ok === false ? Promise.resolve(STATE) : Promise.resolve(JSON.parse(JSON.stringify(STATE))); }
-function apiPost(u, t, b) { window.POSTS.push(b); var r = REPLY[b.action + (b.dryRun === 'yes' ? ':dry' : '')] || { ok: true, done: b.how, filled: 7 }; return Promise.resolve(JSON.parse(JSON.stringify(r))); }
+function apiPost(u, t, b) { window.POSTS.push(b); var r = (b.how && REPLY[b.action + ':' + b.how]) || REPLY[b.action + (b.dryRun === 'yes' ? ':dry' : '')] || { ok: true, done: b.how, filled: 7 }; return Promise.resolve(JSON.parse(JSON.stringify(r))); }
 ${varSrc(APP, 'TID_TAB_NAMES')}
 ${varSrc(APP, 'TID_BTN')}
 ${fnSrc(APP, 'tidNice_')}
@@ -185,6 +185,25 @@ ReactDOM.render(React.createElement(SysTripIds, { apiUrl: 'x', apiToken: 'y' }),
     const none = await run('waiting', { orphans: { ok: true, canFix: true, trips: [], orphans: [] } });
     check('no orphans: no section', !(await none.$('.tid-orphans')));
     await none.close();
+    console.log('\nolder trips with no ID, in the picker');
+    for (const w of [390, 1280]) {
+      const pg = await run('dirty', { reply: { 'trip_orphan_fix:register': { ok: true, done: 'register', tripId: 'TRIP-DDDD00000004', filled: 3 } } }, w);
+      const groups = await pg.$$eval('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-pick optgroup', gs => gs.map(g => [g.label, [...g.querySelectorAll('option')].map(o => o.value)]));
+      check('@' + w + ' the picker: Registered, then Not registered yet with the other cards (not its own)', JSON.stringify(groups) === JSON.stringify([['Registered', ['TRIP-BBBB00000002', 'TRIP-CCCC00000003']], ['Not registered yet', ['key:2026-03-17|Harbor Week']]]), JSON.stringify(groups));
+      await pg.selectOption('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-pick', 'key:2026-03-17|Harbor Week');
+      await pg.click('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-merge'); await pg.waitForTimeout(80);
+      const posts = await pg.evaluate(() => window.POSTS);
+      check('@' + w + ' picking one registers it first, then merges this card into the ID it got', posts.length === 2 && posts[0].how === 'register' && posts[0].key === '2026-03-17|Harbor Week' && posts[1].how === 'merge' && posts[1].key === LONG && posts[1].tripId === 'TRIP-DDDD00000004', JSON.stringify(posts));
+      check('@' + w + ' …after a confirm, and it says so', /as a past trip and merge this into it\?/.test((await pg.evaluate(() => window.CONFIRMS)).pop() || '') && /Registered “Harbor Week” as a past trip and merged this into it/.test(await pg.evaluate(() => document.body.innerText)));
+      await pg.close();
+    }
+    {
+      const pg = await run('dirty', { reply: { 'trip_orphan_fix:register': { ok: true, done: 'register', tripId: 'TRIP-DDDD00000004', filled: 3 }, 'trip_orphan_fix:merge': { ok: false, error: 'Both trips have a different Context' } } });
+      await pg.selectOption('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-pick', 'key:2026-03-17|Harbor Week');
+      await pg.click('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-merge'); await pg.waitForTimeout(80);
+      check('a merge refused after the register says the other is registered and this one is left', /is registered now, but this didn’t merge: Both trips have a different Context/.test(await pg.evaluate(() => document.body.innerText)) && !!(await pg.$('.tid-orphan[data-key="' + LONG + '"] .tid-orphan-merge')));
+      await pg.close();
+    }
     const wide = await run('dirty', {}, 1280);
     check('desktop: the key cards fit with no sideways scroll', !(await wide.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) && (await wide.$$('.tid-orphan')).length === 2);
     await wide.close();

@@ -39,6 +39,11 @@ const CONTROLS = [
   ['the repair card never shows', ui("metaSkipped&&h(TidRepair,", "false&&h(TidRepair,"), UI],
   ['the buttons show for everyone', ui("canFix&&!(m&&!m.bad)&&h(", "!(m&&!m.bad)&&h("), UI],
   ['Leave posts', ui("onClick:function(){setGone(function(p){", "onClick:function(){apiPost(apiUrl,apiToken,{action:'trip_orphan_fix',key:o.key,how:'leave'});setGone(function(p){"), UI],
+  ['no Not registered yet group', ui(".concat(others.length?[h(\"optgroup\"", ".concat(false?[h(\"optgroup\""), UI],
+  ['the card\'s own key offered', ui("var others=list.filter(function(x){return x.key!==o.key&&", "var others=list.filter(function(x){return "), UI],
+  ['an older trip merged with no register first', ui("if(how==='merge'&&tid.indexOf('key:')===0){", "if(false){"), UI],
+  ['the merge sent with the picked key, not the new ID', ui("how:'merge',tripId:nid}", "how:'merge',tripId:tk}"), UI],
+  ['a refused merge after the register goes unsaid', ui("if(!r2||r2.ok===false){say(o.key,{bad:true,", "if(false){say(o.key,{bad:true,"), UI],
 ];
 let allBit = true;
 // The dashboard controls drive a real browser. The CI job that runs controls has none (the

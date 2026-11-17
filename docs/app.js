@@ -4722,6 +4722,12 @@ var say=function(k,v){setSaid(function(p){var n=Object.assign({},p);n[k]=v;retur
 if(!list.length&&!Object.keys(said).length)return null;
 function fix(o,how){var tid=how==='merge'?(pick[o.key]!=null?pick[o.key]:(o.suggestion&&o.suggestion.tripId)||''):'';
 if(how==='merge'&&!tid){say(o.key,{bad:true,t:'Pick the trip it’s the same as.'});return;}
+if(how==='merge'&&tid.indexOf('key:')===0){var tk=tid.slice(4),to=list.filter(function(x){return x.key===tk;})[0]||{key:tk,label:tk,startDate:''};
+if(!window.confirm('Register “'+(to.label||tk)+'”'+(to.startDate?' ('+to.startDate+')':'')+' as a past trip and merge this into it?'))return;
+setBusy(o.key);apiPost(apiUrl,apiToken,{action:'trip_orphan_fix',key:tk,how:'register',tripId:''}).then(function(r){if(!r||r.ok===false||!r.tripId)throw new Error((r&&r.error)||'Not registered');
+say(tk,{t:'Registered as a past trip.'});var nid=r.tripId;return apiPost(apiUrl,apiToken,{action:'trip_orphan_fix',key:o.key,how:'merge',tripId:nid}).then(function(r2){if(!r2||r2.ok===false){say(o.key,{bad:true,t:'“'+(to.label||tk)+'” is registered now, but this didn’t merge: '+((r2&&r2.error)||'Not changed')+'. Merge or register it on its own.'});if(onDone)onDone();return;}
+say(o.key,{t:'Registered “'+(to.label||tk)+'” as a past trip and merged this into it · '+(r2.filled||0)+' row'+(r2.filled===1?'':'s')+' now have an ID.'});if(onDone)onDone();});})
+.catch(function(e){say(o.key,{bad:true,t:e.message});}).finally(function(){setBusy('');});return;}
 if(how==='register'&&!window.confirm('Register “'+o.label+'” ('+o.startDate+') as a past trip of its own?'))return;
 setBusy(o.key);apiPost(apiUrl,apiToken,{action:'trip_orphan_fix',key:o.key,how:how,tripId:tid}).then(function(r){if(!r||r.ok===false)throw new Error((r&&r.error)||'Not changed');
 var t=trips.filter(function(x){return x.tripId===tid;})[0];say(o.key,{t:r.done==='already'?'Already fixed.':(how==='merge'?'Merged into '+(t?t.label:tid):'Registered as a past trip')+' · '+(r.filled||0)+' row'+(r.filled===1?'':'s')+' now have an ID.'});if(onDone)onDone();})
@@ -4729,7 +4735,7 @@ var t=trips.filter(function(x){return x.tripId===tid;})[0];say(o.key,{t:r.done==
 var card={background:'#0d1526',border:'1px solid #1e2a44',borderLeft:'3px solid #f87171',borderRadius:12,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8,minWidth:0};
 return h("div",{className:"tid-orphans",style:{display:'flex',flexDirection:'column',gap:8,marginBottom:12}},
 h("div",{style:{fontSize:13.5,fontWeight:600,color:'#dde1f0'}},"Keys that name no trip",h("span",{style:{fontWeight:400,color:'#6b7fa8'}}," ("+list.length+")")),
-h("div",{style:{fontSize:12.5,color:'#8a9abf'}},"Usually a past trip that was never in the registry, or a trip that was renamed or moved. Merge it into the trip it is, or register it as a past trip of its own. Nothing changes until you tap."),
+h("div",{style:{fontSize:12.5,color:'#8a9abf'}},"Usually a past trip that was never in the registry, or a trip that was renamed or moved. Merge it into the trip it is, or register it as a past trip of its own. Older trips without an ID are in the list under “Not registered yet”: picking one registers it and merges this into it. Nothing changes until you tap."),
 list.map(function(o){var m=said[o.key],sel=pick[o.key]!=null?pick[o.key]:(o.suggestion&&o.suggestion.tripId)||'';
 var where=Object.keys(o.tabs||{}).map(function(t){return (TID_TAB_NAMES[t]||t)+' '+o.tabs[t];}).join(', ');
 return h("div",{key:o.key,className:"tid-orphan","data-key":o.key,style:card},
@@ -4738,7 +4744,9 @@ h("div",{className:"tid-orphan-rows",style:{fontSize:12,color:'#8a9abf'}},o.tota
 o.suggestion&&h("div",{className:"tid-orphan-guess",style:{fontSize:12,color:'#8ab4f8'}},'Looks like '+o.suggestion.label+' ('+tidNice_(o.suggestion.startDate)+')')),
 canFix&&!(m&&!m.bad)&&h("div",{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
 h("select",{className:"tid-orphan-pick","aria-label":'Same trip as',value:sel,onChange:function(e){var v=e.target.value;setPick(function(p){var n=Object.assign({},p);n[o.key]=v;return n;});},style:{flex:'1 1 200px',minWidth:0,minHeight:34,background:'#0a1220',color:'#dde1f0',border:'1px solid #2a4080',borderRadius:8,padding:'4px 8px',fontSize:13}},
-[h("option",{key:'',value:''},'Same trip as…')].concat(trips.map(function(t){return h("option",{key:t.tripId,value:t.tripId},t.label+' · '+t.startDate);}))),
+(function(){var others=list.filter(function(x){return x.key!==o.key&&!(said[x.key]&&!said[x.key].bad);}).sort(function(a,b){return String(b.startDate||'').localeCompare(String(a.startDate||''));});
+return [h("option",{key:'',value:''},'Same trip as…'),h("optgroup",{key:'reg',label:'Registered'},trips.map(function(t){return h("option",{key:t.tripId,value:t.tripId},t.label+' · '+t.startDate);}))]
+.concat(others.length?[h("optgroup",{key:'not',label:'Not registered yet',className:'tid-orphan-older'},others.map(function(x){return h("option",{key:'k'+x.key,value:'key:'+x.key},(x.label||x.key)+(x.startDate?' · '+x.startDate:''));}))]:[]);})()),
 h("button",{type:"button",className:"tid-orphan-merge",style:TID_BTN,disabled:!!busy,onClick:function(){fix(o,'merge');}},busy===o.key?'Saving…':'Merge'),
 h("button",{type:"button",className:"tid-orphan-register",style:TID_BTN,disabled:!!busy,onClick:function(){fix(o,'register');}},'Register as a past trip'),
 h("button",{type:"button",className:"tid-orphan-leave",style:Object.assign({},TID_BTN,{color:'#8a9abf',borderColor:'#1e2a44'}),disabled:!!busy,onClick:function(){setGone(function(p){var n=Object.assign({},p);n[o.key]=true;return n;});}},'Leave')),

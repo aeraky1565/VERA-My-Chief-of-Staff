@@ -437,6 +437,11 @@ editor (owner only; anyone else sees the list without buttons):
   - **Register as a past trip** (after a confirm) adds a registry row with status
     `past`, named and dated from the key, ending on its latest Itinerary date, with
     the key as its alias. A second tap finds the key already fixed and adds nothing.
+  - The picker lists the **registered** trips (the registry gets a trip when the calendar shows it
+    coming up), then the other keys under **Not registered yet**, so an older trip can be picked
+    too. Picking one registers it as a past trip, then merges this key into the ID it got, after
+    one confirm. If that merge is refused, the other trip stays registered and this key is left
+    to merge or register on its own.
   - **Leave** hides it until the next count.
 
   Merge and register both fill the Trip IDs at once (`trip_orphan_fix`, `{key, how, tripId}`).
