@@ -102,7 +102,7 @@ console.log('\nthe year grid');
 {
   const g = { }; vm.createContext(g);
   const marks = fnSrc(APP, 'psMarks_'), add = fnSrc(APP, 'psAdd_') + '\n' + fnSrc(APP, 'psD_') + '\n' + fnSrc(APP, 'psIso_'), days = fnSrc(APP, 'psDays_'), shows = fnSrc(APP, 'psShows_');
-  vm.runInContext([add, days, shows, marks, (APP.match(/var PS_RANK=\{[^}]*\};/) || [''])[0]].join('\n'), g);
+  vm.runInContext([add, days, shows, fnSrc(APP, 'psWeekend_'), marks, (APP.match(/var PS_RANK=\{[^}]*\};/) || [''])[0]].join('\n'), g);
   const plan = { people: [{ id: 'ahmed', holidays: {} }, { id: 'victoria', holidays: {} }], locked: [{ start: '2027-03-08', end: '2027-03-09', who: ['victoria'], work: ['victoria'] }, { start: '2027-04-05', end: '2027-04-05', who: null, work: [] }], reserves: [], picks: [] };
   const all = g.psMarks_(plan, 'all'), vic = g.psMarks_(plan, 'victoria'), ah = g.psMarks_(plan, 'ahmed');
   check('a working trip is "working away" for the person working', all['2027-03-08'] === 'w' && vic['2027-03-08'] === 'w');
