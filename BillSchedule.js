@@ -300,6 +300,40 @@ function webSaveBillSchedule_(body) {
   });
 }
 
+/**
+ * Pure: the Bill Schedule rows after setting one line's account — { at, row } where `at` is the
+ * 0-based index of the row to change (its other columns kept) or -1 for a new row (a 'bill' with
+ * only the line and account). A blank account clears the override, so the tracker's account shows.
+ */
+function bsWithAccount_(rows, line, account) {
+  var low = bsText_(line).toLowerCase();
+  for (var i = 0; i < (rows || []).length; i++) {
+    if (bsText_(rows[i][0]).toLowerCase() !== low) continue;
+    var row = rows[i].slice(0, BS_HEADERS_.length);
+    while (row.length < BS_HEADERS_.length) row.push('');
+    row[2] = account;
+    return { at: i, row: row };
+  }
+  return { at: -1, row: [bsText_(line), '', account, false, '', 'bill', '', ''] };
+}
+
+/**
+ * POST bills_schedule_account { line, account } → { ok, entry }. Finances › Accounts moves a
+ * tracker bill (which has no row VERA may write) to an account: only the Bill Schedule's Account
+ * Override changes; the due day, autopay, card link, kind, notes and paid stay as they were.
+ */
+function webSaveBillAccount_(body) {
+  body = body || {};
+  var line = bsText_(body.line).slice(0, 120);
+  if (!line) return { ok: false, error: 'Which bill?' };
+  var account = bsText_(body.account).slice(0, 60);
+  return tiLocked_(function() {
+    var sheet = bsSheet_(), rows = tiRows_(sheet, BS_HEADERS_.length), w = bsWithAccount_(rows, line, account);
+    if (w.at === -1) sheet.appendRow(w.row); else sheet.getRange(w.at + 2, 1, 1, BS_HEADERS_.length).setValues([w.row]);
+    return { ok: true, entry: bsScheduleMap_([w.row])[line.toLowerCase()] };
+  });
+}
+
 /** POST bills_schedule_migrate { apply } → the preview, or the rows written. The old Bills sheet is only read. */
 function webMigrateBillSchedule_(body) {
   var plan = bsPlan_();

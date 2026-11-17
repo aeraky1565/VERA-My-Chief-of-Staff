@@ -725,6 +725,7 @@ function doPost(e) {
       case 'budget_scenario_save':       return jsonOut_(webSaveBudgetScenario_(body));
       case 'budget_scenario_delete':     return jsonOut_(webDeleteBudgetScenario_(body));
       case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
+      case 'bills_schedule_account':     return jsonOut_(webSaveBillAccount_(body));
       case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));
       case 'phone_payback_mark':         return jsonOut_(webMarkPhonePayback_(body));
       case 'checkin_decision_save':      return jsonOut_(webSaveCheckinDecision_(body));

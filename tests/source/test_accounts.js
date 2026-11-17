@@ -45,6 +45,21 @@ const tr = U.acTransfers_([{ name: 'Joint checking', owner: 'Joint' }, { name: '
 check('transfers: the joint minimum, split', tr.joint === 2362 && tr.ahmed === 1370 && tr.victoria === 992 && tr.split === '58 / 42', J(tr));
 check('owner pills', J(['Ahmed', 'Victoria', 'Joint', ''].map(o => U.acPill_(o)[0])) === J(['A', 'V', 'J', 'J']));
 
+console.log('\nmoving a tracker bill to an account');
+{
+  const B = { String, Number, Math, JSON, Object }; vm.createContext(B);
+  vm.runInContext((BS.match(/var BS_HEADERS_\s*=\s*[^;]+;/) || [''])[0] + '\n' + ['bsText_', 'bsWithAccount_'].map(n => fnSrc(BS, n)).join('\n'), B);
+  const rows = [['Rent', 1, 'Old acct', true, '', 'bill', 'landlord', '2026-11'], ['Water', '', '', false, '', 'bill', '', '']];
+  const w = B.bsWithAccount_(rows, 'rent', 'Joint checking');
+  check('a line already in the Bill Schedule: only its account changes', w.at === 0 && J(w.row) === J(['Rent', 1, 'Joint checking', true, '', 'bill', 'landlord', '2026-11']), J(w));
+  const n = B.bsWithAccount_(rows, 'Internet', 'Ahmed checking');
+  check('…a new line gets a bill row with just the account', n.at === -1 && J(n.row) === J(['Internet', '', 'Ahmed checking', false, '', 'bill', '', '']), J(n));
+  check('the route is wired (POST)', /case 'bills_schedule_account':\s+return jsonOut_\(webSaveBillAccount_\(body\)\)/.test(read('WebApp.js')));
+  check('Bills (both dashboards): a tracker bill’s account goes to the Bill Schedule', APP.indexOf("if(!row){if(line)apiPost(apiUrl,apiToken,{action:'bills_schedule_account',line:line,account:account})") !== -1 &&
+    /if \(!row\) \{ if \(line\) apiPost\(apiUrl, apiToken, \{ action: 'bills_schedule_account', line: line, account: account \}\)/.test(read('docs/dashboard-lite.html')) &&
+    APP.indexOf('if(v&&onReassign&&(b.row||b.key||b.bill))onReassign(b.row,v,b.key||b.bill)') !== -1);
+}
+
 const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true; try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; } })();
 (async () => {
   if (!HAS_BROWSER) { console.log('\n(the screen: skipped, no browser here)\n\n' + pass + ' passed, ' + fail + ' failed'); process.exit(fail ? 1 : 0); }
@@ -60,9 +75,10 @@ const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(proc
       const accounts = [{ row: 2, name: 'Joint checking', owner: 'Joint', institution: 'Credit Union', type: 'Checking', balance: 9999 }, { row: 3, name: 'Ahmed checking', owner: 'Ahmed', institution: 'Bank', type: 'Checking' }];
       window.apiGet = (u, t, p) => { window.__ev.push(p); if (p.action === 'get_bank_accounts') return Promise.resolve({ ok: true, accounts }); if (p.action === 'bill_estimates') return Promise.resolve({ ok: true, estimates: est });
         if (p.action === 'bills') return Promise.resolve({ ok: true, bills: bills.map(b => b.bill === 'Netflix' ? Object.assign({}, b, { account: 'Ahmed checking' }) : b) }); return Promise.resolve({ ok: true }); };
+      window.apiPost = (u, t, b) => { window.__ev.push(b); return Promise.resolve({ ok: true }); };
       document.body.innerHTML = '<div id="ac" style="padding:0 16px"></div>';
       ReactDOM.createRoot(document.getElementById('ac')).render(React.createElement(AccountsTab, { apiUrl: 'u', apiToken: 't', bills: { bills }, split: { ahmed: 58, victoria: 42 } }));
-    }, { bills: BILLS.map((b, i) => Object.assign({ row: i + 2 }, b)).concat([{ row: 30, bill: 'Netflix', amount: 15, frequency: 'Monthly', account: '' }, { row: 31, bill: 'Old card', amount: 40, account: 'Shared' }]), est: EST });
+    }, { bills: BILLS.map((b, i) => Object.assign({ row: i + 2 }, b)).concat([{ row: 30, bill: 'Netflix', amount: 15, frequency: 'Monthly', account: '' }, { row: null, key: 'Old card', bill: 'Old card', amount: 40, account: 'Shared' }]), est: EST });
     await page.waitForTimeout(300);
     const text = await page.$eval('#ac', n => n.innerText);
     check('transfers on top, split', text.toLowerCase().indexOf('this month’s transfers') < text.toLowerCase().indexOf('\naccounts\n') && /Ahmed → Joint[\s\S]*\$1,370/.test(text) && /Victoria → Joint[\s\S]*\$992/.test(text), text.slice(0, 300));
@@ -78,6 +94,12 @@ const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(proc
     check('Assign lists the bills with no account', J(await page.$$eval('#ac .ac-unlist .ac-bill', ns => ns.map(n => n.dataset.bill))) === J(['Netflix', 'Old card']));
     await page.click('#ac .ac-unlist .ac-bill[data-bill="Netflix"] .ac-move'); await page.waitForTimeout(80);
     check('…✎ opens the move dialog for that bill', /Reassign Bill\s+Netflix/.test(await page.$eval('.modal-box', n => n.innerText)));
+    await page.click('.modal-box button >> text=Cancel'); await page.waitForTimeout(40);
+    await page.click('#ac .ac-unlist .ac-bill[data-bill="Old card"] .ac-move'); await page.waitForTimeout(60);
+    await page.click('.modal-box button >> text=Ahmed checking'); await page.click('.modal-box button >> text=Assign'); await page.waitForTimeout(120);
+    const sent = (await page.evaluate(() => window.__ev)).filter(p => p.action === 'bills_schedule_account' || p.action === 'update_bill');
+    check('a tracker bill (no row) is moved through the Bill Schedule, not update_bill', J(sent) === J([{ action: 'bills_schedule_account', line: 'Old card', account: 'Ahmed checking' }]), J(sent));
+    check('…with no error', !/failed/i.test(await page.$eval('#ac', n => n.innerText)));
     check('no sideways scroll, no page errors', !(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)) && !errs.length, errs.join(' | '));
     await page.close();
   }

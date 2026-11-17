@@ -21,6 +21,10 @@ const CONTROLS = [
   ['no ~ on an estimate', swapIn(FULL, "h('b',null,(m.estimated?'~':'')+acMoney_(m.total))", "h('b',null,acMoney_(m.total))")],
   ['bills shown open', swapIn(FULL, "isOpen&&h('div',{className:'ac-bills'}", "h('div',{className:'ac-bills'}")],
   ['no estimates asked for', swapIn(FULL, "apiGet(apiUrl,apiToken,{action:'bill_estimates'})", "Promise.resolve({})")],
+  ['a tracker bill goes through update_bill', swapIn(FULL, "(b.row==null?apiPost(", "(false?apiPost(")],
+  ['the schedule row is rewritten, not just the account', swapIn(['BillSchedule.js'], "    var row = rows[i].slice(0, BS_HEADERS_.length);", "    var row = [rows[i][0], '', '', false, '', 'bill', '', ''];")],
+  ['the account route not wired', swapIn(['WebApp.js'], "      case 'bills_schedule_account':     return jsonOut_(webSaveBillAccount_(body));\n", "")],
+  ['Bills drops a tracker bill again', swapIn(['docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'], "if(v&&onReassign&&(b.row||b.key||b.bill))onReassign(b.row,v,b.key||b.bill)", "if(v&&onReassign&&b.row)onReassign(b.row,v)")],
 ];
 const T = 'test_accounts.js';
 let allBit = true;
