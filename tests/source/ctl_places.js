@@ -41,7 +41,16 @@ const CONTROLS = [
   // #251: finished trips become Visited
   ['a trip still under way is closed', srv("if ((r.endDate || r.startDate) >= today) return false;", "if (false) return false;"), SRV],
   ['layovers become visits', srv("if (!c || c.role !== 'stay') return;", "if (!c) return;"), SRV],
-  ['a country already recorded for the trip is added again', srv("if (!n || seen[n.toLowerCase()]) return;", "if (!n) return;"), SRV],
+  ['a country already recorded for the trip is added again', srv("if (!n || seen[lc]) return;", "if (!n) return;"), SRV],
+  // visits from a trip read like hand-added ones
+  ['the trip’s name is the card title again', both("t.label=t.countries.join(' · ');", "")],
+  ['no tag from the trip’s name', both("if(!t.occasion)t.occasion=pcTripTag_(t.label);", "")],
+  ['"Vacation:" isn’t stripped (dashboard)', both("(vacation|trip|holiday|travel)", "(vacationx)")],
+  ['"Vacation:" isn’t stripped (server)', srv("(vacation|trip|holiday|travel)", "(vacationx)"), SRV],
+  ['the city isn’t read from the itinerary', srv("out.add.push(['c_' + stamp + '_' + i, n, plCityFrom_(items, n),", "out.add.push(['c_' + stamp + '_' + i, n, '',"), SRV],
+  ['your own row is duplicated, not linked', srv("    if (mine) {\n      linked[mine._row] = true;", "    if (false) {\n      linked[mine._row] = true;"), SRV],
+  ['the one-time fix runs every time', srv("    veraOnceSet_(PL_AUTO_FIXED_,", "    (function() {})(PL_AUTO_FIXED_,"), SRV],
+  ['the fix treats hand and bucket rows as auto', srv("function plIsAutoVisit_(id) { return ", "function plIsAutoVisit_(id) { return /^c_/.test(String(id)) || "), SRV],
   ['closed trips aren’t remembered', srv("done[f.trip.tripId || (f.trip.startDate + '|' + f.trip.label)] = true;", ""), SRV],
   ['an itinerary that can’t be read counts as closed', srv("catch (e) { Logger.log('plCloseEndedTrips_: ' + t.label + ' — ' + e.message); }", "catch (e) { found.push({ trip: t, countries: [] }); }"), SRV],
   ['the catch-up starts with the newest trip', srv("}).sort(function(a, b) { return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0; });\n}\n\n/** Who went", "}).sort(function(a, b) { return a.startDate < b.startDate ? 1 : -1; });\n}\n\n/** Who went"), SRV],

@@ -26,6 +26,7 @@ function makeSheet(rows) {
     setValue: v => { const t = s.rows[r - 1] = s.rows[r - 1] || []; t[c - 1] = v; },
   });
   s.appendRow = row => s.rows.push(row.slice());
+  s.deleteRow = r => s.rows.splice(r - 1, 1);
   return s;
 }
 function ctx(o) {
@@ -243,10 +244,51 @@ console.log('\nfinished trips become Visited (#251)');
   check('who went: both → Both, one of you → that name, unknown → Both', c.plTravellerFor_(['Alex', 'Sam'], 'Alex', 'Sam') === 'Both' && c.plTravellerFor_(['sam '], 'Alex', 'Sam') === 'Sam'
     && c.plTravellerFor_(['Alex', 'Kit Moreno'], 'Alex', 'Sam') === 'Alex' && c.plTravellerFor_([], 'Alex', 'Sam') === 'Both');
   const trip = { startDate: '2027-06-12', endDate: '2027-06-22', label: 'Lisbon & Porto' };
-  const add = c.plVisitRowsFor_(trip, [{ country: 'Portugal', role: 'stay' }, { country: 'Spain', role: 'layover' }, { country: 'portugal', role: 'stay' }, { country: 'Morocco', role: 'stay' }],
-    [{ Country: 'Morocco', 'Trip Key': '2027-06-12|Lisbon & Porto' }, { Country: 'Portugal', 'Trip Key': '2019-04-01|Old trip' }], 'Sam', 's');
-  check('rows: each stayed-in country once, layovers out, one already recorded for this trip skipped', J(add.map(r => r[1])) === J(['Portugal']), J(add));
-  check('row shape: country, no city, the year it ended, who went, linked by Trip Key', J(add[0].slice(1)) === J(['Portugal', '', 2027, 'Sam', '2027-06-12|Lisbon & Porto', '', '']));
+  const plan = c.plVisitRowsFor_(trip, [{ country: 'Portugal', role: 'stay' }, { country: 'Spain', role: 'layover' }, { country: 'portugal', role: 'stay' }, { country: 'Morocco', role: 'stay' }],
+    [{ Country: 'Morocco', 'Trip Key': '2027-06-12|Lisbon & Porto' }, { Country: 'Portugal', 'Trip Key': '2019-04-01|Old trip' }], 'Sam', 's',
+    [{ type: 'flight', location: 'Lisbon Airport, Portugal' }, { type: 'hotel', location: 'Rua Augusta 12, Lisbon, Portugal' }, { type: 'activity', location: 'Ribeira, Porto, 4050-513, Portugal' }]);
+  const add = plan.add;
+  check('rows: each stayed-in country once, layovers out, one already recorded for this trip skipped', J(add.map(r => r[1])) === J(['Portugal']) && plan.link.length === 0, J(plan));
+  check('row shape: country, the cities from the itinerary, the year it ended, who went, the Trip Key, the trip’s name as its tag', J(add[0].slice(1)) === J(['Portugal', 'Lisbon, Porto', 2027, 'Sam', '2027-06-12|Lisbon & Porto', '', 'Lisbon & Porto']), J(add[0]));
+}
+
+console.log('\nvisits from a trip read like hand-added ones');
+{
+  const c = ctx();
+  check('the tag: the trip’s name without a leading Vacation:/Trip:/Holiday:/Travel:', c.plTripTag_('Vacation: First Anniversary Trip') === 'First Anniversary Trip' && c.plTripTag_('trip - Alaska Cruise') === 'Alaska Cruise'
+    && c.plTripTag_('Lisbon & Porto') === 'Lisbon & Porto' && c.plTripTag_('Vacationing in Rome') === 'Vacationing in Rome');
+  check('the city: the part before the country; a street or postcode is skipped; flights left out; at most 3',
+    c.plCityFrom_([{ type: 'hotel', location: 'Calle Duarte 5, Puerto Plata, Dominican Republic' }, { type: 'flight', location: 'Santo Domingo, Dominican Republic' }, { type: 'hotel', location: 'Puerto Plata, Dominican Republic' }], 'Dominican Republic') === 'Puerto Plata'
+    && c.plCityFrom_([{ location: 'A, Spain' }, { location: 'B, Spain' }, { location: 'C, Spain' }, { location: 'D, Spain' }], 'spain') === 'A, B, C'
+    && c.plCityFrom_([{ location: 'Somewhere, Peru' }], 'Spain') === '');
+  const trip = { startDate: '2026-11-07', endDate: '2026-11-12', label: 'Vacation: First Anniversary Trip' };
+  const have = [{ _row: 2, ID: 'c1', Country: 'Dominican Republic', City: 'Puerto Plata', Year: 2026, 'Trip Key': '', Occasion: 'Anniversary Trip' },
+    { _row: 3, ID: 'c2', Country: 'Canada', City: 'Vancouver', Year: 2026, 'Trip Key': '', Occasion: '' },
+    { _row: 4, ID: 'c3', Country: 'Mexico', Year: 2025, 'Trip Key': '', Occasion: '' }];
+  const p = c.plVisitRowsFor_(trip, [{ country: 'Dominican Republic', role: 'stay' }, { country: 'Canada', role: 'stay' }, { country: 'Mexico', role: 'stay' }], have, 'Both', 's', []);
+  check('your own row for that country that year, with no trip, is linked instead of duplicated', J(p.link) === J([{ row: 2, tripKey: '2026-11-07|Vacation: First Anniversary Trip', occasion: '' }, { row: 3, tripKey: '2026-11-07|Vacation: First Anniversary Trip', occasion: 'First Anniversary Trip' }]), J(p.link));
+  check('…its own tag is kept; a blank one gets the trip’s name; a different year isn’t touched', p.add.length === 1 && p.add[0][1] === 'Mexico' && p.add[0][7] === 'First Anniversary Trip');
+}
+{
+  const K = '2026-11-07|Vacation: First Anniversary Trip';
+  const s = ctx({ today: '2026-11-18', props: { PL_OCCASION_MOVED: 'x' }, visits: [
+    ['c_1731000000000', 'Dominican Republic', 'Puerto Plata', 2026, 'Both', '', '', 'Anniversary Trip'],
+    ['c_1731111111111_0_0', 'Dominican Republic', '', 2026, 'Both', K, '', ''],
+    ['c_1731111111111_1_0', 'Peru', '', 2025, 'Both', '2025-03-01|Trip: Andes', '', ''],
+    ['c_1731000000001_b7', 'Japan', 'Kyoto', 2024, 'Both', '2024-04-02|Japan', '', ''],
+    ['c_1731111111111_2_0', 'Japan', '', 2024, 'Both', '2024-04-02|Japan', '', ''] ] });
+  s.webGetPlaces_();
+  const rows = () => s.__sheets.Countries.rows.slice(1);
+  check('the one-time fix removes the duplicate it added and links your row to the trip', rows().filter(r => r[1] === 'Dominican Republic').length === 1
+    && J(rows().find(r => r[1] === 'Dominican Republic')) === J(['c_1731000000000', 'Dominican Republic', 'Puerto Plata', 2026, 'Both', K, '', 'Anniversary Trip']), J(rows()));
+  check('…a lone auto row gets the trip’s name as its tag', rows().find(r => r[1] === 'Peru')[7] === 'Andes');
+  check('…a bucket-list row is never touched; its auto twin goes', rows().filter(r => r[1] === 'Japan').length === 1 && rows().find(r => r[1] === 'Japan')[0] === 'c_1731000000001_b7');
+  const before = J(rows());
+  // A row the fix would remove if it ran again: an auto twin of your (now linked) Dominican Republic row.
+  s.__sheets.Countries.rows.push(['c_1731222222222_0_0', 'Dominican Republic', '', 2026, 'Both', K, '', '']);
+  s.webGetPlaces_();
+  check('…and it runs only once', rows().length === JSON.parse(before).length + 1 && rows().some(r => r[0] === 'c_1731222222222_0_0'));
+  check('auto rows are told apart from hand and bucket rows by their ID', s.plIsAutoVisit_('c_1_2_3') && !s.plIsAutoVisit_('c_1') && !s.plIsAutoVisit_('c_1_b7') && !s.plIsAutoVisit_('c_1_2'));
 }
 {
   const reg = [

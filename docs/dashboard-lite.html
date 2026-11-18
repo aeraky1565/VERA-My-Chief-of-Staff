@@ -11509,6 +11509,7 @@ var PC_CONT={Europe:'AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT
 function pcContinent_(iso){for(var k in PC_CONT){if((' '+PC_CONT[k]+' ').indexOf(' '+iso+' ')!==-1)return k;}return 'Elsewhere';}
 function pcFlag_(iso){if(!iso||!/^[A-Z]{2}$/.test(iso)||iso==='XK')return '';return String.fromCodePoint(0x1F1E6+iso.charCodeAt(0)-65,0x1F1E6+iso.charCodeAt(1)-65);}
 function pcIso_(name){try{return countryToIso(name)||'';}catch(e){return '';}}
+function pcTripTag_(label){return String(label||'').replace(/^\s*(vacation|trip|holiday|travel)\s*[:\-–—]\s*/i,'').trim().slice(0,60);}
 function pcGroup_(text,picks){var t=String(text||'').toLowerCase();if(!t.trim())return '';for(var i=0;i<(picks||[]).length;i++){var p=String(picks[i]).toLowerCase(),st=p.replace(/s$/,'');if(t.indexOf(p)!==-1||(st.length>=4&&t.indexOf(st)!==-1))return picks[i];}return 'Other';}
 function pcWho_(v,who){if(who==='Both of us')return true;var t=String(v.Traveller||'Both');return t==='Both'||t===who;}
 // Pure: the model the three views draw from, after the who and occasion filters.
@@ -11530,6 +11531,9 @@ function pcModel_(d,who,occ){var picks=d.picks||[];
   // trips: one per trip key, or one per country and year when a visit has none
   var trips={};visits.forEach(function(v){var k=v['Trip Key']||('|'+v.Country+'|'+v.Year);var t=trips[k]||(trips[k]={key:k,label:v['Trip Key']?String(v['Trip Key']).split('|').slice(1).join('|'):v.Country,year:String(v.Year||String(v['Trip Key']||'').slice(0,4)),
     month:v['Trip Key']?String(v['Trip Key']).slice(5,7):'',countries:[],cities:[],occasion:''});if(t.countries.indexOf(v.Country)===-1)t.countries.push(v.Country);if(v.City&&t.cities.indexOf(v.City)===-1)t.cities.push(v.City);if(v.Occasion&&!t.occasion)t.occasion=v.Occasion;});
+  // A visited card reads like one added by hand: the countries as its title, the city line, and the
+  // trip's context as its tag (the Occasion, else the trip's name without a leading "Vacation:").
+  Object.keys(trips).forEach(function(k){var t=trips[k];if(t.key.charAt(0)!=='|'){if(!t.occasion)t.occasion=pcTripTag_(t.label);t.label=t.countries.join(' · ');}});
   var firstYear={};visits.forEach(function(v){var y=Number(v.Year)||9999;if(!firstYear[v.Country]||y<firstYear[v.Country])firstYear[v.Country]=y;});
   var years={};Object.keys(trips).forEach(function(k){var t=trips[k];t.isNew=t.countries.some(function(c){return String(firstYear[c])===t.year;});(years[t.year]=years[t.year]||[]).push(t);});
   var plannedTrips={};planned.forEach(function(p){var t=plannedTrips[p.tripKey]||(plannedTrips[p.tripKey]={key:p.tripKey,label:p.label,year:String(p.startDate).slice(0,4),month:String(p.startDate).slice(5,7),countries:[],cities:[],planned:true});

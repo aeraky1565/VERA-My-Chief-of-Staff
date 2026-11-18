@@ -30,7 +30,7 @@ const DATA = {
     { ID: 'c1', Country: 'Japan', City: 'Tokyo', Year: 2024, Traveller: 'Both', 'Trip Key': '2024-04-02|Japan cherry blossoms', Occasion: '10th anniversary' },
     { ID: 'c2', Country: 'Japan', City: 'Kyoto', Year: 2024, Traveller: 'Both', 'Trip Key': '2024-04-02|Japan cherry blossoms', Occasion: '10th anniversary' },
     { ID: 'c3', Country: 'Greece', City: 'Chania', Year: 2025, Traveller: 'Both', 'Trip Key': '2025-06-01|Crete', Occasion: 'Family visit' },
-    { ID: 'c4', Country: 'Greece', City: 'Athens', Year: 2019, Traveller: 'Victoria', 'Trip Key': '', Occasion: '' },
+    { ID: 'c4', Country: 'Greece', City: 'Athens', Year: 2019, Traveller: 'Victoria', 'Trip Key': '2019-05-10|Vacation: Greek Islands', Occasion: '' },
     { ID: 'c5', Country: 'Morocco', City: 'Marrakech', Year: 2025, Traveller: 'Ahmed', 'Trip Key': '2025-02-14|Marrakech', Occasion: 'Birthday' },
     { ID: 'c6', Country: 'United Kingdom', City: 'London', Year: 2023, Traveller: 'Both', 'Trip Key': '', Occasion: 'Work' },
   ],
@@ -88,6 +88,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
     check(L + ': a planned trip is marked, and Portugal is new', /Lisbon & Porto[\s\S]*Planned · new country/.test(await page.$eval('.pc-year[data-year="2027"]', n => n.innerText)));
     check(L + ': a planned trip to a visited country isn’t called new', /Tokyo again[\s\S]*Planned(?! · new)/.test(await page.$eval('.pc-year[data-year="2027"]', n => n.innerText)));
     check(L + ': trips show cities, flag and occasion', /🇯🇵\s*Tokyo · Kyoto/.test(await page.$eval('.pc-year[data-year="2024"]', n => n.innerText)) && /10th anniversary/.test(await page.$eval('.pc-year[data-year="2024"]', n => n.innerText)));
+    { const y24 = await page.$eval('.pc-year[data-year="2024"] .pc-trip', n => n.innerText), y19 = await page.$eval('.pc-year[data-year="2019"] .pc-trip', n => n.innerText);
+      check(L + ': a visited trip reads like one added by hand: the country as the title, its occasion as the tag', /^Japan\b/.test(y24) && /10th anniversary/.test(y24) && !/cherry blossoms/.test(y24), y24);
+      check(L + ': with no occasion, the tag is the trip’s name without "Vacation:"', /^Greece\b/.test(y19) && /Greek Islands/.test(y19) && !/Vacation:/.test(y19) && /Athens/.test(y19), y19); }
+    check(L + ': a planned trip still shows its name', /^Lisbon & Porto/.test(await page.$eval('.pc-year[data-year="2027"] .pc-trip.planned', n => n.innerText)));
     check(L + ': a year names its new countries', /new: Morocco/.test(await page.$eval('.pc-year[data-year="2025"]', n => n.innerText)) && !/new: [^\n]*Greece/.test(await page.$eval('.pc-year[data-year="2025"]', n => n.innerText)));
 
     await page.click('.pc-view[data-view="list"]'); await wait(120);

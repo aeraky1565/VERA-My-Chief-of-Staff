@@ -148,22 +148,108 @@ function plTravellerFor_(travellers, owner, partner) {
   return 'Both';
 }
 
+/** A trip's name as a visit's tag: "Vacation: First Anniversary Trip" → "First Anniversary Trip". */
+function plTripTag_(label) {
+  return plStr_(String(label || '').replace(/^\s*(vacation|trip|holiday|travel)\s*[:\-–—]\s*/i, ''), 60);
+}
+
 /**
- * The Countries rows a finished trip adds: one per country you stayed in, unless that country is
- * already recorded for this trip (by hand or by a bucket-list place). countries: [{country, role}].
+ * Pure: the cities a trip's itinerary names in a country, best effort. From addresses that end in
+ * that country (flights left out), the part just before the country; a part with a digit (a street,
+ * a postcode) is skipped back over. Distinct, at most 3, joined with ", ". '' when none.
  */
-function plVisitRowsFor_(trip, countries, have, traveller, stamp) {
+function plCityFrom_(items, country) {
+  var want = String(country || '').trim().toLowerCase(), out = [];
+  if (!want) return '';
+  (items || []).forEach(function(it) {
+    if (!it || it.type === 'flight') return;
+    var parts = String(it.location || '').split(',').map(function(x) { return x.trim(); }).filter(Boolean);
+    var at = -1;
+    for (var i = parts.length - 1; i >= 0; i--) if (parts[i].toLowerCase() === want) { at = i; break; }
+    for (var j = at - 1; j >= 0; j--) {
+      if (/\d/.test(parts[j])) continue;
+      if (out.indexOf(parts[j]) === -1) out.push(parts[j]);
+      break;
+    }
+  });
+  return out.slice(0, 3).join(', ');
+}
+
+/**
+ * What a finished trip does to Countries: for each country you stayed in, unless that country is
+ * already recorded for this trip (by hand or by a bucket-list place), either
+ *   link  your own row for that country in the same year that names no trip (its Trip Key, and its
+ *         Occasion when blank, are filled), or
+ *   add   a row: country, city from the itinerary, the year it ended, who went, the Trip Key, and the
+ *         trip's name as its tag (Occasion).
+ * countries: [{country, role}]; items: the itinerary; have: rows by header, with _row.
+ * → {add: [rows], link: [{row, tripKey, occasion}]}.
+ */
+function plVisitRowsFor_(trip, countries, have, traveller, stamp, items) {
   var key = trip.startDate + '|' + trip.label, year = Number(String(trip.endDate || trip.startDate).slice(0, 4));
-  var seen = {};
+  var tag = plTripTag_(trip.label);
+  var seen = {}, linked = {};
   (have || []).forEach(function(v) { if (String(v['Trip Key'] || '') === key) seen[String(v.Country).trim().toLowerCase()] = true; });
-  var out = [];
+  var out = { add: [], link: [] };
   (countries || []).forEach(function(c, i) {
     if (!c || c.role !== 'stay') return;
-    var n = String(c.country || '').trim();
-    if (!n || seen[n.toLowerCase()]) return;
-    seen[n.toLowerCase()] = true;
-    out.push(['c_' + stamp + '_' + i, n, '', year, traveller || 'Both', key, '', '']);
+    var n = String(c.country || '').trim(), lc = n.toLowerCase();
+    if (!n || seen[lc]) return;
+    seen[lc] = true;
+    var mine = (have || []).filter(function(v) {
+      return v._row && !linked[v._row] && String(v.Country).trim().toLowerCase() === lc && Number(v.Year) === year && !String(v['Trip Key'] || '').trim();
+    })[0];
+    if (mine) {
+      linked[mine._row] = true;
+      out.link.push({ row: mine._row, tripKey: key, occasion: String(mine.Occasion || '').trim() ? '' : tag });
+      return;
+    }
+    out.add.push(['c_' + stamp + '_' + i, n, plCityFrom_(items, n), year, traveller || 'Both', key, '', tag]);
   });
+  return out;
+}
+
+/** Rows with headers → objects by header, each with its sheet row number (_row). Rows without an ID are skipped. */
+function plObjectsWithRow_(rows) {
+  if (!rows || rows.length < 2) return [];
+  var h = rows[0].map(function(x) { return String(x).trim(); }), out = [];
+  rows.slice(1).forEach(function(r, i) {
+    if (!String(r[0] || '').trim()) return;
+    var o = { _row: i + 2 }; h.forEach(function(k, j) { if (k) o[k] = r[j] instanceof Date ? r[j].toISOString().slice(0, 10) : r[j]; });
+    out.push(o);
+  });
+  return out;
+}
+
+/** A row the trip-closing step added (c_<ms>_<n>_<i>), not one added by hand (c_<ms>) or from the Bucket List (c_<ms>_<bucket ID>). */
+function plIsAutoVisit_(id) { return /^c_\d+_\d+_\d+$/.test(String(id || '')); }
+
+/**
+ * Pure: the one-time repair of rows the first version of the trip-closing step added. An auto row
+ * whose country and year match one of your own rows that names no trip (or the same trip) is
+ * removed, and your row is linked to the trip (its Occasion filled with the trip's name when blank).
+ * Any other auto row with no tag gets the trip's name as its tag.
+ * → {del: [row numbers, bottom-up], set: [{row, col, value}]}.
+ */
+function plAutoVisitFixes_(have) {
+  var out = { del: [], set: [] };
+  var mine = (have || []).filter(function(v) { return !plIsAutoVisit_(v.ID); });
+  (have || []).forEach(function(a) {
+    if (!plIsAutoVisit_(a.ID)) return;
+    var key = String(a['Trip Key'] || ''), tag = plTripTag_(key.split('|').slice(1).join('|'));
+    var twin = mine.filter(function(v) {
+      var vk = String(v['Trip Key'] || '').trim();
+      return String(v.Country).trim().toLowerCase() === String(a.Country).trim().toLowerCase() && Number(v.Year) === Number(a.Year) && (!vk || vk === key);
+    })[0];
+    if (twin) {
+      out.del.push(a._row);
+      if (!String(twin['Trip Key'] || '').trim()) out.set.push({ row: twin._row, col: 'Trip Key', value: key });
+      if (!String(twin.Occasion || '').trim() && tag) out.set.push({ row: twin._row, col: 'Occasion', value: tag });
+    } else if (!String(a.Occasion || '').trim() && tag) {
+      out.set.push({ row: a._row, col: 'Occasion', value: tag });
+    }
+  });
+  out.del.sort(function(x, y) { return y - x; });
   return out;
 }
 
@@ -313,7 +399,7 @@ function plTripCountryReader_(cache) {
   var home = String(getConfigValues()['home_country'] || 'United States');
   return function(t) {
     var items = tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate || t.startDate, 'places');
-    return tripCountries_(items, countryNames, airportCountry, home, null);
+    return { countries: tripCountries_(items, countryNames, airportCountry, home, null), items: items || [] };
   };
 }
 
@@ -330,7 +416,7 @@ function plPlanned_() {
     trips.forEach(function(t) {
       var key = t.startDate + '|' + t.label;
       try {
-        read(t).forEach(function(c) {
+        read(t).countries.forEach(function(c) {
           if (c.role !== 'stay') return;
           out.push({ country: c.country, tripKey: key, label: t.label, startDate: t.startDate, endDate: t.endDate || t.startDate });
         });
@@ -350,7 +436,25 @@ function plPlanned_() {
  * left for the next run. Returns how many rows were added.
  */
 var PL_TRIPS_CLOSED_ = 'pl_trips_closed';
+var PL_AUTO_FIXED_ = 'PL_AUTO_VISITS_FIXED';
+
+/** Runs plAutoVisitFixes_ against the Countries tab, once ever. → how many rows it removed. */
+function plFixAutoVisitsOnce_() {
+  if (veraOnceGet_(PL_AUTO_FIXED_)) return 0;
+  return plLocked_(function() {
+    if (veraOnceGet_(PL_AUTO_FIXED_)) return 0;
+    var cs = plCountriesSheet_();
+    var have = cs.getLastRow() >= 2 ? plObjectsWithRow_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
+    var fx = plAutoVisitFixes_(have);
+    fx.set.forEach(function(s) { cs.getRange(s.row, COUNTRIES_HEADERS.indexOf(s.col) + 1).setValue(s.value); });
+    fx.del.forEach(function(r) { cs.deleteRow(r); });
+    veraOnceSet_(PL_AUTO_FIXED_, new Date().toISOString() + ' removed ' + fx.del.length + ', set ' + fx.set.length);
+    return fx.del.length;
+  });
+}
+
 function plCloseEndedTrips_(max) {
+  try { plFixAutoVisitsOnce_(); } catch (e) { Logger.log('plCloseEndedTrips_: fix — ' + e.message); }
   var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var done = {};
   try { done = JSON.parse(veraNoteGet_(PL_TRIPS_CLOSED_) || '{}') || {}; } catch (e) { done = {}; }
@@ -359,21 +463,27 @@ function plCloseEndedTrips_(max) {
   var read = plTripCountryReader_(CacheService.getScriptCache());
   var found = [];
   trips.forEach(function(t) {
-    try { found.push({ trip: t, countries: read(t) }); }
+    try { var r = read(t); found.push({ trip: t, countries: r.countries, items: r.items }); }
     catch (e) { Logger.log('plCloseEndedTrips_: ' + t.label + ' — ' + e.message); }
   });
   if (!found.length) return 0;
   var owner = typeof TE_OWNER_ !== 'undefined' ? TE_OWNER_ : '', partner = typeof TE_PARTNER_ !== 'undefined' ? TE_PARTNER_ : '';
   return plLocked_(function() {
     var cs = plCountriesSheet_();
-    var have = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
-    var added = 0;
+    var have = cs.getLastRow() >= 2 ? plObjectsWithRow_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
+    var added = 0, keyCol = COUNTRIES_HEADERS.indexOf('Trip Key') + 1, occCol = COUNTRIES_HEADERS.indexOf('Occasion') + 1;
     found.forEach(function(f, n) {
       var who = [];
       try { who = typeof teTravellersForKey_ === 'function' ? teTravellersForKey_(f.trip.startDate + '|' + f.trip.label) : []; } catch (e) { who = []; }
-      plVisitRowsFor_(f.trip, f.countries, have, plTravellerFor_(who, owner, partner), Date.now() + '_' + n).forEach(function(row) {
+      var plan = plVisitRowsFor_(f.trip, f.countries, have, plTravellerFor_(who, owner, partner), Date.now() + '_' + n, f.items);
+      plan.link.forEach(function(l) {
+        cs.getRange(l.row, keyCol).setValue(l.tripKey);
+        if (l.occasion) cs.getRange(l.row, occCol).setValue(l.occasion);
+        have.forEach(function(v) { if (v._row === l.row) { v['Trip Key'] = l.tripKey; if (l.occasion) v.Occasion = l.occasion; } });
+      });
+      plan.add.forEach(function(row) {
         cs.appendRow(row); added++;
-        have.push({ Country: row[1], 'Trip Key': row[5] });
+        have.push({ ID: row[0], Country: row[1], Year: row[3], 'Trip Key': row[5], Occasion: row[7] });
       });
       done[f.trip.tripId || (f.trip.startDate + '|' + f.trip.label)] = true;
     });
@@ -388,6 +498,7 @@ function plCloseEndedTrips_(max) {
 function webGetPlaces_() {
   plMoveOccasionsOnce_();
   try { plCloseVisited_(); } catch (e) { Logger.log('webGetPlaces_: close visited — ' + e.message); }
+  try { plFixAutoVisitsOnce_(); } catch (e) { Logger.log('webGetPlaces_: fix auto visits — ' + e.message); }
   try { plCloseEndedTrips_(3); } catch (e) { Logger.log('webGetPlaces_: close ended trips — ' + e.message); }
   var ss = getSpreadsheet();
   var cs = plCountriesSheet_();
