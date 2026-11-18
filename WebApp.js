@@ -258,6 +258,7 @@ function doGet(e) {
       case 'morning_routine_delete':   return jsonOut_(webDeleteMorningRoutineItem_(e));
       case 'morning_routine_move':     return jsonOut_(webMoveMorningRoutineItem_(e));
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
+      case 'run_log':                  return jsonOut_(webRunLog_());   // RunLog.js: the last 20 scheduled runs, owner only
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
       case 'workout_add':              return jsonOut_(webWorkoutAdd_(e));

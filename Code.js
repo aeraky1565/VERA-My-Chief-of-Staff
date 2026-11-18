@@ -1118,6 +1118,8 @@ function nightlyStep_(ctx, name, fn, gate) {
     PropertiesService.getScriptProperties()
       .setProperty(ctx.stepProp || NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));
   } catch (bcErr) { /* a breadcrumb must never be able to break the run */ }
+  // The Run Log row (RunLog.js): the step, now and then, so a sheet shows how far it got.
+  try { runLogStep_(ctx, name); } catch (rlErr) {}
 
   var t0 = Date.now();
   try {
@@ -1147,6 +1149,7 @@ function slowestNightlySteps_(timings, topN) {
  * Collects data → packages prompt → calls Claude → writes flags.
  */
 function nightlyRun() {
+  try { runLogStart_('nightlyRun', arguments[0]); } catch (rlErr) {}   // RunLog.js: a row written now, so a killed run still has one
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
     // Written before any work, so that a run KILLED mid-flight leaves a trace.
@@ -1602,6 +1605,7 @@ function nightlyRun() {
  * night healthy — which is the exact failure being fixed, rebuilt somewhere new.
  */
 function nightlyRunTail() {
+  try { runLogStart_('nightlyRunTail', arguments[0]); } catch (rlErr) {}   // RunLog.js
   try {
     Logger.log('=== VERA nightly tail started: ' + new Date() + ' ===');
     try {
@@ -4291,6 +4295,7 @@ function getCapacityMode_() {
  * them there is no email to degrade.
  */
 function morningNudge() {
+  try { runLogStart_('morningNudge', arguments[0]); } catch (rlErr) {}   // RunLog.js
   // Travel day briefing is independent — fires even if morning_briefing is disabled
   try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) {
     Logger.log('TravelDayBriefing error (non-fatal): ' + tdbErr.message);

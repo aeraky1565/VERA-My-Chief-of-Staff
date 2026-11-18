@@ -20,6 +20,7 @@ const MATCH_HOLD           = 50;    // score → hold for user confirmation
  * Scans Gmail for travel confirmation emails and processes them.
  */
 function runEmailScan_() {
+  try { runLogStart_('runEmailScan_', arguments[0]); } catch (rlErr) {}   // RunLog.js
   var _epStart = Date.now();
   try {
   const enabled = getConfigValues()['email_parser_enabled'];

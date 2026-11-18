@@ -42,6 +42,7 @@ function veraLog_(routine, category, status, summary, durationMs, error) {
   // URL, access_key and all, into the Error column — and from there into Slack too.
   summary = redactSecrets_(summary);
   error   = redactSecrets_(error);
+  try { runLogNote_(routine, status, summary, error); } catch (rlErr) {}   // RunLog.js: this run's verdict
   try {
     var emoji = { Success: '✅', Partial: '⚠️', Failed: '❌', Skipped: '⏭️' }[status] || '🔹';
     var parts = [emoji + ' *' + routine + '* [' + category + '] — ' + status];
@@ -139,6 +140,7 @@ function flushSystemLog_() {
  * @returns {number} rows deleted
  */
 function pruneSystemLog_() {
+  try { runLogPrune_(); } catch (rlErr) { Logger.log('runLogPrune_ (non-fatal): ' + rlErr.message); }   // RunLog.js: 30 days
   var cfg      = getConfigValues();
   var retainDays = parseInt(cfg['system_log_retention_days'] || '45', 10) || 45;
 

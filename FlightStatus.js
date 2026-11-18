@@ -351,6 +351,7 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
  * @param {string}  [targetTripKey]  If set, only flights on this trip
  */
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
+  try { runLogStart_('checkFlightStatuses_', forceRefresh); } catch (rlErr) {}   // RunLog.js: the trigger's run, not the dashboard's
   var _fsStart = Date.now();
   var checked = 0, skipped = 0, errors = 0;
   // Leaving home (#231): the heading-out message rides this 15-minute trigger. Cheap when nothing is due.

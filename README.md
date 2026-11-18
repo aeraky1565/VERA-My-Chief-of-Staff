@@ -97,7 +97,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Health · People** | Body (fitness, morning routine), Care (prescriptions, appointments), Family (Family Planning + Cycle) · People, Dates, Gifts, Wish Lists |
 | **Career** | Direction (North Star, Readiness) · Proof (Evidence, Credentials) · Search (Brand, Market) · Agents (Pipeline, Exchange) · Network |
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
-| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Trip IDs, Script Properties) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
+| **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Run log, Trip IDs, Script Properties) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
 **Full dashboard Home.**
 - **Left column:**
@@ -2737,6 +2737,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `whoami` | — | Who the code belongs to: name, owner, view (full or lite), first tab, hidden tabs (#218) |
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
+| `run_log` | — | Owner only: VERA's scheduled runs from the Run Log, one entry per job with its last 7 runs (System › Checks › Run log) |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
 | `home_nightly` | — | Full Home's System health: when the nightly run last finished, and the step it stopped in if it didn't (read only) |
 | `trip_orphans` | — | Trip IDs: the keys that name no trip, rows per tab, VERA's guess, the trips to pick from, and whether you can fix them (read only) |
@@ -2807,6 +2808,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Move running notes (to the VERA State tab); Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
+| `RunLog.js` | VERA's own Run Log: a row per scheduled run, written as it starts and as the nightly steps go by, completed from the heartbeat; a run Apps Script cut off is marked Cut off with the step it died in. In the sheet set by Config `run_log_sheet_id`, a tab per job (else one Run Log tab in VERA's sheet); 30 days kept |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
 | `WeekendPlanner.js` | Weekend Decision Memo — Wednesday 8am delivery; `testWeekendMemo()` dry-runs it on demand |

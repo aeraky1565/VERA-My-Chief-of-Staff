@@ -106,6 +106,7 @@ function parseMailArrivingToday_(body) {
 // why: a reason the catch-up passes. A time-driven trigger passes its event object here,
 // which is not a reason, so only a string is logged.
 function scanUSPSMail_(why) {
+  try { runLogStart_('scanUSPSMail_', why); } catch (rlErr) {}   // RunLog.js: the trigger's run, not the catch-up's
   var _umStart = Date.now();
   // One run at a time: the trigger and the hourly catch-up can land together, and two
   // runs reading the same MAIL_COUNTER_LAST_SCAN would count the same digests twice.

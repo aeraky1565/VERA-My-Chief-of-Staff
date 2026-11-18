@@ -147,6 +147,9 @@ function recordHeartbeat_(job) {
   } catch (e) {
     Logger.log('recordHeartbeat_ failed silently for "' + job + '": ' + e.message);
   }
+  // Every scheduled handler records its heartbeat in its finally, so this is where its
+  // Run Log row is completed (RunLog.js).
+  try { runLogFinish_(job); } catch (rlErr) {}
 }
 
 /**
@@ -498,6 +501,10 @@ function runWatchdog_(exclude) {
 
   try { announceWatchdogToSlack_(notices); }
   catch (e) { Logger.log('runWatchdog_: slack error — ' + e.message); }
+
+  // A Run Log row left Running by a killed run becomes Cut off, with its step (RunLog.js).
+  try { runLogSweep_(null, null, Date.now()); }
+  catch (e) { Logger.log('runWatchdog_: run log sweep error — ' + e.message); }
 
   return notices;
 }

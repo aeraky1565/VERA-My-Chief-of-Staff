@@ -1245,6 +1245,33 @@ System › Checks › **Agent health**, next to API health: whether each Claude 
 | `home_airports` | Origins for ARIA watch requests |
 | `agent_schedule_aria`, `agent_schedule_tess`, `agent_schedule_hailey`, `agent_schedule_hailey_digest` | When each agent is scheduled, for Agent health (21.5) |
 
+### 21.6 Run log (`RunLog.js`)
+
+System › Checks › **Run log** answers "did VERA's own scheduled jobs run, and where did one stop?". It covers the eight scheduled jobs: the nightly run and its second half, the morning email, the hourly check, the flight status check, the email scan, the USPS mail scan and the HOA website scan. Dashboard calls aren't logged.
+
+**Why it exists.** Apps Script stops a run at six minutes, and a stopped run never reaches the end of its code. The System Log is written at the end of a run, so a run that was cut off left nothing in it. In November 2026 the nightly run stopped three nights in a row and no sheet said where.
+
+**How it writes.**
+- A row is added the moment a job starts (Status **Running**).
+- During the nightly run, the row shows the step reached and the seconds elapsed, refreshed every 5 steps.
+- When the job ends, the row is completed with its result:
+  - **Done**;
+  - **Partial**: a step failed, or was skipped for time or for missing input;
+  - **Failed**;
+  - **Skipped**: the job was switched off.
+- It also records the finish time, duration, steps run, what was skipped, any errors (with secrets taken out), the 5 slowest steps and the job's own summary.
+- A row still Running more than 7 minutes after it started was cut off. The next run of that job, or the hourly watchdog, marks it **Cut off** and names the step it stopped in. That step comes from the job's breadcrumb, for example "Never finished: cut off during mpSyncNudges_ at 183s".
+
+**Where.** Put a link to, or the id of, a separate Google Sheet in the Config row **`run_log_sheet_id`**. VERA then gives each job its own tab there, named Nightly run, Morning email, Flight status and so on. That keeps the nightly rows from being buried under about a hundred flight checks a day. Without that row, everything goes in one **Run Log** tab in VERA's own sheet. Rows are kept for 30 days, pruned nightly.
+
+**The screen.**
+- One line per job: its latest result as a coloured chip, when it ran, how long it took or where it stopped, and any errors.
+- A strip of its last 7 runs.
+- Tap a line for the summary, the slowest steps and the older runs.
+- The pill at the top counts jobs whose latest run didn't finish.
+
+**Gym check-ins the same evening.** From 6 PM to 11 PM the hourly check also looks for workouts that have just ended (`gymEveningCheck_`, GymTracker.js). So a 7:30 PM session gets its "Did you go?" that evening, even on a night the nightly run doesn't finish.
+
 ---
 
 ## 22. Appendix: Developer Reference

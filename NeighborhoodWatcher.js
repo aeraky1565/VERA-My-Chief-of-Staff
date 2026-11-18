@@ -25,6 +25,7 @@ var NEIGHBORHOOD_HOA_URL_KEY = 'NEIGHBORHOOD_HOA_URL';
  * Called by a weekly Monday 9am trigger installed by setupTriggers().
  */
 function scanHoaWebsite_() {
+  try { runLogStart_('scanHoaWebsite_', arguments[0]); } catch (rlErr) {}   // RunLog.js
   var _hoaStart = Date.now();
   try {
     var hoaUrl = veraSetting_(NEIGHBORHOOD_HOA_URL_KEY);

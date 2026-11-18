@@ -39,6 +39,7 @@
  * Apps Script everyHours() doesn't support conditional hour ranges.
  */
 function hourlyCheck() {
+  try { runLogStart_('hourlyCheck', arguments[0]); } catch (rlErr) {}   // RunLog.js
   // ARIA's flags (Aria.js) ride on this trigger, ahead of the reminders switch: turning
   // reminders off must not silence a Book now. It never throws.
   maybeSyncAriaFlags_(new Date());
@@ -46,6 +47,9 @@ function hourlyCheck() {
   try { tiLinkSettled_(); } catch (tiErr) { Logger.log('tiLinkSettled_ (non-fatal): ' + tiErr.message); }
   // The USPS scan's own trigger missed a day (MailCounter.js): run it from here instead.
   uspsCatchUp_(new Date());
+  // A workout that ended at 7:30 pm gets its "Did you go?" the same evening, not after the
+  // nightly run (GymTracker.js; it skips sessions already in the Gym Log).
+  try { gymEveningCheck_(new Date()); } catch (gymErr) { Logger.log('gymEveningCheck_ (non-fatal): ' + gymErr.message); }
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {
