@@ -920,7 +920,8 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 | `SLACK_ALLOWED_USER_IDS` | `Slack.js` | Comma-separated allowlist of Slack user IDs (who may talk to VERA) |
 | `AVIATIONSTACK_KEY` | `FlightStatus.js` | AviationStack API access key |
 | `WEATHER_API_KEY` | `Weather.js` | OpenWeather API key |
-| `GOOGLE_STATIC_MAPS_API_KEY` | `TravelDayBriefing.js`, `TravelLegs.js` | Google Maps key |
+| `GOOGLE_STATIC_MAPS_API_KEY` | `TravelDayBriefing.js`, `TravelLegs.js` | Google Maps key for the travel email's map and travel times (server only) |
+| `GOOGLE_MAPS_BROWSER_KEY` | `WebApp.js`, `docs/app.js` | A separate key for the dashboard's trip map, restricted to the dashboard's address and the Maps JavaScript API. Every device you sign in on picks it up; a key typed into Settings overrides it on that device |
 | `VERA_SEARCH_API_KEY` | `Chat.js` | Serper.dev or Tavily API key for web search |
 
 The ids, links, channel and user ids, the email address and the search engine are

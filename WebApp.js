@@ -145,6 +145,7 @@ function doGet(e) {
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'debug_slack':           return jsonOut_(webDebugSlack_());
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
+      case 'maps_browser_key':      return jsonOut_(webMapsBrowserKey_());
       case 'system_documents':      return jsonOut_(webSystemDocuments_());  // System.js
       case 'system_api_health':     return jsonOut_(webSystemApiHealth_());  // System.js
       case 'whoami':                return jsonOut_(webWhoami_());          // People.js (#218)
@@ -2212,6 +2213,20 @@ function webDebugApiHealth_() {
     sources: sources,
     staticMapsKeyConfigured: !!(PropertiesService.getScriptProperties().getProperty('GOOGLE_STATIC_MAPS_API_KEY')),
   };
+}
+
+/**
+ * GET maps_browser_key → {ok, key}: the dashboard's trip map key, so each device doesn't need it
+ * typed into Settings. Owner only. This is a SEPARATE key from GOOGLE_STATIC_MAPS_API_KEY: it ends
+ * up in the browser, so it must be restricted in Cloud Console to the dashboard's address (HTTP
+ * referrer) and to the Maps JavaScript API. The server key is never returned here. key is '' when
+ * the GOOGLE_MAPS_BROWSER_KEY Script Property isn't set.
+ */
+function webMapsBrowserKey_() {
+  var refused = peopleOwnerOnly_();
+  if (refused) return refused;
+  var key = String(PropertiesService.getScriptProperties().getProperty('GOOGLE_MAPS_BROWSER_KEY') || '').trim();
+  return { ok: true, key: key };
 }
 
 function webDebugTracker_() {

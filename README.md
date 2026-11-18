@@ -2385,6 +2385,7 @@ properties and turns read-only past that.
 | `AVIATIONSTACK_KEY` | No | FlightStatus.js | AviationStack API key for flight status polling |
 | `WEATHER_API_KEY` | No | Weather.js | OpenWeather API key for weather ticker and destination forecasts |
 | `GOOGLE_STATIC_MAPS_API_KEY` | No | TravelDayBriefing.js, TravelLegs.js | Google Maps key for the travel email's route image **and** the Distance Matrix travel times. **Restrict by API, never by referrer or IP** — see below |
+| `GOOGLE_MAPS_BROWSER_KEY` | No | WebApp.js (`maps_browser_key`), docs/app.js | A **separate** key for the dashboard's interactive trip map. It ends up in the browser, so restrict it by HTTP referrer to the dashboard's address and to the Maps JavaScript API only. Only the owner is given it; the server key above is never sent to a browser |
 | `VERA_SEARCH_API_KEY` | No | Chat.js | Serper.dev or Tavily API key for web search in chat |
 
 VERA also keeps its own records here: run stamps, one record per feature
@@ -2471,7 +2472,7 @@ Config tab can't be read at all.
 > | | Dashboard trip map | Travel-day email |
 > |---|---|---|
 > | API | Maps **JavaScript** | Maps **Static** |
-> | Key | browser `localStorage['vera_maps_key']`, typed into the settings modal | `GOOGLE_STATIC_MAPS_API_KEY` script property |
+> | Key | `GOOGLE_MAPS_BROWSER_KEY` script property, handed to the signed-in owner by `maps_browser_key`, so every device has it; a key typed into the settings modal (`localStorage['vera_maps_key']`) overrides it on that device | `GOOGLE_STATIC_MAPS_API_KEY` script property |
 >
 > They cannot share a key. The dashboard's settings hint tells you to restrict its key by
 > HTTP referrer — correct for a browser, and **fatal in email**, because Gmail fetches the
