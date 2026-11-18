@@ -547,6 +547,7 @@ function doGet(e) {
       case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
       case 'set_notif_channel':    return jsonOut_(webSetNotifChannel_(e));
       case 'set_notif_while_away': return jsonOut_(webSetNotifWhileAway_(e));   // Away mode (#246)
+      case 'set_notif_delivery':   return jsonOut_(webSetNotifDelivery_(e));    // Where: slack | email | off (#250)
       case 'away_status':          return jsonOut_(webAwayStatus_());            // Away mode (#246)
       // Config Editor (Issue #189)
       case 'get_config_rows':  return jsonOut_(webGetConfigRows_());
@@ -12289,7 +12290,8 @@ function webGetNotificationMap_() {
       key: n.key, label: n.label, emoji: n.emoji, category: n.category,
       channel: channelOverride || n.channel, description: n.description,
       enabled: enabled, locked: n.locked, fixedChannel: !!n.fixedChannel,
-      whileAway: notifWhileAway_(n.key)   // Away mode (#246): send | hold | due
+      whileAway: notifWhileAway_(n.key),   // Away mode (#246): send | hold | due
+      delivery: notifDeliveryFrom_(n.key, config), kind: notifKind_(n.key)   // Where, and what it is (Notify.js, #250)
     };
   });
   return { ok: true, notifications: notifications };
@@ -12325,6 +12327,22 @@ function webAwaySet_(body) {
   return Object.assign({ ok: true }, awaySummary_());
 }
 
+/** GET set_notif_delivery?key=…&value=slack|email|off — where a kind goes (#250). Check-ins are Slack or off; reads email or off. */
+function webSetNotifDelivery_(e) {
+  var p = (e && e.parameter) || {};
+  var key = String(p.key || '').trim(), value = String(p.value || '').trim().toLowerCase();
+  var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
+  if (!entry) return { ok: false, error: 'unknown key' };
+  if (entry.locked || entry.fixedChannel) return { ok: false, error: 'locked' };
+  var kind = notifKind_(key);
+  var allowed = kind === 'checkin' ? ['slack', 'off'] : kind === 'read' ? ['email', 'off'] : ['slack', 'email', 'off'];
+  if (allowed.indexOf(value) === -1) return { ok: false, error: 'value must be ' + allowed.join(', ') };
+  setConfigRow_('notif_' + key + '_delivery', value);
+  // The old on/off switch can't keep a kind off once you've chosen where it goes.
+  setConfigRow_('notif_' + key + '_enabled', value === 'off' ? 'FALSE' : 'TRUE');
+  return { ok: true, key: key, delivery: value };
+}
+
 function webSetNotifEnabled_(e) {
   var p = e.parameter || {};
   var key = (p.key || '').trim();
@@ -12345,9 +12363,10 @@ function webSetNotifChannel_(e) {
   var p = e.parameter || {};
   var key = (p.key || '').trim();
   var channel = (p.channel || '').trim();
-  var valid = ['vera-chat', 'vera-notifications', 'vera-act-now', 'vera-logs', 'email'];
+  // The four VERA channels, email (the old way), or any other Slack channel by name (#250).
+  channel = channel.replace(/^#/, '').toLowerCase();
   if (!key) return { ok: false, error: 'key required' };
-  if (valid.indexOf(channel) === -1) return { ok: false, error: 'invalid channel' };
+  if (channel !== 'email' && !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(channel)) return { ok: false, error: 'invalid channel' };
   var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
   if (!entry) return { ok: false, error: 'unknown key' };
   if (entry.locked) return { ok: false, error: 'locked' };

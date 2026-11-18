@@ -1135,7 +1135,52 @@ Change only column B. The full list of keys is in the appendix (§22).
 - **People & access (`People.js`, #218):** each person signs in with their own code, typed once per device in ⚙ settings where the token used to go. VERA stores only a fingerprint (SHA-256) of each code in `VERA_USER_TOKENS` and shows a new code once; the owner's `VERA_WEB_TOKEN` keeps working. System › Settings › **People & access** (owner only) adds a person, makes a new code (old ones keep working), sets which dashboard they open (full or lite), and signs a person out everywhere (deletes their fingerprints). **Rename** (`people_rename`) changes a person's name in the list and relabels their Access tab column in one step, so what they see and Opens on stay theirs and their codes keep working; it refuses a taken name, or when the Access tab already has a column with the new name. Use it to change "Owner" to your name: the owner's name is saved once, from Config `owner_name` (or "Owner"), the first time People & access is used, so changing Config later or the Access header by hand doesn't rename you. The owner's name comes from Config `owner_name`.
 - **The Access tab:** VERA fills it when the owner opens the full dashboard (once a day) or System › People & access, which also saves the dashboard's tab list in the VERA State tab so the nightly run (`accessNightlySync_`) adds a new person or tab without anyone opening the dashboard; an empty tab shows a **Fill it now** prompt in People & access, and a write that fails is logged as a System Log warning. One row per main tab and per menu subtab of both dashboards (Id `full:travel`, `full:travel/aria`, `lite:shopping`, …), a checkbox column per person (a new person and a new tab start ticked), and an **Opens on** row naming each person's first tab. `whoami` returns the person, their view, first tab and hidden tabs; the shared menu (`veraCan_` in the VeraTileNav block) and both tab bars leave out what's unticked, and a person whose view is lite is sent from the full dashboard to the lite one. This changes what a person sees; the server doesn't refuse a hidden tab's data yet (#218 piece 4). Coming up, chat, Slack and emails aren't filtered. The owner always keeps System and People & access.
 - **Slack's posts:** Apps Script can't read Slack's signature header, so once `SLACK_VERIFICATION_TOKEN` is set, Slack's form posts and events must carry Slack's verification token. Dashboard posts need a sign-in, as before.
-- **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel`, `notif_<key>_enabled` and `notif_<key>_while_away` override it, and System › Notifications edits them.
+- **Notifications:** every message is listed in `NOTIF_REGISTRY` (`Code.js`) with a default channel; Config `notif_<key>_channel`, `notif_<key>_enabled` and `notif_<key>_while_away` override it (and `notif_<key>_delivery`, #250), and System › Notifications edits them.
+
+### Notifications: one home per kind (`Notify.js`, #250)
+
+Every kind in `NOTIF_REGISTRY` (Code.js) has one home, chosen in **System › Settings › Notifications**. The kinds are grouped by category, with **Act now** between Travel and Routines. Each row has:
+
+- **Where:** Slack, Morning email, or Off (`notif_<key>_delivery`). A check-in, which expects a reply, is Slack or Off. A long read (weekly trends, monthly review, the weekend memo) is Email or Off.
+- **Slack channel**, when it goes to Slack (`notif_<key>_channel`): #vera-notifications, #vera-chat, #vera-act-now, #vera-logs, or any other channel by name.
+- **While away:** Send, Hold, or Send if due.
+
+The old `notif_<key>_enabled = FALSE` still means Off.
+
+**One home.**
+- **Morning email by default:** Medium and Low flags, vehicles, contracts, coupons, home service, travel documents, certifications, the PTO plan, the quarterly check-in, goals and growth, Daily Discovery, and USPS.
+- **Pushed:** a bill due, a High flag, packing, the pre-trip and travel-day briefings, leaving home, cycle reminders, and movement.
+- **#vera-chat:** the morning check-in and the evening check-in.
+- **Email:** the weekend memo. It goes Wednesday at `weekend_planner_hour` with no Slack ping.
+
+**Fewer pings (`notifGate_`).** Before a push goes out:
+- a Morning email kind waits for tomorrow's email;
+- so does a push during **quiet hours** (`notif_quiet_start`–`notif_quiet_end`, 21:00–07:00) or past the **daily cap** (`notif_daily_cap`, 6). Travel, leaving home and Act now are exempt, and check-ins don't count against the cap;
+- Away mode holds what it holds.
+
+The morning email shows what waited under **📨 Held for this email**, and clears it once the email is sent. The per-nudge "Reminder sent" lines are gone from #vera-logs; only failures are logged. The nightly tail posts one line instead, e.g. "Yesterday: 5 pushes · 2 check-ins · 3 held for the morning email".
+
+**Movement** replaces the desk break, water break and free-calendar-block nudges. VERA can't see work meetings, so it runs on a schedule:
+- at `movement_times` (10:30, 13:30, 15:30), inside `work_hours` (9:00–17:00);
+- at most `movement_daily_cap` (3) a day;
+- workdays only, never on a holiday, a PTO day (read once a day) or while away.
+
+**Check-in times, to the minute:**
+- `morning_checkin_time` (06:30), and `morning_checkin_weekend_time` (08:30) on weekends;
+- `evening_checkin_time` (20:00).
+
+They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCheck as a backstop. The old `wellness_checkin_hour` and `mobility_reminder_hour` are still read when the new rows are blank.
+
+**Sleep.** Google Fit is removed: the call, and the `fitness.*` scopes. The morning check-in asks for hours slept with one tap (≤5 h · 6 · 7 · 8 · 9 h+), logged as `sleep_hours`, manual. A watch can fill it in later.
+
+**#vera-act-now** is for a decision with a clock on it.
+- **ARIA's Book now.**
+- **VERA's own decision deadlines:** a return window, a card perk or a contract notice date ending within 2 days, from the Flags tab's Due column. Each is posted once, with ✓ Done and Later buttons.
+
+Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by default). Past the cap, an item waits for the morning email.
+
+**Not built yet:** the VERA app push (Firebase), and the HAILEY and TESS act-now posts, which need their sheets' listing and match columns.
+
 
 
 ---

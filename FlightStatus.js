@@ -352,6 +352,8 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
  */
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
   try { runLogStart_('checkFlightStatuses_', forceRefresh); } catch (rlErr) {}   // RunLog.js: the trigger's run, not the dashboard's
+  // The check-ins ride on this 15-minute trigger (Notify.js, #250): only when the trigger ran it.
+  if (forceRefresh === undefined || (forceRefresh && typeof forceRefresh === 'object')) { try { checkinTick_(); } catch (ciErr) {} }
   var _fsStart = Date.now();
   var checked = 0, skipped = 0, errors = 0;
   // Leaving home (#231): the heading-out message rides this 15-minute trigger. Cheap when nothing is due.

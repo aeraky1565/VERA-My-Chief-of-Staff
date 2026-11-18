@@ -30,7 +30,7 @@ function extractFn(src, name) {
 }
 
 // Every side effect the planner can have, plus the work it must still do.
-const SIDE_EFFECTS = ['createWeekendMemoEvent_', 'sendVeraEmail_', 'sendSlack_',
+const SIDE_EFFECTS = ['createWeekendMemoEvent_', 'sendVeraEmail_',
                       'markSent_', 'writePlannerHistory_'];
 const REAL_WORK    = ['callClaudeWeekendPlanner_', 'getWeekendWeather_', 'searchLocalEvents_'];
 

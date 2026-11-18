@@ -5,7 +5,6 @@
 //
 // Functions:
 //   logWellness_(who, metric, value, source)
-//   fetchGoogleFitSleep_()
 //   getWellnessByWeek_(weeksBack)
 //   sendHealthPerformanceInsightMonthly_()
 //   getHealthPerformanceSummaryLine_()
@@ -48,95 +47,8 @@ function logWellness_(who, metric, value, source) {
   Logger.log('logWellness_: appended ' + id + ' = ' + value + ' (' + source + ')');
 }
 
-/**
- * Fetches last night's sleep data from Google Fit and logs it to WELLNESS_LOG.
- * Returns the sleep hours as a float, or null if no data.
- */
-function fetchGoogleFitSleep_() {
-  var cfg = getConfigValues();
-  if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return null;
-
-  var tz = Session.getScriptTimeZone();
-  var now = new Date();
-
-  // Yesterday midnight → today midnight (in ms)
-  var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  var yesterdayMidnight = new Date(todayMidnight.getTime() - 86400000);
-
-  var startMs = yesterdayMidnight.getTime();
-  var endMs   = todayMidnight.getTime();
-
-  var token = ScriptApp.getOAuthToken();
-  var payload = {
-    aggregateBy: [{ dataTypeName: 'com.google.sleep.segment' }],
-    bucketByTime: { durationMillis: 86400000 },
-    startTimeMillis: startMs,
-    endTimeMillis:   endMs,
-  };
-
-  var response;
-  try {
-    response = UrlFetchApp.fetch(
-      'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
-      {
-        method:             'post',
-        contentType:        'application/json',
-        headers:            { Authorization: 'Bearer ' + token },
-        payload:            JSON.stringify(payload),
-        muteHttpExceptions: true,
-      }
-    );
-  } catch (e) {
-    Logger.log('fetchGoogleFitSleep_: fetch error — ' + e.message);
-    recordApiHealth_('googlefit-sleep', false, e.message, 0);
-    return null;
-  }
-
-  if (response.getResponseCode() !== 200) {
-    Logger.log('fetchGoogleFitSleep_: non-200 response — ' + response.getContentText().substring(0, 200));
-    recordApiHealth_('googlefit-sleep', false,
-      String(response.getContentText() || '').substring(0, 200), response.getResponseCode());
-    return null;
-  }
-
-  var body;
-  try {
-    body = JSON.parse(response.getContentText());
-  } catch (e) {
-    recordApiHealth_('googlefit-sleep', false, 'parse error: ' + e.message, 200);
-    return null;
-  }
-
-  // Sum sleep segment durations (all segment types count)
-  var totalMs = 0;
-  var buckets = body.bucket || [];
-  buckets.forEach(function(bucket) {
-    var datasets = bucket.dataset || [];
-    datasets.forEach(function(ds) {
-      var points = ds.point || [];
-      points.forEach(function(pt) {
-        var startNs = parseInt(pt.startTimeNanos, 10) || 0;
-        var endNs   = parseInt(pt.endTimeNanos, 10)   || 0;
-        totalMs += (endNs - startNs) / 1e6;
-      });
-    });
-  });
-
-  // The API answered, so the source is healthy either way. An empty result
-  // usually means the watch was not worn — that is real data, not an outage,
-  // and must not mark Google Fit as degraded.
-  recordApiHealth_('googlefit-sleep', true, '', 200);
-
-  if (totalMs === 0) {
-    Logger.log('fetchGoogleFitSleep_: no sleep data returned for yesterday');
-    return null;
-  }
-
-  var hours = Math.round((totalMs / 3600000) * 10) / 10;
-  logWellness_('Ahmed', 'sleep_hours', hours, 'google_fit');
-  Logger.log('fetchGoogleFitSleep_: logged ' + hours + 'h from Google Fit');
-  return hours;
-}
+// Google Fit sleep was removed (#250): its API is being retired. Sleep is asked for with one
+// tap in the morning check-in (Slack.js wellness_hours_*), logged as sleep_hours, manual.
 
 /**
  * Reads WELLNESS_LOG, GYM_LOG, and HABIT_LOG for a given week.

@@ -295,14 +295,11 @@ function runWeekendPlanner_(opts) {
   // plain-text fallback for clients that don't render HTML.
   var htmlBody = buildWeekendMemoHtml_(memo, weatherData, carryNote, curatedLocalEvents, radarDates,
                                         weekendCapacity, saturday, calendarLink);
-  sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
-                  { name: 'VERA', htmlBody: htmlBody }, 'weekend_memo');
-  Logger.log('runWeekendPlanner_: HTML email sent (' + htmlBody.length + ' chars)');
-
-  // 3. Short Slack ping — points at the email rather than duplicating it.
-  if (isSlackConfigured_()) {
-    var pingDelivered = sendSlack_('vera-notifications', '🗓️ Weekend memo is ready — check your email.');
-    Logger.log('runWeekendPlanner_: Slack ping ' + (pingDelivered ? 'sent' : 'FAILED'));
+  // A long read, by email only (#250): no Slack "check your email" ping, and Where = Off stops it.
+  if (typeof notifGate_ !== 'function' || notifGate_('weekend_memo', 'Weekend memo')) {
+    sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
+                    { name: 'VERA', htmlBody: htmlBody }, 'weekend_memo');
+    Logger.log('runWeekendPlanner_: HTML email sent (' + htmlBody.length + ' chars)');
   }
 
   // Bypassing sendNudge_ for this dual-channel delivery, so record the

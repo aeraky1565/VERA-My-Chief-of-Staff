@@ -773,7 +773,10 @@ function ariaPostBookNow_(watch) {
   try { posted = JSON.parse(props.getProperty(ARIA_POSTED_PROP_) || '[]') || []; } catch (e) { posted = []; }
   var sent = 0;
   ariaBookNowPosts_(watch, posted).forEach(function(p) {
-    if (sendSlack_(ch, p.text)) { posted.push(p.id); sent++; }
+    // #vera-act-now's daily cap per assistant (act_now_cap_aria, Notify.js, #250): past it,
+    // the morning email carries it instead.
+    if (typeof actNowAllowed_ === 'function' && !actNowAllowed_('aria')) { posted.push(p.id); notifHold_('aria_book_now', p.text); return; }
+    if (sendSlack_(ch, p.text)) { posted.push(p.id); sent++; try { notifBump_('act'); } catch (e) {} }
   });
   if (sent) props.setProperty(ARIA_POSTED_PROP_, JSON.stringify(posted.slice(-ARIA_POSTED_KEEP_)));
   Logger.log('aria: ' + sent + ' Book now post(s) to Slack');

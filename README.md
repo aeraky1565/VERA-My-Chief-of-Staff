@@ -505,6 +505,50 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
+### Notifications: one home per kind (`Notify.js`, #250)
+
+Every kind in `NOTIF_REGISTRY` (Code.js) has one home, chosen in **System › Settings › Notifications**. The kinds are grouped by category, with **Act now** between Travel and Routines. Each row has:
+
+- **Where:** Slack, Morning email, or Off (`notif_<key>_delivery`). A check-in, which expects a reply, is Slack or Off. A long read (weekly trends, monthly review, the weekend memo) is Email or Off.
+- **Slack channel**, when it goes to Slack (`notif_<key>_channel`): #vera-notifications, #vera-chat, #vera-act-now, #vera-logs, or any other channel by name.
+- **While away:** Send, Hold, or Send if due.
+
+The old `notif_<key>_enabled = FALSE` still means Off.
+
+**One home.**
+- **Morning email by default:** Medium and Low flags, vehicles, contracts, coupons, home service, travel documents, certifications, the PTO plan, the quarterly check-in, goals and growth, Daily Discovery, and USPS.
+- **Pushed:** a bill due, a High flag, packing, the pre-trip and travel-day briefings, leaving home, cycle reminders, and movement.
+- **#vera-chat:** the morning check-in and the evening check-in.
+- **Email:** the weekend memo. It goes Wednesday at `weekend_planner_hour` with no Slack ping.
+
+**Fewer pings (`notifGate_`).** Before a push goes out:
+- a Morning email kind waits for tomorrow's email;
+- so does a push during **quiet hours** (`notif_quiet_start`–`notif_quiet_end`, 21:00–07:00) or past the **daily cap** (`notif_daily_cap`, 6). Travel, leaving home and Act now are exempt, and check-ins don't count against the cap;
+- Away mode holds what it holds.
+
+The morning email shows what waited under **📨 Held for this email**, and clears it once the email is sent. The per-nudge "Reminder sent" lines are gone from #vera-logs; only failures are logged. The nightly tail posts one line instead, e.g. "Yesterday: 5 pushes · 2 check-ins · 3 held for the morning email".
+
+**Movement** replaces the desk break, water break and free-calendar-block nudges. VERA can't see work meetings, so it runs on a schedule:
+- at `movement_times` (10:30, 13:30, 15:30), inside `work_hours` (9:00–17:00);
+- at most `movement_daily_cap` (3) a day;
+- workdays only, never on a holiday, a PTO day (read once a day) or while away.
+
+**Check-in times, to the minute:**
+- `morning_checkin_time` (06:30), and `morning_checkin_weekend_time` (08:30) on weekends;
+- `evening_checkin_time` (20:00).
+
+They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCheck as a backstop. The old `wellness_checkin_hour` and `mobility_reminder_hour` are still read when the new rows are blank.
+
+**Sleep.** Google Fit is removed: the call, and the `fitness.*` scopes. The morning check-in asks for hours slept with one tap (≤5 h · 6 · 7 · 8 · 9 h+), logged as `sleep_hours`, manual. A watch can fill it in later.
+
+**#vera-act-now** is for a decision with a clock on it.
+- **ARIA's Book now.**
+- **VERA's own decision deadlines:** a return window, a card perk or a contract notice date ending within 2 days, from the Flags tab's Due column. Each is posted once, with ✓ Done and Later buttons.
+
+Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by default). Past the cap, an item waits for the morning email.
+
+**Not built yet:** the VERA app push (Firebase), and the HAILEY and TESS act-now posts, which need their sheets' listing and match columns.
+
 ### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
 
 Private quick capture. Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The Doc's table gains **Share, Vault, Hide Label, Back On, Picture, Link, Updated** after Category, the first time they're written. Older rows simply have fewer cells.
@@ -2780,6 +2824,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `pto_plan_accept` / `pto_plan_skip` / `pto_plan_remove` (POST) | `id`, `year` | Accept a break (VERA calendar + PTO Plan tab), skip or bring it back, take it off again |
 | `pto_plan_follow` (POST) | `id`, `what` (`away` / `trip`), `on` | Away mode on the break's first day, or a pencilled trip in My Trips |
 | `set_notif_while_away` | `key`, `value` (send/hold/due) | A notification's While away setting |
+| `set_notif_delivery` | `key`, `value` (slack / email / off) | Where a kind goes (#250); check-ins slack / off, reads email / off |
 | `get_visa_requirements` | `passport`, `destination` | Visa requirements lookup |
 | `health_appointments` | — | All tracked health appointments with next-due dates, `doctor`, `phone`, `booked` |
 | `appt_contact` | `person`, `type`, `doctor`, `phone` | Saves the typed doctor and phone |
@@ -2841,6 +2886,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Move running notes (to the VERA State tab); Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
+| `Notify.js` | Notifications (#250): one home per kind, quiet hours, the daily cap, Held for this email, the count line, movement on a schedule, check-in times to the minute, #vera-act-now caps and VERA's decision deadlines |
 | `Notes.js` | Notes (#252): tags, routing on explicit words, ✨ for VERA, the Vault (hidden on screen), Back on, pictures, link previews, Tidy tags; POST `note_capture`, `note_undo`, `notes_retag`, `note_link_preview`, `note_picture`, all owner-only |
 | `RunLog.js` | VERA's own Run Log: a row per scheduled run, written as it starts and as the nightly steps go by, completed from the heartbeat; a run Apps Script cut off is marked Cut off with the step it died in. In the sheet set by Config `run_log_sheet_id`, a tab per job (else one Run Log tab in VERA's sheet); 30 days kept |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |

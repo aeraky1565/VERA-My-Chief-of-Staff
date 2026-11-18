@@ -51,6 +51,8 @@ function getSlackChannelId_(name) {
     id = valid(id);
     if (!id) id = veraSetting_(map.notifications) || '';
   }
+  // Any other channel picked by name in Settings › Notifications (#250): Slack takes "#name".
+  if (!id && !map[short] && /^[a-z0-9][a-z0-9_-]{0,79}$/.test(String(name || '')) && name !== 'email') id = '#' + name;
   return id;
 }
 
@@ -351,6 +353,12 @@ function buildEveningCheckinBlocks_() {
  * Builds the morning wellness check-in Block Kit message (3 rows × 5 rating buttons).
  * @param {number|null} sleepHours - Auto-logged sleep hours from Google Fit, or null if unavailable.
  */
+/** How a tapped value reads back: hours slept as "7 h" (≤5 h, 9 h+), a rating as "4/5". */
+function wellShow_(metric, val) {
+  if (metric === 'hours') return val <= 5 ? '≤5 h' : val >= 9 ? '9 h+' : val + ' h';
+  return val + '/5';
+}
+
 function buildMorningWellnessBlocks_(sleepHours, steps) {
   var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
   var metrics = [
@@ -369,10 +377,19 @@ function buildMorningWellnessBlocks_(sleepHours, steps) {
       text: {
         type: 'mrkdwn',
         text: ':sunny: *' + dayName + ' Morning Check-In* — 3 quick taps:' +
-          (fitParts.length ? '\n_' + fitParts.join(' · ') + ' auto-logged from Google Fit_' : ''),
+          (fitParts.length ? '\n_' + fitParts.join(' · ') + ' from your watch_' : ''),
       },
     },
   ];
+
+  // Last night's sleep, one tap (#250): Google Fit is gone; a watch can fill it in later.
+  if (sleepHours === null) {
+    blocks.push({ type: 'actions', block_id: 'wellness_row_hours', elements: [
+      { type: 'button', text: { type: 'plain_text', text: 'Hours slept' }, action_id: 'wellness_label_hours', value: 'noop' },
+    ].concat([5, 6, 7, 8, 9].map(function(n) {
+      return { type: 'button', text: { type: 'plain_text', text: n === 5 ? '≤5 h' : n === 9 ? '9 h+' : n + ' h' }, action_id: 'wellness_hours_' + n, value: String(n) };
+    })) });
+  }
 
   metrics.forEach(function(m) {
     var buttons = [1, 2, 3, 4, 5].map(function(n) {
@@ -795,18 +812,18 @@ function handleSlackInteractionSync_(payload) {
       var parts  = actionId.split('_');
       var metric = parts[1] || '';
       var val    = parseFloat(parts[2]);
-      var canon  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' }[metric] || metric;
-      var label  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[metric] || metric;
+      var canon  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality', hours: 'sleep_hours' }[metric] || metric;
+      var label  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Sleep' }[metric] || metric;
       if (!isNaN(val) && canon) {
         try { logWellness_('Ahmed', canon, val, 'manual'); }
         catch (e) { Logger.log('wellness log: ' + e.message); }
       }
-      ackText = ':white_check_mark: ' + label + ' logged as *' + val + '/5*.';
+      ackText = ':white_check_mark: ' + label + ' logged as *' + wellShow_(metric, val) + '*.';
       var curBlocks = (payload.message && payload.message.blocks) || [];
       var newBlocks = curBlocks.map(function(b) {
         if (b.block_id === 'wellness_row_' + metric) {
           return { type: 'section', block_id: b.block_id,
-                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + label + '*  ' + val + '/5 logged' } };
+                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + label + '*  ' + wellShow_(metric, val) + ' logged' } };
         }
         return b;
       });
@@ -859,8 +876,8 @@ function handleSlackInteraction_(payload) {
     var wParts  = actionId.split('_'); // ['wellness', metric, rating]
     var wMetric = wParts[1] || '';
     var wVal    = wParts[2] || '';
-    var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
-    ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
+    var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Sleep' }[wMetric] || wMetric;
+    ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wellShow_(wMetric, wVal) + '*.';
   }
 
   // ── Build response payload (in-memory, for wellness also mutates blocks) ─
@@ -870,12 +887,12 @@ function handleSlackInteraction_(payload) {
     var wbParts  = actionId.split('_');
     var wbMetric = wbParts[1] || '';
     var wbVal    = parseFloat(wbParts[2]);
-    var wbLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wbMetric] || wbMetric;
+    var wbLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Sleep' }[wbMetric] || wbMetric;
     var curBlocks = (payload.message && payload.message.blocks) || [];
     var ackBlocks = curBlocks.map(function(b) {
       if (b.block_id === 'wellness_row_' + wbMetric) {
         return { type: 'section', block_id: b.block_id,
-                 text: { type: 'mrkdwn', text: ':white_check_mark: *' + wbLabel + '*  ' + wbVal + '/5 logged' } };
+                 text: { type: 'mrkdwn', text: ':white_check_mark: *' + wbLabel + '*  ' + wellShow_(wbMetric, wbVal) + ' logged' } };
       }
       return b;
     });
@@ -995,20 +1012,20 @@ function processInteraction_(payload) {
       var wParts      = actionId.split('_');
       var wMetric     = wParts[1] || '';
       var wVal        = parseFloat(wParts[2]);
-      var wMetricMap  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
+      var wMetricMap  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality', hours: 'sleep_hours' };
       var canonMetric = wMetricMap[wMetric] || wMetric;
-      var wLabel      = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
+      var wLabel      = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Sleep' }[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
         try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); }
         catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
       }
-      ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
+      ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wellShow_(wMetric, wVal) + '*.';
       // Replace the button row with a confirmation line
       var curBlocks = (payload.message && payload.message.blocks) || [];
       var newBlocks = curBlocks.map(function(b) {
         if (b.block_id === 'wellness_row_' + wMetric) {
           return { type: 'section', block_id: b.block_id,
-                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + wLabel + '*  ' + wVal + '/5 logged' } };
+                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + wLabel + '*  ' + wellShow_(wMetric, wVal) + ' logged' } };
         }
         return b;
       });

@@ -156,12 +156,12 @@ const NOTIF_REGISTRY = [
   { key: 'morning_briefing',    label: 'Morning Briefing',      emoji: '☀️',  category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'Daily morning context digest', locked: false, whileAway: 'send' },
   { key: 'daily_discovery',     label: 'Daily Discovery',       emoji: '🔍', category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'VERA-curated daily interest pick', locked: false, whileAway: 'hold' },
   // Wellness Reminders
-  { key: 'desk_break',          label: 'Desk Break',            emoji: '🪑', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Ergonomic break reminder', locked: false, whileAway: 'hold' },
-  { key: 'water_break',         label: 'Water Break',           emoji: '💧', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Hydration reminder', locked: false, whileAway: 'hold' },
-  { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge', locked: false, whileAway: 'hold' },
+  // Movement replaced Desk Break, Water Break and Calendar Opportunity (#250, Notify.js).
+  { key: 'movement',            label: 'Movement',              emoji: '🚶', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Stand or walk for 5 minutes, and water: at movement_times on workdays, at most movement_daily_cap a day; never on a holiday, PTO or while away', locked: false, whileAway: 'hold' },
+  { key: 'morning_checkin',     label: 'Morning Check-in',      emoji: '☀️', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Energy, mood, sleep quality and hours slept, with one tap each; at morning_checkin_time (weekends: morning_checkin_weekend_time)', locked: false, whileAway: 'hold' },
+  { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge, when Slack isn’t set up', locked: false, whileAway: 'hold' },
   { key: 'health_performance_insight', label: 'Health–Performance Insight', emoji: '🔬', category: 'Wellness Reminders', channel: 'vera-notifications', description: 'Weekly + monthly health vs performance correlation', locked: false, whileAway: 'hold' },
   // Planning Nudges
-  { key: 'calendar_opportunity',label: 'Calendar Opportunity',  emoji: '📅', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Free-time block suggestion', locked: false, whileAway: 'hold' },
   { key: 'goal_checkin',        label: 'Goal Check-in',         emoji: '🎯', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly goal progress nudge', locked: false, whileAway: 'hold' },
   // Flags & Alerts
   { key: 'flag_high',           label: 'High Urgency Flags',    emoji: '🔴', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly high-urgency flag alerts', locked: false, whileAway: 'due' },
@@ -181,11 +181,14 @@ const NOTIF_REGISTRY = [
   // Travel
   { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false, whileAway: 'send' },
   { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false, whileAway: 'send' },
-  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false, whileAway: 'send' },
   { key: 'travel_docs',         label: 'Travel Documents',      emoji: '🛂', category: 'Travel',               channel: 'vera-notifications', description: 'A passport, ETA or visa that runs out before a trip, and Global Entry / PreCheck renewals', locked: false, whileAway: 'send' },
   { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false, whileAway: 'send' },
+  // Act now (#250): a decision with a clock on it. Through quiet hours, outside the daily cap.
+  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Act now',              channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false, whileAway: 'send' },
+  { key: 'act_now_vera',        label: 'VERA Decision Deadline', emoji: '⏳', category: 'Act now',             channel: 'vera-act-now',       description: 'A return window or free cancellation ending in the next 2 days, from Planned purchases and Flags with a deadline', locked: false, whileAway: 'due' },
   // Routines
-  { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false, whileAway: 'hold' },
+  { key: 'weekend_memo',        label: 'Weekend Memo',          emoji: '🗓️', category: 'Routines',             channel: 'email',              description: 'Wednesday at weekend_planner_hour, by email, with no Slack ping', locked: false, whileAway: 'hold' },
+  { key: 'gym_checkin',        label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false, whileAway: 'hold' },
   { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false, whileAway: 'hold' },
   { key: 'weekly_trend_review',   label: 'Weekly Trend Review',   emoji: '📊', category: 'Routines',             channel: 'vera-notifications', description: 'Sunday week-over-week metric digest', locked: false, whileAway: 'hold' },
   { key: 'usps_mail',           label: 'USPS Mail Scan',        emoji: '📬', category: 'Routines',             channel: 'vera-notifications', description: 'Daily USPS mail notification', locked: false, whileAway: 'hold' },
@@ -202,7 +205,10 @@ const NOTIF_REGISTRY = [
 ];
 
 function isNotifEnabled_(key) {
-  var val = getConfigValues()['notif_' + key + '_enabled'];
+  // Off is notif_<key>_enabled = FALSE, or Where = Off (notif_<key>_delivery, Notify.js #250).
+  var cfg = getConfigValues() || {};
+  if (typeof notifDeliveryFrom_ === 'function') return notifDeliveryFrom_(key, cfg) !== 'off';
+  var val = cfg['notif_' + key + '_enabled'];
   return val === undefined || String(val).toUpperCase() !== 'FALSE';
 }
 
@@ -516,8 +522,20 @@ function createSheetTabs(ss) {
     // Monthly Life Review (Issue #82)
     ['monthly_review_enabled', 'true'],   // set 'false' to disable monthly review generation
     // Health–Performance Correlation (Feature 12)
-    ['wellness_checkin_hour', '6'],       // 24h hour for morning wellness check-in prompt — must run before MORNING_NUDGE_HOUR (7) so Google Fit data is fresh when the morning email checks its staleness
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
+    // Notifications (#250, Notify.js). Times are HH:MM, to the minute.
+    ['morning_checkin_time',         '06:30'],        // workdays (replaces wellness_checkin_hour, still read if this is blank)
+    ['morning_checkin_weekend_time', '08:30'],
+    ['evening_checkin_time',         '20:00'],        // replaces mobility_reminder_hour
+    ['notif_quiet_start',            '21:00'],        // quiet hours: pushes wait for the morning email, except travel, leaving home, act-now
+    ['notif_quiet_end',              '07:00'],
+    ['notif_daily_cap',              '6'],            // the most pushes in a day; past it, into the morning email
+    ['movement_times',               '10:30, 13:30, 15:30'],
+    ['work_hours',                   '9:00-17:00'],
+    ['movement_daily_cap',           '3'],
+    ['act_now_cap_aria',             '3'],            // #vera-act-now posts per assistant per day
+    ['act_now_cap_vera',             '3'],
+    ['run_log_sheet_id',             ''],             // RunLog.js: a separate sheet for the Run Log, a tab per job (blank = VERA's own sheet)
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
     ['system_log_retention_days', '45'],
@@ -1743,6 +1761,9 @@ function nightlyRunTail() {
       }
       var slowest = slowestNightlySteps_(stepTimings, 5);
       if (slowest.length) sendSlackLog_('⏱️ Slowest tail steps: ' + slowest.join(' · '));
+      // One count line instead of a "Reminder sent" per nudge (Notify.js, #250). The tail runs
+      // after midnight, so "yesterday" is the day just finished.
+      try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + notifCountLine_(notifCounts_().yesterday)); } catch (ncErr) {}
       veraLog_('nightlyRunTail', 'Nightly',
         // A withheld step makes the night Partial as surely as a thrown one does:
         // something that should have happened tonight did not.
@@ -4711,6 +4732,8 @@ function morningNudge() {
       taskBadges +
       (ptoPlanSection ? ptoPlanSection.html : '') +
       intelligenceSection +
+      // What waited for this email: its home, quiet hours, or past the daily cap (Notify.js, #250).
+      (typeof notifHeldHtmlNow_ === 'function' ? notifHeldHtmlNow_() : '') +
       stalenessNotice +
       '</td></tr>' +
 
@@ -4773,6 +4796,8 @@ function morningNudge() {
     if (morningCh === 'email') {
       sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');
       Logger.log('Morning nudge sent (HTML email): ' + total + ' active flags.');
+      // Shown once: what waited for this email is cleared only after it went out (#250).
+      if (typeof notifHeldClear_ === 'function') notifHeldClear_();
     } else {
       sendSlack_(morningCh, plainText);
       Logger.log('Morning nudge sent (Slack/' + morningCh + '): ' + total + ' active flags.');

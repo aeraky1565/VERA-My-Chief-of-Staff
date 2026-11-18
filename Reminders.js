@@ -50,6 +50,8 @@ function hourlyCheck() {
   // A workout that ended at 7:30 pm gets its "Did you go?" the same evening, not after the
   // nightly run (GymTracker.js; it skips sessions already in the Gym Log).
   try { gymEveningCheck_(new Date()); } catch (gymErr) { Logger.log('gymEveningCheck_ (non-fatal): ' + gymErr.message); }
+  // VERA's own decision deadlines to #vera-act-now (Notify.js, #250). Never throws.
+  try { actNowVeraSync_(new Date()); } catch (anErr) {}
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {
@@ -108,9 +110,9 @@ function hourlyCheck() {
  */
 function runAnticipatorRules_(now, hour, isWeekday, cfg) {
   var rules = [
-    function() { checkErgonomicBreak_(hour, isWeekday, cfg); },
-    function() { checkHydration_(hour, isWeekday, cfg); },
-    function() { checkCalendarOpportunity_(now, hour, isWeekday, cfg); },
+    // Movement (Notify.js, #250) replaces the desk break, water break and free-calendar-block
+    // nudges: one rule, at set times on workdays, capped. Those three no longer run.
+    function() { checkMovement_(now, cfg); },
     function() { checkEveningMobility_(now, hour, cfg); },
     // Issue #24 — Active Intelligence Anticipators
     function() { checkBillsDue_(now, hour, cfg); },
@@ -130,95 +132,8 @@ function runAnticipatorRules_(now, hour, isWeekday, cfg) {
   });
 }
 
-// ---- Rule: Ergonomic break -------------------------------------------------
-
-/**
- * Reminds Ahmed to take an ergonomic desk break approximately every hour
- * during weekday work hours. Uses a longer cooldown when in email mode
- * to avoid inbox flooding.
- */
-function checkErgonomicBreak_(hour, isWeekday, cfg) {
-  if (!isWeekday) return;
-  if (hour < 9 || hour >= 18) return; // Weekday 9am–6pm only
-
-  // Slack: every ~1h; Email: 3 per day max (~every 3h)
-  var cooldown = isSlackConfigured_() ? 55 : 180;
-  if (wasRecentlySent_('ergonomic', cooldown)) return;
-
-  sendNudge_(
-    'ergonomic',
-    'Desk break reminder',
-    '⏰ Desk break time!\n\n' +
-    'You\'ve been seated for ~60 minutes. Stand up, clasp your hands behind your head, ' +
-    'open your chest — thoracic stretch for 60 seconds. Your spine will thank you. 🙏',
-    'desk_break'
-  );
-}
-
-// ---- Rule: Hydration -------------------------------------------------------
-
-/**
- * Reminds Ahmed to drink water approximately every 2 hours during work hours.
- */
-function checkHydration_(hour, isWeekday, cfg) {
-  if (!isWeekday) return;
-  if (hour < 8 || hour >= 18) return; // Weekday 8am–6pm only
-
-  // Slack: every ~2h; Email: 3 per day max
-  var cooldown = isSlackConfigured_() ? 110 : 180;
-  if (wasRecentlySent_('hydration', cooldown)) return;
-
-  sendNudge_(
-    'hydration',
-    'Hydration check',
-    '💧 Hydration check!\n\n' +
-    'Have you had water in the last 2 hours? Grab a glass now — ' +
-    'staying ahead of thirst keeps energy and focus up.',
-    'water_break'
-  );
-}
-
-// ---- Rule: Calendar opportunity window ------------------------------------
-
-/**
- * Detects a free block of ≥90 minutes in today's calendar and — when one exists —
- * suggests using it for a high-priority or overdue task.
- * Uses a date+hour keyed rule so at most one nudge fires per opportunity window.
- */
-function checkCalendarOpportunity_(now, hour, isWeekday, cfg) {
-  if (!isWeekday) return;
-  if (hour < 9 || hour >= 17) return; // Only fire during core hours
-
-  var tz      = Session.getScriptTimeZone();
-  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-  var ruleKey = 'cal_opp_' + dateStr + '_' + hour;
-
-  // Slack: once per 90min; Email: max once per 3h slot
-  var cooldown = isSlackConfigured_() ? 90 : 180;
-  if (wasRecentlySent_(ruleKey, cooldown)) return;
-
-  // Find a ≥90-minute free window starting from now
-  var events      = getUpcomingEvents();
-  var todayEvents = events.filter(function(e) { return e.daysUntil === 0 && !e.isAllDay; });
-  var gapStart    = findNextFreeWindow_(now, todayEvents, 90);
-  if (!gapStart) return; // No gap found — don't nudge
-
-  // Suggest the most urgent open task
-  var tasks       = getOpenTasks();
-  var candidates  = tasks.filter(function(t) {
-    return t.isOverdue || (t.daysUntilDue !== null && t.daysUntilDue <= 3);
-  });
-  var suggestion  = candidates.length > 0
-    ? 'Good time to tackle: ' + candidates[0].task
-    : 'Good time to work through your task list.';
-
-  sendNudge_(
-    ruleKey,
-    'Open calendar window',
-    '📅 You have a free block of ~90 min with no meetings coming up.\n\n' + suggestion,
-    'calendar_opportunity'
-  );
-}
+// The desk break, water break and free-calendar-block rules were replaced by one movement
+// rule (checkMovement_, Notify.js, #250). findNextFreeWindow_ stays: the morning email uses it.
 
 /**
  * Scans today's timed events and finds the next contiguous free window
@@ -271,23 +186,26 @@ function findNextFreeWindow_(now, events, minMinutes) {
  * movement in today. Keyed by date so it fires at most once per day.
  */
 function checkEveningMobility_(now, hour, cfg) {
-  var targetHour = parseInt(cfg['mobility_reminder_hour'] || '20', 10);
-  if (hour !== targetHour) return;
-
+  // evening_checkin_time (20:00), to the minute (#250); the 15-minute check-in tick and the
+  // hourly run both ask, and it goes once a day.
   var tz      = Session.getScriptTimeZone();
+  var minute  = parseInt(Utilities.formatDate(now, tz, 'H'), 10) * 60 + parseInt(Utilities.formatDate(now, tz, 'm'), 10);
+  if (!checkinDue_(minute, checkinAt_('evening', cfg, false))) return;
+
   var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   var ruleKey = 'mobility_' + dateStr;
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
 
-  if (!isNotifEnabled_('gym_checkin')) {
-    Logger.log('checkEveningMobility_: skipped — gym_checkin disabled');
+  if (notifDelivery_('gym_checkin') === 'off') {
+    Logger.log('checkEveningMobility_: skipped — gym_checkin off');
     return;
   }
   if (typeof awayHolds_ === 'function' && awayHolds_('gym_checkin')) {   // Away mode (#246)
     Logger.log('checkEveningMobility_: held — away');
     return;
   }
+  try { notifBump_('checkin'); } catch (e) {}
 
   // Evening check-in goes to #vera-chat (bidirectional) with Yes/No buttons when Slack is configured
   if (isSlackConfigured_()) {
@@ -308,30 +226,31 @@ function checkEveningMobility_(now, hour, cfg) {
 // ---- Rule: Morning wellness check-in (Feature 12) -------------------------
 
 /**
- * Fires once each morning at the configured hour to:
- *  1. Auto-pull last night's sleep from Google Fit
- *  2. Send a 3-row rating Block Kit message to #vera-chat
- * Keyed by date so it fires at most once per day.
+ * Fires once each morning at morning_checkin_time (06:30 on workdays) or
+ * morning_checkin_weekend_time (08:30), to the minute (#250), and sends the rating
+ * message to #vera-chat. Keyed by date so it fires at most once per day.
+ *
+ * Sleep: Google Fit is gone (its API is being retired, #250). Until a watch can be read,
+ * the check-in asks for last night's sleep with one tap (≤5 h · 6 · 7 · 8 · 9 h+).
  */
 function checkMorningWellnessCheckin_(now, hour, cfg) {
   if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return;
 
-  var targetHour = parseInt(cfg['wellness_checkin_hour'] || '6', 10);
-  if (hour !== targetHour) return;
-
   var tz      = Session.getScriptTimeZone();
+  var minute  = parseInt(Utilities.formatDate(now, tz, 'H'), 10) * 60 + parseInt(Utilities.formatDate(now, tz, 'm'), 10);
+  var weekend = now.getDay() === 0 || now.getDay() === 6;
+  if (!checkinDue_(minute, checkinAt_('morning', cfg, weekend))) return;
+  if (notifDelivery_('morning_checkin') === 'off') return;
+
   var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   var ruleKey = 'wellness_' + dateStr;
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
+  if (typeof awayHolds_ === 'function' && awayHolds_('morning_checkin')) return;   // Away mode (#246)
 
-  // Auto-log sleep hours from Google Fit. Steps are no longer sourced here —
-  // Google Fit's step data has been retired for this account (Google cut off
-  // direct app-to-Fit-cloud connections in mid-2025); see Wellness.js history
-  // if a future on-device Health Connect bridge replaces this.
-  var sleepHours = null;
-  try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit sleep error — ' + e.message); }
+  var sleepHours = null;   // asked for with one tap in the message (Wellness.js)
   var steps = null;
+  try { notifBump_('checkin'); } catch (e) {}
 
   if (isSlackConfigured_()) {
     sendMorningWellnessSlack_(sleepHours, steps);
@@ -873,15 +792,18 @@ function writeExplorerHistory_(discoveryText) {
  * @param {string} [notifKey] - NOTIF_REGISTRY key for channel routing (Issue #188)
  */
 function sendNudge_(ruleKey, subject, message, notifKey, due) {
-  if (notifKey && !isNotifEnabled_(notifKey)) {
-    Logger.log('sendNudge_ [skipped \u2014 disabled]: ' + ruleKey);
-    return;
-  }
-  // Away mode (Away.js, #246): held, unless this notification sends while away (or
-  // is "due" and its deadline falls before you're back). Counted for the catch-up.
-  if (notifKey && typeof awayHolds_ === 'function' && awayHolds_(notifKey, due)) {
-    Logger.log('sendNudge_ [held \u2014 away]: ' + ruleKey);
-    return;
+  // One gate for every push (Notify.js, #250): off, held for the morning email (its home,
+  // quiet hours, or past the daily cap), or held while away (Away.js, #246). Remembered
+  // either way, so a held nudge isn't asked about again every hour.
+  if (notifKey && typeof notifGate_ === 'function') {
+    if (!notifGate_(notifKey, subject + ': ' + String(message || '').split('\n').filter(String).slice(0, 2).join(' '), due)) {
+      Logger.log('sendNudge_ [not pushed \u2014 ' + notifKey + ']: ' + ruleKey);
+      markSent_(ruleKey, 'held: ' + subject);
+      return;
+    }
+  } else if (notifKey) {   // the gate isn't loaded (a test, or a partial copy): on/off and Away, as before
+    if (!isNotifEnabled_(notifKey)) { Logger.log('sendNudge_ [skipped \u2014 disabled]: ' + ruleKey); return; }
+    if (typeof awayHolds_ === 'function' && awayHolds_(notifKey, due)) { Logger.log('sendNudge_ [held \u2014 away]: ' + ruleKey); return; }
   }
   var ch = notifKey ? getNotifChannel_(notifKey) : (isSlackConfigured_() ? 'vera-notifications' : 'email');
   var channel, delivered;
@@ -896,13 +818,12 @@ function sendNudge_(ruleKey, subject, message, notifKey, due) {
     channel = ch;
   }
   markSent_(ruleKey, message);
-  try {
-    // Issue: this used to log "sent" unconditionally, which is exactly how the
-    // getSlackChannelId_ prefix bug went unnoticed for three weeks straight.
-    sendSlackLog_(delivered
-      ? '\u23f0 Reminder sent \u2014 ' + subject + ' [' + channel + ']'
-      : '\u26a0\ufe0f Reminder FAILED to send \u2014 ' + subject + ' [' + channel + '] \u2014 channel did not resolve or Slack rejected it');
-  } catch (e) {}
+  // Only a failure is logged (#250): the nightly summary counts what went out instead of
+  // a "Reminder sent" line per nudge. It used to log "sent" unconditionally, which is how
+  // the getSlackChannelId_ prefix bug went unnoticed for three weeks, so a failure stays loud.
+  if (!delivered) {
+    try { sendSlackLog_('\u26a0\ufe0f Reminder FAILED to send \u2014 ' + subject + ' [' + channel + '] \u2014 channel did not resolve or Slack rejected it'); } catch (e) {}
+  }
 }
 
 // ============================================================

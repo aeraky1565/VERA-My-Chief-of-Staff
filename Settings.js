@@ -163,6 +163,9 @@ var VERA_STATE_BUNDLES_ = {
                       // Away mode (Away.js, #246): the manual switch, when it began, and what it held.
                       'AWAY_MANUAL', 'AWAY_UNTIL', 'AWAY_TRIP', 'AWAY_ENDED_TRIP', 'AWAY_STARTED', 'AWAY_HELD', 'AWAY_BACK'],
   PTO_BUFFER:        ['PTO_BUFFER_EVENT_ID', 'PTO_BUFFER_EVENT_DATE', 'PTO_BUFFER_DECLINED_UNTIL'],
+  // Notifications (Notify.js, #250): the day's counts, yesterday's, what waits for the email,
+  // the movement slots sent today, whether today is a day off, the check-ins sent today.
+  NOTIF:             ['NOTIF_DAY', 'NOTIF_COUNTS', 'NOTIF_YESTERDAY', 'NOTIF_DIGEST', 'NOTIF_MOVE', 'NOTIF_OFF', 'NOTIF_CHECKINS', 'NOTIF_ACTNOW'],
   MAIL:              ['MAIL_COUNTER_PIECES', 'MAIL_COUNTER_PACKAGES', 'MAIL_COUNTER_LAST_SCAN',
                       'MAIL_COUNTER_LAST_SCAN_RUN', 'MAIL_COUNTER_LAST_RESET'],
   // Two bundles on purpose: you set the override from chat or Slack while the

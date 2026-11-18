@@ -392,7 +392,7 @@ console.log('\nThe four duplicate consumers read the memo');
   // because VERA creates and deletes calendar events in about fifteen places and a
   // caller that reads back its own write must see it.
   const liveStays = [
-    ['the hourly calendar-gap nudge', bodyOf(REM,  'checkCalendarOpportunity_')],
+    // (the hourly calendar-gap nudge was retired by #250: movement runs on a schedule)
     ['the weather ticker check',      bodyOf(WX,   'testWeather')],
     ['the weekend planner',           bodyOf(WP,   'runWeekendPlanner_')],
   ];

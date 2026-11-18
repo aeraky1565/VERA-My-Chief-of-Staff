@@ -93,7 +93,7 @@ console.log('\nnotifWhileAway_: the setting, and its default');
   const by = p => reg.filter(r => r.whileAway === p).map(r => r.key).sort();
   check('the agreed "send" list: travel, ARIA Book now, the system logs and watchdog, the morning email',
         J(by('send')) === J(['aria_book_now', 'error_alerts', 'leave_home', 'morning_briefing', 'nightly_log', 'packing_reminder', 'pretrip_briefing', 'travel_day_briefing', 'travel_docs', 'watchdog_email', 'watchdog_flag', 'watchdog_slack']), J(by('send')));
-  check('the agreed "due" list: High flags, bills, contracts, coupons, vehicle renewals (#245), the PTO plan (#248)', J(by('due')) === J(['bill_due', 'contract_expiry', 'coupon_expiry', 'flag_high', 'pto_strategy', 'vehicle_renewals']), J(by('due')));
+  check('the agreed "due" list: VERA’s act-now deadlines (#250), High flags, bills, contracts, coupons, vehicle renewals (#245), the PTO plan (#248)', J(by('due')) === J(['act_now_vera', 'bill_due', 'contract_expiry', 'coupon_expiry', 'flag_high', 'pto_strategy', 'vehicle_renewals']), J(by('due')));
 }
 
 console.log('\nawayFlagGetsThrough_: which flags still come through');
@@ -220,7 +220,7 @@ console.log('\nThe endpoints');
   check('a bad value is refused', w({ key: 'water_break', value: 'later' }).ok === false);
   check('an unknown key is refused', w({ key: 'nope', value: 'send' }).ok === false);
   check('a locked row is refused', w({ key: 'nightly_log', value: 'hold' }).ok === false);
-  check('a good one is written through setConfigRow_', w({ key: 'water_break', value: 'Send' }).ok === true && J(wrote) === J([['notif_water_break_while_away', 'send']]), J(wrote));
+  check('a good one is written through setConfigRow_', w({ key: 'movement', value: 'Send' }).ok === true && J(wrote) === J([['notif_movement_while_away', 'send']]), J(wrote));
   check('away_set refuses a bad date', run(c, 'webAwaySet_({ on: true, until: "Nov 20" })').ok === false);
   check('…and a date that has passed', run(c, 'webAwaySet_({ on: true, until: "2026-11-01" })').ok === false);
   const r = run(c, 'webAwaySet_({ on: true, until: "2026-11-20", trip: "Weekend" })');
@@ -252,8 +252,8 @@ console.log('\nThe dashboard');
   check('the banner reads away_status and the switch posts away_set', /action:'away_status'/.test(b) && /apiPost\(apiUrl,apiToken,\{action:'away_set',on:on/.test(b));
   check('…with the held chips, "See what\'s held" and "End away mode"', /' flags'\)\+' held'/.test(b) && /"See what's held"/.test(b) && /'End away mode'/.test(b));
   const nm = fnSrc(APP, 'NotificationMapPanel');
-  check('each notification has a While away setting', /action:'set_notif_while_away',key:key,value:value/.test(nm) && /\{value:'due',label:'Send if due'\}/.test(nm));
-  check('…the morning briefing shows the away edition instead', /n\.key==='morning_briefing'\)\?/.test(nm) && /"Away edition"/.test(nm));
+  check('each notification has a While away setting', /\{action:'set_notif_while_away',key:n\.key,value:v\}/.test(nm) && /\{value:'due',label:'Send if due'\}/.test(nm));
+  check('…the morning briefing shows the away edition instead', /n\.key!=='morning_briefing'&&h\('select',\{className:'nm-away'/.test(nm) && /'Away edition while away'/.test(nm));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
