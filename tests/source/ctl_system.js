@@ -23,7 +23,7 @@ const CONTROLS = [
   ['API health is not mounted', ui("cur==='api_health'&&h(SysApiHealth,", "false&&h(SysApiHealth,"), UI],
   ['the roster is not under Assistants', ui("cur==='assistants'&&h(SysAssistants,", "false&&h(SysAssistants,"), UI],
   ['Feature Flags is not under System', ui("cur==='flags'&&h(SysFeatureFlags,", "false&&h(SysFeatureFlags,"), UI],
-  ['Home shows Projects with none active', ui("if(activeProjs.length===0)return null;", ""), UI],
+  ['Home’s Projects tile says nothing when there are none', ui(":['No active projects'],hot:false};}", ":[],hot:false};}"), UI],
   ['System opens on Documents again', ui("var[own,setOwn]=React.useState('assistants');", "var[own,setOwn]=React.useState('documents');"), UI],
   ['Test is not under System', ui("cur==='test'&&h(TestEmailsPanel,", "false&&h(TestEmailsPanel,"), 'test_testtab_ui.js'],
   ['🔔 opens the old settings window', ui("onClick:()=>{setSystemSub('notifications');setActiveTab('system');loadResources(apiUrl,apiToken);}", "onClick:()=>setNotifSettingsOpen(true)"), UI],
