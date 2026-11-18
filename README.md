@@ -553,7 +553,18 @@ Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by def
 
 Each posts once, with an **Open** link. "Pass" stays in the assistant's own tools, since VERA never writes their sheets. Their caps are `act_now_cap_hailey` and `act_now_cap_tess`.
 
-**Not built yet:** the VERA app push (Firebase), and ARIA's price drop after booking.
+**ARIA's price drop after booking.** ARIA used to stop pricing a trip once it was booked.
+
+What VERA does:
+- On each booked trip's row in VERA's ARIA Requests tab, VERA writes:
+  - **Paid Per Person**: the trip's Flights **Actual** in the Trip Budget ÷ travelers, in whole dollars;
+  - **Reprice Until**: the depart date.
+- It reads Fare Log rows with **Role = `rebook`**, from today or yesterday.
+- It posts "Price drop after booking" when one is lower than what was paid by at least `aria_rebook_min_saving` ($50 a person). The post shows the saving each and in total, the route, an Open link, and a reminder to check the airline's change rules. It posts once per new low, never after the trip leaves, and counts against ARIA's act-now cap.
+
+What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
+
+**Not built yet:** the VERA app push (Firebase).
 
 ### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
 

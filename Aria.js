@@ -64,7 +64,7 @@ var ARIA_STALE_HOURS_ = 26;   // ARIA runs daily; a day and two hours without a 
 var ARIA_FARE_FIELDS_ = {
   dateSeen: 'Date Seen', tripId: 'Trip ID', route: 'Route', depart: 'Depart', ret: 'Return', airline: 'Airline', stops: 'Stops',
   farePP: 'Fare Per Person', fees: 'Est. Fees', total: 'True Total', vsCeiling: 'vs Ceiling', source: 'Source',
-  verdict: 'Verdict', link: 'Booking Link', flags: 'Flags',
+  verdict: 'Verdict', link: 'Booking Link', flags: 'Flags', role: 'Role',
 };
 var ARIA_DATE_FIELDS_ = ['earliest', 'latest', 'lastChecked', 'nextCheck', 'dateSeen', 'depart', 'ret', 'actionSince'];
 var ARIA_MONEY_FIELDS_ = ['ceiling', 'bestFare', 'farePP', 'fees', 'total', 'hotelEstimate'];
@@ -609,7 +609,7 @@ function ariaRequestToRow_(r) {
   var st = String(r.status || '').toLowerCase();
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
     v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays),
-    v(r.airlinePref), v(r.premium), v(r.place), v(r.ceilingNight)];
+    v(r.airlinePref), v(r.premium), v(r.place), v(r.ceilingNight), v(r.paidPP), v(r.repriceUntil)];
 }
 
 /** Pure: a row → a request. */
@@ -624,7 +624,8 @@ function ariaRequestFromRow_(row) {
     bags: String(row[14] || '').trim(), ceiling: ariaMoney_(row[15]),
     status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]),
     airlinePref: String(row[20] || '').trim(), premium: String(row[21] || '').trim(),
-    place: String(row[22] || '').trim(), ceilingNight: ariaMoney_(row[23]) };
+    place: String(row[22] || '').trim(), ceilingNight: ariaMoney_(row[23]),
+    paidPP: ariaMoney_(row[24]), repriceUntil: d(row[25]) };   // a booked trip's price paid, for the rebook check (#250)
 }
 
 /** Every request, from VERA's tab ([] when there is none yet). */
@@ -734,6 +735,9 @@ function syncAriaFlags_() {
   try { ariaPostBookNow_(t.watch); } catch (e) { Logger.log('aria: Book now Slack post skipped: ' + e.message); }
   try { ariaMarkBooked_(t.watch); } catch (e) { Logger.log('aria booked: check skipped: ' + e.message); }
   try { ariaMarkStaysBooked_(); } catch (e) { Logger.log('aria stays: check skipped: ' + e.message); }
+  // A booked trip: what was paid, so ARIA keeps pricing it; and a lower fare it finds, to #vera-act-now (#250).
+  try { ariaSyncPaid_(); } catch (e) { Logger.log('aria paid: skipped: ' + e.message); }
+  try { ariaPostPriceDrops_(t.fares, ariaReadRequests_(), new Date()); } catch (e) { Logger.log('aria price drop: skipped: ' + e.message); }
   ariaForget_();
   Logger.log('aria flags: ' + Object.keys(wanted).length + ' wanted, ' + opened + ' opened');
   return { ok: true, wanted: Object.keys(wanted).length, opened: opened };
@@ -1036,6 +1040,109 @@ function webWatchAriaRequest_(body) {
     Logger.log('aria_request_watch: watch request ' + (at === -1 ? 'added' : 'refreshed'));
     return { ok: true, request: req };
   });
+}
+
+// ---- Price drop after booking (#250) ---------------------------------------------------
+// ARIA stops pricing a trip once it's Booked, and neither sheet held what was paid. So VERA
+// writes the price paid per person (the trip's Flights Actual ÷ travelers, from VERA's Trip
+// Budget) and the depart date onto the booked trip's request, in VERA's own ARIA Requests tab.
+// ARIA's task is told to keep pricing those trips daily until then and log each fare with
+// Role = rebook (docs/agents/aria-rebook-check.md). When one is lower by at least
+// aria_rebook_min_saving ($50 a person), VERA posts it to #vera-act-now: rebook, or claim the
+// difference. VERA never writes ARIA's sheet.
+
+var ARIA_REBOOK_POSTED_PROP_ = 'ARIA_REBOOK_POSTED';
+
+/** Pure: the price paid per person, from a trip's budget rows. null when the Flights actual is blank or 0. */
+function ariaPaidPerPerson_(budget, travelers) {
+  var total = 0;
+  (budget || []).forEach(function(b) {
+    if (!/^flights?$/i.test(String(b.category || '').trim())) return;
+    var a = typeof b.actual === 'number' ? b.actual : Number(String(b.actual == null ? '' : b.actual).replace(/[^0-9.\-]/g, ''));   // cents kept until the split
+    if (isFinite(a) && a > 0) total += a;
+  });
+  var n = Number(travelers) >= 1 ? Number(travelers) : 2;
+  return total > 0 ? Math.round(total / n) : null;   // whole dollars, as ariaMoney_ reads it back
+}
+
+/** Writes Paid Per Person and Reprice Until on each booked trip that hasn't left yet. → rows changed */
+function ariaSyncPaid_() {
+  var reg = readTripRegistry_(), today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_(), n = 0;
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    rows.forEach(function(row, i) {
+      var r = ariaRequestFromRow_(row);
+      if (r.kind !== 'watch' || r.status !== 'booked' || !r.tripId) return;
+      var t = reg.byId[String(r.tripId).toUpperCase()];
+      if (!t || !t.startDate || t.startDate < today) return;
+      var facts = ariaTripFacts_(t.startDate + '|' + t.label);
+      var paid = ariaPaidPerPerson_(facts.budget, r.travelers || facts.travelers);
+      if (paid === r.paidPP && t.startDate === r.repriceUntil) return;
+      r.paidPP = paid; r.repriceUntil = paid ? t.startDate : ''; r.updated = now;
+      sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++;
+    });
+    if (n) ariaForget_();
+    return n;
+  });
+}
+
+/**
+ * Pure: the price drops to post. fares: ARIA's Fare Log (ARIA_FARE_FIELDS_); reqs: the requests;
+ * only Role = rebook rows seen today or yesterday, on a trip not yet left, lower than paid by at
+ * least min a person; the lowest per trip; once per new low. → [{tripId, label, paid, now, save, travelers, fare, key}]
+ */
+function ariaRebookPicks_(fares, reqs, today, yesterday, min, posted) {
+  var byTrip = {};
+  (reqs || []).forEach(function(r) { if (r.kind === 'watch' && r.status === 'booked' && r.tripId && r.paidPP && r.repriceUntil && today <= r.repriceUntil) byTrip[String(r.tripId).toUpperCase()] = r; });
+  var best = {};
+  (fares || []).forEach(function(f) {
+    if (String(f.role || '').trim().toLowerCase() !== 'rebook') return;
+    var r = byTrip[String(f.tripId || '').toUpperCase()];
+    if (!r || !f.dateSeen || f.dateSeen < yesterday) return;
+    var price = f.total != null ? f.total : f.farePP;
+    if (price == null || !(r.paidPP - price >= min)) return;
+    var id = String(r.tripId).toUpperCase();
+    if (!best[id] || price < best[id].now) best[id] = { tripId: id, label: r.label, paid: r.paidPP, now: price, save: Math.round((r.paidPP - price) * 100) / 100, travelers: r.travelers || 2, fare: f, until: r.repriceUntil };
+  });
+  return Object.keys(best).map(function(k) { var b = best[k]; b.key = 'ARIA|rebook|' + b.tripId + '|' + b.now; return b; })
+    .filter(function(b) { return (posted || []).indexOf(b.key) === -1; });
+}
+
+/** Pure: the #vera-act-now post for a price drop. */
+function ariaRebookBlocks_(p, n, cap) {
+  var money = function(x) { return '$' + Number(x).toLocaleString('en-US', { maximumFractionDigits: 0 }); };
+  var f = p.fare || {}, facts = [f.route, f.airline, f.stops != null && f.stops !== '' ? (Number(f.stops) === 0 ? 'nonstop' : f.stops + ' stop' + (Number(f.stops) === 1 ? '' : 's')) : ''].filter(Boolean).join(' · ');
+  var blocks = [
+    { type: 'context', elements: [{ type: 'mrkdwn', text: '*ARIA*  ·  ⏳ until ' + p.until + '  ·  Price drop after booking' }] },
+    { type: 'section', text: { type: 'mrkdwn', text: '*' + p.label + ' · now ' + money(p.now) + ' pp, you paid ' + money(p.paid) + ' pp*\nSave about ' + money(p.save) + ' each, ' + money(p.save * p.travelers) + ' for ' + p.travelers + '.' + (facts ? ' ' + facts + '.' : '') + '\nCheck your airline’s change or credit rules before you rebook.' } },
+  ];
+  if (/^https:\/\//.test(String(f.link || ''))) blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: String(f.link), action_id: 'act_now_open' }] });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: 'ARIA · act-now ' + n + ' of ' + cap + ' today' }] });
+  return blocks;
+}
+
+/** Posts each new price drop once (Notifications: ARIA Price Drop After Booking). → posts sent */
+function ariaPostPriceDrops_(fares, reqs, now) {
+  if (typeof notifDelivery_ === 'function' && notifDelivery_('aria_price_drop') === 'off') return 0;
+  var cfg = {}; try { cfg = getConfigValues() || {}; } catch (e) {}
+  var min = parseFloat(cfg.aria_rebook_min_saving); min = min > 0 ? min : 50;
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(now, tz, 'yyyy-MM-dd'), yesterday = Utilities.formatDate(new Date(now.getTime() - 864e5), tz, 'yyyy-MM-dd');
+  var props = veraNotes_(), posted = [];
+  try { posted = JSON.parse(props.getProperty(ARIA_REBOOK_POSTED_PROP_) || '[]') || []; } catch (e) { posted = []; }
+  var picks = ariaRebookPicks_(fares, reqs, today, yesterday, min, posted), sent = 0;
+  picks.forEach(function(p) {
+    posted.push(p.key);
+    if (typeof awayHolds_ === 'function' && awayHolds_('aria_price_drop', p.until)) return;
+    var line = p.label + ': now $' + p.now + ' pp, you paid $' + p.paid + ' pp';
+    if ((typeof notifDelivery_ === 'function' && notifDelivery_('aria_price_drop') === 'email') || (typeof actNowAllowed_ === 'function' && !actNowAllowed_('aria'))) { if (typeof notifHold_ === 'function') notifHold_('aria_price_drop', line); return; }
+    var chId = getSlackChannelId_(getNotifChannel_('aria_price_drop'));
+    var n = 1; try { n = notifCounts_().counts.act_aria || 1; } catch (e) {}
+    var cap = typeof actNowCap_ === 'function' ? actNowCap_(cfg, 'aria') : 3;
+    if (chId && (sendSlackMessage_(chId, '⏳ ARIA: ' + line, ariaRebookBlocks_(p, n, cap)) || {}).ok) { sent++; try { notifBump_('act'); } catch (e) {} }
+  });
+  if (picks.length) props.setProperty(ARIA_REBOOK_POSTED_PROP_, JSON.stringify(posted.slice(-60)));
+  return sent;
 }
 
 /**

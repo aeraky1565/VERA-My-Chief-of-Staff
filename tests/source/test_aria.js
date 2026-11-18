@@ -500,7 +500,7 @@ console.log('\nairline preference: United first, Star Alliance abroad, within a 
   check('…or what was typed for this trip', run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').airlinePref === 'Lufthansa only' && run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').premium === '$50 per person');
   S.getConfigValues = () => ({});
   const row = run('ariaRequestToRow_({ id: "REQ-1", kind: "watch", status: "active", airlinePref: "United (UA) first, then any airline", premium: "$75 per person" })');
-  check('the request row carries the airline columns ARIA reads, then Place and Ceiling Per Night (#238)', row.length === 24 && row[20] === 'United (UA) first, then any airline' && row[21] === '$75 per person' && run('ariaRequestFromRow_')(row).airlinePref === 'United (UA) first, then any airline');
+  check('the request row carries the airline columns ARIA reads, then Place and Ceiling Per Night (#238), then Paid Per Person and Reprice Until (#250)', row.length === 26 && row[20] === 'United (UA) first, then any airline' && row[21] === '$75 per person' && run('ariaRequestFromRow_')(row).airlinePref === 'United (UA) first, then any airline');
   check('the watch and scout requests are given the rule', /ariaPrefFor_\(dests, String\(body\.airlinePref/.test(SRC) && /var ap = ariaPrefFor_\(req\.dests, '', ''\)/.test(SRC));
 }
 
@@ -527,7 +527,7 @@ const cr = code => vm.runInContext(code, C);
 }
 
 console.log('\nwiring');
-check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night'];") !== -1);
+check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night', 'Paid Per Person', 'Reprice Until'];") !== -1);
 check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch', (() => { const R = fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8'); const i = R.indexOf('function hourlyCheck() {'), a = R.indexOf('maybeSyncAriaFlags_(new Date());', i), b = R.indexOf("reminders_enabled", i); return i !== -1 && a !== -1 && a < b; })());
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));

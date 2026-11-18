@@ -185,7 +185,8 @@ const NOTIF_REGISTRY = [
   { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false, whileAway: 'send' },
   // Act now (#250): a decision with a clock on it. Through quiet hours, outside the daily cap.
   { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Act now',              channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false, whileAway: 'send' },
-  { key: 'act_now_hailey',      label: 'HAILEY Standout Home',  emoji: '🏡', category: 'Act now',              channel: 'vera-act-now',       description: 'A listing first seen today under your cost ceiling, or a price cut today on a home HAILEY is watching (read from HAILEY’s sheet)', locked: false, whileAway: 'hold' },
+  { key: 'aria_price_drop',     label: 'ARIA Price Drop After Booking', emoji: '💸', category: 'Act now',      channel: 'vera-act-now',       description: 'A booked trip’s fare dropped by aria_rebook_min_saving ($50) a person or more: rebook, or claim the difference', locked: false, whileAway: 'send' },
+  { key: 'act_now_hailey',     label: 'HAILEY Standout Home',  emoji: '🏡', category: 'Act now',              channel: 'vera-act-now',       description: 'A listing first seen today under your cost ceiling, or a price cut today on a home HAILEY is watching (read from HAILEY’s sheet)', locked: false, whileAway: 'hold' },
   { key: 'act_now_tess',        label: 'TESS Strong Match',     emoji: '💼', category: 'Act now',              channel: 'vera-act-now',       description: 'A New job match found today scoring act_now_tess_min_score (85) or more (read from TESS’s Tracker)', locked: false, whileAway: 'hold' },
   { key: 'act_now_vera',        label: 'VERA Decision Deadline', emoji: '⏳', category: 'Act now',             channel: 'vera-act-now',       description: 'A return window or free cancellation ending in the next 2 days, from Planned purchases and Flags with a deadline', locked: false, whileAway: 'due' },
   // Routines
@@ -297,7 +298,7 @@ const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Night
 // Trip IDs Ahmed said are a different trip, so the match is never offered again.
 // Legs, Cost, Verdict and Wishes are JSON (see tiCleanOption_); Pros and Cons are newline lists.
 const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated', 'Verdict', 'Wishes'];
-const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night'];
+const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night', 'Paid Per Person', 'Reprice Until'];   // the last two: a booked trip's rebook check (#250)
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -539,7 +540,8 @@ function createSheetTabs(ss) {
     ['act_now_cap_vera',             '3'],
     ['act_now_cap_hailey',           '3'],
     ['act_now_cap_tess',             '3'],
-    ['act_now_tess_min_score',       '85'],           // a TESS match at or above this goes to #vera-act-now
+    ['act_now_tess_min_score',       '85'],
+    ['aria_rebook_min_saving',       '50'],           // a booked trip's fare this much lower per person goes to #vera-act-now           // a TESS match at or above this goes to #vera-act-now
     ['run_log_sheet_id',             ''],             // RunLog.js: a separate sheet for the Run Log, a tab per job (blank = VERA's own sheet)
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
