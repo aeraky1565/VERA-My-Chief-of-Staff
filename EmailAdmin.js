@@ -58,9 +58,10 @@ function runEmailAdmin_() {
     // Only proceed on Sundays (day 0 in the script timezone)
     var tz          = Session.getScriptTimeZone();
     var dayOfWeek   = parseInt(Utilities.formatDate(now, tz, 'u'), 10) % 7; // 'u' = 1-Mon … 7-Sun → mod 7 → Sun=0
-    if (dayOfWeek !== 0) {
-      Logger.log('runEmailAdmin_: frequency=weekly but today is not Sunday — skipping.');
-      veraLog_('runEmailAdmin', 'Email', 'Skipped', 'frequency=weekly, not Sunday', Date.now() - _eaStart);
+    var runDay = typeof schedWeekday_ === 'function' ? schedWeekday_('email_admin_day', 0, config) : 0;   // Sunday by default (#254)
+    if (dayOfWeek !== runDay) {
+      Logger.log('runEmailAdmin_: frequency=weekly but today is not its day — skipping.');
+      veraLog_('runEmailAdmin', 'Email', 'Skipped', 'frequency=weekly, not its day', Date.now() - _eaStart);
       return;
     }
   } else if (frequency === '3days') {

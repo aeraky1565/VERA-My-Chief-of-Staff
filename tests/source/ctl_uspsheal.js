@@ -20,7 +20,7 @@ const MC = 'test_mailcounter.js', WD = 'test_watchdog.js';
 
 const CONTROLS = [
   ['the catch-up runs even when the scan ran an hour ago', one(M, "return !lastRunMs || nowMs - lastRunMs > USPS_STALE_HOURS_ * 3600000;", "return true;"), MC],
-  ['the catch-up runs before 10:00', one(M, "  if (hour < USPS_SCAN_HOUR_) return false;\n", ""), MC],
+  ['the catch-up runs before 10:00', one(M, "  if (hour < (typeof schedHour_ === 'function' ? schedHour_('usps_scan_hour', USPS_SCAN_HOUR_) : USPS_SCAN_HOUR_)) return false;   // the scan's hour (#254)\n", ""), MC],
   ['hourlyCheck never calls the catch-up', one(R, "  uspsCatchUp_(new Date());\n", ""), MC],
   ['the scan runs without the lock', one(M, "    if (!lock.tryLock(30000)) { Logger.log('scanUSPSMail_: another run holds the lock, skipping.'); return; }\n", ""), MC],
   ['the scan leaves no start marker', one(M, "    props.setProperty('USPS_SCAN_START', new Date().toISOString());\n", ""), WD],

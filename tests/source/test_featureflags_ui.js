@@ -24,7 +24,10 @@ function serverFlags(cfg) {
   return JSON.parse(J(c.webFeatureFlags_()));
 }
 const FLAGS = serverFlags(CFG), FLAGS_FIT_OFF = serverFlags(Object.assign({}, CFG, { fitness_enabled: 'FALSE' }));
-const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ key: 'SYSTEM-WIDE: GENERAL', value: '' }]);
+const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ key: 'SYSTEM-WIDE: GENERAL', value: '' },
+  { key: 'SYSTEM-WIDE: ASSISTANTS (HOME ROSTER)', value: '' }, { key: 'roster_link_zed', value: 'https://example.com/zed' }, { key: 'roster_link_quin', value: 'https://example.com/quin' },
+  { key: 'GIFTS & WISH LISTS', value: '' }, { key: 'gift_initials_ZZ', value: 'Zed Zee' },
+  { key: 'PTO: SAM', value: '' }, { key: 'sam_pto_year', value: '2026' }]);
 
 (async () => {
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
@@ -59,7 +62,7 @@ const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ ke
       const groups = await page.$$eval('.ff-group h3', n => n.map(x => x.textContent));
       check(L + 'grouped by area, all nine', J(groups) === J(['Travel', 'Health', 'Home & food', 'Money', 'People & gifts', 'Work & career', 'Daily life', 'Assistants', 'System']), J(groups));
       const stats = await page.$$eval('.ff-stat', n => n.map(x => x.innerText.replace(/\s+/g, ' ')));
-      check(L + 'counts: features, on, off, paused', /^46 Features/i.test(stats[0]) && /1 Paused/i.test(stats[3]) && /2 Off/i.test(stats[2]), J(stats));
+      check(L + 'counts: features, on, off, paused', /^50 Features/i.test(stats[0]) && /1 Paused/i.test(stats[3]) && /2 Off/i.test(stats[2]), J(stats));
       check(L + 'a paused one says when it comes back, with Resume now', /Back Jan 2/i.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)) && /Resume now/.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)));
       check(L + 'last activity from the run times', /Last ran 2 h ago/.test(await page.$eval('.ff-row[data-k="gym_tracker"]', n => n.innerText)) && /Last ran 4 min ago/.test(await page.$eval('.ff-row[data-k="flight_status"]', n => n.innerText)));
       check(L + 'who sees it, shown only', /Victoria sees it/.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)) && /Owner only/.test(await page.$eval('.ff-row[data-k="notes"]', n => n.innerText)));
@@ -97,7 +100,10 @@ const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ ke
       await mount('SysConfigPanel', FLAGS); await wait(300);
       if (process.env.FF_SHOT) { await page.screenshot({ path: process.env.FF_SHOT + '-config-' + width + '.png' }); await page.$eval('#cf_calgrid', n => n.scrollIntoView()); await page.screenshot({ path: process.env.FF_SHOT + '-cal-' + width + '.png' }); await page.evaluate(() => window.scrollTo(0, 0)); }
       const cg = await page.$$eval('.cf .ff-group h3', n => n.map(x => x.textContent));
-      check(L + 'grouped: files, calendars, Slack & email, places, time off, words, general, everything else', J(cg) === J(['Linked files', 'Calendars', 'Slack & email', 'Places & home', 'Time off', 'Words VERA looks for', 'General', 'Everything else']), J(cg));
+      check(L + 'grouped: files, calendars, Slack & email, places, time off, words, general, everything else', J(cg) === J(['Linked files', 'Calendars', 'Slack & email', 'Places & home', 'Time off', 'Words VERA looks for', 'General', 'Other', 'Assistants', 'Gifts & Wish Lists', 'PTO: Sam']), J(cg));
+      check(L + 'everything else is grouped under the Config tab\'s own headings, with their rows', /^Everything else/.test(await page.textContent('.cf-others-h')) &&
+        J(await page.$$eval('.cf-ogroup', n => n.map(g => g.querySelector('h3').textContent + ':' + Array.from(g.querySelectorAll('.cf-okey')).map(c => c.textContent).join(',')))) ===
+        J(['Other:mystery_setting', 'Assistants:roster_link_zed,roster_link_quin', 'Gifts & Wish Lists:gift_initials_ZZ', 'PTO: Sam:sam_pto_year']));
       check(L + 'an email address is masked until you tap Show', /•••• test/.test(await page.$eval('#cf_email', n => n.innerText)) && !(await page.$('#cf_email input')));
       await page.click('#cf_email .ff-more'); await wait(60);
       check(L + '…then it can be edited', await page.inputValue('#cf_email input') === 'someone@example.test');
@@ -127,7 +133,7 @@ const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ ke
       console.log('\nFeature map ' + L);
       await mount('SysFeatureMap', FLAGS_FIT_OFF); await wait(250);
       const n0 = await page.$$eval('.fm-node', n => n.length);
-      check(L + 'the map draws settings, features and where you see them', n0 > 60 && (await page.$$eval('.fm-node.ft', n => n.length)) === 46 && (await page.$$eval('.fm-node.out', n => n.length)) > 5, n0);
+      check(L + 'the map draws settings, features and where you see them', n0 > 60 && (await page.$$eval('.fm-node.ft', n => n.length)) === 50 && (await page.$$eval('.fm-node.out', n => n.length)) > 5, n0);
       check(L + 'an off feature is dashed', await page.$eval('[data-mnode="fitness"]', n => n.classList.contains('off')));
       await page.click('[data-mnode="gym_tracker"]'); await wait(80);
       if (process.env.FF_SHOT) await page.screenshot({ path: process.env.FF_SHOT + '-map-' + width + '.png' });

@@ -343,9 +343,11 @@ function wishSlug_(s) {
 }
 
 /** Inside the window, the flags that should be open now. Pure. */
-function wishGiftFlagsDue_(people, today) {
+function wishGiftFlagsDue_(people, today, days) {
   var m = today.getMonth() + 1, d = today.getDate();
-  if (m !== 12 || d > WISH_LAST_DAY_) return [];
+  // Config wishlist_flags_until / wishlist_wrap_day (Feature Flags › Family wish lists, #254), else Dec 25 / Dec 20.
+  var lastDay = days && days.last >= 1 && days.last <= 31 ? days.last : WISH_LAST_DAY_, wrapDay = days && days.wrap >= 1 && days.wrap <= 31 ? days.wrap : WISH_WRAP_DAY_;
+  if (m !== 12 || d > lastDay) return [];
   var year = upcomingChristmasYear_(today), due = [];
   (people || []).forEach(function(p) {
     var sec = p.sections && p.sections[year];
@@ -353,7 +355,7 @@ function wishGiftFlagsDue_(people, today) {
     sec.gifts.forEach(function(g) {
       if (!g.ours) return;
       var who = g.names.filter(function(n) { return WISH_OURS_.indexOf(n) !== -1; }).join(' and ');
-      var stage = !g.purchased ? 'unbought' : (!g.wrapped && d >= WISH_WRAP_DAY_) ? 'unwrapped' : '';
+      var stage = !g.purchased ? 'unbought' : (!g.wrapped && d >= wrapDay) ? 'unwrapped' : '';
       if (!stage) return;
       due.push({
         source:  'Gifts',
@@ -389,8 +391,10 @@ function checkWishListGifts_() {
   var flagSheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
   if (!flagSheet) return;
   var due = [];
-  if (today.getMonth() === 11 && today.getDate() <= WISH_LAST_DAY_) {
-    due = wishGiftFlagsDue_(webGetFamilyWishLists_().people, today);
+  var wcfg = {}; try { wcfg = getConfigValues() || {}; } catch (e) {}
+  var days = { last: parseInt(wcfg.wishlist_flags_until, 10), wrap: parseInt(wcfg.wishlist_wrap_day, 10) };
+  if (today.getMonth() === 11 && today.getDate() <= (days.last >= 1 && days.last <= 31 ? days.last : WISH_LAST_DAY_)) {
+    due = wishGiftFlagsDue_(webGetFamilyWishLists_().people, today, days);
   }
   var dueKeys = {};
   due.forEach(function(f) { dueKeys[f.key] = true; });

@@ -575,7 +575,7 @@ A Notifications page left open across a release can list a kind the new server n
 
 ### Settings › Feature Flags, Config and Feature map (#254)
 
-These are three subtabs of **System › Settings**, next to Notifications, Trip emails and People & access. One list on the server (`FEATURES_` in `Features.js`, 46 features) drives all three. Only the owner can see or change Settings: the Config and Notifications routes refuse anyone else's sign-in.
+These are three subtabs of **System › Settings**, next to Notifications, Trip emails and People & access. One list on the server (`FEATURES_` in `Features.js`, 50 features) drives all three. Only the owner can see or change Settings: the Config and Notifications routes refuse anyone else's sign-in.
 
 **Feature Flags.** Each feature is a real switch. It writes the Config row `<key>_enabled` (a missing row means on), and there's Undo. Group the list **by area** (Travel, Health, Home & food, Money, People & gifts, Work & career, Daily life, Assistants, System) or **by kind** (Screens, Emails & briefings, Background checks, Assistants, Housekeeping). There's a search, and filters for On / Off / Paused / Has settings / Victoria sees.
 
@@ -609,7 +609,15 @@ Some are new:
 - `gym_checkin_hours`: when the evening gym check runs (default `18-23`);
 - `run_log_keep_days`: how long the Run Log keeps rows (default 30).
 
-**Config.** The settings that belong to no single feature, grouped: Linked files, Calendars, Slack & email, Places & home, Time off, Words VERA looks for, General, and Everything else (any row nothing else owns, editable as it is). Every field is editable in the page. Each kind of setting has an editor that fits it:
+**Every schedule is a setting.** Anything that runs on a cadence or at a set day or time has a picker on its feature's row, and the row says when it runs ("🗓 Wednesdays at 8 am"):
+- the weekend memo (day and hour), the goal check-in, the chores reset, the email tidy-up (frequency and day);
+- the monthly review and PTO snapshot, card perks, the health insight, the PTO accrual day (day of the month, 1st–28th);
+- the wish-list wrap-up and the last day of gift flags; the fitness slow-week day; the weekly memory snapshot;
+- the nightly run's hour (its second half runs an hour later), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
+
+The nightly run and the morning email are **always on**: they have no switch, only their time. Saving a time that a trigger owns rebuilds just that trigger (`rebuildTrigger_`, using the same `veraTriggerSpecs_` as `setupTriggers`), so the change takes effect without running anything in the editor. The rest are read by the hourly or nightly checks, so they take effect at once. A blank or bad value keeps the old default.
+
+**Config.** The settings that belong to no single feature, grouped: Linked files, Calendars, Slack & email, Places & home, Time off, Words VERA looks for, General, and Everything else: any row nothing else owns, editable as it is, grouped under the Config tab's own section headings (Assistants, Gifts & Wish Lists, PTO: Ahmed, Travel, Pacing, Reminders & Wellness, and so on). Rows above any heading go under Other. Every field is editable in the page. Each kind of setting has an editor that fits it:
 - **Linked files:** cards with the file's name, whether VERA can open it (`config_files`), Open and Change.
 - **Slack channels:** cards with Send a test (`config_slack_test`).
 - **Calendars:** one grid, calendars down the side and roles across: Skip, Free time, Victoria's, Life, Bills, Weekend. Skip greys out the rest of the row. You can add a calendar VERA can see (`config_calendars`), take one out of every list, and name it (`calendar_label:*`).

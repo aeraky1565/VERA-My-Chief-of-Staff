@@ -64,10 +64,10 @@ const CONTROLS = {
     [WL]: swap(b[WL], "      if (!g.ours) return;\n", ''),
   }),
   'flags fire outside December': b => ({
-    [WL]: swap(b[WL], "  if (m !== 12 || d > WISH_LAST_DAY_) return [];\n", ''),
+    [WL]: swap(b[WL], "  if (m !== 12 || d > lastDay) return [];\n", ''),
   }),
   '"not wrapped" fires from Dec 1': b => ({
-    [WL]: swap(b[WL], "(!g.wrapped && d >= WISH_WRAP_DAY_)", "(!g.wrapped)"),
+    [WL]: swap(b[WL], "(!g.wrapped && d >= wrapDay)", "(!g.wrapped)"),
   }),
   'closing stale flags touches other kinds of flag': b => ({
     [WL]: swap(b[WL], "    if (key.indexOf(WISH_FLAG_PREFIX_) !== 0 || dueKeys[key]) continue;", "    if (dueKeys[key]) continue;"),

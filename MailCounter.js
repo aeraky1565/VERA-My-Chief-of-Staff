@@ -189,7 +189,7 @@ function scanUSPSMail_(why) {
 
 /** Pure: is a catch-up due? Past the scan hour, and no run in USPS_STALE_HOURS_. */
 function uspsCatchUpDue_(lastRunMs, nowMs, hour) {
-  if (hour < USPS_SCAN_HOUR_) return false;
+  if (hour < (typeof schedHour_ === 'function' ? schedHour_('usps_scan_hour', USPS_SCAN_HOUR_) : USPS_SCAN_HOUR_)) return false;   // the scan's hour (#254)
   return !lastRunMs || nowMs - lastRunMs > USPS_STALE_HOURS_ * 3600000;
 }
 

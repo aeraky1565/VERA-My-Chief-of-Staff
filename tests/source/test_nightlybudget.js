@@ -649,12 +649,12 @@ console.log('\nThe tail reports its own death');
         /handler: 'nightlyRunTail'/.test(SRC.Code) &&
         /ScriptApp\.newTrigger\(s\.handler\)/.test(SRC.Code));
   check('…an hour after the first half, not alongside it',
-        /atHour\(\(CONFIG\.NIGHTLY_RUN_HOUR \+ 1\) % 24\)/.test(SRC.Code),
+        /atHour\(\(NIGHT \+ 1\) % 24\)/.test(SRC.Code),
         'back to back and the second starts underneath an overrunning first');
 
   // The expensive thing the tail must not do twice.
   check('the PTO snapshot is only recomputed on the day it is read',
-        /today\.getDate\(\) === 1 \? writePTOSnapshot_\(\) : null/.test(body),
+        /today\.getDate\(\) === schedDom_\('finance_review_day', 1\) \? writePTOSnapshot_\(\) : null/.test(body),
         'checkMonthlyReview_ returns immediately on the other 30 days, and the ' +
         'snapshot is one of the heaviest steps in the night');
 }

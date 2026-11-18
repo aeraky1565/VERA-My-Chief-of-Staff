@@ -42,7 +42,10 @@ const CONTROLS = [
   ['emails show unmasked', ui("if(i.mask&&!shown[i.id])return h('div',{className:'cf-field'},", "if(false)return h('div',{className:'cf-field'},")],
   ['a skipped calendar’s boxes stay on', ui("dis=skipped&&c.k!=='skip_calendars';", 'dis=false;')],
   ['no Needed by', ui("if(by.length)parts.push(h('span',{key:'b',className:'cf-dl'},'Needed by')", "if(false)parts.push(h('span',{key:'b',className:'cf-dl'},'Needed by')")],
-  ['section headings show as settings', ui("&&!/^[A-Z0-9 &:,()\\-–'’.\\/]+$/.test(k);});}", ';});}')],
+  ['section headings show as settings', b => { const x = ui("&&!/^[A-Z0-9 &:,()\\-–'’.\\/]+$/.test(k);});}", ';});}')(b), y = ui("{head=/^CONTENTS/.test(k)?'':k;return;}", "{head=/^CONTENTS/.test(k)?'':k;}")(x);
+    return y; }],
+  ['everything else is one pile again (headings ignored)', ui("t=head?cfHeadTitle_(head):'Other';", "t='Other';")],
+  ['a heading keeps its SYSTEM-WIDE prefix', ui("replace(/^SYSTEM-WIDE:\\s*/i,'')", "replace(/^$/,'')")],
   ['the map loses the needs links', ui("if(f.needs&&has[f.needs])add(f.needs,f.k,true);", '')],
   ['an off feature isn’t marked on the map', ui("(s==='off'||s==='blocked'?' off':s==='paused'?' paused':'')", "''")],
   ['Notifications doesn’t say which feature turned it off', ui("n.offBy&&h('div',{className:'nm-offby'", "false&&h('div',{className:'nm-offby'"), 'test_notify_ui.js'],

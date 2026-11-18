@@ -888,14 +888,39 @@ function ensureSheet(ss, name, headers, defaultRows) {
  *
  * @returns {Array<{handler: string, when: string, build: Function}>}
  */
+// ---- Schedules you can change (Settings › Feature Flags, #254) ---------------------------
+// Each reads its Config row at call time and falls back to today's fixed value, so a missing
+// or odd row changes nothing. Trigger times are rebuilt the moment you change one
+// (rebuildTrigger_); the hourly ones read their row every hour.
+var VERA_WEEKDAYS_ = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+var VERA_TRIGGER_MINUTES_ = [5, 10, 15, 30];   // what everyMinutes() accepts (1 is too often for VERA)
+function schedCfg_() { try { return getConfigValues() || {}; } catch (e) { return {}; } }
+/** Pure-ish: an hour 0–23 from Config row `key` ("7", "07:00"), else def. */
+function schedHour_(key, def, cfg) { var s = String((cfg || schedCfg_())[key] == null ? '' : (cfg || schedCfg_())[key]).trim(), v = parseInt(s, 10); return s !== '' && v >= 0 && v <= 23 ? v : def; }
+/** A weekday 0 (Sun) – 6 (Sat), else def. */
+function schedWeekday_(key, def, cfg) { var s = String((cfg || schedCfg_())[key] == null ? '' : (cfg || schedCfg_())[key]).trim(), v = parseInt(s, 10); return s !== '' && v >= 0 && v <= 6 ? v : def; }
+/** A day of the month 1–28 (every month has it), else def. */
+function schedDom_(key, def, cfg) { var v = parseInt((cfg || schedCfg_())[key], 10); return v >= 1 && v <= 28 ? v : def; }
+/** Minutes between runs, one of VERA_TRIGGER_MINUTES_, else def. */
+function schedMinutes_(key, def, cfg) { var v = parseInt((cfg || schedCfg_())[key], 10); return VERA_TRIGGER_MINUTES_.indexOf(v) !== -1 ? v : def; }
+
 function veraTriggerSpecs_() {
   var tz = Session.getScriptTimeZone();
+  // Each falls back to today's fixed time when the schedule helpers aren't loaded.
+  var keep = function(k, d) { return d; };
+  var sc = typeof schedCfg_ === 'function' ? schedCfg_() : {};
+  var H = typeof schedHour_ === 'function' ? schedHour_ : keep, W = typeof schedWeekday_ === 'function' ? schedWeekday_ : keep, M = typeof schedMinutes_ === 'function' ? schedMinutes_ : keep;
+  var NIGHT = H('nightly_run_hour', CONFIG.NIGHTLY_RUN_HOUR, sc);
+  var MORNING = H('morning_nudge_time', CONFIG.MORNING_NUDGE_HOUR, sc);
+  var FLIGHT_MIN = M('flight_status_trigger_minutes', 15, sc), EMAIL_MIN = M('email_parser_minutes', 30, sc);
+  var USPS_H = H('usps_scan_hour', 10, sc), HOA_D = W('hoa_scan_day', 1, sc), HOA_H = H('hoa_scan_hour', 9, sc);
+  var HOA_DAY = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][HOA_D];
 
   return [
     { handler: 'nightlyRun',
-      when: 'daily at ' + CONFIG.NIGHTLY_RUN_HOUR + ':00',
+      when: 'daily at ' + NIGHT + ':00',
       build: function(t) {
-        return t.atHour(CONFIG.NIGHTLY_RUN_HOUR).everyDays(1).inTimezone(tz);
+        return t.atHour(NIGHT).everyDays(1).inTimezone(tz);
       } },
 
     // The second half of the night, an hour later. The run outgrew Apps Script's
@@ -903,15 +928,15 @@ function veraTriggerSpecs_() {
     // apart rather than back to back: the first half has to have finished, and a run
     // that overruns its own budget should not have the next starting underneath it.
     { handler: 'nightlyRunTail',
-      when: 'daily at ' + ((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24) + ':00',
+      when: 'daily at ' + ((NIGHT + 1) % 24) + ':00',
       build: function(t) {
-        return t.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24).everyDays(1).inTimezone(tz);
+        return t.atHour((NIGHT + 1) % 24).everyDays(1).inTimezone(tz);
       } },
 
     { handler: 'morningNudge',
-      when: 'daily at ' + CONFIG.MORNING_NUDGE_HOUR + ':00',
+      when: 'daily at ' + MORNING + ':00',
       build: function(t) {
-        return t.atHour(CONFIG.MORNING_NUDGE_HOUR).everyDays(1).inTimezone(tz);
+        return t.atHour(MORNING).everyDays(1).inTimezone(tz);
       } },
 
     // Hourly Anticipator — evaluates reminder rules every hour
@@ -922,28 +947,43 @@ function veraTriggerSpecs_() {
     // Flight status monitor — polls AviationStack for flights within 24h of departure.
     // No .inTimezone(): a minute interval has no local time of day to be in.
     { handler: 'checkFlightStatuses_',
-      when: 'every 15 min',
-      build: function(t) { return t.everyMinutes(15); } },
+      when: 'every ' + FLIGHT_MIN + ' min',
+      build: function(t) { return t.everyMinutes(FLIGHT_MIN); } },
 
     // Email inbox scanner — parses travel confirmation emails (Issue #98)
     // ⚠ WARNING: email_parser_enabled=true can generate up to 144 Claude API calls/day.
     // Only enable in Config when actively processing a travel email backlog.
     { handler: 'runEmailScan_',
-      when: 'every 30 min',
-      build: function(t) { return t.everyMinutes(30); } },
+      when: 'every ' + EMAIL_MIN + ' min',
+      build: function(t) { return t.everyMinutes(EMAIL_MIN); } },
 
     // USPS Informed Delivery scanner — 10am catches the daily mail/package email (Issue #175)
     { handler: 'scanUSPSMail_',
-      when: 'daily at 10:00',
-      build: function(t) { return t.atHour(10).everyDays(1).inTimezone(tz); } },
+      when: 'daily at ' + (USPS_H < 10 ? '0' : '') + USPS_H + ':00',
+      build: function(t) { return t.atHour(USPS_H).everyDays(1).inTimezone(tz); } },
 
     // HOA website scanner (Issue #179)
     { handler: 'scanHoaWebsite_',
-      when: 'Mondays at 09:00',
+      when: HOA_DAY.charAt(0) + HOA_DAY.slice(1).toLowerCase() + 's at ' + (HOA_H < 10 ? '0' : '') + HOA_H + ':00',
       build: function(t) {
-        return t.everyWeeks(1).onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone(tz);
+        return t.everyWeeks(1).onWeekDay(ScriptApp.WeekDay[HOA_DAY]).atHour(HOA_H).inTimezone(tz);
       } },
   ];
+}
+
+/**
+ * Rebuilds one handler's trigger from veraTriggerSpecs_, after you change its time in
+ * Settings (#254): the old one is deleted first, so there's never two. → true when rebuilt.
+ */
+function rebuildTrigger_(handler) {
+  var spec = veraTriggerSpecs_().filter(function(s) { return s.handler === handler; })[0];
+  if (!spec) return false;
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === handler) ScriptApp.deleteTrigger(trigger);
+  });
+  spec.build(ScriptApp.newTrigger(handler).timeBased()).create();
+  try { recordTriggerRegistrations_([handler]); } catch (regErr) { Logger.log('rebuildTrigger_ bookkeeping (non-fatal): ' + regErr.message); }
+  return true;
 }
 
 /**
@@ -1692,12 +1732,12 @@ function nightlyRunTail() {
       // every other day, so computing it nightly here would repeat one of the
       // heaviest steps in the night for nothing. The snapshot rewrites its sheet
       // rather than appending, so the 1st's second call is idempotent.
-      var ptoStats = today.getDate() === 1 ? writePTOSnapshot_() : null;
+      var ptoStats = today.getDate() === schedDom_('finance_review_day', 1) ? writePTOSnapshot_() : null;   // the review's day (#254)
       checkMonthlyReview_(ptoStats);
     });
 
-    // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12)
-    if (today.getDate() === 1) {
+    // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12); its day is a setting (#254)
+    if (today.getDate() === schedDom_('health_insight_day', 1)) {
       nightlyStep_(ctx, 'sendHealthPerformanceInsightMonthly_', sendHealthPerformanceInsightMonthly_);
     }
 
@@ -4040,7 +4080,7 @@ function checkCardPerksExpiring_() {
  * Never edits Amount/Frequency/Category itself.
  */
 function checkCardPerksActive_() {
-  if (new Date().getDate() !== 1) return; // once a month — same gating style as runEmailAdmin's weekly check
+  if (new Date().getDate() !== schedDom_('card_perks_review_day', 1)) return; // once a month, on its day (Feature Flags › Card perks, #254)
 
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
@@ -5378,7 +5418,7 @@ function resetChoresByCadence_() {
   var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   var weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 
-  var isFriday          = (dow === 5);
+  var isFriday          = (dow === schedWeekday_('chores_reset_day', 5));   // "Friday": the weekly reset day, a setting (#254)
   var isBiweeklyFriday  = isFriday && (weekNum % 2 === 0);
   var isLastDayOfMonth  = (dom === lastDom);
   // Bimonthly: last day of every other month (Feb/Apr/Jun/Aug/Oct/Dec = odd 0-indexed month)

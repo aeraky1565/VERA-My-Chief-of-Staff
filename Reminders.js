@@ -69,8 +69,8 @@ function hourlyCheck() {
     Logger.log('hourlyCheck: hour=' + hour + ', isWeekday=' + isWeekday);
     runAnticipatorRules_(now, hour, isWeekday, cfg);
 
-    // Weekend Planner — fires Wednesday ~8am, once per week
-    if (day === 3 && hour === Number(cfg['weekend_planner_hour'] || 8)) {
+    // Weekend Planner — Wednesday ~8am by default; day and hour are settings (Feature Flags, #254)
+    if (day === schedWeekday_('weekend_planner_day', 3, cfg) && hour === schedHour_('weekend_planner_hour', 8, cfg)) {
       try {
         runWeekendPlanner_();
       } catch (wpErr) {
@@ -398,8 +398,10 @@ function checkTripPackingReminder_(now, hour, cfg) {
  */
 function checkGoalCheckin_(now, hour, cfg) {
   var day = now.getDay(); // 0=Sun, 1=Mon
-  if (day !== 1) return; // Mondays only
-  if (hour !== Number(cfg['weekend_planner_hour'] || 8)) return; // Same window as weekend planner
+  // Mondays at 8 by default; its own day and hour now (Feature Flags › Goal check-in, #254),
+  // falling back to the weekend planner's hour it used to share.
+  if (day !== schedWeekday_('goal_checkin_day', 1, cfg)) return;
+  if (hour !== schedHour_('goal_checkin_hour', schedHour_('weekend_planner_hour', 8, cfg), cfg)) return;
 
   var tz      = Session.getScriptTimeZone();
   var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');

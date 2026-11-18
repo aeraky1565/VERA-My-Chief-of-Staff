@@ -26,7 +26,7 @@ console.log('\nThe list');
 {
   const c = ctx({});
   const keys = c.FEATURES_.map(f => f.k);
-  check('46 features, each key once, each in a known area and kind', keys.length === 46 && new Set(keys).size === 46 && c.FEATURES_.every(f => c.FEATURE_AREAS_.includes(f.a) && c.FEATURE_KINDS_.includes(f.kind)));
+  check('50 features, each key once, each in a known area and kind', keys.length === 50 && new Set(keys).size === 50 && c.FEATURES_.every(f => c.FEATURE_AREAS_.includes(f.a) && c.FEATURE_KINDS_.includes(f.kind)));
   check('every "needs" names a feature', c.FEATURES_.every(f => !f.needs || keys.includes(f.needs)));
   const steps = Object.keys(c.featureStepMap_()), missing = steps.filter(s => !new RegExp("nightlyStep_\\((ctx|c), '" + s + "'").test(CODE));
   check('every step it owns is a real nightly or morning step', steps.length > 40 && !missing.length, J(missing));
@@ -66,7 +66,7 @@ console.log('\nRoutes');
   const c = ctx(cfg);
   const r = c.webFeatureFlags_();
   const pre = r.features.find(f => f.k === 'pretrip_briefing'), pan = r.features.find(f => f.k === 'pantry'), usps = r.features.find(f => f.k === 'usps_scan');
-  check('feature_flags: every feature with its state, its settings (value or default) and last activity', r.ok && r.features.length === 46 && pan.state === 'paused' && pan.until === '2026-12-01' && pre.cfg[0].v === '36' && !pre.cfg[0].isDefault && usps.last === '2026-11-19T10:00:00.000Z');
+  check('feature_flags: every feature with its state, its settings (value or default) and last activity', r.ok && r.features.length === 50 && pan.state === 'paused' && pan.until === '2026-12-01' && pre.cfg[0].v === '36' && !pre.cfg[0].isDefault && usps.last === '2026-11-19T10:00:00.000Z');
   check('…its notifications by name', J(r.features.find(f => f.k === 'gym_tracker').notif) === J([{ key: 'gym_checkin', label: 'Gym Check-in' }]));
   check('owner only', ctx({}, { notOwner: true }).webFeatureFlags_().ok === false && ctx({}, { notOwner: true }).webSetFeature_({ key: 'fitness', state: 'off' }).ok === false);
   const s = c.webSetFeature_({ key: 'fitness', state: 'off' });

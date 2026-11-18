@@ -26,11 +26,11 @@ const CONTROLS = {
   }),
   'nothing is deleted at all': b => ({
     'Code.js': b['Code.js'].replace(
-      /  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n[\s\S]*?\n  \}\);\n/, ''),
+      /  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, ''),
   }),
   'the deletes are interleaved with the creates': b => ({
     'Code.js': b['Code.js']
-      .replace(/  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n[\s\S]*?\n  \}\);\n/, '')
+      .replace(/  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, '')
       .replace('    s.build(ScriptApp.newTrigger(s.handler).timeBased()).create();',
                "    ScriptApp.getProjectTriggers().forEach(function(t) {\n" +
                "      if (t.getHandlerFunction() === s.handler) ScriptApp.deleteTrigger(t);\n" +
@@ -65,38 +65,38 @@ const CONTROLS = {
   // ---- each schedule ------------------------------------------------------
   'the nightly run loses its everyDays(1)': b => ({
     'Code.js': b['Code.js'].replace(
-      '        return t.atHour(CONFIG.NIGHTLY_RUN_HOUR).everyDays(1).inTimezone(tz);',
-      '        return t.atHour(CONFIG.NIGHTLY_RUN_HOUR).inTimezone(tz);'),
+      '        return t.atHour(NIGHT).everyDays(1).inTimezone(tz);',
+      '        return t.atHour(NIGHT).inTimezone(tz);'),
   }),
   'the tail no longer wraps past midnight': b => ({
     'Code.js': b['Code.js'].replace(
-      '        return t.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24).everyDays(1).inTimezone(tz);',
-      '        return t.atHour(CONFIG.NIGHTLY_RUN_HOUR + 1).everyDays(1).inTimezone(tz);'),
+      '        return t.atHour((NIGHT + 1) % 24).everyDays(1).inTimezone(tz);',
+      '        return t.atHour(NIGHT + 1).everyDays(1).inTimezone(tz);'),
   }),
   'the tail hardcodes midnight instead of following the head': b => ({
     'Code.js': b['Code.js'].replace(
-      '        return t.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24).everyDays(1).inTimezone(tz);',
+      '        return t.atHour((NIGHT + 1) % 24).everyDays(1).inTimezone(tz);',
       '        return t.atHour(0).everyDays(1).inTimezone(tz);'),
   }),
   'the flight poller is given a timezone': b => ({
     'Code.js': b['Code.js'].replace(
-      '      build: function(t) { return t.everyMinutes(15); } },',
-      '      build: function(t) { return t.everyMinutes(15).inTimezone(tz); } },'),
+      '      build: function(t) { return t.everyMinutes(FLIGHT_MIN); } },',
+      '      build: function(t) { return t.everyMinutes(FLIGHT_MIN).inTimezone(tz); } },'),
   }),
   'the email scan interval is halved': b => ({
-    'Code.js': b['Code.js'].replace('return t.everyMinutes(30);', 'return t.everyMinutes(15);'),
+    'Code.js': b['Code.js'].replace("EMAIL_MIN = M('email_parser_minutes', 30, sc)", "EMAIL_MIN = M('email_parser_minutes', 15, sc)"),
   }),
   'the USPS scan moves off 10am': b => ({
-    'Code.js': b['Code.js'].replace('return t.atHour(10).everyDays(1).inTimezone(tz);',
-                                    'return t.atHour(6).everyDays(1).inTimezone(tz);'),
+    'Code.js': b['Code.js'].replace("USPS_H = H('usps_scan_hour', 10, sc)",
+                                    "USPS_H = H('usps_scan_hour', 6, sc)"),
   }),
   'the HOA scan loses its weekday': b => ({
     'Code.js': b['Code.js'].replace(
-      '        return t.everyWeeks(1).onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone(tz);',
-      '        return t.everyWeeks(1).atHour(9).inTimezone(tz);'),
+      '        return t.everyWeeks(1).onWeekDay(ScriptApp.WeekDay[HOA_DAY]).atHour(HOA_H).inTimezone(tz);',
+      '        return t.everyWeeks(1).atHour(HOA_H).inTimezone(tz);'),
   }),
   'the HOA scan runs on the wrong day': b => ({
-    'Code.js': b['Code.js'].replace('ScriptApp.WeekDay.MONDAY', 'ScriptApp.WeekDay.TUESDAY'),
+    'Code.js': b['Code.js'].replace("HOA_D = W('hoa_scan_day', 1, sc)", "HOA_D = W('hoa_scan_day', 2, sc)"),
   }),
   'the hourly check loses its timezone': b => ({
     'Code.js': b['Code.js'].replace(

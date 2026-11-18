@@ -20,7 +20,23 @@
 /** k, name, emoji, area, kind, description, touches, who sees it (sees|hidden|owner|na), needs,
  *  steps (nightlyStep_ names), jobs (scheduled handlers), notif (NOTIF_REGISTRY keys), screens
  *  (dashboard nav ids: a main tab, or <menu>/<subtab>), risky (said before turning it off), cfg. */
+// Picker choices for schedules: a weekday, an hour, a day of the month, minutes between runs.
+var SCHED_WEEKDAY_O_ = [['0', 'Sunday'], ['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday']];
+var SCHED_HOUR_O_ = (function() { var o = []; for (var h = 0; h < 24; h++) o.push([String(h), h === 0 ? '12 am' : h < 12 ? h + ' am' : h === 12 ? '12 pm' : (h - 12) + ' pm']); return o; })();
+var SCHED_DOM_O_ = (function() { var o = []; for (var d = 1; d <= 28; d++) o.push([String(d), d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th')]); return o; })();
+var SCHED_DEC_O_ = (function() { var o = []; for (var d = 1; d <= 31; d++) o.push([String(d), 'Dec ' + d]); return o; })();
+var SCHED_MIN_O_ = [['5', 'every 5 minutes'], ['10', 'every 10 minutes'], ['15', 'every 15 minutes'], ['30', 'every 30 minutes']];
+function schedOpt_(c, l, kind, def, u) { return { c: c, l: l, type: 'select', sched: kind, def: def, u: u || '', o: kind === 'weekday' ? SCHED_WEEKDAY_O_ : kind === 'hour' ? SCHED_HOUR_O_ : kind === 'dom' ? SCHED_DOM_O_ : kind === 'dec' ? SCHED_DEC_O_ : SCHED_MIN_O_ }; }
+// Changing one of these rebuilds that trigger (Code.js rebuildTrigger_).
+var SCHED_TRIGGER_KEYS_ = { nightly_run_hour: ['nightlyRun', 'nightlyRunTail'], morning_nudge_time: ['morningNudge'], usps_scan_hour: ['scanUSPSMail_'],
+  hoa_scan_day: ['scanHoaWebsite_'], hoa_scan_hour: ['scanHoaWebsite_'], email_parser_minutes: ['runEmailScan_'], flight_status_trigger_minutes: ['checkFlightStatuses_'] };
+
 var FEATURES_ = [
+  // Always on: when they run is all there is to set.
+  { k: 'nightly_run', n: 'Nightly run', e: '🌙', a: 'System', kind: 'Housekeeping', d: 'Collects the day, writes flags, and tidies up. The second half runs an hour later.', t: ['Nightly'], v: 'na', fixed: true,
+    jobs: ['nightlyRun', 'nightlyRunTail'], cfg: [schedOpt_('nightly_run_hour', 'Starts at', 'hour', '23', 'the second half an hour later')] },
+  { k: 'morning_email', n: 'Morning email', e: '☀️', a: 'System', kind: 'Emails & briefings', d: 'The daily briefing email.', t: ['Morning email', 'Email'], v: 'na', fixed: true,
+    jobs: ['morningNudge'], cfg: [schedOpt_('morning_nudge_time', 'Sent at', 'hour', '7')] },
   // Travel
   { k: 'pretrip_briefing', n: 'Pre-trip briefing', e: '✈️', a: 'Travel', kind: 'Emails & briefings', d: 'An email before you leave: weather, documents, what’s booked.', t: ['Nightly step', 'Email'], v: 'na',
     steps: ['checkPreTripBriefings_'], notif: ['pretrip_briefing', 'packing_reminder'], cfg: [{ c: 'pretrip_briefing_hours', l: 'Send it', type: 'num', def: '48', u: 'hours before departure' }] },
@@ -32,11 +48,11 @@ var FEATURES_ = [
   { k: 'places_autovisit', n: 'Places: add visited countries', e: '🌍', a: 'Travel', kind: 'Background checks', d: 'When a trip ends, its countries are added to Countries › Visited.', t: ['Nightly step', 'Countries tab'], v: 'sees',
     steps: ['plCloseEndedTrips_'] },
   { k: 'flight_status', n: 'Flight status checks', e: '🛫', a: 'Travel', kind: 'Background checks', d: 'On travel days: delays, gate changes, cancellations.', t: ['Every 15 min', 'Slack'], v: 'na',
-    jobs: ['checkFlightStatuses_'], risky: 'You won’t hear about delays or gate changes on a travel day.', cfg: [{ c: 'flight_status_poll_minutes', l: 'Check every', type: 'num', def: '15', u: 'minutes on travel days' }] },
+    jobs: ['checkFlightStatuses_'], risky: 'You won’t hear about delays or gate changes on a travel day.', cfg: [schedOpt_('flight_status_trigger_minutes', 'Runs', 'minutes', '15'), { c: 'flight_status_poll_minutes', l: 'Re-check a flight after', type: 'num', def: '15', u: 'minutes' }] },
   // Health
   { k: 'fitness', n: 'Fitness', e: '💪', a: 'Health', kind: 'Screens', d: 'The Fitness screen, weekly target and the slow-week flag.', t: ['Screen', 'Nightly step', 'Flag'], v: 'hidden',
     steps: ['checkFitnessConsistency_', 'checkFitnessTravelGap_'], screens: ['health/fitness'], notif: ['health_performance_insight'],
-    cfg: [{ c: 'fitness_weekly_target', l: 'Weekly target', type: 'num', def: '4', u: 'workouts' }, { c: 'fitness_low_flag_day', l: 'Flag a slow week on', type: 'select', def: '4', o: [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] }] },
+    cfg: [{ c: 'fitness_weekly_target', l: 'Weekly target', type: 'num', def: '4', u: 'workouts' }, schedOpt_('fitness_low_flag_day', 'Flag a slow week on', 'weekday', '4'), schedOpt_('health_insight_day', 'Monthly health insight on the', 'dom', '1')] },
   { k: 'gym_tracker', n: 'Gym check-ins', e: '🏋️', a: 'Health', kind: 'Background checks', d: 'After a calendar workout ends, VERA asks “Did you go?”.', t: ['Hourly', 'Slack'], v: 'na', needs: 'fitness',
     steps: ['checkGymSessions_'], notif: ['gym_checkin'], cfg: [{ c: 'gym_tracker_lookback_hours', l: 'Look back', type: 'num', def: '48', u: 'hours' }, { c: 'gym_checkin_hours', l: 'Ask between', type: 'text', def: '18-23', u: '24 h, e.g. 18-23' }] },
   { k: 'morning_routine', n: 'Morning Routine', e: '☀️', a: 'Health', kind: 'Screens', d: 'Weekday and weekend checklists that reset each night.', t: ['Screen', 'Nightly step'], v: 'sees',
@@ -55,40 +71,49 @@ var FEATURES_ = [
   { k: 'coupons', n: 'Coupons', e: '🎟️', a: 'Home & food', kind: 'Background checks', d: 'Expiring coupons, scratched off, then removed.', t: ['Nightly step', 'Slack'], v: 'sees',
     steps: ['checkExpiringCoupons_', 'purgeExpiredCoupons_'], notif: ['coupon_expiry'] },
   { k: 'usps_scan', n: 'USPS mail scan', e: '📬', a: 'Home & food', kind: 'Background checks', d: 'Reads Informed Delivery emails for today’s mail and packages.', t: ['Daily', 'Email inbox'], v: 'na',
-    jobs: ['scanUSPSMail_'], notif: ['usps_mail'] },
-  { k: 'hoa_watch', n: 'HOA website watch', e: '🏘️', a: 'Home & food', kind: 'Background checks', d: 'Checks the HOA site for new notices.', t: ['Daily', 'Slack'], v: 'sees', jobs: ['scanHoaWebsite_'] },
+    jobs: ['scanUSPSMail_'], notif: ['usps_mail'], cfg: [schedOpt_('usps_scan_hour', 'Scans at', 'hour', '10')] },
+  { k: 'hoa_watch', n: 'HOA website watch', e: '🏘️', a: 'Home & food', kind: 'Background checks', d: 'Checks the HOA site for new notices.', t: ['Weekly', 'Slack'], v: 'sees', jobs: ['scanHoaWebsite_'],
+    cfg: [schedOpt_('hoa_scan_day', 'Checks on', 'weekday', '1'), schedOpt_('hoa_scan_hour', 'At', 'hour', '9')] },
   // Money
   { k: 'financial_scenarios', n: 'Financial scenarios', e: '🧮', a: 'Money', kind: 'Screens', d: 'The what-if planner on the Money screen.', t: ['Screen'], v: 'hidden' },
   { k: 'loyalty_programs', n: 'Loyalty programs', e: '🎫', a: 'Money', kind: 'Screens', d: 'Points and status across airlines and hotels.', t: ['Screen'], v: 'hidden' },
   { k: 'monthly_review', n: 'Monthly life review', e: '📊', a: 'Money', kind: 'Emails & briefings', d: 'A review email at the start of each month.', t: ['Nightly step', 'Email'], v: 'na',
-    steps: ['checkMonthlyReview_'], notif: ['monthly_review'], cfg: [{ c: 'finance_review_day', l: 'Send on day', type: 'num', def: '1', u: 'of the month' }] },
+    steps: ['checkMonthlyReview_'], notif: ['monthly_review'], cfg: [schedOpt_('finance_review_day', 'Sent on the', 'dom', '1', 'of each month')] },
   { k: 'card_hub', n: 'Card perks', e: '💳', a: 'Money', kind: 'Background checks', d: 'Credits about to expire, and perks worth using this month.', t: ['Nightly step', 'Flag'], v: 'hidden',
-    steps: ['closeExpiredPerkFlags_', 'checkCardPerksExpiring_', 'checkCardPerksActive_', 'seedPerkUses_', 'checkCardHub_', 'purgePastPerkReminderEvents_'] },
+    steps: ['closeExpiredPerkFlags_', 'checkCardPerksExpiring_', 'checkCardPerksActive_', 'seedPerkUses_', 'checkCardHub_', 'purgePastPerkReminderEvents_'],
+    cfg: [schedOpt_('card_perks_review_day', 'Monthly perk review on the', 'dom', '1')] },
   { k: 'tax_docs', n: 'Tax documents', e: '🧾', a: 'Money', kind: 'Background checks', d: 'Tracks forms as they arrive and flags one that’s late.', t: ['Nightly step', 'Flag'], v: 'hidden', steps: ['checkTaxDocuments_', 'checkTaxLate_'] },
   // People & gifts
   { k: 'important_dates', n: 'Important dates', e: '🎂', a: 'People & gifts', kind: 'Background checks', d: 'Birthdays and anniversaries, synced with the calendar, with reminders.', t: ['Nightly step', 'Flag', 'Calendar'], v: 'sees',
     steps: ['syncCalendarBirthdaysToImportantDates_', 'syncImportantDatesToCalendar_', 'checkImportantDates_', 'checkNoGiftIdea_'],
     cfg: [{ c: 'dates_default_lead_time', l: 'Start reminding', type: 'num', def: '30', u: 'days before' }, { c: 'dates_medium_urgency_days', l: 'Medium from', type: 'num', def: '7', u: 'days before' }, { c: 'dates_high_urgency_days', l: 'High from', type: 'num', def: '1', u: 'day before' }] },
   { k: 'wish_list', n: 'Wish List', e: '🛍', a: 'People & gifts', kind: 'Screens', d: 'Your own wish list screen.', t: ['Screen'], v: 'sees' },
-  { k: 'wishlists', n: 'Family wish lists', e: '🎄', a: 'People & gifts', kind: 'Screens', d: 'Reads each family member’s wish list sheet.', t: ['Screen', 'Sheets'], v: 'sees', steps: ['checkWishListGifts_'], screens: ['people/wishlists'] },
+  { k: 'wishlists', n: 'Family wish lists', e: '🎄', a: 'People & gifts', kind: 'Screens', d: 'Reads each family member’s wish list sheet.', t: ['Screen', 'Sheets'], v: 'sees', steps: ['checkWishListGifts_'], screens: ['people/wishlists'],
+    cfg: [schedOpt_('wishlist_wrap_day', '“Not wrapped yet” from', 'dec', '20'), schedOpt_('wishlist_flags_until', 'Gift flags until', 'dec', '25')] },
   { k: 'notes', n: 'Notes', e: '🗒️', a: 'People & gifts', kind: 'Screens', d: 'Private quick capture, tags and the Vault.', t: ['Screen', 'Jot tile'], v: 'owner', screens: ['life/notes'],
     risky: 'Your notes stay saved; only the screen and the Jot tile go away.' },
   // Work & career
   { k: 'career', n: 'Career', e: '🧭', a: 'Work & career', kind: 'Screens', d: 'North Star, evidence, pipeline and the monthly wins bank.', t: ['Screen', 'Nightly step', 'Flag'], v: 'hidden',
     steps: ['carCredNightly_', 'carNightly_', 'carCheckAgentHealth_', 'carMonthlyWinsBank_', 'carSuggestCriteria_', 'carCareerFlags_'], notif: ['career_cert_expiry'], screens: ['career'] },
   { k: 'pto_planner', n: 'PTO planner', e: '🏖️', a: 'Work & career', kind: 'Screens', d: 'Next year’s PTO plan, and the yearly rollover.', t: ['Screen', 'Nightly step'], v: 'sees',
-    steps: ['checkPTOYearRollover_', 'checkPTOStrategy_', 'writePTOSnapshot_'], notif: ['pto_strategy'], screens: ['pto'] },
+    steps: ['checkPTOYearRollover_', 'checkPTOStrategy_', 'writePTOSnapshot_'], notif: ['pto_strategy'], screens: ['pto'],
+    cfg: [schedOpt_('pto_accrual_day', 'Vacation accrues on the', 'dom', '16', 'of each month')] },
   { k: 'day_sequencing', n: 'Day sequencing', e: '📆', a: 'Work & career', kind: 'Emails & briefings', d: '“Your day, sequenced” in the morning email.', t: ['Morning email'], v: 'na' },
   { k: 'google_tasks', n: 'Google Tasks', e: '✅', a: 'Work & career', kind: 'Screens', d: 'Shows Google Tasks next to VERA’s.', t: ['Screen', 'Morning email'], v: 'na', steps: ['webGetGoogleTasks_'] },
   // Daily life
   { k: 'weekend_planner', n: 'Weekend planner', e: '📅', a: 'Daily life', kind: 'Emails & briefings', d: 'A weekend memo email with ideas around your calendar.', t: ['Email', 'Weekly'], v: 'na', notif: ['weekend_memo'],
-    cfg: [{ c: 'weekend_planner_hour', l: 'Send at hour', type: 'num', def: '8', u: '(24 h)' }, { c: 'weekend_planner_lookahead_days', l: 'Look ahead', type: 'num', def: '30', u: 'days' }] },
+    cfg: [schedOpt_('weekend_planner_day', 'Sent on', 'weekday', '3'), schedOpt_('weekend_planner_hour', 'At', 'hour', '8'), { c: 'weekend_planner_lookahead_days', l: 'Look ahead', type: 'num', def: '30', u: 'days' }] },
   { k: 'explorer', n: 'Daily discovery', e: '🔍', a: 'Daily life', kind: 'Emails & briefings', d: 'One curated pick a day from your interests.', t: ['Nightly step', 'Slack'], v: 'na', steps: ['runExplorer_'], notif: ['daily_discovery'],
     cfg: [{ c: 'explorer_interests', l: 'Interests', type: 'text', def: '', u: 'blank = from your interests' }] },
-  { k: 'weekly_trend_review', n: 'Weekly trend review', e: '📈', a: 'Daily life', kind: 'Emails & briefings', d: 'A Sunday digest of how the week went.', t: ['Email'], v: 'na', steps: ['sendWeeklyTrendReview_'], notif: ['weekly_trend_review'] },
+  { k: 'weekly_trend_review', n: 'Weekly trend review', e: '📈', a: 'Daily life', kind: 'Emails & briefings', d: 'A Sunday digest of how the week went.', t: ['Email'], v: 'na', steps: ['sendWeeklyTrendReview_'], notif: ['weekly_trend_review'],
+    cfg: [schedOpt_('memory_snapshot_day', 'Sent on', 'weekday', '0', 'with that night’s weekly snapshot')] },
   { k: 'pacing', n: 'Easy mode', e: '🧘', a: 'Daily life', kind: 'Background checks', d: 'Holds back minor flags when you’re overloaded.', t: ['Nightly step'], v: 'na',
     cfg: [{ c: 'pacing_flag_threshold', l: 'Turn on after', type: 'num', def: '3', u: 'High flags in a night' }, { c: 'pacing_mode_days', l: 'Lasts', type: 'num', def: '7', u: 'days' }] },
   { k: 'away_mode', n: 'Away mode', e: '🏝️', a: 'Daily life', kind: 'Background checks', d: 'Holds non-urgent notifications while you travel, then a catch-up.', t: ['Hourly', 'Slack'], v: 'na' },
+  { k: 'goal_checkin', n: 'Goal check-in', e: '🎯', a: 'Daily life', kind: 'Background checks', d: 'Once a week, a nudge about goals that have been Doing since an earlier month.', t: ['Hourly', 'Slack'], v: 'na',
+    notif: ['goal_checkin'], cfg: [schedOpt_('goal_checkin_day', 'On', 'weekday', '1'), schedOpt_('goal_checkin_hour', 'At', 'hour', '8')] },
+  { k: 'chores', n: 'Chores reset', e: '🧹', a: 'Home & food', kind: 'Background checks', d: 'Clears done chores so they come back: daily ones each night, weekly ones on their day.', t: ['Nightly step'], v: 'sees',
+    steps: ['resetChoresByCadence_'], cfg: [schedOpt_('chores_reset_day', 'Weekly chores reset on', 'weekday', '5', 'every other week for biweekly ones')] },
   { k: 'experiments', n: 'Experiments', e: '🧪', a: 'Daily life', kind: 'Screens', d: 'Personal experiments and their check-ins.', t: ['Screen'], v: 'hidden' },
   // Assistants
   { k: 'aria_sync', n: 'ARIA travel watch', e: '🧭', a: 'Assistants', kind: 'Assistants', d: 'Reads ARIA’s tracker: Book now, and price drops after booking.', t: ['Hourly', 'Slack', 'ARIA sheet'], v: 'na',
@@ -102,9 +127,9 @@ var FEATURES_ = [
   { k: 'agent_health', n: 'Agent health', e: '🤖', a: 'Assistants', kind: 'Background checks', d: 'Notices when an assistant is late or failed.', t: ['Nightly step', 'Flag', 'Slack'], v: 'na',
     steps: ['checkAgentHealth_'], notif: ['agent_down_aria', 'agent_down_tess', 'agent_down_hailey'], risky: 'If ARIA, TESS or HAILEY stops running, nothing will tell you.' },
   // System
-  { k: 'email_parser', n: 'Email parsing', e: '📧', a: 'System', kind: 'Background checks', d: 'Reads booking and receipt emails into VERA.', t: ['Every 30 min', 'Email inbox'], v: 'na', jobs: ['runEmailScan_'] },
+  { k: 'email_parser', n: 'Email parsing', e: '📧', a: 'System', kind: 'Background checks', d: 'Reads booking and receipt emails into VERA.', t: ['Every 30 min', 'Email inbox'], v: 'na', jobs: ['runEmailScan_'], cfg: [schedOpt_('email_parser_minutes', 'Checks', 'minutes', '30')] },
   { k: 'email_admin', n: 'Inbox admin', e: '📬', a: 'System', kind: 'Background checks', d: 'Follow-ups and clean-up suggestions.', t: ['Weekly', 'Slack'], v: 'na',
-    cfg: [{ c: 'email_admin_frequency', l: 'Run', type: 'select', def: 'weekly', o: [['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly']] }] },
+    cfg: [{ c: 'email_admin_frequency', l: 'Run', type: 'select', def: 'weekly', o: [['weekly', 'Weekly'], ['3days', 'Every 3 days']] }, schedOpt_('email_admin_day', 'Weekly on', 'weekday', '0')] },
   { k: 'memory_log', n: 'Memory log', e: '🧠', a: 'System', kind: 'Housekeeping', d: 'What VERA noticed over time; chat and reviews read it.', t: ['Sheet'], v: 'na', steps: ['pruneMemoryLog_'],
     risky: 'Chat and the monthly review lose their history from now on (nothing already saved is deleted).', cfg: [{ c: 'memory_log_retention_months', l: 'Keep', type: 'num', def: '12', u: 'months' }] },
   { k: 'run_log', n: 'Run log', e: '🗒️', a: 'System', kind: 'Housekeeping', d: 'A row for every scheduled run in VERA-Logs.', t: ['Sheet', 'Every run'], v: 'na',
@@ -132,6 +157,7 @@ function featureStateFrom_(k, cfg, today, seen) {
   seen = seen || {};
   if (seen[k]) return 'on';   // a loop in needs must never hang
   seen[k] = true;
+  if (f.fixed) return 'on';   // always on: only its schedule can change
   var raw = String(cfg[k + '_enabled'] == null ? '' : cfg[k + '_enabled']).trim().toUpperCase();
   var until = String(cfg[k + '_paused_until'] || '').trim();
   var own = 'on';
@@ -217,7 +243,7 @@ function webFeatureFlags_() {
   var nm = {}; try { NOTIF_REGISTRY.forEach(function(n) { nm[n.key] = n.label; }); } catch (e) {}
   var features = FEATURES_.map(function(f) {
     var state = featureStateFrom_(f.k, cfg, today), last = featureLastMs_(f, stepsLast, beats);
-    return { k: f.k, n: f.n, e: f.e, a: f.a, kind: f.kind, d: f.d, t: f.t, v: f.v, needs: f.needs || '', risky: f.risky || '',
+    return { k: f.k, n: f.n, e: f.e, a: f.a, kind: f.kind, d: f.d, t: f.t, v: f.v, needs: f.needs || '', risky: f.risky || '', fixed: !!f.fixed, when: featureWhen_(f, cfg),
       state: state, until: state === 'paused' ? String(cfg[f.k + '_paused_until']) : '', last: last ? new Date(last).toISOString() : '',
       own: String(cfg[f.k + '_enabled'] == null ? '' : cfg[f.k + '_enabled']).trim().toUpperCase() === 'FALSE' ? 'off' : 'on',
       known: cfg[f.k + '_enabled'] != null, screens: f.screens || [], steps: f.steps || [], jobs: f.jobs || [],
@@ -233,6 +259,7 @@ function webSetFeature_(body) {
   var b = body || {}, k = String(b.key || '').trim(), state = String(b.state || '').trim().toLowerCase(), until = String(b.until || '').trim();
   var f = featureByKey_(k);
   if (!f) return { ok: false, error: 'No feature called ' + k + '.' };
+  if (f.fixed) return { ok: false, error: f.n + ' is always on; only when it runs can change.' };
   if (['on', 'off', 'paused'].indexOf(state) === -1) return { ok: false, error: 'state must be on, off or paused' };
   var today = featureIsoToday_();
   if (state === 'paused' && (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until <= today)) return { ok: false, error: 'Pick a date after today to turn it back on.' };
@@ -257,7 +284,12 @@ function webSetFeatureSetting_(body) {
   if (c === 'gym_checkin_hours' && v !== '' && !gymCheckinRange_(v)) return { ok: false, error: 'Use two hours, like 18-23.' };
   setConfigRow_(c, v);
   _featCfg_ = null;
-  return { ok: true, key: c, value: v };
+  try { _configCache_ = null; } catch (e) {}
+  var rebuilt = [];
+  (SCHED_TRIGGER_KEYS_[c] || []).forEach(function(handler) {
+    try { if (rebuildTrigger_(handler)) rebuilt.push(handler); } catch (e) { Logger.log('webSetFeatureSetting_ rebuild ' + handler + ': ' + e.message); }
+  });
+  return { ok: true, key: c, value: v, rebuilt: rebuilt };
 }
 
 /** GET config_files (owner only): each linked file's name, and whether VERA can open it. */
@@ -323,4 +355,22 @@ function gymCheckinRange_(s) {
   if (!m) return null;
   var a = +m[1], b = +m[2];
   return a >= 0 && b <= 23 && a <= b ? { from: a, to: b } : null;
+}
+
+/** Pure: a feature's schedule in plain words, from its schedule settings ('' when it has none).
+ *  "Wednesdays at 8 am" · "Daily at 10 am" · "The 1st of each month" · "Every 15 minutes". */
+function featureWhen_(f, cfg) {
+  cfg = cfg || {};
+  var xs = (f.cfg || []).filter(function(x) { return x.sched; });
+  if (!xs.length) return '';
+  var val = function(x) { var raw = cfg[x.c] != null && String(cfg[x.c]).trim() !== '' ? String(parseInt(cfg[x.c], 10)) : x.def;
+    return x.o.filter(function(o) { return o[0] === raw; })[0] || x.o.filter(function(o) { return o[0] === x.def; })[0]; };
+  var by = {}; xs.forEach(function(x) { if (!by[x.sched]) by[x.sched] = val(x); });
+  if (by.minutes) return by.minutes[1].charAt(0).toUpperCase() + by.minutes[1].slice(1);
+  if (by.weekday && by.hour) return by.weekday[1] + 's at ' + by.hour[1];
+  if (by.weekday) return by.weekday[1] + 's';
+  if (by.hour) return 'Daily at ' + by.hour[1];
+  if (by.dom) return 'The ' + by.dom[1] + ' of each month';
+  if (by.dec) return 'December, until ' + val(xs[xs.length - 1])[1];
+  return '';
 }

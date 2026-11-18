@@ -2384,6 +2384,11 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     .ff-t { font-size: 11px; border: 1px solid #1e3060; border-radius: 999px; padding: 1px 8px; color: #8a9abf; white-space: nowrap; background: none; font-family: inherit; }
     .ff-t.vic { border-style: dashed; cursor: pointer; } .ff-t.need { color: #fbbf24; border-color: #6b5414; }
     .ff-last { font-size: 11.5px; color: #5d6f93; margin-top: 6px; }
+    .cf-others { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+    .cf-others-h { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+    .cf-others-d { margin-top: -6px; }
+    .ff-when { font-size: 12px; color: #c9d9ff; margin-top: 6px; }
+    .ff-always { color: #4ade80; font-size: 11.5px; white-space: nowrap; }
     .ff-needs { font-size: 12px; color: #f87171; margin-top: 6px; }
     .ff-key { font: 11px ui-monospace, Menlo, monospace; color: #8ab4f8; margin-top: 5px; overflow-wrap: anywhere; }
     .ff-ctl { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -7469,8 +7474,8 @@ function SysFeatureFlags({apiUrl,apiToken,go}){var h=React.createElement;
     if(f.state==='on'){var deps=data.features.filter(function(d){return d.needs===f.k;});if(f.risky||deps.length||(f.notif||[]).length||(f.t||[]).length>2)return setSheet({f:f,mode:'off'});
       return send(f,{state:'off'},f.n+' is off',prev);}
     send(f,{state:'on'},f.n+' is on',prev);}
-  function saveSetting(f,x,val){var prev=x.v;apiPost(apiUrl,apiToken,{action:'set_feature_setting',key:x.c,value:val}).then(function(){return load();}).then(function(){
-    showToast(x.l+' saved',function(){apiPost(apiUrl,apiToken,{action:'set_feature_setting',key:x.c,value:prev}).then(load);});}).catch(function(e){setErr(e.message);load();});}
+  function saveSetting(f,x,val){var prev=x.v,res=null;apiPost(apiUrl,apiToken,{action:'set_feature_setting',key:x.c,value:val}).then(function(r){res=r;return load();}).then(function(){
+    showToast(x.l+' saved'+(res&&res.rebuilt&&res.rebuilt.length?' · its schedule is updated':''),function(){apiPost(apiUrl,apiToken,{action:'set_feature_setting',key:x.c,value:prev}).then(load);});}).catch(function(e){setErr(e.message);load();});}
   if(err&&!data)return h('div',{className:'ff-err',role:'alert'},err);
   if(!data)return h('div',{className:'loading-text'},'Loading features…');
   var F=data.features||[],BY={};F.forEach(function(f){BY[f.k]=f;});
@@ -7488,6 +7493,7 @@ function SysFeatureFlags({apiUrl,apiToken,go}){var h=React.createElement;
         h('div',{className:'ff-name'},f.n,e==='paused'&&h('span',{className:'ff-badge paused'},'Back '+ffNice_(f.until))),
         h('div',{className:'ff-desc'},f.d),
         h('div',{className:'ff-meta'},(f.t||[]).map(function(x){return h('span',{key:x,className:'ff-t'},x);}),FF_VIC[f.v]&&h('button',{type:'button',className:'ff-t vic',title:'Who sees it is set in People & access',onClick:function(){if(go)go('people');}},FF_VIC[f.v])),
+        f.when&&h('div',{className:'ff-when'},'🗓 '+f.when),
         h('div',{className:'ff-last'},'🕒 ',f.last?'Last ran '+ffAgo_(f.last):(f.steps.length||f.jobs.length)?'No run recorded yet':'Works when you use it'),
         e==='blocked'&&needs&&h('div',{className:'ff-needs'},'Off because '+needs.n+' is off. Turn that on and this comes back.'),
         keys&&h('div',{className:'ff-key'},f.k+'_enabled = '+(f.own==='off'?'FALSE':'TRUE')+(f.until?' · '+f.k+'_paused_until = '+f.until:'')),
@@ -7500,9 +7506,9 @@ function SysFeatureFlags({apiUrl,apiToken,go}){var h=React.createElement;
           return h('label',{key:x.c,className:'ff-cfgrow',htmlFor:id},h('span',null,x.l),input,h('span',{className:'ff-unit'},x.u||''),keys&&h('code',{className:'ff-ck'},x.c));}),
           h('div',{className:'ff-cfgfoot'},'Saved as you leave a field. These used to be rows on the Config page.'))),
       h('div',{className:'ff-ctl'},
-        h('button',{type:'button',role:'switch','aria-checked':e==='on','aria-label':f.n,className:'ff-switch'+(e==='paused'?' paused':''),disabled:b||e==='blocked',onClick:function(){flip(f);}}),
-        h('span',{className:'ff-state '+(e==='blocked'?'off':e)},e==='on'?'On':e==='paused'?'Paused':e==='blocked'?'Off · needs '+(needs?needs.n:''):'Off'),
-        e==='paused'?h('button',{type:'button',className:'ff-more',disabled:b,onClick:function(){send(f,{state:'on'},f.n+' is back on',ffPrev_(f));}},'Resume now')
+        f.fixed?h('span',{className:'ff-state on ff-always'},'Always on'):h('button',{type:'button',role:'switch','aria-checked':e==='on','aria-label':f.n,className:'ff-switch'+(e==='paused'?' paused':''),disabled:b||e==='blocked',onClick:function(){flip(f);}}),
+        !f.fixed&&h('span',{className:'ff-state '+(e==='blocked'?'off':e)},e==='on'?'On':e==='paused'?'Paused':e==='blocked'?'Off · needs '+(needs?needs.n:''):'Off'),
+        f.fixed?null:e==='paused'?h('button',{type:'button',className:'ff-more',disabled:b,onClick:function(){send(f,{state:'on'},f.n+' is back on',ffPrev_(f));}},'Resume now')
           :e==='on'?h('button',{type:'button',className:'ff-more',disabled:b,onClick:function(){setSheet({f:f,mode:'pause'});}},'Off until…'):null));}
   var body=groups.map(function(g){var all=F.filter(function(f){return f[field]===g;}),items=all.filter(match);if(!items.length)return null;var on=all.filter(function(f){return f.state==='on';}).length,gid=view+':'+g;var isClosed=closed[gid]&&!ql;
     return h('section',{key:gid,className:'ff-group'+(isClosed?' closed':'')},h('button',{type:'button',className:'ff-ghead','aria-expanded':!isClosed,onClick:function(){setClosed(function(c0){var x=Object.assign({},c0);x[gid]=!x[gid];return x;});}},
@@ -7618,6 +7624,17 @@ var CF_ENT={};CF_GROUPS.forEach(function(g){g.items.forEach(function(i){i.group=
 // Pure: the rows on Config that no entry and no feature owns, for "Everything else" (section headings left out).
 function cfOther_(rows,featureKeys){var known={};Object.keys(CF_ENT).forEach(function(id){cfKeysOf_(CF_ENT[id]).forEach(function(k){known[k]=1;});});(featureKeys||[]).forEach(function(k){known[k]=1;});
   return (rows||[]).filter(function(r){var k=r.key;return !known[k]&&!/^notif_/.test(k)&&!/_enabled$|_paused_until$/.test(k)&&k.indexOf('calendar_label:')!==0&&!/^[A-Z0-9 &:,()\-–'’.\/]+$/.test(k);});}
+// Pure: a Config section heading as a short title ("SYSTEM-WIDE: ASSISTANTS (HOME ROSTER)" → "Assistants").
+var CF_HEAD_EMOJI_=[[/ASSIST|ROSTER/,'🤖'],[/PTO/,'🏖️'],[/CALENDAR/,'📅'],[/GIFT|WISH/,'🎁'],[/TRAVEL/,'✈️'],[/HEALTH|FITNESS/,'💪'],[/PACING|WELLNESS|REMINDER/,'🧘'],[/WEATHER|WEEKEND/,'☀️'],[/FINANCE|BILL|NET WORTH/,'💵'],[/HOME|PANTRY|GROCER/,'🏠'],[/EMAIL|SLACK/,'✉️'],[/CAREER/,'💼'],[/DATES/,'🎂'],[/LIFE|COMING UP|GROWTH/,'🌱'],[/NOTIF/,'🔔'],[/FILES/,'🔗']];
+function cfHeadTitle_(head){var t=String(head||'').replace(/^SYSTEM-WIDE:\s*/i,'').replace(/\s*\(.*$/,'').trim().toLowerCase().replace(/(^|[\s:\/])([a-z])/g,function(m,a,b){return a+b.toUpperCase();});
+  return t.replace(/\b(Pto|Hoa|Usps|Vera)\b/g,function(w){return w.toUpperCase();}).replace(/\bAnd\b/g,'and');}
+function cfHeadEmoji_(head){var H=String(head||'').toUpperCase();for(var i=0;i<CF_HEAD_EMOJI_.length;i++)if(CF_HEAD_EMOJI_[i][0].test(H))return CF_HEAD_EMOJI_[i][1];return '🗂️';}
+// Pure: the leftover rows grouped under the Config tab's own section headings, in sheet order.
+// Rows above any heading (or under the table of contents) fall into "Other".
+function cfOtherGroups_(list,other){var keep={};(other||[]).forEach(function(r){keep[r.key]=1;});var groups=[],byT={},head='';
+  (list||[]).forEach(function(r){var k=r.key;if(/^[A-Z0-9 &:,()\-–'’.\/]+$/.test(k)){head=/^CONTENTS/.test(k)?'':k;return;}if(!keep[k])return;
+    var t=head?cfHeadTitle_(head):'Other';if(!byT[t]){byT[t]={t:t,e:head?cfHeadEmoji_(head):'🗂️',rows:[]};groups.push(byT[t]);}byT[t].rows.push(r);});
+  return groups;}
 // Pure: entries that need a look (a placeholder left in, a file VERA can't open).
 function cfWarn_(i,rows,files){var v=i.key?String(rows[i.key]||''):'';if(/PASTE_|YOUR_|TODO/i.test(v))return 'Not set: it still says '+v+'.';
   if(i.type==='file'&&files&&files[i.key]&&!files[i.key].ok&&v)return files[i.key].why||'VERA can’t open it';return '';}
@@ -7704,9 +7721,11 @@ function SysConfigPanel({apiUrl,apiToken,go}){var h=React.createElement;
     h('div',{className:'ff-toolbar'},h('label',{className:'ff-search'},h('span',{'aria-hidden':'true'},'🔎'),h('input',{type:'search',value:q,placeholder:'Search settings, or a key like gap_calendars','aria-label':'Search settings',onChange:function(e){setQ(e.target.value);}}))),
     h('div',{className:'ff-chips'},[['all','All']].concat(CF_GROUPS.map(function(g){return [g.g,g.e+' '+g.g];})).map(function(x){return h('button',{key:x[0],type:'button',className:'ff-chip','aria-pressed':filter===x[0],onClick:function(){setFilter(filter===x[0]&&x[0]!=='all'?'all':x[0]);}},x[1]);})),
     body,
-    filter==='all'&&other.length>0&&h('section',{className:'ff-group'},h('div',{className:'cf-ghead'},h('span',{'aria-hidden':'true'},'🗂️'),h('h3',null,'Everything else'),h('span',{className:'ff-count'},other.length)),
-      h('div',{className:'ff-desc',style:{padding:'8px 14px 0'}},'Rows on the Config tab that have no friendlier home yet, editable as they are.'),
-      h('div',{className:'ff-rows'},other.map(function(r){return h('div',{key:r.key,className:'cf-ent cf-otherrow'},h('code',{className:'cf-okey'},r.key),input(r.key,r.key));}))),
+    filter==='all'&&other.length>0&&h('div',{className:'cf-others'},
+      h('h3',{className:'cf-others-h'},'Everything else ',h('span',{className:'ff-count'},other.length)),
+      h('div',{className:'ff-desc cf-others-d'},'Rows on the Config tab that have no friendlier home yet, editable as they are, under the Config tab’s own headings.'),
+      cfOtherGroups_(rows&&rows.__list,other).map(function(g){return h('section',{key:g.t,className:'ff-group cf-ogroup'},h('div',{className:'cf-ghead'},h('span',{'aria-hidden':'true'},g.e),h('h3',null,g.t),h('span',{className:'ff-count'},g.rows.length)),
+        h('div',{className:'ff-rows'},g.rows.map(function(r){return h('div',{key:r.key,className:'cf-ent cf-otherrow'},h('code',{className:'cf-okey'},r.key),input(r.key,r.key));})));})),
     h(FfToast,{toast:toast,onUndo:undoToast}));}
 
 // ---- Feature map ----------------------------------------------------------------------------

@@ -39,8 +39,9 @@ function checkMonthlyReview_(ptoStats) {
   }
 
   var today = new Date();
-  if (today.getDate() !== 1) {
-    // Not the 1st of the month — normal skip, don't log (runs nightly, would be noise)
+  // The 1st by default; Config finance_review_day (Feature Flags › Monthly life review, #254).
+  if (today.getDate() !== (typeof schedDom_ === 'function' ? schedDom_('finance_review_day', 1, cfg) : 1)) {
+    // Not its day of the month — normal skip, don't log (runs nightly, would be noise)
     return;
   }
 

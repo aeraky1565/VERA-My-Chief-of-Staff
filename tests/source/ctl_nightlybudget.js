@@ -176,8 +176,8 @@ const CONTROLS = {
       /    \{ handler: 'nightlyRunTail',[\s\S]*?\n      \} \},\n/, ''),
   }),
   'the tail runs at the same hour as the head': b => ({
-    'Code.js': b['Code.js'].replace('.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24)',
-                                    '.atHour(CONFIG.NIGHTLY_RUN_HOUR)'),
+    'Code.js': b['Code.js'].replace('.atHour((NIGHT + 1) % 24)',
+                                    '.atHour(NIGHT)'),
   }),
   'a tail step is left behind in the head as well': b => ({
     'Code.js': b['Code.js'].replace(
@@ -203,7 +203,7 @@ const CONTROLS = {
     'Code.js': b['Code.js'].replace(/Slowest tail steps: /, 'Tail ran: '),
   }),
   'the PTO snapshot is recomputed every night in the tail': b => ({
-    'Code.js': b['Code.js'].replace('var ptoStats = today.getDate() === 1 ? writePTOSnapshot_() : null;',
+    'Code.js': b['Code.js'].replace("var ptoStats = today.getDate() === schedDom_('finance_review_day', 1) ? writePTOSnapshot_() : null;",
                                     'var ptoStats = writePTOSnapshot_();'),
   }),
 
