@@ -141,6 +141,40 @@ console.log('\n#vera-act-now');
   check('hourlyCheck posts VERA’s', /try \{ actNowVeraSync_\(new Date\(\)\); \}/.test(REM));
 }
 
+console.log('\nHAILEY and TESS in #vera-act-now (read only)');
+{
+  const c = ctx();
+  const id = v => String(v || '').slice(0, 10);
+  const H = [['Status', 'Address', 'Market', 'Type', 'Beds', 'Baths', 'Sqft', 'Price', 'Est. monthly cost', 'Cost flag', 'Deck', 'First seen', 'Last seen', 'Price history', 'Notes', 'Missed runs', 'Zillow URL'],
+    ['New', '12 Elm Ct, Springfield', 'Test market', 'singleFamily', '4', '3', '2,200', '$530,000', '$3,900', 'Under ceiling', '', '2026-11-18', '2026-11-18', '', '', '0', 'https://example.test/12-elm'],
+    ['New', '14 Elm Ct, Springfield', 'Test market', 'singleFamily', '4', '3', '2,400', '$690,000', '$5,000', 'Over ceiling', '', '2026-11-18', '2026-11-18', '', '', '0', 'https://example.test/14-elm'],
+    ['New', '16 Elm Ct, Springfield', 'Test market', 'singleFamily', '4', '3', '2,400', '$520,000', '$3,800', 'Under ceiling', '', '2026-11-16', '2026-11-18', '', '', '0', 'https://example.test/16-elm'],
+    ['Price cut', '18 Oak St, Springfield', 'Test market', 'townhome', '3', '3', '1,900', '$600,000', '$4,300', 'Over ceiling', '', '2026-10-24', '2026-11-18', '610000 (10-24); 600000 (11-18)', 'Price cut $5,000 on 2026-11-02. Price cut $10,000 on 2026-11-18', '0', 'https://example.test/18-oak'],
+    ['Price cut', '20 Oak St, Springfield', 'Test market', 'townhome', '3', '3', '1,900', '$600,000', '$4,300', 'Over ceiling', '', '2026-10-24', '2026-11-18', '', 'Price cut $1,000 on 2026-11-10.', '0', 'https://example.test/20-oak'],
+    ['Gone', '22 Oak St, Springfield', 'Test market', 'townhome', '3', '3', '1,900', '$600,000', '$4,300', 'Under ceiling', '', '2026-10-24', '2026-11-18', '', 'Price cut $1,000 on 2026-11-18.', '0', '']];
+  const hp = c.actNowHaileyPicks_(H, '2026-11-18', [], id);
+  check('HAILEY: a listing first seen today, under the ceiling', hp.some(p => p.key === 'hailey|new|https://example.test/12-elm' && /About \$3,900 a month, under your ceiling\. 4 bd · 3 ba · 2,200 sqft/.test(p.reason)));
+  check('…not one over the ceiling, and not one first seen another day', !hp.some(p => /14-elm|16-elm/.test(p.key)));
+  check('…and a price cut made today, from its notes', hp.some(p => p.key === 'hailey|cut|https://example.test/18-oak|2026-11-18' && /^Price cut \$10,000 today\./.test(p.reason) && /now \$600,000/.test(p.title)));
+  check('…not an older cut, and nothing for a home that’s gone', !hp.some(p => /20-oak|22 Oak/.test(p.key)) && hp.length === 2, J(hp.map(p => p.key)));
+  check('…once each', c.actNowHaileyPicks_(H, '2026-11-18', hp.map(p => p.key), id).length === 0);
+  const T = [['Date found', 'Company', 'Title', 'Tier', 'Score', 'Job link', 'Materials folder', 'Status', 'Notes', 'Salary range', 'Suggested person', 'Score breakdown', 'Track', 'Pass reason'],
+    ['2026-11-18', 'Acme Co', 'Director, FP&A', '1', '88', 'https://jobs.example.test/1', '', 'New', '', '$200K-$240K', '', '', 'FP&A', ''],
+    ['2026-11-18', 'Beta Inc', 'Director, Planning', '1', '82', 'https://jobs.example.test/2', '', 'New', '', '', '', '', 'FP&A', ''],
+    ['2026-11-17', 'Gamma LLC', 'VP Finance', '1', '93', 'https://jobs.example.test/3', '', 'New', '', '', '', '', 'FP&A', ''],
+    ['2026-11-18', 'Delta Corp', 'Head of FP&A', '1', '95', 'https://jobs.example.test/4', '', 'Passed', '', '', '', '', 'FP&A', '']];
+  const tp = c.actNowTessPicks_(T, '2026-11-18', [], 85, id);
+  check('TESS: a New match found today scoring 85 or more', J(tp.map(p => p.key)) === '["tess|https://jobs.example.test/1"]' && tp[0].title === 'Director, FP&A · Acme Co' && tp[0].reason === '$200K-$240K · Track: FP&A · Tier 1' && /score 88/.test(tp[0].kind));
+  check('…not below the bar, not another day, not one already passed', !tp.some(p => /\/(2|3|4)$/.test(p.key)));
+  check('…the bar is configurable', c.actNowTessPicks_(T, '2026-11-18', [], 80, id).length === 2);
+  check('…and a missing column reads blank rather than breaking', c.actNowTessPicks_([['Company', 'Status'], ['X', 'New']], '2026-11-18', [], 85, id).length === 0);
+  const b = c.actNowAgentBlocks_('HAILEY', hp[0], 1, 3);
+  check('the post: badge, what it is, the home, why, Open, "act-now 1 of 3 today"', /\*HAILEY\*  ·  ⏳ today  ·  New listing under your ceiling/.test(b[0].elements[0].text) && b[2].elements[0].url === 'https://example.test/12-elm' && /HAILEY · act-now 1 of 3 today/.test(b[3].elements[0].text));
+  check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions'));
+  check('hourlyCheck posts them; both kinds are in Act now, with caps and the TESS bar as settings', /try \{ actNowAgentsSync_\(new Date\(\)\); \}/.test(REM) && /key: 'act_now_hailey',[^\n]*category: 'Act now'/.test(CODE) && /key: 'act_now_tess',[^\n]*category: 'Act now'/.test(CODE) && /\['act_now_tess_min_score', +'85'\]/.test(CODE) && /\['act_now_cap_hailey',/.test(CODE));
+  check('VERA only reads their sheets', !/setValue|appendRow|setValues/.test(SRC.slice(SRC.indexOf('function actNowAgentsSync_'), SRC.indexOf('veraStateSet_(\'NOTIF\', { NOTIF_ACTNOW: JSON.stringify(posted.slice(-150))'))));
+}
+
 console.log('\nWiring');
 {
   check('sendNudge_ asks the gate first', /if \(notifKey && typeof notifGate_ === 'function'\) \{\n    if \(!notifGate_\(notifKey,/.test(REM));

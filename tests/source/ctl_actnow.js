@@ -15,8 +15,8 @@ const CONTROLS = [
   ['any Config text is taken as the ID', b => ({ 'Slack.js': swap(b['Slack.js'], "    id = valid(id);\n", "") })],
   ['every channel falls back', b => ({ 'Slack.js': swap(b['Slack.js'], "  if (short === 'act-now') {\n    id = valid(id);", "  if (true) {\n    id = valid(id);") })],
   ['Book now stays in #vera-notifications', b => ({ 'Code.js': swap(b['Code.js'], "channel: 'vera-act-now',       description: 'ARIA says", "channel: 'vera-notifications', description: 'ARIA says") })],
-  ['the picker doesn\'t offer it', b => ({ 'docs/app.js': swap(b['docs/app.js'], "{value:'vera-act-now',label:'#vera-act-now'},", "") })],
-  ['the server refuses it', b => ({ 'WebApp.js': swap(b['WebApp.js'], "'vera-notifications', 'vera-act-now', 'vera-logs'", "'vera-notifications', 'vera-logs'") })],
+  ['the picker doesn\'t offer it', b => ({ 'docs/app.js': swap(b['docs/app.js'], "var NM_CH=['vera-notifications','vera-chat','vera-act-now','vera-logs'];", "var NM_CH=['vera-notifications','vera-chat','vera-logs'];") })],
+  ['the server refuses it', b => ({ 'WebApp.js': swap(b['WebApp.js'], "if (channel !== 'email' && !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(channel))", "if (channel !== 'email' && !/^[a-z0-9_]{1,80}$/.test(channel))") })],
 ];
 let allBit = true;
 CONTROLS.forEach(([name, mut]) => {

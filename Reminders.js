@@ -52,6 +52,7 @@ function hourlyCheck() {
   try { gymEveningCheck_(new Date()); } catch (gymErr) { Logger.log('gymEveningCheck_ (non-fatal): ' + gymErr.message); }
   // VERA's own decision deadlines to #vera-act-now (Notify.js, #250). Never throws.
   try { actNowVeraSync_(new Date()); } catch (anErr) {}
+  try { actNowAgentsSync_(new Date()); } catch (anErr) {}   // HAILEY and TESS, read only (Notify.js)
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {

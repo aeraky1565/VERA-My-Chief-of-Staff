@@ -25,7 +25,7 @@ const CONTROLS = [
   ['ending early forgets the trip', b => ({ [A]: swap(b[A], "AWAY_ENDED_TRIP: st.VACATION_MODE_ACTIVE === 'true' ? (st.VACATION_TRIP_NAME || null) : null,", "AWAY_ENDED_TRIP: null,") })],
   ['the trip name is not escaped', b => ({ [A]: swap(b[A], "(label ? ' of the <strong>' + awayEsc_(label) + '</strong>' : '')", "(label ? ' of the <strong>' + label + '</strong>' : '')") })],
   ['a quiet day still says something needs you', b => ({ [A]: swap(b[A], "  if (!quiet) {\n", "  if (true) { d.through = d.through || [];\n") })],
-  ['a registry default changed', b => ({ [C]: swap(b[C], "description: 'Hydration reminder', locked: false, whileAway: 'hold' }", "description: 'Hydration reminder', locked: false, whileAway: 'send' }") })],
+  ['a registry default changed', b => ({ [C]: swap(b[C], "never on a holiday, PTO or while away', locked: false, whileAway: 'hold' }", "never on a holiday, PTO or while away', locked: false, whileAway: 'send' }") })],
   ['coupons no longer send if due', b => ({ [C]: swap(b[C], "description: 'Coupon or deal expiring soon', locked: false, whileAway: 'due' }", "description: 'Coupon or deal expiring soon', locked: false, whileAway: 'hold' }") })],
   ['the exact-key writer drops the deadline', b => ({ [C]: swap(b[C], "'No', '', 'No', f.key, '', flagDueCell_(f.due),", "'No', '', 'No', f.key, '',") })],
   ['the upsert drops the deadline', b => ({ [C]: swap(b[C], "'No', '', 'No', key, '', flagDueCell_(wanted[key].due),", "'No', '', 'No', key, '',") })],
@@ -34,14 +34,14 @@ const CONTROLS = [
   ['escalation runs while away', b => ({ [C]: swap(b[C], "  if (typeof awayStatus_ === 'function' && awayStatus_().on) { Logger.log('escalateAgedFlags_: away, nothing escalated'); return; }\n", "") })],
   ['the morning email ignores Away mode', b => ({ [C]: swap(b[C], "    if (typeof awayStatus_ === 'function' && awayStatus_().on) {\n      sendAwayEditionEmail_();\n      return;\n    }\n", "") })],
   ['trip days are light again', b => ({ [C]: swap(b[C], "capacity_inferred_mode: 'busy',", "capacity_inferred_mode: 'light',") })],
-  ['nudges ignore Away mode', b => ({ [R]: swap(b[R], "  if (notifKey && typeof awayHolds_ === 'function' && awayHolds_(notifKey, due)) {", "  if (false) {") })],
+  ['nudges ignore Away mode', b => ({ [R]: swap(b[R], "    if (typeof awayHolds_ === 'function' && awayHolds_(notifKey, due)) { Logger.log", "    if (false) { Logger.log") })],
   ['the bill reminder drops its due date', b => ({ [R]: swap(b[R], "      'bill_due',\n      dueIso", "      'bill_due'") })],
   ['Claude’s due date taken as is', b => ({ 'Claude.js': swap(b['Claude.js'], "due:     /^\\d{4}-\\d{2}-\\d{2}$/.test(String(f.due || '').trim()) ? String(f.due).trim() : '',", "due:     String(f.due || ''),") })],
   ['a locked row can be changed', b => ({ [W]: swap(b[W], "  if (entry.locked) return { ok: false, error: 'locked' };\n  setConfigRow_('notif_' + key + '_while_away', value);", "  setConfigRow_('notif_' + key + '_while_away', value);") })],
   ['the banner shows the trip key', b => ({ [A]: swap(b[A], 'trip: awayTripLabel_(a.trip), started', 'trip: a.trip, started') })],
   ['a past date is accepted', b => ({ [W]: swap(b[W], "  if (on && until && until < awayToday_()) return { ok: false, error: 'that date has already passed' };\n", "") })],
   ['Home without the Away banner', b => ({ [APP]: swap(b[APP], ",React.createElement(AwayBanner,{apiUrl:apiUrl,apiToken:apiToken,onNavigate:onNavigate,variant:'tile'})", "") })],
-  ['the While away setting never saves', b => ({ [APP]: swap(b[APP], "api({action:'set_notif_while_away',key:key,value:value})", "Promise.resolve({ok:true})") })],
+  ['the While away setting never saves', b => ({ [APP]: swap(b[APP], "save(n.key,'_wa',{action:'set_notif_while_away',key:n.key,value:v}", "save(n.key,'_wa',{action:'noop',key:n.key,value:v}") })],
 ];
 let allBit = true;
 CONTROLS.forEach(([name, mut]) => {

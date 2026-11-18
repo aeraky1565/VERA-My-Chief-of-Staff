@@ -1179,7 +1179,13 @@ They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCh
 
 Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by default). Past the cap, an item waits for the morning email.
 
-**Not built yet:** the VERA app push (Firebase), and the HAILEY and TESS act-now posts, which need their sheets' listing and match columns.
+**HAILEY and TESS** are read from their own sheets, read only.
+- **HAILEY (Listings):** a listing first seen today and **Under** its cost ceiling, or a **price cut made today** (from its Notes) on a home that isn't gone. The sheet has no score column, so the ceiling is the bar.
+- **TESS (Tracker):** a **New** match found today scoring at least `act_now_tess_min_score` (85).
+
+Each posts once, with an **Open** link. "Pass" stays in the assistant's own tools, since VERA never writes their sheets. Their caps are `act_now_cap_hailey` and `act_now_cap_tess`.
+
+**Not built yet:** the VERA app push (Firebase), and ARIA's price drop after booking.
 
 
 

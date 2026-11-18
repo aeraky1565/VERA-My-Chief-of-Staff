@@ -118,10 +118,7 @@ const CONTROLS = {
   }),
   // The other half of the rule: a caller that must see its own writes must NOT be
   // served from the memo.
-  'the hourly calendar-gap nudge is served from the memo': b => ({
-    'Reminders.js': swap(b['Reminders.js'],
-      '  var events      = getUpcomingEvents();', '  var events      = getUpcomingEventsCached_();'),
-  }),
+  // (the hourly calendar-gap nudge was retired by #250, so its control went with it)
 
   // ---- TestBench -----------------------------------------------------------
   'TestBench times the warm call twice, so the saving looks like nothing': b => ({

@@ -359,3 +359,101 @@ function checkinTick_() {
     try { checkEveningMobility_(now, now.getHours(), cfg); } catch (e) { Logger.log('checkinTick_ evening: ' + e.message); }
   } catch (e) { Logger.log('checkinTick_ (non-fatal): ' + e.message); }
 }
+
+// ---- HAILEY and TESS in #vera-act-now (read only, from their own sheets) -------------------
+// HAILEY (Listings tab, Config roster_link_hailey): a listing first seen today and Under its
+// cost ceiling, or a price cut made today. There's no score column, so the ceiling is the bar.
+// TESS (Tracker tab, the TESS sheet Agent health reads): a New match found today scoring at
+// least act_now_tess_min_score (85). Each posts once, with a link to open it. VERA never writes
+// their sheets, so "Pass" stays in the assistant's own tools.
+
+/** Pure: a header row → {lower-cased name: index}. */
+function actNowCols_(head) { var m = {}; (head || []).forEach(function(h, i) { m[String(h || '').trim().toLowerCase()] = i; }); return m; }
+function actNowIso_(v) { return v instanceof Date ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(v || '').trim().slice(0, 10); }
+
+/** Pure: HAILEY's posts for today. rows include the header. → [{key, title, reason, url, kind}] */
+function actNowHaileyPicks_(rows, today, posted, iso) {
+  iso = iso || actNowIso_;
+  if (!rows || rows.length < 2) return [];
+  var c = actNowCols_(rows[0]), out = [];
+  var col = function(r, n) { var i = c[n]; return i === undefined ? '' : r[i]; };
+  rows.slice(1).forEach(function(r) {
+    var status = String(col(r, 'status')).trim().toLowerCase(), addr = String(col(r, 'address')).trim(), url = String(col(r, 'zillow url')).trim();
+    if (!addr) return;
+    var facts = [col(r, 'beds') && col(r, 'beds') + ' bd', col(r, 'baths') && col(r, 'baths') + ' ba', col(r, 'sqft') && col(r, 'sqft') + ' sqft', col(r, 'market')].filter(Boolean).join(' · ');
+    if (status === 'new' && iso(col(r, 'first seen')) === today && /under/i.test(String(col(r, 'cost flag')))) {
+      out.push({ key: 'hailey|new|' + (url || addr), kind: 'New listing under your ceiling', title: addr + ' · ' + String(col(r, 'price')),
+        reason: 'About ' + String(col(r, 'est. monthly cost')) + ' a month, under your ceiling. ' + facts, url: url });
+    }
+    var cuts = String(col(r, 'notes')).match(/Price cut \$[\d,]+ on \d{4}-\d{2}-\d{2}/g) || [];
+    var last = cuts.length ? cuts[cuts.length - 1] : '';
+    if (status !== 'gone' && last && last.slice(-10) === today) {
+      out.push({ key: 'hailey|cut|' + (url || addr) + '|' + today, kind: 'Price cut on a home HAILEY is watching', title: addr + ' · now ' + String(col(r, 'price')),
+        reason: last.replace(/ on \d{4}-\d{2}-\d{2}$/, ' today') + '. About ' + String(col(r, 'est. monthly cost')) + ' a month (' + String(col(r, 'cost flag')).toLowerCase() + '). ' + facts, url: url });
+    }
+  });
+  return out.filter(function(p) { return (posted || []).indexOf(p.key) === -1; });
+}
+
+/** Pure: TESS's posts for today: New, found today, score at least min. */
+function actNowTessPicks_(rows, today, posted, min, iso) {
+  iso = iso || actNowIso_;
+  if (!rows || rows.length < 2) return [];
+  var c = actNowCols_(rows[0]), out = [];
+  var col = function(r, n) { var i = c[n]; return i === undefined ? '' : r[i]; };
+  rows.slice(1).forEach(function(r) {
+    var score = parseFloat(col(r, 'score'));
+    if (String(col(r, 'status')).trim().toLowerCase() !== 'new' || iso(col(r, 'date found')) !== today || !(score >= min)) return;
+    var url = String(col(r, 'job link')).trim(), co = String(col(r, 'company')).trim(), title = String(col(r, 'title')).trim();
+    if (!co && !title) return;
+    var bits = [String(col(r, 'salary range') || ''), col(r, 'track') ? 'Track: ' + col(r, 'track') : '', col(r, 'tier') ? 'Tier ' + col(r, 'tier') : ''].filter(Boolean);
+    out.push({ key: 'tess|' + (url || co + '|' + title), kind: 'Strong new match · score ' + score, title: title + ' · ' + co, reason: bits.join(' · '), url: url });
+  });
+  return out.filter(function(p) { return (posted || []).indexOf(p.key) === -1; });
+}
+
+/** Pure: the Slack blocks for an assistant's post: badge, what it is, title, why, Open. */
+function actNowAgentBlocks_(who, item, n, cap) {
+  var blocks = [
+    { type: 'context', elements: [{ type: 'mrkdwn', text: '*' + who + '*  ·  ⏳ today  ·  ' + item.kind }] },
+    { type: 'section', text: { type: 'mrkdwn', text: '*' + item.title + '*' + (item.reason ? '\n' + item.reason : '') } },
+  ];
+  if (/^https:\/\//.test(item.url || '')) blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: item.url, action_id: 'act_now_open' }] });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: who + ' · act-now ' + n + ' of ' + cap + ' today' }] });
+  return blocks;
+}
+
+/** From hourlyCheck, 8 AM to 8 PM: HAILEY's and TESS's posts. Read only. Never throws. */
+function actNowAgentsSync_(now) {
+  try {
+    var h = now.getHours();
+    if (h < 8 || h >= 20 || !isSlackConfigured_()) return 0;
+    var cfg = getConfigValues() || {}, today = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var st = veraStateGet_('NOTIF'), posted = [];
+    try { posted = JSON.parse(st.NOTIF_ACTNOW || '[]') || []; } catch (e) { posted = []; }
+    var min = parseFloat(cfg.act_now_tess_min_score); min = min > 0 && min <= 100 ? min : 85;
+    var read = function(id, tab) {
+      try { var sh = SpreadsheetApp.openById(id).getSheetByName(tab); return sh && sh.getLastRow() >= 2 ? sh.getRange(1, 1, Math.min(sh.getLastRow(), 600), sh.getLastColumn()).getValues() : []; }
+      catch (e) { Logger.log('actNowAgentsSync_: ' + tab + ' unreadable — ' + e.message); return []; }
+    };
+    var tessSheet = cfg['career_' + 'alert_sheet_id'];   // the same TESS sheet Agent health reads
+    var sources = [
+      { who: 'HAILEY', key: 'act_now_hailey', cap: 'hailey', id: ariaSheetIdFrom_(cfg.roster_link_hailey), tab: 'Listings', pick: function(rows) { return actNowHaileyPicks_(rows, today, posted); } },
+      { who: 'TESS', key: 'act_now_tess', cap: 'tess', id: ariaSheetIdFrom_(tessSheet), tab: 'Tracker', pick: function(rows) { return actNowTessPicks_(rows, today, posted, min); } },
+    ];
+    var sent = 0;
+    sources.forEach(function(s) {
+      if (!s.id || notifDelivery_(s.key) === 'off') return;
+      s.pick(read(s.id, s.tab)).forEach(function(p) {
+        posted.push(p.key);
+        if (typeof awayHolds_ === 'function' && awayHolds_(s.key)) return;
+        if (notifDelivery_(s.key) === 'email' || !actNowAllowed_(s.cap)) { notifHold_(s.key, s.who + ': ' + p.title); return; }
+        var chId = getSlackChannelId_(getNotifChannel_(s.key));
+        var n = notifCounts_().counts['act_' + s.cap] || 1;
+        if (chId && sendSlackMessage_(chId, '⏳ ' + s.who + ': ' + p.title, actNowAgentBlocks_(s.who, p, n, actNowCap_(cfg, s.cap))).ok) { sent++; notifBump_('act'); }
+      });
+    });
+    veraStateSet_('NOTIF', { NOTIF_ACTNOW: JSON.stringify(posted.slice(-150)) });
+    return sent;
+  } catch (e) { Logger.log('actNowAgentsSync_ (non-fatal): ' + e.message); return 0; }
+}

@@ -185,6 +185,8 @@ const NOTIF_REGISTRY = [
   { key: 'leave_home',          label: 'Leaving Home',          emoji: '🏠', category: 'Travel',               channel: 'vera-notifications', description: 'At the time you set for heading out, if the leaving-home list still has items left', locked: false, whileAway: 'send' },
   // Act now (#250): a decision with a clock on it. Through quiet hours, outside the daily cap.
   { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Act now',              channel: 'vera-act-now',       description: 'ARIA says a watched fare or stay is worth booking (once per trip)', locked: false, whileAway: 'send' },
+  { key: 'act_now_hailey',      label: 'HAILEY Standout Home',  emoji: '🏡', category: 'Act now',              channel: 'vera-act-now',       description: 'A listing first seen today under your cost ceiling, or a price cut today on a home HAILEY is watching (read from HAILEY’s sheet)', locked: false, whileAway: 'hold' },
+  { key: 'act_now_tess',        label: 'TESS Strong Match',     emoji: '💼', category: 'Act now',              channel: 'vera-act-now',       description: 'A New job match found today scoring act_now_tess_min_score (85) or more (read from TESS’s Tracker)', locked: false, whileAway: 'hold' },
   { key: 'act_now_vera',        label: 'VERA Decision Deadline', emoji: '⏳', category: 'Act now',             channel: 'vera-act-now',       description: 'A return window or free cancellation ending in the next 2 days, from Planned purchases and Flags with a deadline', locked: false, whileAway: 'due' },
   // Routines
   { key: 'weekend_memo',        label: 'Weekend Memo',          emoji: '🗓️', category: 'Routines',             channel: 'email',              description: 'Wednesday at weekend_planner_hour, by email, with no Slack ping', locked: false, whileAway: 'hold' },
@@ -535,6 +537,9 @@ function createSheetTabs(ss) {
     ['movement_daily_cap',           '3'],
     ['act_now_cap_aria',             '3'],            // #vera-act-now posts per assistant per day
     ['act_now_cap_vera',             '3'],
+    ['act_now_cap_hailey',           '3'],
+    ['act_now_cap_tess',             '3'],
+    ['act_now_tess_min_score',       '85'],           // a TESS match at or above this goes to #vera-act-now
     ['run_log_sheet_id',             ''],             // RunLog.js: a separate sheet for the Run Log, a tab per job (blank = VERA's own sheet)
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
