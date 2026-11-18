@@ -249,9 +249,40 @@ Columns 5–8 (`giEnsureCols_`): Price (`giPrice_`), Link (`giLink_`, http(s) on
 
 **The screen** (main dashboard): the **card runs** sit on top, the current one (most recently sent) first, each with "N of M sent this year"; tap one to open the run. Each household card shows chips for the **city**, **people**, the **last card sent** and, when the address was never confirmed or was confirmed two or more years ago, a **stale-address** chip. Under it, each person's **next date** (📅, opens People › Important Dates) and **open gift ideas** (🎁, opens Gift Ideas), matched on the full or first name. **Bulk import** and **Check ids / Repair** sit under **⚙ Tools**.
 
-### Notes (`NotesTab`, `LinkedNotes`)
+### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
 
-Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The screen has a **📌 Pinned** row on top, **category chips** with counts, and **search** across title, content, tags and Related to. On a computer the notes are **cards**; on a phone they are a **list**. **Related to** links a note to a person, trip or project (several can be split with commas or semicolons; the form offers names already used). A linked note also shows on that person's Gift Ideas card, on the trip's Summary and under the board on the Projects tab, where you tap it to read it all. Chat is unchanged: what you tell VERA in chat is still kept in Memory.
+Private quick capture. Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The Doc's table gains **Share, Vault, Hide Label, Back On, Picture, Link, Updated** after Category, the first time they're written. Older rows simply have fewer cells.
+
+- **Yours alone.** Every notes route is owner-only (`peopleOwnerOnly_`), not just hidden in the menu. Linked notes don't load for anyone else.
+- **Private by default.** VERA reads a note only when it's marked **✨ Let VERA use**: chat gets those (`ntForVera_`, Chat.js) and nothing else. **Pin** only changes the order on the page. Nothing typed into Notes goes to Memory. **"note: …"** in chat saves a private note without calling the AI, and so does a Quick capture line that starts with "note:" or carries a #tag.
+- **Just tags.** `#words` are tags. A tag can be suggested from the words by simple rules, never by AI (`ntSuggestTag_`). A note's colour comes from its first tag. An older note's category shows as a tag.
+- **Jot a note**, on Home between Log a grocery run and Away, and **＋ Note** on the screen:
+  - one box, with ✨ and 🔒 switches;
+  - **"remind me…"** or **"add a task…"** makes a Task (today and tomorrow are understood), and **"buy…"** adds to Shopping, on the General list if there is one. Nothing else routes (`ntRoute_`);
+  - every save shows **Undo** (`note_undo`);
+  - a code or password asks "Put it in the Vault?";
+  - a one-line fact like "Shoe 8.5" offers to replace an older "Shoe 8".
+- **The screen:**
+  - search, where every word must match, with matches highlighted; Home has the same search, and **/** jumps to it;
+  - filters for ✨ and 🔒, then tag chips with counts;
+  - Back today, Pinned, then the rest;
+  - cards on a computer, a list on a phone. A card shows 4 lines (2 on a phone); a tap opens the whole note.
+- **In a note:**
+  - checklist lines (`- [ ] tape`) tick;
+  - ✎ Edit, Pin, ✨, and Move to / out of the Vault;
+  - **🖼 Attach a picture**, saved to a **VERA Notes** folder in Drive (`note_picture`);
+  - **🔗 Show a link preview**, fetched only when you ask (`note_link_preview`);
+  - **Bring this back on…** a date. The note then shows in **Back today** on the screen and on Home, and can also make a Task.
+- **The Vault, for now, only hides a note on screen:**
+  - its text sits in the Doc as usual;
+  - its body shows on a tap;
+  - VERA never reads it, it never shows on other screens, and it never fetches a preview or takes a picture;
+  - search sees only its label, which can be hidden ("Locked note").
+
+  Encrypting it is #253.
+- **Tidy tags** is a pop-up: rename or merge a tag (`notes_retag`). It spots look-alikes such as size / sizes, move / moving and one-letter typos.
+- **Share to VERA.** The installed full dashboard appears in Android's share menu (`share_target` in the manifest), and the shared text opens as a new note. On iPhone, a Shortcut can open the same address.
+- **Related to** (Edit › Also show on) links a note to a person, trip or project: their Gift Ideas card, the trip's Summary, or under the Projects board. A Vault note never shows there.
 
 ### Chores for others: rewards owed (`ChoresForOthers.js`, `ChoresForOthersView`)
 

@@ -512,9 +512,9 @@ function buildChatSystemPrompt_(context) {
       }).join('\n');
 
   var pinnedNoteLines = (!context.pinnedNotes || context.pinnedNotes.length === 0)
-    ? '  (none pinned)'
+    ? '  (none shared)'
     : context.pinnedNotes.map(function(n) {
-        return '  [' + n.category + '] ' + n.title + ': ' + n.content.substring(0, 120) +
+        return '  ' + n.title + (n.content ? ': ' + n.content.substring(0, 160) : '') +
                (n.tags ? ' — ' + n.tags : '');
       }).join('\n');
 
@@ -698,7 +698,7 @@ function buildChatSystemPrompt_(context) {
     })() +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
-    'PINNED NOTES (' + (context.pinnedNotes ? context.pinnedNotes.length : 0) + '):\n' + pinnedNoteLines + '\n\n' +
+    'NOTES SHARED WITH VERA (' + (context.pinnedNotes ? context.pinnedNotes.length : 0) + '; the user marked these for you to use, and every other note is private):\n' + pinnedNoteLines + '\n\n' +
 
     (function() {
       var refs = context.resources || [];
@@ -1490,14 +1490,10 @@ function buildChatContext_() {
     contracts = getContracts_();
   } catch(e) { Logger.log('Chat context: contracts — ' + e.message); }
 
-  // Pinned notes (Issue #167) — top 5 pinned notes across all categories
+  // Notes (#252): only the ones marked ✨ Let VERA use, never the Vault. Pinning used to send a
+  // note here; it now only changes the order on the Notes page.
   var pinnedNotes = [];
-  try {
-    var notesRes = webGetNotes_({ parameter: {} });
-    if (notesRes && notesRes.notes) {
-      pinnedNotes = notesRes.notes.filter(function(n) { return n.pinned; }).slice(0, 5);
-    }
-  } catch(e) { Logger.log('Chat context: pinnedNotes — ' + e.message); }
+  try { pinnedNotes = ntForVera_(15); } catch(e) { Logger.log('Chat context: notes — ' + e.message); }
 
   // Reference resources (metadata only — content fetched on demand via read_resource)
   var resources = [];
@@ -2966,20 +2962,15 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   // ── Note capture shortcut (Issue #167) ───────────────────────────────────
   var noteMatch = trimmedMsg.match(/^(?:note(?:\s*:|:)|save\s+a\s+note[:\s]|remember\s+this[:\s]|log\s+this[:\s])\s*(.+)/i);
   if (noteMatch) {
-    var noteRaw = noteMatch[1].trim();
-    var noteParts = noteRaw.split(/\s*[—–-]{1,2}\s*/);
-    var noteTitle   = noteParts[0].trim();
-    var noteContent = noteParts.slice(1).join(' — ').trim() || noteTitle;
-    if (noteParts.length === 1) noteTitle = 'Quick Note';
+    // A private note (#252): straight into the Notes Doc, never Memory, never read by the AI.
+    var noteParts = ntSplit_(noteMatch[1].trim());
     try {
-      var notesUrl = ScriptApp.getService().getUrl();
-      UrlFetchApp.fetch(notesUrl + '?action=add_note&token=' + getWebToken_() +
-        '&category=General&title=' + encodeURIComponent(noteTitle) +
-        '&content=' + encodeURIComponent(noteContent));
+      ntAdd_({ title: noteParts.title, content: noteParts.content });
     } catch (noteErr) {
       Logger.log('Note capture error: ' + noteErr.message);
+      return { reply: 'I couldn’t save that note: ' + noteErr.message };
     }
-    return { reply: 'Got it — saved to your Notes (General): *' + noteTitle + '*' };
+    return { reply: 'Saved to your Notes, private: *' + noteParts.title + '*. Mark it ✨ in Notes if you want me to use it.' };
   }
 
   var history   = loadChatHistory_(sessionId);

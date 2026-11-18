@@ -518,13 +518,14 @@ function doGet(e) {
       case 'get_tax_preparer':    return jsonOut_(webGetTaxPreparer_(e));
       case 'save_tax_preparer':   return jsonOut_(webSaveTaxPreparer_(e));
       case 'delete_tax_preparer': return jsonOut_(webDeleteTaxPreparer_(e));
-      // Notes (Issue #167)
-      case 'get_notes':           return jsonOut_(webGetNotes_(e));
+      // Notes (Issue #167): the owner's alone (#252), so every route asks first
+      case 'get_notes':           return jsonOut_(peopleOwnerOnly_() || webGetNotes_(e));
       case 'get_note_categories': return jsonOut_(webGetNoteCategories_());
-      case 'add_note':            return jsonOut_(webAddNote_(e));
-      case 'update_note':         return jsonOut_(webUpdateNote_(e));
-      case 'delete_note':         return jsonOut_(webDeleteNote_(e));
-      case 'pin_note':            return jsonOut_(webPinNote_(e));
+      case 'add_note':            return jsonOut_(peopleOwnerOnly_() || webAddNote_(e));
+      case 'update_note':         return jsonOut_(peopleOwnerOnly_() || webUpdateNote_(e));
+      case 'delete_note':         return jsonOut_(peopleOwnerOnly_() || webDeleteNote_(e));
+      case 'pin_note':            return jsonOut_(peopleOwnerOnly_() || webPinNote_(e));
+      case 'note_picture_view':   return jsonOut_(webNotePictureView_(e));   // Notes.js, owner-only inside
       // Household Cheat Sheet
       case 'get_household_info':    return jsonOut_(webGetHouseholdInfo_());
       case 'update_household_row':  return jsonOut_(webUpdateHouseholdRow_(e));
@@ -669,6 +670,12 @@ function doPost(e) {
       // Purchase History (Issue #111)
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
       case 'receipt_scan':               return jsonOut_(webReceiptScan_(body));
+      // Notes (#252, Notes.js): each one owner-only inside
+      case 'note_capture':               return jsonOut_(webNoteCapture_(body));
+      case 'note_undo':                  return jsonOut_(webNoteUndo_(body));
+      case 'notes_retag':                return jsonOut_(webNotesRetag_(body));
+      case 'note_link_preview':          return jsonOut_(webNoteLinkPreview_(body));
+      case 'note_picture':               return jsonOut_(webNotePicture_(body));
       case 'receipt_log':                return jsonOut_(webReceiptLog_(body));
       case 'gq_scan':                    return jsonOut_(webGqScan_(body));        // GroceryRun.js (#229): a receipt, no list needed
       case 'gq_log':                     return jsonOut_(webGqLog_(body));
@@ -11674,22 +11681,8 @@ function webGetNotes_(e) {
 
 function webAddNote_(e) {
   try {
-    var p      = e.parameter;
-    var docId  = getNotesDocId_();
-    var table  = getNotesTable_(docId);
-    var id     = Utilities.getUuid();
-    var today  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    // Insert after header row (position 1) so newest is at top
-    var newRow = table.insertTableRow(1);
-    var vals   = [id, today, p.title || '', p.content || '', p.tags || '', p.relatedTo || '', p.pinned === 'true' ? 'true' : '', p.category || 'General'];
-    for (var c = 0; c < vals.length; c++) {
-      if (c < newRow.getNumCells()) {
-        newRow.getCell(c).setText(vals[c]);
-      } else {
-        newRow.appendTableCell(vals[c]);
-      }
-    }
-    return { ok: true, id: id };
+    // Newest at the top, with the #252 columns (Notes.js ntAdd_): #tags from the text, ✨, Vault, Back on.
+    return { ok: true, id: ntAdd_(e.parameter || {}) };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -11704,10 +11697,27 @@ function webUpdateNote_(e) {
     for (var i = 0; i < notes.length; i++) { if (notes[i].id === p.id) { note = notes[i]; break; } }
     if (!note) return errOut_('Note not found', 404);
     var table  = getNotesTable_(getNotesDocId_());
+    ntEnsureHeader_(table);   // Notes.js (#252)
     var row    = table.getRow(note.rowIndex);
     var fields = { 2: p.title, 3: p.content, 4: p.tags, 5: p.relatedTo, 6: p.pinned, 7: p.category };
-    for (var col in fields) {
-      if (fields[col] !== undefined) row.getCell(parseInt(col)).setText(fields[col]);
+    if (p.tags !== undefined) {   // stored one way: 'sizes, move', plus any #tags now typed in the text
+      var tl = ntTagList_(p.tags);
+      ntParseTags_((p.title != null ? p.title : note.title) + '\n' + (p.content != null ? p.content : note.content)).forEach(function(t) { if (tl.indexOf(t) === -1) tl.push(t); });
+      fields[4] = tl.join(', ');
+    }
+    var vault = p.vault !== undefined ? ntBool_(p.vault) : (note.vault ? 'true' : '');
+    if (p.vault !== undefined) fields[NT_COL_.VAULT] = vault;
+    if (p.share !== undefined || p.vault !== undefined) fields[NT_COL_.SHARE] = vault ? '' : ntBool_(p.share !== undefined ? p.share : note.share);   // a Vault note is never shared
+    if (p.hideLabel !== undefined) fields[NT_COL_.HIDE] = vault ? ntBool_(p.hideLabel) : '';
+    if (p.backOn !== undefined) fields[NT_COL_.BACK] = /^\d{4}-\d{2}-\d{2}$/.test(String(p.backOn)) ? p.backOn : '';
+    if (p.clearPicture === 'true' || vault) fields[NT_COL_.PICTURE] = vault ? '' : (p.clearPicture === 'true' ? '' : undefined);
+    if (p.clearLink === 'true') fields[NT_COL_.LINK] = '';
+    for (var col in fields) if (fields[col] === undefined) delete fields[col];
+    fields[NT_COL_.UPDATED] = ntNow_();
+    ntSetCells_(row, fields);
+    // "Bring this back on…" can also make a Task due that day.
+    if (p.backTask === 'true' && fields[NT_COL_.BACK]) {
+      try { webAddTask_({ parameter: { task: 'Look at note: ' + String(p.title != null ? p.title : note.title).slice(0, 80), dueDate: fields[NT_COL_.BACK], notes: 'From Notes' } }); } catch (tErr) {}
     }
     return { ok: true };
   } catch (err) {

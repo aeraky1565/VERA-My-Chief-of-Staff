@@ -69,7 +69,7 @@ function qcFile_(act) {
     if (!g.ok) return g;
     return { ok: true, kind: 'giving', said: 'Logged ' + (g.entry.kind === 'donation' ? 'a donation to ' : 'volunteering at ') + g.entry.organisation + '.', undo: { action: 'life_giving_delete', id: g.entry.id } };
   }
-  var n = webAddNote_({ parameter: { title: lfStr_(a[0], 80) || 'Quick note', content: a[1] || a[0] || '', category: 'Quick capture' } });
+  var n = webAddNote_({ parameter: { title: lfStr_(a[0], 80) || 'Quick note', content: a[1] || a[0] || '', tags: 'quick-capture' } });
   if (!n.ok) return n;
   return { ok: true, kind: 'note', said: 'Saved a note.', undo: { action: 'delete_note', id: n.id, via: 'get' } };
 }
@@ -78,6 +78,14 @@ function qcFile_(act) {
 function webLifeQuickCapture_(body) {
   var text = lfStr_(body && body.text, 600);
   if (!text) return { ok: false, error: 'Type something to file' };
+  // A note is private (#252): one that says so ("note: …", or a #tag) is saved straight to
+  // Notes and never sent to the AI to be sorted.
+  var asNote = text.match(/^\s*note\s*:\s*([\s\S]+)$/i);
+  if (asNote || ntParseTags_(text).length) {
+    var parts = ntSplit_(asNote ? asNote[1] : text);
+    var nid = ntAdd_({ title: parts.title, content: parts.content });
+    return { ok: true, kind: 'note', said: 'Saved a private note.', undo: { action: 'delete_note', id: nid, via: 'get' } };
+  }
   var goals = []; try { goals = lgGoals_().filter(function(g) { return g.focus === 'now'; }).map(function(g) { return g.title; }); } catch (e) {}
   var act = null;
   try { var r = callClaudeJsonDetailed_(qcPrompt_(text, goals, lfToday_()), { maxTokens: 200 }); act = qcParse_(r && r.raw); } catch (e) {}

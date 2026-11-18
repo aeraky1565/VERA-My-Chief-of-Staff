@@ -367,7 +367,9 @@ const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Am
 var HEALTH_ACCOUNT_HEADERS = ['ID', 'Type', 'Plan Year', 'Provider', 'Election', 'Coverage', 'Contributed', 'Employer Contribution', 'Employer Name', 'Balance', 'Balance As Of', 'Rule', 'Use By', 'Carryover', 'Notes'];
 var TAX_DOCUMENT_HEADERS  = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
 var TAX_PREPARER_HEADERS  = ['Tax Year', 'Type', 'Name', 'Firm', 'Phone', 'Email', 'Software', 'Filing Status', 'Filed Date', 'Confirmation', 'Notes']; // Issue #174
-var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned', 'Category'];
+// Share … Updated were added for #252 (Notes.js); older rows just have fewer cells.
+var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned', 'Category',
+                         'Share', 'Vault', 'Hide Label', 'Back On', 'Picture', 'Link', 'Updated'];
 var NOTES_CATEGORIES  = ['General', 'Travel', 'Lessons Learned', 'Reference', 'Finance', 'Health'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
 // Growth (Issue #88) — column order matches row[] offsets used in Growth.js
@@ -5529,7 +5531,7 @@ function readAllNotes_(docId) {
     var row = table.getRow(r);
     var id  = row.getCell(0).getText().trim();
     if (!id) continue;
-    notes.push({
+    var note = {
       id:        id,
       dateAdded: row.getCell(1).getText().trim(),
       title:     row.getCell(2).getText().trim(),
@@ -5537,9 +5539,13 @@ function readAllNotes_(docId) {
       tags:      row.getCell(4).getText().trim(),
       relatedTo: row.getCell(5).getText().trim(),
       pinned:    row.getCell(6).getText().trim() === 'true',
-      category:  row.getCell(7).getText().trim() || 'General',
+      category:  row.getNumCells() > 7 ? (row.getCell(7).getText().trim() || 'General') : 'General',
       rowIndex:  r
-    });
+    };
+    // Share, Vault, Hide Label, Back On, Picture, Link, Updated (Notes.js, #252)
+    var extra = ntExtras_(row);
+    for (var k in extra) note[k] = extra[k];
+    notes.push(note);
   }
   return notes;
 }

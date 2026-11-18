@@ -505,9 +505,40 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
-### Notes (`NotesTab`, `LinkedNotes`)
+### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
 
-Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The screen has a **📌 Pinned** row on top, **category chips** with counts, and **search** across title, content, tags and Related to. On a computer the notes are **cards**; on a phone they are a **list**. **Related to** links a note to a person, trip or project (several can be split with commas or semicolons; the form offers names already used). A linked note also shows on that person's Gift Ideas card, on the trip's Summary and under the board on the Projects tab, where you tap it to read it all. Chat is unchanged: what you tell VERA in chat is still kept in Memory.
+Private quick capture. Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The Doc's table gains **Share, Vault, Hide Label, Back On, Picture, Link, Updated** after Category, the first time they're written. Older rows simply have fewer cells.
+
+- **Yours alone.** Every notes route is owner-only (`peopleOwnerOnly_`), not just hidden in the menu. Linked notes don't load for anyone else.
+- **Private by default.** VERA reads a note only when it's marked **✨ Let VERA use**: chat gets those (`ntForVera_`, Chat.js) and nothing else. **Pin** only changes the order on the page. Nothing typed into Notes goes to Memory. **"note: …"** in chat saves a private note without calling the AI, and so does a Quick capture line that starts with "note:" or carries a #tag.
+- **Just tags.** `#words` are tags. A tag can be suggested from the words by simple rules, never by AI (`ntSuggestTag_`). A note's colour comes from its first tag. An older note's category shows as a tag.
+- **Jot a note**, on Home between Log a grocery run and Away, and **＋ Note** on the screen:
+  - one box, with ✨ and 🔒 switches;
+  - **"remind me…"** or **"add a task…"** makes a Task (today and tomorrow are understood), and **"buy…"** adds to Shopping, on the General list if there is one. Nothing else routes (`ntRoute_`);
+  - every save shows **Undo** (`note_undo`);
+  - a code or password asks "Put it in the Vault?";
+  - a one-line fact like "Shoe 8.5" offers to replace an older "Shoe 8".
+- **The screen:**
+  - search, where every word must match, with matches highlighted; Home has the same search, and **/** jumps to it;
+  - filters for ✨ and 🔒, then tag chips with counts;
+  - Back today, Pinned, then the rest;
+  - cards on a computer, a list on a phone. A card shows 4 lines (2 on a phone); a tap opens the whole note.
+- **In a note:**
+  - checklist lines (`- [ ] tape`) tick;
+  - ✎ Edit, Pin, ✨, and Move to / out of the Vault;
+  - **🖼 Attach a picture**, saved to a **VERA Notes** folder in Drive (`note_picture`);
+  - **🔗 Show a link preview**, fetched only when you ask (`note_link_preview`);
+  - **Bring this back on…** a date. The note then shows in **Back today** on the screen and on Home, and can also make a Task.
+- **The Vault, for now, only hides a note on screen:**
+  - its text sits in the Doc as usual;
+  - its body shows on a tap;
+  - VERA never reads it, it never shows on other screens, and it never fetches a preview or takes a picture;
+  - search sees only its label, which can be hidden ("Locked note").
+
+  Encrypting it is #253.
+- **Tidy tags** is a pop-up: rename or merge a tag (`notes_retag`). It spots look-alikes such as size / sizes, move / moving and one-letter typos.
+- **Share to VERA.** The installed full dashboard appears in Android's share menu (`share_target` in the manifest), and the shared text opens as a new note. On iPhone, a Shortcut can open the same address.
+- **Related to** (Edit › Also show on) links a note to a person, trip or project: their Gift Ideas card, the trip's Summary, or under the Projects board. A Vault note never shows there.
 
 ### Address Book (`AddressBook.js`, `WebApp.js`)
 
@@ -2737,6 +2768,8 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `whoami` | — | Who the code belongs to: name, owner, view (full or lite), first tab, hidden tabs (#218) |
 | `people_list` | — | Owner only: everyone, their view, codes, last seen and tab count |
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
+| `get_notes`, `add_note`, `update_note`, `delete_note`, `pin_note` | — | Owner only (#252). `update_note` also takes `share`, `vault`, `hideLabel`, `backOn` (+ `backTask`) |
+| `note_picture_view` | `id` | Owner only: a note's picture as a data URL |
 | `run_log` | — | Owner only: VERA's scheduled runs from the Run Log, one entry per job with its last 7 runs (System › Checks › Run log) |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
 | `home_nightly` | — | Full Home's System health: when the nightly run last finished, and the step it stopped in if it didn't (read only) |
@@ -2808,6 +2841,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `ScriptProps.js` | System › Checks › Script Properties: names in groups, never values; Move settings now; Move running notes (to the VERA State tab); Remove the old copies (only those already in their new home) |
 | `Renewals.js` | Vehicle renewals: Coming up, the flags, the calendar reminder, Renewed… and the card's icon |
 | `AgentHealth.js` | Agent health: each Claude agent's Run Log (read only), the Late / Failed rules, the nightly flags and #vera-logs notes |
+| `Notes.js` | Notes (#252): tags, routing on explicit words, ✨ for VERA, the Vault (hidden on screen), Back on, pictures, link previews, Tidy tags; POST `note_capture`, `note_undo`, `notes_retag`, `note_link_preview`, `note_picture`, all owner-only |
 | `RunLog.js` | VERA's own Run Log: a row per scheduled run, written as it starts and as the nightly steps go by, completed from the heartbeat; a run Apps Script cut off is marked Cut off with the step it died in. In the sheet set by Config `run_log_sheet_id`, a tab per job (else one Run Log tab in VERA's sheet); 30 days kept |
 | `Away.js` | Away mode: the switch, the While away settings, which flags get through, the away edition of the morning email |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
