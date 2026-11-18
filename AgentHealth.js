@@ -216,15 +216,45 @@ function agentWantedFlags_(agents) {
 
 /** Pure: the #vera-logs lines for agents whose level changed since last time. */
 function agentChangeLines_(agents, before) {
-  var lines = [], now = {};
+  var lines = [], items = [], now = {};
   (agents || []).forEach(function(a) {
     if (a.name === 'PIES' || a.name === 'VERA') return;
     now[a.name] = a.level;
     var was = (before || {})[a.name];
     if (!was || was === a.level) return;
-    lines.push((a.level === 'ok' ? '✅ ' : a.level === 'failed' ? '❌ ' : '⚠️ ') + a.name + ': ' + (a.level === 'ok' ? 'back on time' : a.level) + ' — ' + a.text);
+    var line = (a.level === 'ok' ? '✅ ' : a.level === 'failed' ? '❌ ' : '⚠️ ') + a.name + ': ' + (a.level === 'ok' ? 'back on time' : a.level) + ' — ' + a.text;
+    lines.push(line); items.push({ name: a.name, line: line });
   });
-  return { lines: lines, now: now };
+  return { lines: lines, items: items, now: now };
+}
+
+/**
+ * Each agent's change goes where that agent's "agent down" row in Settings › Notifications says
+ * (agent_down_aria / _tess / _hailey): Off sends nothing (the flag is still held), Morning email
+ * waits for the email, Slack posts to its channel (#vera-logs unless you chose another).
+ * An agent with no row of its own goes to #vera-logs as before. Never throws. → lines posted
+ */
+function agentHealthPost_(items) {
+  var groups = {}, order = [], sent = 0;
+  (items || []).forEach(function(it) {
+    var key = 'agent_down_' + String(it.name).toLowerCase();
+    var known = typeof NOTIF_REGISTRY !== 'undefined' && NOTIF_REGISTRY.some(function(r) { return r.key === key; });
+    var where = known && typeof notifDelivery_ === 'function' ? notifDelivery_(key) : 'slack';
+    if (where === 'off') return;
+    if (where === 'email' && typeof notifHold_ === 'function') { notifHold_(key, it.line); return; }
+    var ch = known ? getNotifChannel_(key) : 'vera-logs';
+    if (!groups[ch]) { groups[ch] = []; order.push(ch); }
+    groups[ch].push(it.line);
+  });
+  order.forEach(function(ch) {
+    var text = '🤖 Agent health\n' + groups[ch].join('\n');
+    try {
+      if (ch === 'vera-logs') sendSlackLog_(text);
+      else { var id = getSlackChannelId_(ch); if (id) sendSlackMessage_(id, text); }
+      sent += groups[ch].length;
+    } catch (e) { Logger.log('agentHealthPost_: ' + e.message); }
+  });
+  return sent;
 }
 
 // ---- the reads -------------------------------------------------------------------
@@ -365,7 +395,7 @@ function checkAgentHealth_() {
   var before = {};
   try { before = JSON.parse(veraStoreGet_('AGENT_HEALTH_LEVELS') || '{}') || {}; } catch (e) { before = {}; }
   var ch = agentChangeLines_(h.agents, before);
-  if (ch.lines.length) { try { sendSlackLog_('🤖 Agent health\n' + ch.lines.join('\n')); } catch (e) {} }
+  if (ch.items.length) { try { agentHealthPost_(ch.items); } catch (e) {} }
   try { veraStoreSet_('AGENT_HEALTH_LEVELS', JSON.stringify(ch.now)); } catch (e) {}
   return h.counts.ok + ' ok, ' + h.counts.late + ' late, ' + h.counts.failed + ' failed, ' + h.counts.none + ' no signal';
 }

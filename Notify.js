@@ -299,7 +299,7 @@ function actNowVeraPicks_(rows, today, posted) {
     if (String(r[8]).toLowerCase() === 'yes' || String(r[6]).toLowerCase() === 'yes') return false;
     if (!ACT_NOW_DECISIONS_.some(function(p) { return key.indexOf(p) === 0; })) return false;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || due < today || due > soon) return false;
-    return (posted || []).indexOf(key + '|' + due) === -1;
+    return !actNowWas_(posted, key + '|' + due);
   }).map(function(r) {
     return { id: String(r[0]), key: String(r[9]), title: String(r[3] || ''), reason: String(r[4] || ''), due: String(r[11] instanceof Date ? r[11].toISOString() : r[11]).slice(0, 10) };
   });
@@ -328,8 +328,7 @@ function actNowVeraSync_(now) {
     var sheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
     if (!sheet || sheet.getLastRow() < 2) return 0;
     var today = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var st = veraStateGet_('NOTIF'), posted = [];
-    try { posted = JSON.parse(st.NOTIF_ACTNOW || '[]') || []; } catch (e) { posted = []; }
+    var posted = actNowPostedGet_();
     var picks = actNowVeraPicks_(sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(12, sheet.getLastColumn())).getValues(), today, posted);
     var cfg = getConfigValues() || {}, cap = actNowCap_(cfg, 'vera'), sent = 0;
     picks.forEach(function(p) {
@@ -340,7 +339,7 @@ function actNowVeraSync_(now) {
       var chId = getSlackChannelId_(getNotifChannel_('act_now_vera'));
       if (chId && sendSlackMessage_(chId, '⏳ ' + p.title, actNowBlocks_('VERA', p, n, cap, today)).ok) { sent++; notifBump_('act'); }
     });
-    veraStateSet_('NOTIF', { NOTIF_ACTNOW: JSON.stringify(posted.slice(-80)) });
+    actNowPostedSave_(posted);
     return sent;
   } catch (e) { Logger.log('actNowVeraSync_ (non-fatal): ' + e.message); return 0; }
 }
@@ -392,7 +391,7 @@ function actNowHaileyPicks_(rows, today, posted, iso) {
         reason: last.replace(/ on \d{4}-\d{2}-\d{2}$/, ' today') + '. About ' + String(col(r, 'est. monthly cost')) + ' a month (' + String(col(r, 'cost flag')).toLowerCase() + '). ' + facts, url: url });
     }
   });
-  return out.filter(function(p) { return (posted || []).indexOf(p.key) === -1; });
+  return out.filter(function(p) { return !actNowWas_(posted, p.key); });
 }
 
 /** Pure: TESS's posts for today: New, found today, score at least min. */
@@ -409,7 +408,113 @@ function actNowTessPicks_(rows, today, posted, min, iso) {
     var bits = [String(col(r, 'salary range') || ''), col(r, 'track') ? 'Track: ' + col(r, 'track') : '', col(r, 'tier') ? 'Tier ' + col(r, 'tier') : ''].filter(Boolean);
     out.push({ key: 'tess|' + (url || co + '|' + title), kind: 'Strong new match · score ' + score, title: title + ' · ' + co, reason: bits.join(' · '), url: url });
   });
-  return out.filter(function(p) { return (posted || []).indexOf(p.key) === -1; });
+  return out.filter(function(p) { return !actNowWas_(posted, p.key); });
+}
+
+// ---- Act now's memory (its own state bundle, ACTNOW) ----------------------------------------
+
+/** Pure: a short, stable stand-in for a long key (a Zillow or job link), so 200 of them fit. */
+function actNowShort_(k) {
+  k = String(k || '');
+  if (k.length <= 40) return k;
+  var a = 5381, b = 52711;
+  for (var i = 0; i < k.length; i++) { var c = k.charCodeAt(i); a = ((a * 33) ^ c) >>> 0; b = ((b * 31) + c) >>> 0; }
+  return k.slice(0, 12) + '~' + a.toString(36) + b.toString(36);
+}
+/** Pure: was this key posted? The list may hold it whole or short. */
+function actNowWas_(posted, key) { posted = posted || []; return posted.indexOf(key) !== -1 || posted.indexOf(actNowShort_(key)) !== -1; }
+/** What act-now has posted: its own bundle, else the old NOTIF list (carried over once). */
+function actNowPostedGet_() {
+  var list = [];
+  try { list = JSON.parse(veraStateGet_('ACTNOW').ACTNOW_POSTED || '[]') || []; } catch (e) { list = []; }
+  if (!list.length) { try { list = JSON.parse(veraStateGet_('NOTIF').NOTIF_ACTNOW || '[]') || []; } catch (e) { list = []; } }
+  return list;
+}
+/** Saves the newest 200, short. Never throws. */
+function actNowPostedSave_(list) {
+  var seen = {}, out = [];
+  (list || []).map(actNowShort_).forEach(function(k) { if (!seen[k]) { seen[k] = 1; out.push(k); } });
+  try { veraStateSet_('ACTNOW', { ACTNOW_POSTED: JSON.stringify(out.slice(-200)) }); } catch (e) { Logger.log('actNowPostedSave_: ' + e.message); }
+  try { if (veraStateGet_('NOTIF').NOTIF_ACTNOW) veraStateSet_('NOTIF', { NOTIF_ACTNOW: '' }); } catch (e) {}
+}
+
+// ---- WILLA (the money planner), and HAILEY and TESS follow-ups (#250 follow-up) --------------
+// All read only. WILLA: a CD maturing within 7 days (once per term), and on the 1st–3rd of a
+// month one post with that month's Plan items. HAILEY: a home under your ceiling, or one VERA
+// already posted, went off the market today. TESS: a job you Saved closes within 3 days (from
+// its notes: "deadline …" / "closes …"), or a job's status moved past New / Saved / Passed.
+
+function actNowMoney_(n) { return n == null || isNaN(n) ? '' : '$' + Math.round(n).toLocaleString('en-US'); }
+function actNowDays_(fromIso, toIso) { return Math.round((new Date(toIso + 'T12:00:00Z') - new Date(fromIso + 'T12:00:00Z')) / 86400000); }
+
+/** Pure: WILLA's posts. cds / plans as nwParseCds_ / nwParsePlans_ give them. */
+function actNowWillaPicks_(cds, plans, today, posted, url) {
+  var out = [];
+  (cds || []).forEach(function(cd) {
+    if (!cd.name || !/^\d{4}-\d{2}-\d{2}$/.test(cd.matures || '')) return;
+    var d = actNowDays_(today, cd.matures);
+    if (d < 0 || d > 7) return;
+    out.push({ key: 'willa|cd|' + cd.name + '|' + cd.matures, kind: 'CD matures ' + (d === 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + ' days'),
+      title: cd.name + (cd.amount != null ? ' · ' + actNowMoney_(cd.amount) : ''),
+      reason: 'Decide before ' + cd.matures + ': roll it over, move it, or let it pay out.' + (cd.apy ? ' It earns ' + cd.apy + '% now.' : '') + (cd.owner ? ' ' + cd.owner + '’s.' : ''), url: url || '' });
+  });
+  var month = today.slice(0, 7), day = +today.slice(8, 10);
+  var due = (plans || []).filter(function(p) { return p.item && p.month === month; });
+  if (day <= 3 && due.length) {
+    var total = due.reduce(function(s, p) { return s + (p.amount || 0); }, 0), wait = due.filter(function(p) { return p.canDefer; }).length;
+    out.push({ key: 'willa|plan|' + month, kind: 'Planned spending this month',
+      title: due.length + ' planned this month · ' + actNowMoney_(total),
+      reason: due.map(function(p) { return p.item + ' ' + actNowMoney_(p.amount) + (p.confidence ? ' (' + p.confidence + ')' : ''); }).join('; ') + '.' + (wait ? ' ' + wait + ' can wait.' : ''), url: url || '' });
+  }
+  return out.filter(function(p) { return !actNowWas_(posted, p.key); });
+}
+
+/** Pure: HAILEY follow-ups: a home that matters went off the market today. */
+function actNowHaileyGonePicks_(rows, today, posted) {
+  if (!rows || rows.length < 2) return [];
+  var c = actNowCols_(rows[0]), out = [];
+  var col = function(r, n) { var i = c[n]; return i === undefined ? '' : r[i]; };
+  rows.slice(1).forEach(function(r) {
+    var addr = String(col(r, 'address')).trim(), url = String(col(r, 'zillow url')).trim(), id = url || addr;
+    if (!addr || String(col(r, 'status')).trim().toLowerCase() !== 'gone') return;
+    if (String(col(r, 'notes')).indexOf('Gone ' + today) === -1) return;
+    var under = /under/i.test(String(col(r, 'cost flag')));
+    var shown = actNowWas_(posted, 'hailey|new|' + id) || (posted || []).some(function(k) { return String(k).indexOf('hailey|cut|' + id) === 0; });
+    if (!under && !shown) return;
+    out.push({ key: 'hailey|gone|' + id, kind: 'Off the market', title: addr + ' · was ' + String(col(r, 'price')),
+      reason: 'HAILEY stopped seeing it today' + (under ? '; it was under your ceiling' : '') + (shown ? '. VERA posted it here before.' : '.'), url: url });
+  });
+  return out.filter(function(p) { return !actNowWas_(posted, p.key); });
+}
+
+var TESS_QUIET_STATUSES_ = ['', 'new', 'saved', 'passed'];
+
+/** Pure: TESS follow-ups, and the statuses to remember. seen: {short job id: status}. → {picks, seen} */
+function actNowTessFollowPicks_(rows, today, posted, seen) {
+  // Only Saved and later statuses are remembered (New and Passed are most of the Tracker), so the
+  // memory stays small; '_' marks that a first run has happened, so the first run only records.
+  var out = [], next = { _: 1 }, firstRun = !seen || !seen._;
+  if (!rows || rows.length < 2) return { picks: [], seen: seen || {} };
+  var c = actNowCols_(rows[0]);
+  var col = function(r, n) { var i = c[n]; return i === undefined ? '' : r[i]; };
+  rows.slice(1).forEach(function(r) {
+    var url = String(col(r, 'job link')).trim(), co = String(col(r, 'company')).trim(), title = String(col(r, 'title')).trim();
+    if (!co && !title) return;
+    var id = actNowShort_(url || co + '|' + title), status = String(col(r, 'status')).trim(), low = status.toLowerCase();
+    var name = title + ' · ' + co;
+    if (low && low !== 'passed' && low !== 'new') next[id] = low;
+    if (low === 'saved') {
+      var m = String(col(r, 'notes')).match(/(?:deadline|closes|closing|apply by)\s*:?\s*(\d{4}-\d{2}-\d{2})/i);
+      var d = m ? actNowDays_(today, m[1]) : -1;
+      if (m && d >= 0 && d <= 3) out.push({ key: 'tess|closes|' + (url || co + '|' + title) + '|' + m[1], kind: 'Closes ' + (d === 0 ? 'today' : d === 1 ? 'tomorrow' : 'in ' + d + ' days'),
+        title: name, reason: 'You saved this one. Apply before ' + m[1] + ' if you still want it.' + (col(r, 'salary range') ? ' ' + col(r, 'salary range') : ''), url: url });
+    }
+    if (!firstRun && TESS_QUIET_STATUSES_.indexOf(low) === -1 && seen[id] !== low) {
+      out.push({ key: 'tess|status|' + (url || co + '|' + title) + '|' + low, kind: 'Now ' + status, title: name,
+        reason: (seen[id] ? 'It was ' + seen[id] + '. ' : '') + 'TESS updated it today.', url: url });
+    }
+  });
+  return { picks: out.filter(function(p) { return !actNowWas_(posted, p.key); }), seen: next };
 }
 
 /** Pure: the Slack blocks for an assistant's post: badge, what it is, title, why, Open. */
@@ -429,22 +534,33 @@ function actNowAgentsSync_(now) {
     var h = now.getHours();
     if (h < 8 || h >= 20 || !isSlackConfigured_()) return 0;
     var cfg = getConfigValues() || {}, today = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var st = veraStateGet_('NOTIF'), posted = [];
-    try { posted = JSON.parse(st.NOTIF_ACTNOW || '[]') || []; } catch (e) { posted = []; }
+    var posted = actNowPostedGet_(), seen = {};
+    try { seen = JSON.parse(veraStateGet_('ACTNOW').ACTNOW_SEEN || '{}') || {}; } catch (e) { seen = {}; }
     var min = parseFloat(cfg.act_now_tess_min_score); min = min > 0 && min <= 100 ? min : 85;
+    var grids = {};
     var read = function(id, tab) {
-      try { var sh = SpreadsheetApp.openById(id).getSheetByName(tab); return sh && sh.getLastRow() >= 2 ? sh.getRange(1, 1, Math.min(sh.getLastRow(), 600), sh.getLastColumn()).getValues() : []; }
-      catch (e) { Logger.log('actNowAgentsSync_: ' + tab + ' unreadable — ' + e.message); return []; }
+      var k = id + '|' + tab;
+      if (grids[k]) return grids[k];   // each tab once an hour, however many kinds read it
+      try { var sh = SpreadsheetApp.openById(id).getSheetByName(tab); grids[k] = sh && sh.getLastRow() >= 2 ? sh.getRange(1, 1, Math.min(sh.getLastRow(), 600), sh.getLastColumn()).getValues() : []; }
+      catch (e) { Logger.log('actNowAgentsSync_: ' + tab + ' unreadable — ' + e.message); grids[k] = []; }
+      return grids[k];
     };
     var tessSheet = cfg['career_' + 'alert_sheet_id'];   // the same TESS sheet Agent health reads
+    var hId = ariaSheetIdFrom_(cfg.roster_link_hailey), tId = ariaSheetIdFrom_(tessSheet), wId = ariaSheetIdFrom_(cfg.planner_sheet_id);
+    var parsed = function(r) { return r && r.status === 'ok' ? r.items : []; };
     var sources = [
-      { who: 'HAILEY', key: 'act_now_hailey', cap: 'hailey', id: ariaSheetIdFrom_(cfg.roster_link_hailey), tab: 'Listings', pick: function(rows) { return actNowHaileyPicks_(rows, today, posted); } },
-      { who: 'TESS', key: 'act_now_tess', cap: 'tess', id: ariaSheetIdFrom_(tessSheet), tab: 'Tracker', pick: function(rows) { return actNowTessPicks_(rows, today, posted, min); } },
+      { who: 'HAILEY', key: 'act_now_hailey', cap: 'hailey', id: hId, pick: function() { return actNowHaileyPicks_(read(hId, 'Listings'), today, posted); } },
+      { who: 'HAILEY', key: 'hailey_follow_up', cap: 'hailey', id: hId, pick: function() { return actNowHaileyGonePicks_(read(hId, 'Listings'), today, posted); } },
+      { who: 'TESS', key: 'act_now_tess', cap: 'tess', id: tId, pick: function() { return actNowTessPicks_(read(tId, 'Tracker'), today, posted, min); } },
+      { who: 'TESS', key: 'tess_follow_up', cap: 'tess', id: tId, pick: function() { var r = actNowTessFollowPicks_(read(tId, 'Tracker'), today, posted, seen); seen = r.seen; return r.picks; } },
+      { who: 'WILLA', key: 'act_now_willa', cap: 'willa', id: wId, pick: function() {
+        var cds = read(wId, 'CDs'), plans = read(wId, 'Plan items');
+        return actNowWillaPicks_(cds.length ? parsed(nwParseCds_(cds)) : [], plans.length ? parsed(nwParsePlans_(plans)) : [], today, posted, 'https://docs.google.com/spreadsheets/d/' + wId + '/edit'); } },
     ];
     var sent = 0;
     sources.forEach(function(s) {
       if (!s.id || notifDelivery_(s.key) === 'off') return;
-      s.pick(read(s.id, s.tab)).forEach(function(p) {
+      s.pick().forEach(function(p) {
         posted.push(p.key);
         if (typeof awayHolds_ === 'function' && awayHolds_(s.key)) return;
         if (notifDelivery_(s.key) === 'email' || !actNowAllowed_(s.cap)) { notifHold_(s.key, s.who + ': ' + p.title); return; }
@@ -453,7 +569,8 @@ function actNowAgentsSync_(now) {
         if (chId && sendSlackMessage_(chId, '⏳ ' + s.who + ': ' + p.title, actNowAgentBlocks_(s.who, p, n, actNowCap_(cfg, s.cap))).ok) { sent++; notifBump_('act'); }
       });
     });
-    veraStateSet_('NOTIF', { NOTIF_ACTNOW: JSON.stringify(posted.slice(-150)) });
+    actNowPostedSave_(posted);
+    try { if (tId) veraStateSet_('ACTNOW', { ACTNOW_SEEN: JSON.stringify(seen) }); } catch (e) { Logger.log('actNowAgentsSync_ seen: ' + e.message); }
     return sent;
   } catch (e) { Logger.log('actNowAgentsSync_ (non-fatal): ' + e.message); return 0; }
 }

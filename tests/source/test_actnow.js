@@ -43,7 +43,7 @@ console.log('\nwho posts there');
   const row = (CODE.match(/\{ key: 'aria_book_now',[^\n]*\}/) || [''])[0];
   check('ARIA Book Now (flights and stays) defaults to #vera-act-now', /channel: 'vera-act-now'/.test(row), row);
   const others = (CODE.match(/channel: 'vera-act-now'/g) || []).length;
-  check('…and the other Act now kinds (#250): VERA’s deadlines, HAILEY, TESS, ARIA’s price drop', others === 5 && /\{ key: 'act_now_vera',[^\n]*channel: 'vera-act-now'/.test(CODE), others);
+  check('…and the other Act now kinds (#250): VERA’s deadlines, HAILEY, TESS, ARIA’s price drop, the HAILEY and TESS follow-ups, WILLA', others === 8 && /\{ key: 'act_now_vera',[^\n]*channel: 'vera-act-now'/.test(CODE), others);
   check('ARIA\'s poster accepts the channel', /if \(!\/\^vera-\/\.test\(ch\)\) return 0;/.test(ARIA) && /^vera-/.test('vera-act-now'));
   check('the Notifications picker offers it', /var NM_CH=\[[^\]]*'vera-act-now'/.test(APP));
   check('…and the server accepts it (any channel by name, #250)', /\^\[a-z0-9\]\[a-z0-9_-\]\{0,79\}\$/.test(WEB) && /^[a-z0-9][a-z0-9_-]{0,79}$/.test('vera-act-now'));

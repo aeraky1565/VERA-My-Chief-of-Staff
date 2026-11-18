@@ -172,7 +172,80 @@ console.log('\nHAILEY and TESS in #vera-act-now (read only)');
   check('the post: badge, what it is, the home, why, Open, "act-now 1 of 3 today"', /\*HAILEY\*  ·  ⏳ today  ·  New listing under your ceiling/.test(b[0].elements[0].text) && b[2].elements[0].url === 'https://example.test/12-elm' && /HAILEY · act-now 1 of 3 today/.test(b[3].elements[0].text));
   check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions'));
   check('hourlyCheck posts them; both kinds are in Act now, with caps and the TESS bar as settings', /try \{ actNowAgentsSync_\(new Date\(\)\); \}/.test(REM) && /key: 'act_now_hailey',[^\n]*category: 'Act now'/.test(CODE) && /key: 'act_now_tess',[^\n]*category: 'Act now'/.test(CODE) && /\['act_now_tess_min_score', +'85'\]/.test(CODE) && /\['act_now_cap_hailey',/.test(CODE));
-  check('VERA only reads their sheets', !/setValue|appendRow|setValues/.test(SRC.slice(SRC.indexOf('function actNowAgentsSync_'), SRC.indexOf('veraStateSet_(\'NOTIF\', { NOTIF_ACTNOW: JSON.stringify(posted.slice(-150))'))));
+  check('VERA only reads their sheets', !/setValue|appendRow|setValues/.test(SRC.slice(SRC.indexOf('function actNowAgentsSync_'), SRC.indexOf('    actNowPostedSave_(posted);\n    try { if (tId)'))));
+}
+
+console.log('\nAct now’s memory');
+{
+  const c = ctx({ state: { NOTIF_ACTNOW: J(['ARIA|x']) } });
+  const long = 'hailey|new|https://www.example.test/homedetails/' + 'x'.repeat(80) + '/1_zpid';
+  check('a long key becomes a short stand-in, the same every time; a short one is kept', c.actNowShort_(long).length < 40 && c.actNowShort_(long) === c.actNowShort_(long) && c.actNowShort_(long) !== c.actNowShort_(long + '2') && c.actNowShort_('tess|1') === 'tess|1');
+  check('…and either form counts as posted', c.actNowWas_([c.actNowShort_(long)], long) && c.actNowWas_([long], long) && !c.actNowWas_([], long));
+  check('the old NOTIF list is carried over once', J(c.actNowPostedGet_()) === J(['ARIA|x']));
+  c.actNowPostedSave_(['ARIA|x', long, long]);
+  check('…saved short, once each, in its own ACTNOW bundle, and the old list cleared', J(JSON.parse(c.__state.ACTNOW_POSTED)) === J(['ARIA|x', c.actNowShort_(long)]) && !c.__state.NOTIF_ACTNOW);
+  const many = []; for (let i = 0; i < 400; i++) many.push(long + i);
+  c.actNowPostedSave_(many);
+  check('…the newest 200, under the 9 KB a Script Property holds', JSON.parse(c.__state.ACTNOW_POSTED).length === 200 && c.__state.ACTNOW_POSTED.length < 9000, c.__state.ACTNOW_POSTED.length);
+  check('VERA’s decision deadlines use the same memory', /var posted = actNowPostedGet_\(\);\n    var picks = actNowVeraPicks_/.test(SRC) && !/NOTIF_ACTNOW: JSON\.stringify\(posted/.test(SRC));
+  check('ACTNOW is its own state bundle', /ACTNOW: +\['ACTNOW_POSTED', 'ACTNOW_SEEN'\]/.test(read('Settings.js')));
+}
+
+console.log('\nWILLA, and HAILEY and TESS follow-ups (read only)');
+{
+  const c = ctx();
+  const cds = [{ name: 'Test Bank CD 1', owner: 'Alex', amount: 10000, apy: 4.1, matures: '2026-11-23' }, { name: 'Test Bank CD 2', amount: 5000, apy: 3.9, matures: '2026-12-20' }, { name: 'Old CD', amount: 1, matures: '2026-11-10' }];
+  const plans = [{ item: 'Anniversary trip', month: '2026-12', amount: 6000, confidence: 'committed', canDefer: false }, { item: 'Getaway', month: '2026-12', amount: 1200, confidence: 'maybe', canDefer: true }, { item: 'Later', month: '2027-02', amount: 99 }];
+  const w = c.actNowWillaPicks_(cds, plans, '2026-11-18', [], 'https://docs.example.test/w');
+  check('WILLA: a CD maturing within 7 days, once per term', J(w.map(p => p.key)) === J(['willa|cd|Test Bank CD 1|2026-11-23']) && /in 5 days/.test(w[0].kind) && /\$10,000/.test(w[0].title) && /roll it over/.test(w[0].reason) && w[0].url === 'https://docs.example.test/w');
+  check('…not one further out, not one already matured; once', c.actNowWillaPicks_(cds, plans, '2026-11-18', [w[0].key], '').length === 0);
+  const d = c.actNowWillaPicks_([], plans, '2026-12-01', [], '');
+  check('…on the 1st, this month’s plan in one post: total and what can wait', d.length === 1 && d[0].key === 'willa|plan|2026-12' && d[0].title === '2 planned this month · $7,200' && /Anniversary trip \$6,000 \(committed\); Getaway \$1,200 \(maybe\)\. 1 can wait\./.test(d[0].reason), J(d));
+  check('…not mid-month, and once a month', c.actNowWillaPicks_([], plans, '2026-12-15', [], '').length === 0 && c.actNowWillaPicks_([], plans, '2026-12-02', ['willa|plan|2026-12'], '').length === 0);
+  const H = [['Status', 'Address', 'Price', 'Cost flag', 'Notes', 'Zillow URL'],
+    ['Gone', '1 Pine Rd, Springfield', '$500,000', 'Under ceiling', 'Not returned 2026-11-17; Gone 2026-11-18', 'https://example.test/1-pine'],
+    ['Gone', '3 Pine Rd, Springfield', '$700,000', 'Over ceiling', 'Gone 2026-11-18', 'https://example.test/3-pine'],
+    ['Gone', '5 Pine Rd, Springfield', '$700,000', 'Over ceiling', 'Gone 2026-11-18', 'https://example.test/5-pine'],
+    ['Gone', '7 Pine Rd, Springfield', '$500,000', 'Under ceiling', 'Gone 2026-11-12', 'https://example.test/7-pine'],
+    ['Watching', '9 Pine Rd, Springfield', '$500,000', 'Under ceiling', '', 'https://example.test/9-pine']];
+  const g = c.actNowHaileyGonePicks_(H, '2026-11-18', ['hailey|cut|https://example.test/3-pine|2026-11-10']);
+  check('HAILEY: off the market today, if it was under the ceiling or VERA posted it', J(g.map(p => p.key)) === J(['hailey|gone|https://example.test/1-pine', 'hailey|gone|https://example.test/3-pine']) && /under your ceiling/.test(g[0].reason) && /VERA posted it here before/.test(g[1].reason) && /was \$500,000/.test(g[0].title), J(g.map(p => p.key)));
+  check('…not an over-ceiling home VERA never posted, not one gone another day, not one still listed; once', !g.some(p => /5-pine|7-pine|9-pine/.test(p.key)) && c.actNowHaileyGonePicks_(H, '2026-11-18', g.map(p => p.key)).length === 0);
+  const T = [['Date found', 'Company', 'Title', 'Job link', 'Status', 'Notes', 'Salary range'],
+    ['2026-11-01', 'Acme Co', 'Director, FP&A', 'https://jobs.example.test/a', 'Saved', 'Hybrid; closes 2026-11-20', '$200K'],
+    ['2026-11-01', 'Beta Inc', 'Director', 'https://jobs.example.test/b', 'Saved', 'deadline 2026-12-20', ''],
+    ['2026-11-01', 'Gamma LLC', 'VP', 'https://jobs.example.test/c', 'Applied', '', ''],
+    ['2026-11-01', 'Delta Corp', 'Head', 'https://jobs.example.test/d', 'Passed', 'closes 2026-11-19', ''],
+    ['2026-11-18', 'Eps Ltd', 'Lead', 'https://jobs.example.test/e', 'New', '', '']];
+  const first = c.actNowTessFollowPicks_(T, '2026-11-18', [], {});
+  check('TESS: a Saved job closing within 3 days, from its notes', J(first.picks.map(p => p.key)) === J(['tess|closes|https://jobs.example.test/a|2026-11-20']) && /in 2 days/.test(first.picks[0].kind) && /Apply before 2026-11-20/.test(first.picks[0].reason));
+  check('…the first run only records statuses (Saved and later, not New or Passed)', !first.picks.some(p => /status/.test(p.key)) && first.seen._ === 1 && Object.keys(first.seen).length === 4, J(first.seen));
+  const T2 = T.map((r, i) => i === 3 ? r.slice(0, 4).concat(['Interview', '', '']) : i === 1 ? r.slice(0, 4).concat(['Applied', '', '']) : r);
+  const next = c.actNowTessFollowPicks_(T2, '2026-11-18', [], first.seen);
+  check('…then a status that moved past Saved posts, saying what it was', J(next.picks.map(p => p.kind)) === J(['Now Applied', 'Now Interview']) && /It was saved\./.test(next.picks[0].reason) && /It was applied\./.test(next.picks[1].reason), J(next.picks));
+  check('…once, and not again while it stays', c.actNowTessFollowPicks_(T2, '2026-11-18', [], next.seen).picks.length === 0);
+  check('the wiring: three new kinds read the same sheets once an hour, and remember TESS statuses', /key: 'hailey_follow_up', cap: 'hailey'/.test(SRC) && /key: 'tess_follow_up', cap: 'tess'/.test(SRC) && /key: 'act_now_willa', cap: 'willa'/.test(SRC) && /if \(grids\[k\]\) return grids\[k\];/.test(SRC) && /ACTNOW_SEEN: JSON\.stringify\(seen\)/.test(SRC));
+  check('…their registry rows in Act now, and WILLA’s cap as a setting', ['hailey_follow_up', 'tess_follow_up', 'act_now_willa'].every(k => new RegExp("key: '" + k + "',[^\\n]*category: 'Act now'").test(CODE)) && /\['act_now_cap_willa', +'2'\]/.test(CODE) && /'act_now_cap_willa'/.test(read('docs/app.js')));
+}
+
+console.log('\nAgent down, per agent');
+{
+  const AH = read('AgentHealth.js');
+  const mk = (delivery) => {
+    const c = { Logger: { log() {} }, JSON, Math, Date, String, Object, posts: [], logs: [], held: [],
+      NOTIF_REGISTRY: [{ key: 'agent_down_aria' }, { key: 'agent_down_tess' }, { key: 'agent_down_hailey' }],
+      notifDelivery_: k => (delivery || {})[k] || 'slack', notifHold_: (k, t) => c.held.push([k, t]),
+      getNotifChannel_: k => k === 'agent_down_tess' ? 'job-search' : 'vera-logs', getSlackChannelId_: n => 'C_' + n,
+      sendSlackLog_: t => c.logs.push(t), sendSlackMessage_: (id, t) => c.posts.push([id, t]) };
+    vm.createContext(c); vm.runInContext(AH, c); return c;
+  };
+  const items = [{ name: 'ARIA', line: '❌ ARIA: failed — x' }, { name: 'TESS', line: '⚠️ TESS: late — y' }, { name: 'HAILEY', line: '✅ HAILEY: back on time — z' }];
+  const a = mk(); a.agentHealthPost_(items);
+  check('each agent goes where its own row says: #vera-logs by default, another channel if chosen', a.logs.length === 1 && /ARIA: failed/.test(a.logs[0]) && /HAILEY: back/.test(a.logs[0]) && !/TESS/.test(a.logs[0]) && a.posts.length === 1 && a.posts[0][0] === 'C_job-search' && /TESS: late/.test(a.posts[0][1]));
+  const b = mk({ agent_down_aria: 'off', agent_down_hailey: 'email' }); b.agentHealthPost_(items);
+  check('…Off sends nothing for that agent, Morning email waits for the email', !b.logs.some(t => /ARIA|HAILEY/.test(t)) && b.held.length === 1 && b.held[0][0] === 'agent_down_hailey');
+  check('the nightly check uses it, and the flags are still held', /if \(ch\.items\.length\) \{ try \{ agentHealthPost_\(ch\.items\); \} catch \(e\) \{\} \}/.test(AH) && /upsertKeyedFlags_\(flagSheet, AGENT_FLAG_PREFIX_/.test(AH));
+  check('three rows in System Health', ['aria', 'tess', 'hailey'].every(n => new RegExp("key: 'agent_down_" + n + "',[^\\n]*category: 'System Health'").test(CODE)));
 }
 
 console.log('\nWiring');

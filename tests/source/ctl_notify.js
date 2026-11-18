@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_notify_out');
-const FILES = ['Notify.js', 'Code.js', 'Reminders.js', 'Slack.js', 'WebApp.js', 'Wellness.js', 'WeekendPlanner.js', 'Aria.js', 'FlightStatus.js', 'appsscript.json',
+const FILES = ['Notify.js', 'Code.js', 'Reminders.js', 'Slack.js', 'WebApp.js', 'Wellness.js', 'WeekendPlanner.js', 'Aria.js', 'FlightStatus.js', 'appsscript.json', 'AgentHealth.js', 'Settings.js',
   'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
@@ -50,6 +50,21 @@ const CONTROLS = [
   ['TESS posts a passed match', nf("if (String(col(r, 'status')).trim().toLowerCase() !== 'new' || iso(", 'if (iso('), SRV],
   ['an Open button without a link', nf("if (/^https:\\/\\//.test(item.url || '')) blocks.push(", 'blocks.push('), SRV],
   ['hourlyCheck doesn’t post HAILEY and TESS', on('Reminders.js', '  try { actNowAgentsSync_(new Date()); } catch (anErr) {}', ''), SRV],
+  ['long keys are kept whole', nf("if (k.length <= 40) return k;", 'return k;'), SRV],
+  ['the posted list grows past 9 KB', nf('JSON.stringify(out.slice(-200))', 'JSON.stringify(out)'), SRV],
+  ['the old NOTIF list is never carried over', nf("if (!list.length) { try { list = JSON.parse(veraStateGet_('NOTIF').NOTIF_ACTNOW", "if (false) { try { list = JSON.parse(veraStateGet_('NOTIF').NOTIF_ACTNOW"), SRV],
+  ['WILLA posts a CD months out', nf('if (d < 0 || d > 7) return;', 'if (d < 0) return;'), SRV],
+  ['WILLA posts the plan every day', nf('if (day <= 3 && due.length) {', 'if (due.length) {'), SRV],
+  ['WILLA forgets what can wait', nf("+ (wait ? ' ' + wait + ' can wait.' : '')", ''), SRV],
+  ['HAILEY posts any home that went', nf('if (!under && !shown) return;', ''), SRV],
+  ['HAILEY posts a home gone days ago', nf("if (String(col(r, 'notes')).indexOf('Gone ' + today) === -1) return;", ''), SRV],
+  ['TESS closing date on any status', nf("    if (low === 'saved') {\n      var m = String(col(r, 'notes'))", "    if (true) {\n      var m = String(col(r, 'notes'))"), SRV],
+  ['TESS first run posts every status', nf("var out = [], next = { _: 1 }, firstRun = !seen || !seen._;", "var out = [], next = { _: 1 }, firstRun = false;"), SRV],
+  ['TESS repeats an unchanged status', nf("&& seen[id] !== low) {", ') {'), SRV],
+  ['TESS statuses are never remembered', nf("try { if (tId) veraStateSet_('ACTNOW', { ACTNOW_SEEN: JSON.stringify(seen) }); }", 'try { 0; }'), SRV],
+  ['agent down ignores Off', on('AgentHealth.js', "    if (where === 'off') return;\n", ''), SRV],
+  ['agent down ignores its channel', on('AgentHealth.js', "var ch = known ? getNotifChannel_(key) : 'vera-logs';", "var ch = 'vera-logs';"), SRV],
+  ['the nightly check posts all agents to #vera-logs', on('AgentHealth.js', 'if (ch.items.length) { try { agentHealthPost_(ch.items); } catch (e) {} }', "if (ch.lines.length) { try { sendSlackLog_('🤖 Agent health\\n' + ch.lines.join('\\n')); } catch (e) {} }"), SRV],
   ['a push can’t go to the morning email', ui("return kind==='checkin'?[['slack','Slack'],['off','Off']]:kind==='read'?[['email','Email'],['off','Off']]:[['slack','Slack'],['email','Morning email'],['off','Off']];", "return [['slack','Slack'],['off','Off']];")],
   ['the channel shows when it isn’t Slack', ui("where==='slack'&&h('select',{className:'nm-channel'", "h('select',{className:'nm-channel'")],
   ['no other channel', ui(",h('option',{key:'o',value:'__other'},'Other channel…')", '')],

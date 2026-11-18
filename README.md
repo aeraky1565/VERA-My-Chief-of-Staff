@@ -553,6 +553,26 @@ Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by def
 
 Each posts once, with an **Open** link. "Pass" stays in the assistant's own tools, since VERA never writes their sheets. Their caps are `act_now_cap_hailey` and `act_now_cap_tess`.
 
+**Follow-ups and WILLA** come from the same sheets, also read only. Each has its own row in Settings › Notifications › Act now.
+- **HAILEY Home Off the Market** (`hailey_follow_up`): a home went **Gone** today (from its Notes), if it was under your ceiling or VERA had already posted it.
+- **TESS Application Update** (`tess_follow_up`):
+  - a job you **Saved** closes within 3 days (from its Notes: "closes …", "deadline …", "apply by …");
+  - or a job's status moves past New / Saved / Passed (Applied, Interview, Offer…).
+
+  VERA remembers the last status of each Saved-or-later job, and its first run only records them.
+- **WILLA Money Decision** (`act_now_willa`, cap `act_now_cap_willa`, 2):
+  - a **CD** maturing within 7 days, once per term;
+  - on the 1st–3rd of a month, one post with that month's **Plan items**: the total, each item, and how many can wait.
+
+What act-now has posted, and TESS's statuses, live in their own state bundle (`ACTNOW`), with long links kept as short stand-ins. A Script Property holds at most 9 KB, and the old list inside NOTIF could have outgrown it.
+
+**Agent down, per agent.** The nightly agent check's "🤖 Agent health" lines (late, failed, back on time) now follow each agent's own row: ARIA Down, TESS Down, HAILEY Down (System Health, #vera-logs by default).
+- **Off** sends nothing, but the flag still shows on the dashboard.
+- **Morning email** waits for the email.
+- **Slack** goes to whichever channel you pick.
+
+A Notifications page left open across a release can list a kind the new server no longer has. Changing such a kind used to show "unknown key". The page now reloads the list instead, and asks you to make the change again.
+
 **ARIA's price drop after booking.** ARIA used to stop pricing a trip once it was booked.
 
 What VERA does:

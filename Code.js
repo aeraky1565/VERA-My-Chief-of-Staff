@@ -188,6 +188,12 @@ const NOTIF_REGISTRY = [
   { key: 'aria_price_drop',     label: 'ARIA Price Drop After Booking', emoji: '💸', category: 'Act now',      channel: 'vera-act-now',       description: 'A booked trip’s fare dropped by aria_rebook_min_saving ($50) a person or more: rebook, or claim the difference', locked: false, whileAway: 'send' },
   { key: 'act_now_hailey',     label: 'HAILEY Standout Home',  emoji: '🏡', category: 'Act now',              channel: 'vera-act-now',       description: 'A listing first seen today under your cost ceiling, or a price cut today on a home HAILEY is watching (read from HAILEY’s sheet)', locked: false, whileAway: 'hold' },
   { key: 'act_now_tess',        label: 'TESS Strong Match',     emoji: '💼', category: 'Act now',              channel: 'vera-act-now',       description: 'A New job match found today scoring act_now_tess_min_score (85) or more (read from TESS’s Tracker)', locked: false, whileAway: 'hold' },
+  { key: 'agent_down_aria',     label: 'ARIA Down',             emoji: '🛑', category: 'System Health',        channel: 'vera-logs',          description: 'ARIA is late, failed or back on time (from Agent health); Off keeps the flag on the dashboard but sends nothing', locked: false, whileAway: 'hold' },
+  { key: 'agent_down_tess',     label: 'TESS Down',             emoji: '🛑', category: 'System Health',        channel: 'vera-logs',          description: 'TESS is late, failed or back on time (from Agent health); Off keeps the flag on the dashboard but sends nothing', locked: false, whileAway: 'hold' },
+  { key: 'agent_down_hailey',   label: 'HAILEY Down',           emoji: '🛑', category: 'System Health',        channel: 'vera-logs',          description: 'HAILEY is late, failed or back on time (from Agent health); Off keeps the flag on the dashboard but sends nothing', locked: false, whileAway: 'hold' },
+  { key: 'hailey_follow_up',    label: 'HAILEY Home Off the Market', emoji: '🏠', category: 'Act now',          channel: 'vera-act-now',       description: 'A home under your ceiling, or one VERA already posted, went off the market today (read from HAILEY’s sheet)', locked: false, whileAway: 'hold' },
+  { key: 'tess_follow_up',      label: 'TESS Application Update', emoji: '📨', category: 'Act now',            channel: 'vera-act-now',       description: 'A job you Saved closes within 3 days, or a job’s status moved past New / Saved / Passed (Applied, Interview, Offer…) (read from TESS’s Tracker)', locked: false, whileAway: 'hold' },
+  { key: 'act_now_willa',       label: 'WILLA Money Decision',  emoji: '💰', category: 'Act now',              channel: 'vera-act-now',       description: 'A CD maturing within 7 days, and at the start of each month the spending WILLA has planned for it (read from WILLA’s sheet)', locked: false, whileAway: 'due' },
   { key: 'act_now_vera',        label: 'VERA Decision Deadline', emoji: '⏳', category: 'Act now',             channel: 'vera-act-now',       description: 'A return window or free cancellation ending in the next 2 days, from Planned purchases and Flags with a deadline', locked: false, whileAway: 'due' },
   // Routines
   { key: 'weekend_memo',        label: 'Weekend Memo',          emoji: '🗓️', category: 'Routines',             channel: 'email',              description: 'Wednesday at weekend_planner_hour, by email, with no Slack ping', locked: false, whileAway: 'hold' },
@@ -540,6 +546,7 @@ function createSheetTabs(ss) {
     ['act_now_cap_vera',             '3'],
     ['act_now_cap_hailey',           '3'],
     ['act_now_cap_tess',             '3'],
+    ['act_now_cap_willa',            '2'],
     ['act_now_tess_min_score',       '85'],
     ['aria_rebook_min_saving',       '50'],           // a booked trip's fare this much lower per person goes to #vera-act-now           // a TESS match at or above this goes to #vera-act-now
     ['run_log_sheet_id',             ''],             // RunLog.js: a separate sheet for the Run Log, a tab per job (blank = VERA's own sheet)
