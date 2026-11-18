@@ -5052,10 +5052,12 @@ var NM_CH=['vera-notifications','vera-chat','vera-act-now','vera-logs'];
 function nmWhere_(kind){return kind==='checkin'?[['slack','Slack'],['off','Off']]:kind==='read'?[['email','Email'],['off','Off']]:[['slack','Slack'],['email','Morning email'],['off','Off']];}
 function NotificationMapPanel({apiUrl,apiToken}){var h=React.createElement;var WA_OPTS=[{value:'send',label:'Send'},{value:'hold',label:'Hold'},{value:'due',label:'Send if due'}];
   var[notifs,setNotifs]=React.useState(null);var[saving,setSaving]=React.useState({});var[err,setErr]=React.useState('');
-  React.useEffect(function(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'get_notification_map'}).then(function(d){setNotifs(d.notifications||[]);}).catch(function(e){setErr(e.message);});},[apiUrl,apiToken]);
+  function load(){return apiGet(apiUrl,apiToken,{action:'get_notification_map'}).then(function(d){setNotifs(d.notifications||[]);});}
+  React.useEffect(function(){if(!apiUrl||!apiToken)return;load().catch(function(e){setErr(e.message);});},[apiUrl,apiToken]);
   function patch(key,obj){setNotifs(function(ns){return ns.map(function(n){return n.key===key?Object.assign({},n,obj):n;});});}
+  // A page left open across a release can list a kind the server no longer has: reload the list, and say so.
   function save(key,what,params,undo){setSaving(function(s){var x=Object.assign({},s);x[key+what]=true;return x;});
-    apiGet(apiUrl,apiToken,params).catch(function(e){setErr(e.message);if(undo)undo();}).finally(function(){setSaving(function(s){var x=Object.assign({},s);delete x[key+what];return x;});});}
+    apiGet(apiUrl,apiToken,params).catch(function(e){if(/unknown key/i.test(e.message||'')){setErr('This list was out of date, so it was reloaded. Make the change again.');load().catch(function(){});return;}setErr(e.message);if(undo)undo();}).finally(function(){setSaving(function(s){var x=Object.assign({},s);delete x[key+what];return x;});});}
   function setWhere(n,v){var prev=n.delivery;patch(n.key,{delivery:v,enabled:v!=='off'});save(n.key,'_dl',{action:'set_notif_delivery',key:n.key,value:v},function(){patch(n.key,{delivery:prev,enabled:prev!=='off'});});}
   function setChannel(n,v){if(v==='__other'){v=window.prompt('Which Slack channel? Type its name, without the #.','')||'';v=v.replace(/^#/,'').trim().toLowerCase();if(!v)return;}
     var prev=n.channel;patch(n.key,{channel:v});save(n.key,'_ch',{action:'set_notif_channel',key:n.key,channel:v},function(){patch(n.key,{channel:prev});});}

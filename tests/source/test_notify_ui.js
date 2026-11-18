@@ -32,7 +32,7 @@ const MAP = { ok: true, notifications: [
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'load' });
     await page.evaluate((map) => {
       window.__gets = [];
-      window.apiGet = async (u, t, p) => { window.__gets.push(p); return p.action === 'get_notification_map' ? map : { ok: true }; };
+      window.apiGet = async (u, t, p) => { window.__gets.push(p); if (window.__stale && p.action === 'set_notif_channel') throw new Error('unknown key'); return p.action === 'get_notification_map' ? map : { ok: true }; };
       document.body.innerHTML = '<div id="nm" style="padding:0 16px"></div>';
       ReactDOM.createRoot(document.getElementById('nm')).render(React.createElement(NotificationMapPanel, { apiUrl: 'x', apiToken: 't' }));
     }, MAP);
@@ -57,6 +57,14 @@ const MAP = { ok: true, notifications: [
       check(L + 'Other channel asks for its name and saves it', J((await page.evaluate(() => window.__gets)).slice(-1)[0]) === J({ action: 'set_notif_channel', key: 'movement', channel: 'house-ops' }) && /#house-ops/.test(J(await opts(row('movement') + ' .nm-channel'))));
       await page.selectOption(row('act_now_vera') + ' .nm-away', 'hold'); await page.waitForTimeout(80);
       check(L + 'While away saves', J((await page.evaluate(() => window.__gets)).slice(-1)[0]) === J({ action: 'set_notif_while_away', key: 'act_now_vera', value: 'hold' }));
+      // A page left open across a release: the server no longer knows the kind.
+      await page.evaluate(() => { window.__stale = true; });
+      const loadsBefore = (await page.evaluate(() => window.__gets)).filter(p => p.action === 'get_notification_map').length;
+      await page.selectOption(row('bill_due') + ' .nm-channel', 'vera-chat'); await page.waitForTimeout(150);
+      const loadsAfter = (await page.evaluate(() => window.__gets)).filter(p => p.action === 'get_notification_map').length;
+      const errText = await page.$eval('#nm .nm-err', n => n.innerText).catch(() => '');
+      check(L + 'an out-of-date list reloads itself and says so, not "unknown key"', loadsAfter === loadsBefore + 1 && /out of date, so it was reloaded/.test(errText) && !/unknown key/.test(errText), loadsBefore + '→' + loadsAfter + ' ' + errText);
+      await page.evaluate(() => { window.__stale = false; });
       check(L + 'the hint names quiet hours and the cap', /quiet hours/.test(await page.$eval('#nm .nm-hint', n => n.innerText)) && /notif_daily_cap/.test(await page.$eval('#nm .nm-hint', n => n.innerText)));
     } catch (e) { check(L + 'the panel runs', false, e.message.split('\n')[0]); }
     const sw = await page.evaluate(() => document.documentElement.scrollWidth);

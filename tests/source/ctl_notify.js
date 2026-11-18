@@ -54,6 +54,7 @@ const CONTROLS = [
   ['the channel shows when it isn’t Slack', ui("where==='slack'&&h('select',{className:'nm-channel'", "h('select',{className:'nm-channel'")],
   ['no other channel', ui(",h('option',{key:'o',value:'__other'},'Other channel…')", '')],
   ['While away shows when Off', ui("where!=='off'&&n.whileAway&&n.key!=='morning_briefing'&&h('select',{className:'nm-away'", "n.whileAway&&n.key!=='morning_briefing'&&h('select',{className:'nm-away'")],
+  ['an out-of-date list shows "unknown key"', ui("if(/unknown key/i.test(e.message||'')){", "if(false){")],
   ['Act now isn’t a category', ui("'Travel','Act now','Routines'", "'Travel','Routines'")],
 ];
 
