@@ -18,6 +18,13 @@ const CONTROLS = [
   ['a key typed on this device is ignored', A("React.useState(stored('vera_maps_key')||_mapsBrowserKey);", "React.useState(_mapsBrowserKey);")],
   ['VERA is never asked', A("    if(keyChecked)return;\n    let off=false;", "    return;\n    let off=false;")],
   ['a refusal leaves the map loading', A(".catch(function(){if(!off)setKeyChecked(true);});", ".catch(function(){});")],
+  // numbered stops, day colours, arrows
+  ['stops keep sheet order, not date and time', A("list.sort(function(a,b){var da=", "list.sort(function(a,b){return a.i-b.i;var da=")],
+  ['every day gets the same colour', A("color:TM_DAY_COLORS[days.length%TM_DAY_COLORS.length]", "color:TM_DAY_COLORS[0]")],
+  ['the lines have no arrows', A("icons:[{icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW", "icons:[{icon:{path:google.maps.SymbolPath.CIRCLE")],
+  ['a stop that can’t be found breaks the route', A("          if(!pos[k])return;\n          if(prev!==-1", "          if(!pos[k]){prev=-1;return;}\n          if(prev!==-1")],
+  ['markers aren’t numbered', A("label:{text:String(s.n),", "label:{text:'',")],
+  ['no day legend', A("legend.length>1&&React.createElement", "false&&React.createElement")],
 ];
 
 const HAS_BROWSER = (() => {

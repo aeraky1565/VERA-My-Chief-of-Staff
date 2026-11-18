@@ -2385,7 +2385,7 @@ properties and turns read-only past that.
 | `AVIATIONSTACK_KEY` | No | FlightStatus.js | AviationStack API key for flight status polling |
 | `WEATHER_API_KEY` | No | Weather.js | OpenWeather API key for weather ticker and destination forecasts |
 | `GOOGLE_STATIC_MAPS_API_KEY` | No | TravelDayBriefing.js, TravelLegs.js | Google Maps key for the travel email's route image **and** the Distance Matrix travel times. **Restrict by API, never by referrer or IP** — see below |
-| `GOOGLE_MAPS_BROWSER_KEY` | No | WebApp.js (`maps_browser_key`), docs/app.js | A **separate** key for the dashboard's interactive trip map. It ends up in the browser, so restrict it by HTTP referrer to the dashboard's address and to the Maps JavaScript API only. Only the owner is given it; the server key above is never sent to a browser |
+| `GOOGLE_MAPS_BROWSER_KEY` | No | WebApp.js (`maps_browser_key`), docs/app.js | A **separate** key for the dashboard's interactive trip map. It ends up in the browser, so restrict it by HTTP referrer to the dashboard's address and to the Maps JavaScript API only. Only the owner is given it; the server key above is never sent to a browser. The map numbers stops in itinerary order, colours them by day (with a legend) and draws an arrowed line from each stop to the next (`tmStops_`, `TripMapView`) |
 | `VERA_SEARCH_API_KEY` | No | Chat.js | Serper.dev or Tavily API key for web search in chat |
 
 VERA also keeps its own records here: run stamps, one record per feature

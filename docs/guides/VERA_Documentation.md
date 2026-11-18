@@ -921,7 +921,7 @@ Read by `PropertiesService.getScriptProperties()`. These are set once in the App
 | `AVIATIONSTACK_KEY` | `FlightStatus.js` | AviationStack API access key |
 | `WEATHER_API_KEY` | `Weather.js` | OpenWeather API key |
 | `GOOGLE_STATIC_MAPS_API_KEY` | `TravelDayBriefing.js`, `TravelLegs.js` | Google Maps key for the travel email's map and travel times (server only) |
-| `GOOGLE_MAPS_BROWSER_KEY` | `WebApp.js`, `docs/app.js` | A separate key for the dashboard's trip map, restricted to the dashboard's address and the Maps JavaScript API. Every device you sign in on picks it up; a key typed into Settings overrides it on that device |
+| `GOOGLE_MAPS_BROWSER_KEY` | `WebApp.js`, `docs/app.js` | A separate key for the dashboard's trip map, restricted to the dashboard's address and the Maps JavaScript API. Every device you sign in on picks it up; a key typed into Settings overrides it on that device. The map numbers the stops in itinerary order (date, then time), colours them by day with a day legend, and joins each stop to the next with a straight line and an arrow showing the direction; a place Google can't find is skipped and the route joins around it |
 | `VERA_SEARCH_API_KEY` | `Chat.js` | Serper.dev or Tavily API key for web search |
 
 The ids, links, channel and user ids, the email address and the search engine are

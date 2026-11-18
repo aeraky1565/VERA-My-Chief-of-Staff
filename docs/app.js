@@ -604,6 +604,19 @@ function loadGoogleMapsScript(apiKey){
 // needed. Items with no location, or that fail to geocode, are silently
 // skipped — same "just omit it" convention the agenda view already uses for
 // items with no 📍 location.
+// The trip map's stops, in itinerary order: by date, then start time (all-day items first that day).
+// Each gets its number and its day's colour. → {stops:[{item,n,day,color}], days:[{date,color,count}]}
+var TM_DAY_COLORS=['#4285f4','#ea4335','#f9ab00','#34a853','#a142f4','#00acc1','#ff7043','#795548'];
+function tmStops_(items){
+  var list=(items||[]).filter(function(it){return it&&it.location&&String(it.location).trim();}).map(function(it,i){return{it:it,i:i};});
+  list.sort(function(a,b){var da=a.it.date||'',db=b.it.date||'';if(da!==db)return da<db?-1:1;var ta=a.it.startTime||'',tb=b.it.startTime||'';if(ta!==tb)return ta<tb?-1:1;return a.i-b.i;});
+  var days=[],byDate={};
+  var stops=list.map(function(x,k){var d=x.it.date||'';if(!byDate[d]){byDate[d]={date:d,color:TM_DAY_COLORS[days.length%TM_DAY_COLORS.length],count:0};days.push(byDate[d]);}
+    byDate[d].count++;return{item:x.it,n:k+1,day:d,color:byDate[d].color};});
+  return{stops:stops,days:days};
+}
+function tmDayLabel_(d){if(!d)return'No date';var t=new Date(d+'T12:00:00');return isNaN(t)?d:t.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'});}
+
 // The map key: one typed into Settings on this device wins; otherwise VERA hands over the
 // browser key kept in Script Properties (GOOGLE_MAPS_BROWSER_KEY, owner only), once per page load.
 let _mapsBrowserKey='';
@@ -627,8 +640,8 @@ function TripMapView({items}){
   React.useEffect(function(){
     if(!keyChecked)return;
     if(!apiKey){setStatus('no_key');return;}
-    const locatable=(items||[]).filter(function(it){return it.location&&it.location.trim();});
-    if(!locatable.length){setStatus('no_locations');return;}
+    const plan=tmStops_(items);
+    if(!plan.stops.length){setStatus('no_locations');return;}
 
     let cancelled=false;
     loadGoogleMapsScript(apiKey).then(function(){
@@ -636,16 +649,35 @@ function TripMapView({items}){
       const map=new google.maps.Map(mapDivRef.current,{zoom:4,center:{lat:20,lng:0}});
       const geocoder=new google.maps.Geocoder();
       const bounds=new google.maps.LatLngBounds();
-      let pending=locatable.length;
-      locatable.forEach(function(it){
-        geocoder.geocode({address:it.location},function(results,geoStatus){
-          if(!cancelled&&geoStatus==='OK'&&results&&results[0]){
-            const pos=results[0].geometry.location;
-            new google.maps.Marker({position:pos,map:map,label:ITIN_TYPE_ICON[it.type]||'📍',title:it.title});
-            bounds.extend(pos);
+      const pos=new Array(plan.stops.length);
+      let pending=plan.stops.length;
+      // Once every stop has been looked up: a line from each found stop to the next found one,
+      // in the later stop's day colour, with an arrow halfway along showing the direction.
+      function drawLegs(){
+        let prev=-1;
+        plan.stops.forEach(function(s,k){
+          if(!pos[k])return;
+          if(prev!==-1&&!(pos[prev].lat()===pos[k].lat()&&pos[prev].lng()===pos[k].lng())){
+            new google.maps.Polyline({map:map,path:[pos[prev],pos[k]],geodesic:true,strokeColor:s.color,strokeOpacity:0.85,strokeWeight:3,
+              icons:[{icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:3,strokeColor:s.color,fillColor:s.color,fillOpacity:1},offset:'50%'}]});
+          }
+          prev=k;
+        });
+      }
+      plan.stops.forEach(function(s,k){
+        geocoder.geocode({address:s.item.location},function(results,geoStatus){
+          if(cancelled)return;
+          if(geoStatus==='OK'&&results&&results[0]){
+            pos[k]=results[0].geometry.location;
+            new google.maps.Marker({position:pos[k],map:map,zIndex:1000-k,
+              label:{text:String(s.n),color:'#ffffff',fontSize:'12px',fontWeight:'700'},
+              icon:{path:google.maps.SymbolPath.CIRCLE,scale:12,fillColor:s.color,fillOpacity:1,strokeColor:'#ffffff',strokeWeight:2},
+              title:s.n+'. '+(ITIN_TYPE_ICON[s.item.type]||'📍')+' '+(s.item.title||'')+(s.item.date?' · '+tmDayLabel_(s.item.date):'')});
+            bounds.extend(pos[k]);
             map.fitBounds(bounds);
           }
           pending--;
+          if(pending===0)drawLegs();
         });
       });
       setStatus('ready');
@@ -665,7 +697,13 @@ function TripMapView({items}){
   if(status==='error'){
     return/*#__PURE__*/React.createElement("div",{style:{textAlign:'center',padding:'40px 20px',color:'#5c7080',fontSize:13}},"Couldn't load Google Maps — check that your API key is valid and the Maps JavaScript API is enabled.");
   }
-  return/*#__PURE__*/React.createElement("div",{ref:mapDivRef,style:{width:'100%',height:420,borderRadius:8}});
+  const legend=tmStops_(items).days;
+  return/*#__PURE__*/React.createElement("div",null,
+    React.createElement("div",{ref:mapDivRef,style:{width:'100%',height:420,borderRadius:8}}),
+    legend.length>1&&React.createElement("div",{className:"tm-legend",style:{display:'flex',flexWrap:'wrap',gap:'6px 12px',marginTop:8,fontSize:12,color:'#9aa8c8'}},
+      legend.map(function(d){return React.createElement("span",{key:d.date||'none',style:{display:'inline-flex',alignItems:'center',gap:5}},
+        React.createElement("i",{style:{width:10,height:10,borderRadius:'50%',background:d.color,display:'inline-block'}}),
+        tmDayLabel_(d.date)+' · '+d.count+' stop'+(d.count===1?'':'s'));})));
 }
 
 // ---- Trip Characteristics (what KIND of trip, not who it is with) ----------
