@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VERA Notifications Mockup</title>
+<style>
+  :root{--bg:#070c18;--card:#0e1628;--deep:#0a1120;--line:#1f2b45;--edge:#2c3f68;--ink:#dfe4f2;--mute:#9babc9;--faint:#6c7ea5;--gold:#d2ad52;--blue:#8ab4f8;--green:#4ade80;--red:#f87171;--amber:#fbbf24;--chat:#11192c;--btn:#1a2540}
+  @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f3f5fa;--card:#fff;--deep:#eef1f8;--line:#dde3ee;--edge:#c3cde2;--ink:#17203a;--mute:#4d5a79;--faint:#6b7898;--gold:#94761f;--blue:#2c5cb5;--green:#1c8448;--red:#be3a2f;--amber:#a86b00;--chat:#fff;--btn:#f1f4fa}}
+  :root[data-theme="light"]{--bg:#f3f5fa;--card:#fff;--deep:#eef1f8;--line:#dde3ee;--edge:#c3cde2;--ink:#17203a;--mute:#4d5a79;--faint:#6b7898;--gold:#94761f;--blue:#2c5cb5;--green:#1c8448;--red:#be3a2f;--amber:#a86b00;--chat:#fff;--btn:#f1f4fa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px 16px 64px}
+  h1{font-size:19px;margin:0 0 2px} .sub{color:var(--faint);font-size:12.5px;margin:0 0 12px}
+  .tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tabs button{border:0;background:none;padding:9px 12px;color:var(--mute);font-weight:600;white-space:nowrap;border-bottom:2px solid transparent;min-height:40px}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--gold)}
+  .panel{display:none}.panel.on{display:block}
+  .grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 0 8px}
+  .hint{font-size:12.5px;color:var(--faint)}
+  .stack{display:flex;flex-direction:column;gap:12px}
+  /* chat window */
+  .chan{background:var(--chat);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .chanhead{padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .chanhead span{font-weight:400;color:var(--faint);font-size:12.5px}
+  .msg{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .msg:last-child{border-bottom:0}
+  .av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#3b2f6b,#c9a84c);color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px;flex:0 0 auto}
+  .mb{min-width:0;flex:1}
+  .who{font-weight:700;font-size:14px} .who small{font-weight:400;color:var(--faint);margin-left:6px}
+  .ttl{font-weight:700;margin-top:2px}
+  .why{color:var(--mute);font-size:14px}
+  .facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .fact{font-size:12px;border:1px solid var(--edge);border-radius:999px;padding:1px 9px;color:var(--mute)}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .b{border:1px solid var(--edge);background:var(--btn);border-radius:8px;padding:4px 11px;font-size:13px;font-weight:600;min-height:32px}
+  .b.p{background:#1f6f43;border-color:#1f6f43;color:#fff}
+  .b.done{opacity:.55}
+  .foot{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .stripe{border-left:3px solid var(--edge);padding-left:10px}
+  .s-red{border-left-color:var(--red)} .s-amber{border-left-color:var(--amber)} .s-green{border-left-color:var(--green)} .s-blue{border-left-color:var(--blue)}
+  .held{background:color-mix(in srgb,var(--amber) 9%,transparent)}
+  /* phone */
+  .phone{width:min(330px,100%);margin:0 auto;border:10px solid #0b0b10;border-radius:38px;background:linear-gradient(160deg,#1d2a52,#4a2f5e 60%,#a0603e);padding:18px 10px 22px;color:#fff;min-height:560px}
+  .clock{text-align:center;font-size:56px;font-weight:300;line-height:1;margin-top:10px}
+  .date{text-align:center;font-size:14px;opacity:.85;margin-bottom:16px}
+  .ls{background:rgba(255,255,255,.18);backdrop-filter:blur(8px);border-radius:16px;padding:9px 11px;margin-bottom:8px;font-size:13px}
+  .ls .top{display:flex;justify-content:space-between;opacity:.8;font-size:11.5px}
+  .ls b{display:block}
+  .ls.dim{opacity:.55}
+  /* email */
+  .mail{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:680px}
+  .mhead{padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--mute)}
+  .mhead b{color:var(--ink);font-size:16px;display:block}
+  .mbody{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .mbody h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-child{border-bottom:0}
+  .row span:last-child{color:var(--mute);white-space:nowrap}
+  .pill{font-size:11px;border-radius:999px;padding:1px 8px;font-weight:700}
+  .pr{background:color-mix(in srgb,var(--red) 18%,transparent);color:var(--red)}
+  .pa{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
+  .ticker{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 16px;background:#0d1b3e;color:#dfe6ff;font-size:13px}
+  .ticker em{color:#8ab4f8;font-style:normal;font-size:11.5px}
+  .ticker .good{color:#43a047}
+  .seqr{display:grid;grid-template-columns:76px 1fr;gap:6px;font-size:14px;padding:3px 0}
+  .seqr b{font-variant-numeric:tabular-nums}
+  .seqr em{color:var(--blue);font-style:normal;font-size:12.5px}
+  .weeknote{margin-top:10px;font-size:13px;color:var(--mute);padding:8px 12px;background:var(--deep);border-left:3px solid var(--gold);border-radius:3px}
+  .cta{display:inline-block;background:var(--gold);color:#17130a;font-weight:700;border-radius:9px;padding:8px 14px;text-decoration:none;font-size:14px}
+  /* settings */
+  table{width:100%;border-collapse:collapse}
+  td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:14px;vertical-align:middle}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--edge);border-radius:999px;overflow:hidden;flex-wrap:nowrap}
+  .seg button{border:0;background:transparent;padding:4px 10px;font-size:12.5px;color:var(--mute);min-height:32px;white-space:nowrap}
+  .seg button.on{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue);font-weight:700}
+  .seg button.on[data-v="off"]{background:color-mix(in srgb,var(--faint) 20%,transparent);color:var(--mute)}
+  .tbl{overflow-x:auto}
+  .cfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .cfg label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}
+  .cfg input,.cfg select{background:var(--deep);border:1px solid var(--edge);border-radius:8px;padding:6px 9px;min-height:38px}
+  .cfg code{font-size:11.5px;color:var(--faint)}
+  .ag-aria{background:linear-gradient(135deg,#0f5f73,#3fb6c8)} .ag-hailey{background:linear-gradient(135deg,#5b3a1a,#d08a3c)} .ag-tess{background:linear-gradient(135deg,#2f3b8f,#7d8cf0)}
+  .s-act{border-left-color:#e879f9}
+  .clockline{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+  .tag{font-size:11.5px;border:1px solid var(--edge);border-radius:999px;padding:1px 8px;color:var(--mute)}
+  .tag.act{border-color:#e879f9;color:#e879f9;font-weight:700}
+  .msg.done{opacity:.6}
+  .row2{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+  .klist{display:flex;flex-direction:column}
+  .krow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px 12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+  .krow .nm{font-size:14px} .krow .nm small{display:block;color:var(--faint);font-size:12px}
+  .krow .lab{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:2px}
+  @media (max-width:820px){.krow{grid-template-columns:1fr}}
+  .chsel{display:block;margin-top:6px;background:var(--deep);border:1px solid var(--edge);border-radius:8px;padding:4px 8px;min-height:32px;font-size:12.5px;max-width:100%}
+  .kcat{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding:6px 0;border-bottom:2px solid var(--edge);font-weight:700;font-size:14.5px}
+  .kcat:first-child{margin-top:0}
+  .kfilter{flex-wrap:wrap;border-radius:12px;align-self:flex-start}
+  .seg button.on[data-a="hold"]{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
+  .seg button.on[data-a="send"]{background:color-mix(in srgb,var(--green) 18%,transparent);color:var(--green)}
+  /* app push */
+  .phone.app{position:relative}
+  .an{background:rgba(245,245,250,.92);color:#111;border-radius:18px;padding:10px 12px;margin-bottom:8px;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+  .an .top{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#555;margin-bottom:2px}
+  .an .ic{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#3b2f6b,#c9a84c);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center}
+  .an b{display:block;font-size:13.5px}
+  .an .acts{display:flex;gap:14px;margin-top:8px;border-top:1px solid #ddd;padding-top:7px}
+  .an .acts span{color:#1a5fd0;font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+  .and .an{border-radius:12px;background:#f4f1f8}
+  .banner{position:absolute;left:10px;right:10px;top:14px}
+  .appscreen{background:#0b1222;border-radius:14px;margin-top:70px;padding:14px;color:#dde3f0;font-size:13px;min-height:380px}
+  .dlg{background:#fff;color:#111;border-radius:14px;padding:14px;margin:30px 8px;font-size:13.5px;text-align:center}
+  .dlg .dbtn{display:flex;border-top:1px solid #ddd;margin:12px -14px -14px}
+  .dlg .dbtn span{flex:1;padding:10px;color:#1a5fd0;font-weight:600}
+  .dlg .dbtn span+span{border-left:1px solid #ddd}
+  .big{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+  .kpis{display:flex;gap:18px;flex-wrap:wrap}
+  .kpis div{display:flex;flex-direction:column}
+  /* day */
+  .tl{display:flex;flex-direction:column;gap:0}
+  .tli{display:grid;grid-template-columns:56px 1fr;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .tli b{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:600}
+  .x{color:var(--faint);text-decoration:line-through}
+  .anat{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px}
+  .anat b{color:var(--gold)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VERA notifications: one home for every message</h1>
+  <p class="sub">Mockup for issue #250. The data is invented and nothing is sent.</p>
+  <nav class="tabs" id="tabs">
+    <button data-t="push" class="on">How a push looks</button>
+    <button data-t="act">#vera-act-now</button>
+    <button data-t="app">VERA app push</button>
+    <button data-t="chat">Check-ins</button>
+    <button data-t="mail">Morning email</button>
+    <button data-t="set">Settings</button>
+    <button data-t="day">A busy Tuesday</button>
+  </nav>
+
+  <!-- PUSH -->
+  <section class="panel on" id="p-push">
+    <div class="grid">
+      <div class="stack">
+        <div class="chan">
+          <div class="chanhead"># vera-notifications <span>one-way · things that matter today or at a set time</span></div>
+          <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>10:42 AM</small></div>
+            <div class="stripe s-blue"><div class="ttl">🚶 5-minute reset</div>
+            <div class="why">Stand, walk a lap, refill your water. Next one around 1:30.</div>
+            <div class="btns"><button class="b p" data-ack="Logged. Nice.">Done</button><button class="b" data-ack="Skipped. Next nudge no sooner than 2 h.">Skip</button></div>
+            <div class="foot">Movement · 1 of 3 today · push 1 of 6 · Done moves the next one 2 h out</div></div></div></div>
+          <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>12:05 PM</small></div>
+            <div class="stripe s-amber"><div class="ttl">💳 Electric bill is due today: $142, not paid yet</div>
+            <div class="why">Autopay is off for this one. It pays from Checking ••12, which has enough.</div>
+            <div class="facts"><span class="fact">Due today</span><span class="fact">Late fee $15</span></div>
+            <div class="btns"><button class="b p" data-ack="Marked paid.">Mark paid</button><button class="b" data-ack="Snoozed to 6 PM.">Remind me at 6 PM</button><button class="b" data-ack="Opens Finances › Bills.">Open in VERA</button></div>
+            <div class="foot">Bills · push 2 of 6</div></div></div></div>
+          <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>2:18 PM</small></div>
+            <div class="stripe s-red"><div class="ttl">🔴 Friday's flight to Denver is now 2 h later</div>
+            <div class="why">It lands 11:40 PM. Your airport pickup is still booked for 9:45 PM.</div>
+            <div class="facts"><span class="fact">Raised during the day</span><span class="fact">High</span></div>
+            <div class="btns"><button class="b p" data-ack="Opens the trip.">Open trip</button><button class="b" data-ack="Made a Task: move the pickup.">Make it a task</button><button class="b" data-ack="Acknowledged.">Got it</button></div>
+            <div class="foot">Flags · push 3 of 6 · high flags found overnight go in the morning email instead</div></div></div></div>
+          <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>Fri 6:15 AM</small></div>
+            <div class="stripe s-green"><div class="ttl">🏠 Heading out: 3 things left on your list</div>
+            <div class="why">Lock the back door · Thermostat to Away · Passports</div>
+            <div class="btns"><button class="b p" data-ack="All done. Have a good trip.">All done</button><button class="b" data-ack="Opens the leaving-home list.">Open the list</button></div>
+            <div class="foot">Leaving home · comes through quiet hours</div></div></div></div>
+          <div class="msg held"><div class="av">V</div><div class="mb"><div class="who">VERA<small>would have been 9:40 PM</small></div>
+            <div class="ttl">🎟️ Coupon ends tomorrow</div><div class="why">Held: it's quiet hours. It's in tomorrow's morning email instead.</div>
+            <div class="foot">Not sent · shown here only to explain the rule</div></div></div>
+        </div>
+        <div id="ackOut" class="hint" role="status"></div>
+      </div>
+      <div class="stack">
+        <div class="phone" aria-label="Phone lock screen">
+          <div class="clock">2:19</div><div class="date">Tuesday, November 17</div>
+          <div class="ls"><div class="top"><span>#vera-notifications</span><span>now</span></div><b>🔴 Friday's flight to Denver is now 2 h later</b>It lands 11:40 PM. Your airport pickup is still…</div>
+          <div class="ls"><div class="top"><span>#vera-notifications</span><span>12:05</span></div><b>💳 Electric bill is due today: $142, not paid yet</b>Autopay is off for this one…</div>
+          <div class="ls dim"><div class="top"><span>#vera-notifications</span><span>10:42</span></div><b>🚶 5-minute reset</b>Stand, walk a lap, refill your water.</div>
+        </div>
+        <div class="card">
+          <div class="sect">Every push has the same five parts</div>
+          <div class="anat">
+            <b>1</b><span><strong>Title:</strong> what it is and the one number that matters. It must read whole on a lock screen.</span>
+            <b>2</b><span><strong>Why now:</strong> one line, and the fact that makes it today's business.</span>
+            <b>3</b><span><strong>Buttons:</strong> the action itself (Mark paid, Done), one snooze, and Open in VERA. No reply needed.</span>
+            <b>4</b><span><strong>Colour stripe:</strong> red for high, amber for a deadline, green for a routine step, blue for wellness.</span>
+            <b>5</b><span><strong>Footer:</strong> the kind, and "push 2 of 6", so the daily cap is visible.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACT NOW -->
+  <section class="panel" id="p-act">
+    <div class="grid">
+      <div class="stack">
+        <div class="chan">
+          <div class="chanhead"># vera-act-now <span>a decision with a clock on it · every message has a deadline</span></div>
+          <div class="msg"><div class="av ag-aria">A</div><div class="mb"><div class="who">ARIA<small>via VERA · 7:12 AM</small></div>
+            <div class="stripe s-act"><div class="clockline"><span class="tag act">⏳ Good for about 6 h</span><span class="tag">Fare watch</span></div>
+            <div class="ttl">🧭 Denver in March: $214 round trip, your target was $260</div>
+            <div class="why">Nonstop, Fri Mar 12 – Mon Mar 15. 31% under the usual $310 for these dates; fares on this route usually jump by the afternoon.</div>
+            <div class="facts"><span class="fact">$214 · target $260</span><span class="fact">Nonstop</span><span class="fact">Free change</span></div>
+            <div class="btns"><button class="b p" data-act="Booked. ARIA stops watching this trip.">Book it</button><button class="b" data-act="ARIA will check again at 11 AM and tell you if it moves.">Remind me at 11</button><button class="b" data-act="Passed. ARIA lowers the target to $200 for this trip.">Pass</button></div>
+            <div class="foot">ARIA · act-now 1 of 2 today · expires about 1 PM</div></div></div></div>
+          <div class="msg"><div class="av ag-hailey">H</div><div class="mb"><div class="who">HAILEY<small>via VERA · 9:40 AM</small></div>
+            <div class="stripe s-act"><div class="clockline"><span class="tag act">⏳ Open house Sat 11–1</span><span class="tag">New listing</span></div>
+            <div class="ttl">🏡 A new listing matches all 6 must-haves: 3 bd, fenced yard, $612k</div>
+            <div class="why">Listed this morning, 18 min to work, under budget by $38k. Homes like this one in that area have gone under contract in 5 days.</div>
+            <div class="facts"><span class="fact">Score 94</span><span class="fact">6 of 6 must-haves</span><span class="fact">$612k</span></div>
+            <div class="btns"><button class="b p" data-act="Added to your calendar: open house Sat 11 AM, and a Task to message the agent.">Plan to see it</button><button class="b" data-act="Saved. HAILEY watches its price and status.">Save</button><button class="b" data-act="Passed. HAILEY notes why: you can add a reason.">Pass</button></div>
+            <div class="foot">HAILEY · act-now 1 of 1 today · its weekday sweep still goes to the Friday digest</div></div></div></div>
+          <div class="msg"><div class="av ag-tess">T</div><div class="mb"><div class="who">TESS<small>via VERA · 11:05 AM</small></div>
+            <div class="stripe s-act"><div class="clockline"><span class="tag act">⏳ Posted 3 h ago</span><span class="tag">Strong match</span></div>
+            <div class="ttl">💼 Strong match: Senior Program Manager, remote, posted 3 h ago</div>
+            <div class="why">Matches 9 of 10 of your criteria and the salary range is above your floor. Early applicants hear back more often.</div>
+            <div class="btns"><button class="b p" data-act="Made a Task: apply today, with the posting linked.">Apply today</button><button class="b" data-act="Saved to TESS’s tracker.">Save for later</button><button class="b" data-act="Passed. TESS will see fewer like it.">Pass</button></div>
+            <div class="foot">TESS · act-now 1 of 1 today · everything else TESS finds stays in its own digest</div></div></div></div>
+          <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>4:00 PM</small></div>
+            <div class="stripe s-act"><div class="clockline"><span class="tag act">⏳ Free cancellation ends 11:59 PM</span><span class="tag">Trip decision</span></div>
+            <div class="ttl">🏨 Keep or cancel the Denver hotel? After tonight it's non-refundable</div>
+            <div class="why">$486 for 3 nights. The trip is still marked “maybe” on Trip Decisions.</div>
+            <div class="btns"><button class="b p" data-act="Kept. The trip is marked going.">Keep it</button><button class="b" data-act="Opens the booking so you can cancel.">Cancel it</button><button class="b" data-act="VERA will ask again at 9 PM.">Ask me at 9 PM</button></div>
+            <div class="foot">VERA · comes through quiet hours, because the deadline is before morning</div></div></div></div>
+          <div class="msg done"><div class="av ag-aria">A</div><div class="mb"><div class="who">ARIA<small>Yesterday 8:02 AM · updated 2:30 PM</small></div>
+            <div class="ttl"><s>🧭 Lisbon stay: $142 a night</s> <span class="tag">Expired</span></div>
+            <div class="why">The price went back to $188 at 2:30 PM. ARIA is still watching.</div></div></div>
+          <div class="msg done"><div class="av ag-hailey">H</div><div class="mb"><div class="who">HAILEY<small>Mon 10:15 AM · updated 10:40 AM</small></div>
+            <div class="ttl">✓ Saved: 4 bd near the park, $640k</div><div class="why">You tapped Save. HAILEY tells you if the price or status changes, as a reply under this message.</div></div></div>
+        </div>
+        <div id="actOut" class="hint" role="status"></div>
+      </div>
+      <div class="stack">
+        <div class="card stack">
+          <div class="sect">The act-now test: all three, or it goes elsewhere</div>
+          <div class="anat">
+            <b>1</b><span><strong>It expires.</strong> A price, a spot or a deadline that is gone in hours or a few days, and the message says when.</span>
+            <b>2</b><span><strong>Only you can decide.</strong> Book, apply, keep or pass, not a reminder to do a chore.</span>
+            <b>3</b><span><strong>One tap moves it forward.</strong> Every message has a main action, a later and a Pass. Pass teaches the assistant.</span>
+          </div>
+        </div>
+        <div class="card stack">
+          <div class="sect">Who posts here</div>
+          <div class="anat">
+            <b>ARIA</b><span>Book now, a price drop after you booked (rebook or claim the difference), award seats that opened.</span>
+            <b>HAILEY</b><span>A new listing that scores very high, a price cut or a status change on a saved home, an open house for a saved home.</span>
+            <b>TESS</b><span>A strong match posted in the last few hours. Its daily finds stay in its own digest.</span>
+            <b>VERA</b><span>Its own deadlines that need a decision: free cancellation ending, a trip decision due, a refund or return window closing.</span>
+            <b>PIES</b><span>Not visible to VERA, so it doesn't post here.</span>
+          </div>
+        </div>
+        <div class="card stack">
+          <div class="sect">Stays out of #vera-act-now</div>
+          <div class="hint">A flight delay or a bill due today (urgent, but no decision: #vera-notifications) · HAILEY's Friday digest and TESS's daily list (reading: email) · agent run problems (#vera-logs and Agent health).</div>
+        </div>
+        <div class="card stack">
+          <div class="sect">How the channel stays useful</div>
+          <div class="hint">• Each assistant has a daily cap (Config <code>act_now_cap_aria</code>, <code>…_hailey</code>, <code>…_tess</code>). Past it, items wait for the morning email.<br>• One message per item. Price moves and status changes come as replies under it, not new posts.<br>• When it expires or you decide, VERA rewrites the message (Expired, Booked ✓, Saved ✓), so the channel only shows what's still open.<br>• Quiet hours apply, except when the deadline falls before morning.<br>• Default delivery is Both: Slack plus a VERA app push in its own high-priority “Act now” notification channel on Android.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- APP PUSH -->
+  <section class="panel" id="p-app">
+    <div class="grid">
+      <div class="stack">
+        <div class="row2"><span class="seg" id="osSeg"><button data-os="ios" class="on">iPhone</button><button data-os="android">Android</button></span><span class="seg" id="viewSeg"><button data-vw="lock" class="on">Lock screen</button><button data-vw="banner">While using the phone</button><button data-vw="setup">Turning it on</button></span></div>
+        <div class="phone app" id="appPhone"></div>
+      </div>
+      <div class="stack">
+        <div class="card stack">
+          <div class="sect">Can the installed VERA app push?</div>
+          <div><strong>Yes.</strong> The dashboard you install from the browser can show its own notifications, with the VERA icon, even when the app is closed.</div>
+          <div class="anat">
+            <b>iPhone</b><span>iOS 16.4 or later, and only once VERA is added to the Home Screen. You tap <em>Turn on notifications</em> once inside VERA and allow it. The notification shows a title and text; <strong>there are no buttons</strong>, and tapping it opens the right screen in VERA.</span>
+            <b>Android</b><span>Works from Chrome once installed. It can show <strong>up to two buttons</strong>, such as Mark paid and Snooze.</span>
+            <b>Computer</b><span>Chrome, Edge and Safari can show them too, if you want them there.</span>
+          </div>
+          <div class="hint">What it needs on VERA's side: the app signs up each phone once, and the nightly and hourly jobs send through Google's free push service (Firebase Cloud Messaging), using a key kept in Script Properties. Nothing else to install.</div>
+        </div>
+        <div class="card stack">
+          <div class="sect">Slack or app?</div>
+          <div class="hint">Each kind of notification can go to Slack, the VERA app, or both (Settings). Slack keeps the full message, its buttons and its history in #vera-notifications; the app push is the shorter, lock-screen version that opens VERA.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHAT -->
+  <section class="panel" id="p-chat">
+    <div class="grid">
+      <div class="stack"><div class="row2"><span class="hint">Sleep source</span><span class="seg" id="watchSeg" style="flex-wrap:wrap;border-radius:12px"><button data-w="none" class="on">No watch yet</button><button data-w="garmin">Garmin connected</button><button data-w="missed">Garmin, no data last night</button></span></div>
+      <div class="chan">
+        <div class="chanhead"># vera-chat <span>expects a reply</span></div>
+        <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small id="mTime">6:30 AM</small></div>
+          <div class="ttl" id="sleepTtl">☀️ Morning.</div><div class="why">How are you starting the day?</div>
+          <div class="btns" data-group="sleep" id="sleepRow"><span class="hint" style="align-self:center">Slept</span><button class="b">≤5 h</button><button class="b">6 h</button><button class="b">7 h</button><button class="b">8 h</button><button class="b">9 h+</button></div>
+          <div class="btns" data-group="energy"><span class="hint" style="align-self:center">Energy</span><button class="b">1</button><button class="b">2</button><button class="b">3</button><button class="b">4</button><button class="b">5</button></div>
+          <div class="btns" data-group="mood"><span class="hint" style="align-self:center">Mood</span><button class="b">😞</button><button class="b">😐</button><button class="b">🙂</button><button class="b">😄</button></div>
+          <div class="foot" id="sleepFoot">Wellness log · hour set in Settings</div></div></div>
+        <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small id="eTime">8:00 PM</small></div>
+          <div class="ttl">🌙 Evening check-in</div><div class="why">Did you move today? You logged 2 movement breaks.</div>
+          <div class="btns" data-group="move"><button class="b">🏋️ Gym</button><button class="b">🚶 Walk</button><button class="b">🧘 Stretch</button><button class="b">Not today</button></div>
+          <div class="why" style="margin-top:8px">Tomorrow: dentist at 4:30. The electric bill is still unpaid.</div>
+          <div class="foot">Replaces the separate gym check-in and evening mobility nudge</div></div></div>
+        <div class="msg"><div class="mb" style="padding-left:44px"><div class="who">You<small>8:03 PM</small></div><div>Gym, 45 min legs</div></div></div>
+        <div class="msg"><div class="av">V</div><div class="mb"><div class="who">VERA<small>8:03 PM</small></div><div>Logged: gym, 45 min, legs. That's 3 sessions this week.</div></div></div>
+      </div></div>
+      <div class="card stack">
+        <div class="sect">What changes in #vera-chat</div>
+        <div><strong>Sleep:</strong> Google Fit is removed. When a Garmin watch is connected, the morning message shows last night's sleep from it. When nothing can be read (no watch yet, or it wasn't worn), it asks with one tap instead.</div>
+        <div>Only messages that ask you something go here. That leaves two a day: the morning rating and one evening check-in.</div>
+        <div class="hint">The 8 PM mobility nudge and the gym check-in become one message. Chat with VERA stays here too.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIL -->
+  <section class="panel" id="p-mail">
+    <div class="mail">
+      <div class="mhead"><b>☀️ Tuesday, Nov 17: 2 things need you today</b>From VERA · 6:45 AM</div>
+      <div class="ticker" aria-label="Weather"><span>🌤️ 9 AM <strong>48°</strong> partly cloudy</span><span>🌧️ 6 PM <strong>44°</strong> light rain <em>(Convention Center)</em></span><span>☔ Rain <strong>10%</strong></span><span>🌿 AQI <strong class="good">Good</strong></span></div>
+      <div class="hint" style="padding:6px 16px 0">Kept as it is today. The 9 AM and 6 PM readings follow where your calendar puts you; a city tag appears only when it isn't home (here, an evening event across town).</div>
+      <div class="mbody">
+        <div><h3>Needs you today</h3>
+          <div class="row"><span><span class="pill pr">High</span> Car registration expires Friday</span><span>Vehicles</span></div>
+          <div class="row"><span><span class="pill pa">Due</span> Electric bill, $142, due today</span><span>Bills</span></div>
+        </div>
+        <div><h3>📆 Your Day, Sequenced</h3>
+          <div class="seqr"><b>7:00 AM</b><span>Gym <em>— go early; rain after 6 PM</em></span></div>
+          <div class="seqr"><b>12:30 PM</b><span>Lunch with a friend <em>— walk there; dry and Good air</em></span></div>
+          <div class="seqr"><b>4:30 PM</b><span>Dentist</span></div>
+          <div class="seqr"><b>5:15 PM</b><span>Pick up dry cleaning <em>— on the way back, before the rain</em></span></div>
+          <div class="weeknote">Thursday evening is packed. Move the grocery run to Wednesday.</div>
+          <h3 style="margin-top:12px">If time allows</h3>
+          <div class="hint" style="font-size:13px">• Renew passport photos · on the way back from the dentist</div>
+          <div class="hint" style="font-style:italic;margin-top:8px">Reply to VERA to apply this plan to your calendar</div>
+        </div>
+        <div><h3>This week</h3>
+          <div class="row"><span>Water bill $48 · Thu</span><span>Bills</span></div>
+          <div class="row"><span>Packing for Denver · leaves Fri</span><span>Travel</span></div>
+          <div class="row"><span>Grocery coupon 20% ends Wed</span><span>Coupons</span></div>
+        </div>
+        <div><h3>Held overnight</h3>
+          <div class="row"><span>🎟️ Coupon ends tomorrow (arrived in quiet hours)</span><span>9:40 PM</span></div>
+        </div>
+        <div><h3>Also</h3>
+          <div class="row"><span>📬 2 pieces of mail arriving today</span><span>USPS</span></div>
+          <div class="row"><span>🔍 Discovery: a free winter lights walk this Saturday</span><span>Interests</span></div>
+        </div>
+        <div><a class="cta" href="#" onclick="return false">Open Needs you in VERA</a></div>
+        <div class="hint">Everything in this email stays quiet in Slack today. High flags found overnight lead the email; only a high flag raised during the day is pushed.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="p-set">
+    <div class="stack">
+      <div class="card stack">
+        <div class="sect">Limits (Config)</div>
+        <div class="cfg">
+          <label>Quiet hours start<input type="time" id="qs" value="21:00"><code>notif_quiet_start</code></label>
+          <label>Quiet hours end<input type="time" id="qe" value="07:00"><code>notif_quiet_end</code></label>
+          <label>Pushes a day, at most<input type="number" id="cap" min="1" max="20" value="6"><code>notif_daily_cap</code></label>
+          <label>Movement nudges a day, at most<input type="number" id="mcap" min="0" max="6" value="3"><code>movement_daily_cap</code></label>
+          <label>Morning check-in, workdays<input type="time" id="mct" value="06:30"><code>morning_checkin_time</code></label>
+          <label>Morning check-in, weekends<input type="time" id="mcw" value="08:30"><code>morning_checkin_weekend_time</code></label>
+          <label>Evening check-in<input type="time" id="ect" value="20:00"><code>evening_checkin_time</code></label>
+          <label>Workday hours<input type="text" id="mmin" value="9:00–17:00"><code>work_hours</code></label>
+          <label>Movement nudge times<input type="text" id="mtimes" value="10:30, 13:30, 15:30"><code>movement_times</code></label>
+          <label>Work busy times (optional)<select id="busy"><option selected>Not connected</option><option>Free/busy link added</option></select><code>work_busy_ics</code></label>
+          <label>Weekend memo (Wednesday) at<select id="wm"><option>8 AM</option><option selected>12 PM</option><option>5 PM</option><option>7 PM</option></select><code>weekend_planner_hour</code></label>
+        </div>
+        <div class="kpis"><div><span class="hint">Pushes on a busy day</span><span class="big" id="est">—</span></div><div><span class="hint">Today, before this change</span><span class="big" style="color:var(--faint)">16</span></div></div>
+        <div class="hint" id="capNote"></div>
+      </div>
+      <div class="card stack">
+        <div class="sect">This phone</div>
+        <div class="row2"><span id="devState">VERA app notifications are <strong>off</strong> on this phone.</span><button class="b p" id="devOn">Turn on notifications</button></div>
+        <div class="hint">Each phone or computer is turned on separately. Listed: Pixel (on) · Work laptop (off).</div>
+      </div>
+      <div class="card stack"><div class="sect">Each kind: where it goes, and what Away does</div>
+        <div class="kfilter seg" id="catSeg"></div>
+        <div id="kinds" class="klist"></div>
+        <p class="hint"><strong>Away</strong>: <em>Hold</em> saves it for the welcome-home catch-up; <em>Send</em> sends it anyway; <em>If due</em> sends it only when its deadline falls before you're back. When Slack or Both is chosen, pick the channel under it; the default is #vera-notifications, and #vera-chat for check-ins. System messages always go to #vera-logs. ARIA keeps its own channel.</p></div>
+    </div>
+  </section>
+
+  <!-- DAY -->
+  <section class="panel" id="p-day">
+    <div class="grid">
+      <div class="card"><div class="sect">Today's setup: 16 pings</div><div class="tl" id="before"></div></div>
+      <div class="card"><div class="sect">With this plan: 3 pushes, 1 email, 2 check-ins</div><div class="tl" id="after"></div></div>
+    </div>
+  </section>
+</div>
+<script>
+(function(){
+function $(i){return document.getElementById(i);}
+$('tabs').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
+  [].forEach.call(document.querySelectorAll('#tabs button'),function(x){x.classList.toggle('on',x===b);});
+  [].forEach.call(document.querySelectorAll('.panel'),function(p){p.classList.toggle('on',p.id==='p-'+b.dataset.t);});});
+document.addEventListener('click',function(e){var b=e.target.closest('[data-ack]');if(b){[].forEach.call(b.parentNode.querySelectorAll('.b'),function(x){x.classList.add('done');});$('ackOut').textContent='VERA: '+b.dataset.ack;return;}
+  var g=e.target.closest('[data-group] .b');if(g){[].forEach.call(g.parentNode.querySelectorAll('.b'),function(x){x.classList.toggle('p',x===g);});}});
+var KINDS=[
+ // [name, type, default delivery, busy-day count, away default, note, category]
+ ['☀️ Morning email','mail','mail',0,'send','6:45 AM: weather, Your Day, Sequenced, flags, bills','Morning & Discovery'],
+ ['🔍 Daily Discovery','mail','mail',0,'hold','A pick from your interests','Morning & Discovery'],
+ ['🚶 Movement nudge','push','app','m','hold','At your set times on workdays; never on PTO, holidays or Away','Wellness Reminders'],
+ ['☀️ Morning check-in','chat','chat',0,'hold','Expects a reply · time set above','Wellness Reminders'],
+ ['🌙 Evening check-in','chat','chat',0,'hold','Expects a reply · replaces gym and mobility check-ins','Wellness Reminders'],
+ ['🔬 Health–performance insight','read','mail',0,'hold','Weekly and monthly','Wellness Reminders'],
+ ['🎯 Goals · 🌱 growth','mail','mail',0,'hold','','Planning Nudges'],
+ ['🗓️ Quarterly money check-in','mail','mail',0,'hold','','Planning Nudges'],
+ ['🌸 Cycle reminders','push','app',0,'hold','Only while Trying','Planning Nudges'],
+ ['💳 Bill due today, unpaid','push','both',1,'due','Once, at noon','Flags & Alerts'],
+ ['💳 Bills due this week','mail','mail',0,'due','','Flags & Alerts'],
+ ['🔴 High flag raised during the day','push','both',1,'due','Flight changes, a card alert','Flags & Alerts'],
+ ['🔴 High flags found overnight','mail','mail',0,'due','Lead the morning email','Flags & Alerts'],
+ ['🟡 Medium and low flags','mail','mail',0,'hold','','Flags & Alerts'],
+ ['🚗 Vehicle renewals','mail','mail',0,'due','','Flags & Alerts'],
+ ['📋 Contracts','mail','mail',0,'due','','Flags & Alerts'],
+ ['🏠 Home service','mail','mail',0,'hold','','Flags & Alerts'],
+ ['🎟️ Coupons','mail','mail',0,'due','','Flags & Alerts'],
+ ['🎓 Certifications','mail','mail',0,'hold','','Flags & Alerts'],
+ ['🌴 PTO plan','mail','mail',0,'due','','Flags & Alerts'],
+ ['🎒 Packing','push','slack',0,'send','Two days before a trip','Travel'],
+ ['🗺️ Pre-trip briefing','push','slack',0,'send','The day before','Travel'],
+ ['✈️ Travel-day briefing','push','both',0,'send','The morning you travel','Travel'],
+ ['🛂 Travel documents','mail','mail',0,'send','','Travel'],
+ ['🏠 Leaving home','push','app',0,'send','At the time you set','Travel'],
+ ['🧭 ARIA: book now','push','both',1,'send','A watched fare or stay worth booking','Act now'],
+ ['🧭 ARIA: price drop after booking','push','both',0,'due','Rebook or claim the difference','Act now'],
+ ['🏡 HAILEY: standout listing','push','both',1,'due','Score 90+, all must-haves','Act now'],
+ ['🏡 HAILEY: saved home changed','push','slack',0,'hold','Price cut, status, open house','Act now'],
+ ['💼 TESS: strong new match','push','both',1,'hold','Posted in the last few hours','Act now'],
+ ['🏨 VERA: decision deadline','push','both',0,'due','Free cancellation, trip decision, return window','Act now'],
+ ['🗓️ Weekend memo (Wednesday)','read','mail',0,'hold','At weekend_planner_hour','Routines'],
+ ['📊 Weekly trends','read','mail',0,'hold','Sunday','Routines'],
+ ['🌙 Monthly review','read','mail',0,'hold','1st of the month','Routines'],
+ ['📬 USPS mail','mail','mail',0,'hold','','Routines'],
+ ['📋 Nightly run summary','lock','slack',0,'send','Always on','System Logs'],
+ ['⚠️ Error alerts','lock','slack',0,'send','Always on','System Logs'],
+ ['🚩 Watchdog → Flag','fixed','on',0,'send','Opens a flag when a job stops running','System Health'],
+ ['📧 Watchdog → Morning email','fixed','on',0,'send','Adds watchdog notices to the morning email','System Health'],
+ ['💬 Watchdog → Slack','fixed','on',0,'send','Posts watchdog notices to Slack','System Health']];
+var CATS=['Morning & Discovery','Wellness Reminders','Planning Nudges','Flags & Alerts','Travel','Act now','Routines','System Logs','System Health'];
+var GROUPS=[['all','All']].concat(CATS.map(function(c){return [c,c];})),grp='all';
+var state=KINDS.map(function(k){return k[2];}),away=KINDS.map(function(k){return k[4];});
+var CHANS=['vera-notifications','vera-chat','vera-act-now','vera-logs'];
+var chan=KINDS.map(function(k){return k[1]==='chat'?'vera-chat':k[6]==='Act now'?'vera-act-now':(k[1]==='lock'||/Watchdog → Slack/.test(k[0]))?'vera-logs':'vera-notifications';});
+function chanHtml(i){var v=state[i],t=KINDS[i][1];if(t==='lock')return '<span class="hint" style="display:block;margin-top:4px">#'+chan[i]+'</span>';if(t==='fixed')return /Slack/.test(KINDS[i][0])&&v==='on'?chanSel(i):'';if(v!=='slack'&&v!=='both'&&v!=='chat')return '';return chanSel(i);}
+function chanSel(i){var list=CHANS.indexOf(chan[i])===-1?CHANS.concat([chan[i]]):CHANS;
+  return '<select class="chsel" data-ci="'+i+'" aria-label="Slack channel for '+KINDS[i][0].replace(/"/g,'')+'">'+list.map(function(c){return '<option'+(c===chan[i]?' selected':'')+' value="'+c+'">#'+c+'</option>';}).join('')+'<option value="__other">Other channel…</option></select>';}
+var PUSHES=['slack','app','both'];
+function opts(i){var g=KINDS[i][1];if(g==='lock')return [];if(g==='fixed')return [['on','On'],['off','Off']];if(g==='chat')return [['chat','Slack'],['off','Off']];if(g==='read')return [['mail','Email'],['off','Off']];
+  return [['slack','Slack'],['app','VERA app'],['both','Both'],['mail','Morning email'],['off','Off']];}
+function segHtml(i){var v=state[i];if(KINDS[i][1]==='lock')return '<span class="pill" style="background:var(--deep);color:var(--mute)">🔒 Locked</span>';return '<span class="seg">'+opts(i).map(function(o){return '<button data-i="'+i+'" data-v="'+o[0]+'" class="'+(v===o[0]?'on':'')+'" aria-pressed="'+(v===o[0])+'">'+o[1]+'</button>';}).join('')+'</span>';}
+function awayHtml(i){if(state[i]==='off')return '<span class="hint">—</span>';if(/lock|fixed/.test(KINDS[i][1]))return '<span class="hint">Always sends</span>';var v=away[i];return '<span class="seg">'+[['hold','Hold'],['send','Send'],['due','If due']].map(function(o){return '<button data-ai="'+i+'" data-a="'+o[0]+'" class="'+(v===o[0]?'on':'')+'" aria-pressed="'+(v===o[0])+'">'+o[1]+'</button>';}).join('')+'</span>';}
+function est(){var cap=+$('cap').value||6,m=Math.min(+$('mcap').value||0,3),n=0;KINDS.forEach(function(k,i){if(PUSHES.indexOf(state[i])===-1)return;n+=k[3]==='m'?m:(k[1]==='push'?k[3]:1);});
+  $('est').textContent=Math.min(n,cap);$('capNote').textContent=n>cap?(n-cap)+' more would move into the next morning email (cap '+cap+').':'Under the cap of '+cap+'. Quiet '+$('qs').value+'–'+$('qe').value+'; travel, leaving home and ARIA still come through.';}
+function t12(v){var p=(v||'0:0').split(':'),h=+p[0],m=p[1]||'00';return ((h%12)||12)+':'+m+' '+(h<12?'AM':'PM');}
+function render(){$('mTime').textContent=t12($('mct').value);$('eTime').textContent=t12($('ect').value);
+  if(window.AFTER_EL){}$('catSeg').innerHTML=GROUPS.map(function(g){return '<button data-g="'+g[0]+'" class="'+(grp===g[0]?'on':'')+'">'+g[1]+'</button>';}).join('');
+  var out=[];CATS.forEach(function(cat){if(grp!=='all'&&grp!==cat)return;var rows=KINDS.map(function(k,i){return k[6]===cat?i:-1;}).filter(function(i){return i>-1;});
+    var on=rows.filter(function(i){return state[i]!=='off';}).length;
+    out.push('<div class="kcat"><span>'+cat+'</span><span class="hint">'+on+' of '+rows.length+' on</span></div>');
+    rows.forEach(function(i){var k=KINDS[i];out.push('<div class="krow"><div class="nm">'+k[0]+(k[5]?'<small>'+k[5]+'</small>':'')+'</div><div><span class="lab">Where</span>'+segHtml(i)+chanHtml(i)+'</div><div><span class="lab">While away</span>'+awayHtml(i)+'</div></div>');});});
+  $('kinds').innerHTML=out.join('');est();}
+$('kinds').addEventListener('click',function(e){var b=e.target.closest('[data-i]');if(b){state[+b.dataset.i]=b.dataset.v;render();return;}var a=e.target.closest('[data-ai]');if(a){away[+a.dataset.ai]=a.dataset.a;render();}});
+document.addEventListener('click',function(e){var b=e.target.closest('[data-act]');if(!b)return;[].forEach.call(b.parentNode.querySelectorAll('.b'),function(x){x.classList.add('done');});$('actOut').textContent=b.dataset.act;});
+$('kinds').addEventListener('change',function(e){var c=e.target.closest('[data-ci]');if(!c)return;var i=+c.dataset.ci;
+  if(c.value==='__other'){var n=(window.prompt('Slack channel name (without #)',chan[i])||'').trim().replace(/^#/,'').toLowerCase();if(n)chan[i]=n;}else chan[i]=c.value;render();});
+$('catSeg').addEventListener('click',function(e){var b=e.target.closest('[data-g]');if(!b)return;grp=b.dataset.g;render();});
+$('devOn').onclick=function(){$('devState').innerHTML='VERA app notifications are <strong>on</strong> for this phone.';this.textContent='Send a test';this.onclick=function(){$('devState').innerHTML='Test sent. It should appear in a few seconds.';};};
+['cap','mcap','qs','qe','mmin','wm','mtimes','busy','mct','mcw','ect'].forEach(function(id){$(id).addEventListener('input',render);});
+// app push views
+var os='ios',vw='lock';
+function an(title,body,time,acts){return '<div class="an"><div class="top"><span class="ic">V</span><span>VERA</span><span style="margin-left:auto">'+time+'</span></div><b>'+title+'</b>'+body+(os==='android'&&acts?'<div class="acts">'+acts.map(function(a){return '<span>'+a+'</span>';}).join('')+'</div>':'')+'</div>';}
+function renderApp(){var ph=$('appPhone');ph.classList.toggle('and',os==='android');var h='';
+  if(vw==='lock'){h='<div class="clock">2:19</div><div class="date">Tuesday, November 17</div>'+an('🔴 Friday\'s flight to Denver is now 2 h later','It lands 11:40 PM. Your pickup is still 9:45 PM.','now',['Open trip','Make a task'])+an('💳 Electric bill due today: $142','Not paid yet. Autopay is off for this one.','12:05',['Mark paid','6 PM'])+an('🚶 5-minute reset','Stand, walk a lap, refill your water.','10:42',['Done','Skip']);}
+  else if(vw==='banner'){h='<div class="banner">'+an('🏠 Heading out: 3 things left','Lock the back door · Thermostat · Passports','now',['All done','Open list'])+'</div><div class="appscreen"><div style="opacity:.6">Another app is open. The banner slides down for a few seconds, then goes to the notification list.</div></div>';}
+  else{h='<div class="appscreen"><b>Settings › Notifications</b><div style="margin:10px 0;opacity:.8">VERA app notifications are off on this phone.</div><div style="background:#d2ad52;color:#17130a;border-radius:9px;padding:9px;text-align:center;font-weight:700">Turn on notifications</div>'+
+    '<div class="dlg"><b>"VERA" Would Like to Send You Notifications</b><div style="margin-top:6px;color:#555">Notifications may include alerts, sounds and icon badges.</div><div class="dbtn"><span>Don\'t Allow</span><span>Allow</span></div></div>'+
+    '<div style="opacity:.7;font-size:12px">'+(os==='ios'?'On iPhone this only works after Share › Add to Home Screen, and the tap must happen inside VERA.':'On Android, Chrome asks the same question; you can also allow it later from the app\'s settings.')+'</div></div>';}
+  ph.innerHTML=h;
+  [].forEach.call(document.querySelectorAll('#osSeg button'),function(b){b.classList.toggle('on',b.dataset.os===os);});
+  [].forEach.call(document.querySelectorAll('#viewSeg button'),function(b){b.classList.toggle('on',b.dataset.vw===vw);});}
+$('osSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b){os=b.dataset.os;renderApp();}});
+$('viewSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b){vw=b.dataset.vw;renderApp();}});
+renderApp();
+function renderSleep(w){[].forEach.call(document.querySelectorAll('#watchSeg button'),function(b){b.classList.toggle('on',b.dataset.w===w);});
+  $('sleepTtl').textContent=w==='garmin'?'☀️ Morning. You slept 7 h 20 m.':'☀️ Morning.';$('sleepRow').style.display=w==='garmin'?'none':'';
+  $('sleepFoot').textContent=w==='garmin'?'Sleep from your Garmin · wellness log':w==='missed'?'Your Garmin had no sleep for last night, so VERA asks':'No sleep source connected, so VERA asks · wellness log';}
+$('watchSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)renderSleep(b.dataset.w);});
+renderSleep('none');
+render();
+var BEFORE=[['6:00','#vera-chat · wellness rating'],['8:00','💧 Water'],['9:00','🪑 Desk break'],['9:00','📅 Free calendar block'],['10:00','🪑 Desk break'],['10:00','💧 Water'],['11:00','🪑 Desk break'],['11:00','🎟️ Coupon expiring'],['12:00','🪑 Desk break'],['12:00','💧 Water'],['13:00','🪑 Desk break'],['14:00','🪑 Desk break'],['14:00','💧 Water'],['15:00','🪑 Desk break'],['16:00','🪑 Desk break'],['16:00','💧 Water'],['17:00','🪑 Desk break'],['20:00','#vera-chat · evening mobility'],['20:15','#vera-chat · gym check-in']];
+var AFTER=[['6:30','#vera-chat · morning rating'],['6:45','✉️ Morning email: flags, bills, coupons, mail'],['10:30','🚶 Movement reset'],['12:05','💳 Electric bill due today'],['15:30','🚶 Movement reset (the 1:30 one was skipped: you tapped Done at 12:40)'],['20:00','#vera-chat · evening check-in']];
+$('before').innerHTML=BEFORE.map(function(r){return '<div class="tli"><b>'+r[0]+'</b><span class="'+(/Desk|Water|calendar/.test(r[1])?'x':'')+'">'+r[1]+'</span></div>';}).join('');
+$('after').innerHTML=AFTER.map(function(r){return '<div class="tli"><b>'+r[0]+'</b><span>'+r[1]+'</span></div>';}).join('');
+})();
+</script>
+</body>
+</html>
