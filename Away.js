@@ -58,7 +58,11 @@ function awayDecide_(st, today) {
 }
 
 function awayStatus_() {
-  try { return awayDecide_(veraStateGet_('PACING'), awayToday_()); }
+  try {
+    // Off in Settings › Feature Flags (#254): never away, so nothing is held.
+    if (typeof featureOn_ === 'function' && !featureOn_('away_mode')) return { on: false, source: '', until: '', trip: '', started: '', off: true };
+    return awayDecide_(veraStateGet_('PACING'), awayToday_());
+  }
   catch (e) { return { on: false, source: '', until: '', trip: '', started: '' }; }
 }
 

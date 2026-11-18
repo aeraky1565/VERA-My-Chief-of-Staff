@@ -114,6 +114,10 @@ function scanUSPSMail_(why) {
   var lock = LockService.getScriptLock();
   try {
     if (!lock.tryLock(30000)) { Logger.log('scanUSPSMail_: another run holds the lock, skipping.'); return; }
+    if (typeof featureOn_ === 'function' && !featureOn_('usps_scan')) {   // off in Feature Flags (#254)
+      try { veraLog_('scanUSPSMail', 'Home', 'Skipped', 'USPS mail scan is off in Feature Flags', Date.now() - _umStart); } catch (vlErr) {}
+      return;
+    }
     var props   = PropertiesService.getScriptProperties();
     var mail    = veraStateProps_('MAIL');   // the counter's state, one bundle (Settings.js)
     props.setProperty('USPS_SCAN_START', new Date().toISOString());

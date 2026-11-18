@@ -104,7 +104,9 @@ function checkPostTripCapture_() {
   });
 
   // ── 48-hour recap email (fires ~2 days after trip end) ─────────────────────
-  var recapTrips = getRecentlyCompletedTrips_(delayDays + 1);
+  // Config posttrip_recap_delay_days (Feature Flags › Post-trip capture, #254); else a day after the nudge.
+  var recapDays = parseInt(cfg['posttrip_recap_delay_days'] || '', 10);
+  var recapTrips = getRecentlyCompletedTrips_(recapDays > 0 ? recapDays : delayDays + 1);
   recapTrips.forEach(function(trip) {
     try { sendPostTripRecapEmail_(trip); } catch (e) {
       Logger.log('PostTripCapture: recap email error for ' + trip.tripKey + ' — ' + e.message);

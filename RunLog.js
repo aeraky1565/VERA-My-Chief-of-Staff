@@ -84,6 +84,7 @@ function runLogSame_(a, b) { return String(a || '').replace(/_+$/, '') === Strin
 function runLogStart_(fn, arg) {
   try {
     if (_runLog_) return null;                                   // nested inside another logged run
+    if (typeof featureOn_ === 'function' && !featureOn_('run_log')) return null;   // off in Feature Flags (#254)
     if (arg !== undefined && (arg === null || typeof arg !== 'object')) return null;
     var now = Date.now(), sheet = runLogSheet_(fn);
     try { runLogSweep_(sheet, fn, now); } catch (e) { Logger.log('runLogSweep_ (non-fatal): ' + e.message); }
@@ -215,8 +216,9 @@ function runLogSweep_(sheet, fn, now) {
 }
 
 /** Pure: how many rows at the top are older than the keep window (rows are in time order). */
-function runLogExpired_(started, now) {
-  var cutoff = now - RUN_LOG_KEEP_DAYS_ * 86400000, n = 0;
+function runLogExpired_(started, now, keepDays) {
+  var keep = keepDays > 0 ? keepDays : RUN_LOG_KEEP_DAYS_;   // Config run_log_keep_days (Feature Flags › Run log, #254)
+  var cutoff = now - keep * 86400000, n = 0;
   for (var i = 0; i < started.length; i++) {
     var t = started[i] instanceof Date ? started[i].getTime() : new Date(started[i]).getTime();
     if (isNaN(t) || t >= cutoff) break;
@@ -230,7 +232,8 @@ function runLogPrune_() {
   return runLogTabsToRead_().reduce(function(total, t) {
     var sheet = t.sheet, last = sheet.getLastRow();
     if (last < 2) return total;
-    var n = runLogExpired_(sheet.getRange(2, 1, last - 1, 1).getValues().map(function(r) { return r[0]; }), Date.now());
+    var keep = 0; try { keep = parseInt((getConfigValues() || {}).run_log_keep_days, 10) || 0; } catch (e) {}
+    var n = runLogExpired_(sheet.getRange(2, 1, last - 1, 1).getValues().map(function(r) { return r[0]; }), Date.now(), keep);
     if (n) sheet.deleteRows(2, n);
     return total + n;
   }, 0);

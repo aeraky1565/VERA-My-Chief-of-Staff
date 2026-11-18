@@ -104,15 +104,21 @@ function checkGymSessions_() {
   }
 }
 
-/** Pure: the hours (6 pm to 11 pm) when hourlyCheck looks for workouts that just ended. */
-function gymEveningHour_(hour) { return hour >= 18 && hour <= 23; }
+/** Pure: the hours when hourlyCheck looks for workouts that just ended: 6 pm to 11 pm, or
+ *  Config gym_checkin_hours ("18-23", set on Gym check-ins in Feature Flags, #254). */
+function gymEveningHour_(hour, range) {
+  var r = typeof gymCheckinRange_ === 'function' ? gymCheckinRange_(range) : null;
+  return r ? hour >= r.from && hour <= r.to : hour >= 18 && hour <= 23;
+}
 
 /**
  * From hourlyCheck. The nightly run used to be the only caller, so a night it didn't
  * finish (Nov 16–17) left that day's workouts with no check-in at all. Never throws.
  */
 function gymEveningCheck_(now) {
-  if (!gymEveningHour_((now || new Date()).getHours())) return false;
+  var range = ''; try { range = (getConfigValues() || {}).gym_checkin_hours; } catch (e) {}
+  if (!gymEveningHour_((now || new Date()).getHours(), range)) return false;
+  if (typeof featureOn_ === 'function' && !featureOn_('gym_tracker')) return false;   // off in Feature Flags (#254)
   try { checkGymSessions_(); return true; }
   catch (e) { Logger.log('gymEveningCheck_ (non-fatal): ' + e.message); return false; }
 }

@@ -51,6 +51,8 @@ function notifDeliveryFrom_(key, cfg) {
   var kind = notifKind_(key);
   if (String(cfg['notif_' + key + '_enabled'] || '').toUpperCase() === 'FALSE') return 'off';
   if (v === 'off') return 'off';
+  // Its feature is off in Settings › Feature Flags (#254): off too, and back as it was with it.
+  try { if (typeof featureOffForNotif_ === 'function' && featureOffForNotif_(key, cfg)) return 'off'; } catch (e) {}
   if (kind === 'checkin') return 'slack';                       // a reply needs Slack
   if (kind === 'read') return 'email';                          // a long read is an email
   if (v === 'slack' || v === 'email') return v;

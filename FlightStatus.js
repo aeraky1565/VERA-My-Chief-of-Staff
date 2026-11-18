@@ -359,6 +359,11 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   // Leaving home (#231): the heading-out message rides this 15-minute trigger. Cheap when nothing is due.
   if (!targetTripKey) { try { if (typeof lhMorningCheck_ === 'function') lhMorningCheck_(); } catch (lhErr) { Logger.log('lhMorningCheck_: ' + lhErr.message); } }
   try {
+  // Off in Settings › Feature Flags (#254): the trigger's polling stops; a refresh you ask for still runs.
+  if ((forceRefresh === undefined || (forceRefresh && typeof forceRefresh === 'object')) && typeof featureOn_ === 'function' && !featureOn_('flight_status')) {
+    try { veraLog_('checkFlightStatuses', 'Travel', 'Skipped', 'Flight status checks are off in Feature Flags', Date.now() - _fsStart); } catch (vlErr) {}
+    return { polled: 0, skipped: 0, errors: 0, off: true };
+  }
   // Short-circuit if we received a 429 recently — don't waste requests
   if (!forceRefresh && isAviationStackRateLimited_()) {
     var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);

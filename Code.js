@@ -1132,6 +1132,15 @@ function nightlyStep_(ctx, name, fn, gate) {
     return false;
   }
 
+  // A FEATURE SWITCHED OFF in Settings › Feature Flags (#254): its steps skip, and say why.
+  var offBy = typeof featureOffStep_ === 'function' ? featureOffStep_(name) : '';
+  if (offBy) {
+    if (!ctx.blocked) ctx.blocked = [];
+    ctx.blocked.push(name + ' — ' + offBy + ' is off in Feature Flags');
+    Logger.log(name + ': skipped — ' + offBy + ' is off');
+    return false;
+  }
+
   // ENOUGH LEFT TO FINISH, not merely enough left to start. The guard used to ask
   // only whether the deadline had passed, so a step beginning at 5m00s still had
   // sixty seconds before Apps Script kills the execution at six minutes — and
@@ -1415,6 +1424,8 @@ function nightlyRun() {
     // property editor goes read-only past 50 — which is how adding a setting by
     // hand became impossible.
     nightlyStep_(ctx, 'pruneScriptProperties_', pruneScriptProperties_);
+    // Config rows nothing reads any more (Features.js, #254).
+    nightlyStep_(ctx, 'purgeRetiredConfig_', purgeRetiredConfig_);
     // The copy of the Config-tab settings used only if the Config tab can't be read
     // (Settings.js); written only when a value changed.
     nightlyStep_(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_);
@@ -1608,6 +1619,7 @@ function nightlyRun() {
     // The trigger fired — that is what a heartbeat records, success or not.
     // Whether the run went WELL is reported separately, above.
     try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}
+    try { if (typeof ctx !== 'undefined' && ctx) featureNoteSteps_(ctx.timings); } catch (fnErr) {}   // "last ran" in Feature Flags (#254)
     // Slack.js has always READ this property and nothing has ever written it, so
     // "Last nightly run" reported 'unknown' forever. Written here beside the
     // heartbeat, which is the moment it describes.
@@ -1815,6 +1827,7 @@ function nightlyRunTail() {
     }
   } finally {
     try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}
+    try { if (typeof ctx !== 'undefined' && ctx) featureNoteSteps_(ctx.timings); } catch (fnErr) {}   // "last ran" in Feature Flags (#254)
     try {
       PropertiesService.getScriptProperties()
         .setProperty('LAST_NIGHTLY_TAIL_RUN', new Date().toISOString());
@@ -4870,6 +4883,7 @@ function morningNudge() {
     try { sendSlackLog_('❌ *morningNudge* [Nightly] — Failed — ' + e.message); } catch (se) {}
   } finally {
     try { recordHeartbeat_('morningNudge'); } catch (hbErr) {}
+    try { if (typeof ctx !== 'undefined' && ctx) featureNoteSteps_(ctx.timings); } catch (fnErr) {}   // "last ran" in Feature Flags (#254)
     // Cleared in the finally, NOT on the success path — the opposite of nightlyRun,
     // and deliberately. This function has three legitimate early returns (disabled,
     // no flags, no active flags) that reach the finally without having sent anything,

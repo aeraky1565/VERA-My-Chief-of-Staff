@@ -543,19 +543,23 @@ function doGet(e) {
       case 'trip_gift_check':   return jsonOut_(webTripGiftCheck_(e));
       case 'trip_gift_ideas':   return jsonOut_(webTripGiftIdeas_(e));
       // Notification Map (Issue #188)
-      case 'get_notification_map': return jsonOut_(webGetNotificationMap_());
-      case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
-      case 'set_notif_channel':    return jsonOut_(webSetNotifChannel_(e));
-      case 'set_notif_while_away': return jsonOut_(webSetNotifWhileAway_(e));   // Away mode (#246)
-      case 'set_notif_delivery':   return jsonOut_(webSetNotifDelivery_(e));    // Where: slack | email | off (#250)
+      // Settings is the owner's (#254): Victoria's sign-in can't read or change it.
+      case 'get_notification_map': return jsonOut_(peopleOwnerOnly_() || webGetNotificationMap_());
+      case 'set_notif_enabled':    return jsonOut_(peopleOwnerOnly_() || webSetNotifEnabled_(e));
+      case 'set_notif_channel':    return jsonOut_(peopleOwnerOnly_() || webSetNotifChannel_(e));
+      case 'set_notif_while_away': return jsonOut_(peopleOwnerOnly_() || webSetNotifWhileAway_(e));   // Away mode (#246)
+      case 'set_notif_delivery':   return jsonOut_(peopleOwnerOnly_() || webSetNotifDelivery_(e));    // Where: slack | email | off (#250)
+      case 'feature_flags':        return jsonOut_(webFeatureFlags_());       // Features.js (#254)
+      case 'config_files':         return jsonOut_(webConfigFiles_());
+      case 'config_calendars':     return jsonOut_(webConfigCalendars_());
       case 'away_status':          return jsonOut_(webAwayStatus_());            // Away mode (#246)
       // Config Editor (Issue #189)
-      case 'get_config_rows':  return jsonOut_(webGetConfigRows_());
+      case 'get_config_rows':  return jsonOut_(peopleOwnerOnly_() || webGetConfigRows_());
       case 'test_travel_trips':  return jsonOut_(webTestTravelTrips_());
       case 'test_travel_trip':   return jsonOut_(webTestTravelTrip_(e));
       case 'test_travel_send':   return jsonOut_(webTestTravelSend_(e));
       case 'test_trip_email_send': return jsonOut_(webTestTripEmailSend_(e));
-      case 'set_config_value': return jsonOut_(webSetConfigValue_(e));
+      case 'set_config_value': return jsonOut_(peopleOwnerOnly_() || webSetConfigValue_(e));
       // Regression testing
       case 'regression_test':  return handleRegressionTest_(e);
       default:               return errOut_('Unknown action: ' + action);
@@ -803,6 +807,10 @@ function doPost(e) {
       case 'aria_request_watch':         return jsonOut_(webWatchAriaRequest_(body));
       case 'aria_request_stay':          return jsonOut_(webStayAriaRequest_(body));
       case 'away_set':                   return jsonOut_(webAwaySet_(body));   // Away mode (#246)
+      // Settings › Feature Flags and Config (Features.js, #254); owner only, checked inside
+      case 'set_feature':                return jsonOut_(webSetFeature_(body));
+      case 'set_feature_setting':        return jsonOut_(webSetFeatureSetting_(body));
+      case 'config_slack_test':          return jsonOut_(webConfigSlackTest_(body));
       case 'pto_strategy_settings':      return jsonOut_(webPtoStrategySettings_(body));   // PTOStrategy.js (#248)
       case 'pto_plan_accept':            return jsonOut_(webPtoPlanAccept_(body));
       case 'pto_plan_skip':              return jsonOut_(webPtoPlanSkip_(body));
@@ -908,6 +916,14 @@ function webGetStatus_() {
     var raw = featureCfg[k + '_enabled'];
     features[k] = (raw === undefined || raw.toLowerCase() !== 'false');
   });
+  // Every feature in Settings › Feature Flags (#254), with its pause and what it needs, and the
+  // dashboard screens to leave out while their feature is off.
+  var hiddenScreens = [];
+  try {
+    var fToday = featureIsoToday_();
+    FEATURES_.forEach(function(f) { features[f.k] = featureStateFrom_(f.k, featureCfg, fToday) === 'on'; });
+    hiddenScreens = featureHiddenScreens_(featureCfg, fToday);
+  } catch (fErr) { Logger.log('status features (non-fatal): ' + fErr.message); }
 
   return {
     ok:             true,
@@ -919,6 +935,7 @@ function webGetStatus_() {
     lastRun:      formatDateVal_(lastRun),
     travelConfig: travelConfig,
     features:     features,
+    hiddenScreens: hiddenScreens,
     rosterLinks:  rosterLinks_(featureCfg),
   };
 }
@@ -12291,7 +12308,8 @@ function webGetNotificationMap_() {
       channel: channelOverride || n.channel, description: n.description,
       enabled: enabled, locked: n.locked, fixedChannel: !!n.fixedChannel,
       whileAway: notifWhileAway_(n.key),   // Away mode (#246): send | hold | due
-      delivery: notifDeliveryFrom_(n.key, config), kind: notifKind_(n.key)   // Where, and what it is (Notify.js, #250)
+      delivery: notifDeliveryFrom_(n.key, config), kind: notifKind_(n.key),   // Where, and what it is (Notify.js, #250)
+      offBy: (function() { try { var fk = typeof featureOffForNotif_ === 'function' ? featureOffForNotif_(n.key, config) : ''; var f = fk && featureByKey_(fk); return f ? f.n : ''; } catch (e) { return ''; } })()   // its feature is off (#254)
     };
   });
   return { ok: true, notifications: notifications };

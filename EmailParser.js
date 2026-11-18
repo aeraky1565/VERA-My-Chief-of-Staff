@@ -24,7 +24,7 @@ function runEmailScan_() {
   var _epStart = Date.now();
   try {
   const enabled = getConfigValues()['email_parser_enabled'];
-  if (enabled !== 'true') {
+  if (String(enabled || '').trim().toLowerCase() !== 'true') {   // Feature Flags writes TRUE (#254)
     veraLog_('runEmailScan', 'Email', 'Skipped', 'email_parser_enabled is not true', Date.now() - _epStart);
     return;
   }

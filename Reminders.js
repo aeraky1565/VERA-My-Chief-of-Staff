@@ -51,6 +51,7 @@ function hourlyCheck() {
   // nightly run (GymTracker.js; it skips sessions already in the Gym Log).
   try { gymEveningCheck_(new Date()); } catch (gymErr) { Logger.log('gymEveningCheck_ (non-fatal): ' + gymErr.message); }
   // VERA's own decision deadlines to #vera-act-now (Notify.js, #250). Never throws.
+  try { if (typeof featureResumePaused_ === 'function') featureResumePaused_(); } catch (frErr) {}   // "off until" dates that have come (#254)
   try { actNowVeraSync_(new Date()); } catch (anErr) {}
   try { actNowAgentsSync_(new Date()); } catch (anErr) {}   // HAILEY and TESS, read only (Notify.js)
   try {

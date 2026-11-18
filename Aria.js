@@ -805,6 +805,7 @@ function ariaSyncDue_(now, lastIso) {
 function maybeSyncAriaFlags_(now) {
   try {
     if (!ariaSheetId_()) return;
+    if (typeof featureOn_ === 'function' && !featureOn_('aria_sync')) return;   // off in Feature Flags (#254)
     var props = veraNotes_();   // a running note (Settings.js)
     if (!ariaSyncDue_(now || new Date(), props.getProperty('ARIA_FLAGS_SYNCED_AT'))) return;
     props.setProperty('ARIA_FLAGS_SYNCED_AT', new Date().toISOString());

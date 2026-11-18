@@ -14080,7 +14080,7 @@ var VN_GROUPS={
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
   system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents','guides']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health','agent_health','run_log','trip_ids','script_props']},
-    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags','people']}],
+    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','trip_emails','config','flags','feature_map','people']}],
   life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
     {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
   // dashboard-lite (Victoria): only what she uses, one tap down
@@ -14091,7 +14091,9 @@ var VN_GROUPS={
 // What this person may see (#218): set from whoami as {dash:'full'|'lite',hidden:{id:true}}; unset = everything.
 // Ids are '<dash>:<tab>' for a main tab and '<dash>:<menu>/<subtab>' for a subtab (the Access tab's Id column).
 var VERA_ACCESS=null;
-function veraCan_(id){var a=VERA_ACCESS;return !(a&&a.hidden&&a.hidden[a.dash+':'+id]);}
+// Screens whose feature is off in Settings › Feature Flags (#254): {'career':true,'health/fitness':true}, from /status.
+var VERA_FEATURE_OFF=null;
+function veraCan_(id){if(VERA_FEATURE_OFF&&VERA_FEATURE_OFF[id])return false;var a=VERA_ACCESS;return !(a&&a.hidden&&a.hidden[a.dash+':'+id]);}
 // The tabs this dashboard has, for the Access tab: mains [{id,label}] plus every menu's subtabs.
 function veraAccessCatalog_(dash,mains){var out=[],lab={};(mains||[]).forEach(function(m){lab[m.id]=m.label;out.push({id:dash+':'+m.id,area:m.label,tab:'(main tab)'});});
   Object.keys(VN_GROUPS).forEach(function(name){if((name.indexOf('lite_')===0)!==(dash==='lite'))return;var area=lab[name.replace(/^lite_/,'')]||name.replace(/^lite_/,'');

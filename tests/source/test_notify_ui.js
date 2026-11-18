@@ -18,6 +18,7 @@ const MAP = { ok: true, notifications: [
   N('aria_book_now', 'ARIA Book Now', 'Act now', { channel: 'vera-act-now', whileAway: 'send' }),
   N('act_now_vera', 'VERA Decision Deadline', 'Act now', { channel: 'vera-act-now', whileAway: 'due', kind: 'act' }),
   N('bill_due', 'Bill Due', 'Flags & Alerts', { channel: 'family-money', whileAway: 'due' }),
+  N('gym_checkin', 'Gym Check-in', 'Wellness Reminders', { kind: 'checkin', channel: 'vera-chat', delivery: 'off', offBy: 'Gym check-ins' }),
   N('nightly_log', 'Nightly Run Summary', 'System Logs', { locked: true, channel: 'vera-logs' }),
 ] };
 
@@ -65,6 +66,7 @@ const MAP = { ok: true, notifications: [
       const errText = await page.$eval('#nm .nm-err', n => n.innerText).catch(() => '');
       check(L + 'an out-of-date list reloads itself and says so, not "unknown key"', loadsAfter === loadsBefore + 1 && /out of date, so it was reloaded/.test(errText) && !/unknown key/.test(errText), loadsBefore + '→' + loadsAfter + ' ' + errText);
       await page.evaluate(() => { window.__stale = false; });
+      check(L + 'a row turned off by its feature says which (#254)', /Off because Gym check-ins is off in Feature Flags/.test(await page.$eval(row('gym_checkin'), n => n.innerText)));
       check(L + 'the hint names quiet hours and the cap', /quiet hours/.test(await page.$eval('#nm .nm-hint', n => n.innerText)) && /notif_daily_cap/.test(await page.$eval('#nm .nm-hint', n => n.innerText)));
     } catch (e) { check(L + 'the panel runs', false, e.message.split('\n')[0]); }
     const sw = await page.evaluate(() => document.documentElement.scrollWidth);

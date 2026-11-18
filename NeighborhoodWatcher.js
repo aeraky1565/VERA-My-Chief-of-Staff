@@ -28,6 +28,10 @@ function scanHoaWebsite_() {
   try { runLogStart_('scanHoaWebsite_', arguments[0]); } catch (rlErr) {}   // RunLog.js
   var _hoaStart = Date.now();
   try {
+    if (typeof featureOn_ === 'function' && !featureOn_('hoa_watch')) {   // off in Feature Flags (#254)
+      try { veraLog_('scanHoaWebsite', 'Home', 'Skipped', 'HOA website watch is off in Feature Flags', Date.now() - _hoaStart); } catch (vlErr) {}
+      return;
+    }
     var hoaUrl = veraSetting_(NEIGHBORHOOD_HOA_URL_KEY);
     if (!hoaUrl) {
       Logger.log('🏘 HOA URL not configured. Put the link in Config → neighborhood_hoa_url.');

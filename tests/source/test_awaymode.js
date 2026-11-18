@@ -228,7 +228,7 @@ console.log('\nThe endpoints');
   const t = ctx({ state: { VACATION_MODE_ACTIVE: 'true', VACATION_TRIP_NAME: '2026-11-10|Island Cruise', VACATION_MODE_ENDS: '2026-11-18' } });
   t.awayOpenFlags_ = () => [];
   check('the banner gets the trip’s name, not its key', run(t, 'awaySummary_()').trip === 'Island Cruise', J(run(t, 'awaySummary_()')));
-  check('the routes are wired', /case 'set_notif_while_away':\s*return jsonOut_\(webSetNotifWhileAway_\(e\)\)/.test(WEB) && /case 'away_status':\s*return jsonOut_\(webAwayStatus_\(\)\)/.test(WEB) && /case 'away_set':\s*return jsonOut_\(webAwaySet_\(body\)\)/.test(WEB));
+  check('the routes are wired', /case 'set_notif_while_away':\s*return jsonOut_\((peopleOwnerOnly_\(\) \|\| )?webSetNotifWhileAway_\(e\)\)/.test(WEB) && /case 'away_status':\s*return jsonOut_\(webAwayStatus_\(\)\)/.test(WEB) && /case 'away_set':\s*return jsonOut_\(webAwaySet_\(body\)\)/.test(WEB));
   check('the notification map carries the setting', /whileAway: notifWhileAway_\(n\.key\)/.test(fnSrc(WEB, 'webGetNotificationMap_')));
 }
 

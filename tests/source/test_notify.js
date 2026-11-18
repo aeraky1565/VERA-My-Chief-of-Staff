@@ -256,7 +256,7 @@ console.log('\nWiring');
   check('the morning email shows what was held, and clears it only after it goes', /notifHeldHtmlNow_\(\) : ''\) \+\s*\n\s*stalenessNotice/.test(CODE) && CODE.indexOf('notifHeldClear_()') > CODE.indexOf("sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');"));
   check('the nightly tail posts the count line', /sendSlackLog_\('📊 ' \+ notifCountLine_\(notifCounts_\(\)\.yesterday\)\)/.test(CODE));
   check('the weekend memo: email only, no Slack ping', !/Weekend memo is ready/.test(read('WeekendPlanner.js')) && /notifGate_\('weekend_memo'/.test(read('WeekendPlanner.js')));
-  check('Settings: a Where route; any Slack channel by name', /case 'set_notif_delivery':\s+return jsonOut_\(webSetNotifDelivery_\(e\)\);/.test(WEB) && /\^\[a-z0-9\]\[a-z0-9_-\]\{0,79\}\$/.test(WEB) && /id = '#' \+ name;/.test(SLACK));
+  check('Settings: a Where route; any Slack channel by name', /case 'set_notif_delivery':\s+return jsonOut_\((peopleOwnerOnly_\(\) \|\| )?webSetNotifDelivery_\(e\)\);/.test(WEB) && /\^\[a-z0-9\]\[a-z0-9_-\]\{0,79\}\$/.test(WEB) && /id = '#' \+ name;/.test(SLACK));
   check('the map reports each kind’s Where and what it is', /delivery: notifDeliveryFrom_\(n\.key, config\), kind: notifKind_\(n\.key\)/.test(WEB));
   check('the new settings have Config rows', ['morning_checkin_time', 'morning_checkin_weekend_time', 'evening_checkin_time', 'notif_quiet_start', 'notif_quiet_end', 'notif_daily_cap', 'movement_times', 'work_hours', 'movement_daily_cap', 'act_now_cap_aria', 'act_now_cap_vera'].every(k => CODE.indexOf("['" + k + "',") !== -1));
 }

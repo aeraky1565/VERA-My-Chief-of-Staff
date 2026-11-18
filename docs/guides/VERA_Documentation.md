@@ -1205,6 +1205,70 @@ What act-now has posted, and TESS's statuses, live in their own state bundle (`A
 
 A Notifications page left open across a release can list a kind the new server no longer has. Changing such a kind used to show "unknown key". The page now reloads the list instead, and asks you to make the change again.
 
+### Settings › Feature Flags, Config and Feature map (#254)
+
+These are three subtabs of **System › Settings**, next to Notifications, Trip emails and People & access. One list on the server (`FEATURES_` in `Features.js`, 46 features) drives all three. Only the owner can see or change Settings: the Config and Notifications routes refuse anyone else's sign-in.
+
+**Feature Flags.** Each feature is a real switch. It writes the Config row `<key>_enabled` (a missing row means on), and there's Undo. Group the list **by area** (Travel, Health, Home & food, Money, People & gifts, Work & career, Daily life, Assistants, System) or **by kind** (Screens, Emails & briefings, Background checks, Assistants, Housekeeping). There's a search, and filters for On / Off / Paused / Has settings / Victoria sees.
+
+Each row shows:
+- what the feature touches;
+- who sees it (shown only, not changed here);
+- when it last ran: from its nightly or morning steps (the `STEPS` state bundle) and its scheduled jobs' heartbeats.
+
+**Off means off everywhere**, from that one list:
+- **Steps:** `nightlyStep_` skips the feature's nightly and morning steps, and the run summary says "… is off in Feature Flags".
+- **Notifications:** `notifDeliveryFrom_` answers Off for its notifications. Their Settings › Notifications rows say why, and come back as they were when the feature is turned on.
+- **Scheduled jobs:** flight status, the USPS scan and the HOA watch return early. A flight refresh you ask for still runs. So do ARIA's sync, Away mode, the gym evening check and the Run Log.
+- **Screens:** `/status` lists the screens to hide (`hiddenScreens`), and the dashboard leaves them out (`veraCan_`). Today that's Career, PTO planner, Fitness, Morning Routine, Family wish lists and Notes, including the Jot tile and Home's notes card.
+
+Turning off a bigger feature asks first, listing exactly what stops. Risky ones (Run log, Agent health, Flight status, Memory log, Notes) warn in red.
+
+Two more states:
+- **Blocked:** a feature that needs another (Gym check-ins needs Fitness; Sleep tips needs the Travel Day email) shows "Off · needs …" while that one is off. It keeps its own switch and comes back with it.
+- **Off until a date:** writes `<key>_enabled = FALSE` plus `<key>_paused_until`, so code that reads the switch directly sees it off. The hourly check turns it back on when the date comes.
+
+**A feature's own settings** (cadence, thresholds, caps) are on its row under ⚙, saved through `set_feature_setting`, with each value checked by type.
+
+Some moved there from Config:
+- `pretrip_briefing_hours`, `posttrip_capture_delay_days`, `flight_status_poll_minutes`;
+- the Fitness target and slow-week day, `movement_times` and the check-in times;
+- the act-now caps, the TESS bar and ARIA's minimum saving;
+- the weekend planner hour, and others.
+
+Some are new:
+- `posttrip_recap_delay_days`: when the recap email goes (default: a day after the nudge);
+- `gym_checkin_hours`: when the evening gym check runs (default `18-23`);
+- `run_log_keep_days`: how long the Run Log keeps rows (default 30).
+
+**Config.** The settings that belong to no single feature, grouped: Linked files, Calendars, Slack & email, Places & home, Time off, Words VERA looks for, General, and Everything else (any row nothing else owns, editable as it is). Every field is editable in the page. Each kind of setting has an editor that fits it:
+- **Linked files:** cards with the file's name, whether VERA can open it (`config_files`), Open and Change.
+- **Slack channels:** cards with Send a test (`config_slack_test`).
+- **Calendars:** one grid, calendars down the side and roles across: Skip, Free time, Victoria's, Life, Bills, Weekend. Skip greys out the rest of the row. You can add a calendar VERA can see (`config_calendars`), take one out of every list, and name it (`calendar_label:*`).
+- **Keyword lists:** chips.
+- **Airport times:** a small table.
+- **PTO:** both of you side by side.
+
+IDs and email addresses stay masked until you tap Show.
+
+Each entry lists:
+- **Used by** (features, linking to Feature Flags), **Needs** and **Needed by**;
+- an **Unused right now** badge when every feature that uses it is off;
+- a **Config line** fold with the raw row(s).
+
+"Need a look" collects placeholders left in (such as `PASTE_…`) and files VERA can't open. Rows VERA no longer reads (the old desk / water break and calendar-opportunity notification rows, `travel_companions`) aren't listed. `purgeRetiredConfig_`, a nightly housekeeping step, deletes them.
+
+**Feature map.** A drawn graph in three columns:
+- **Reads from:** Config entries, plus outside sources (agent sheets, Gmail, the HOA site, flight data, the Trips tabs);
+- **Features:** grouped by area;
+- **Where you see it:** dashboard screens, the morning email, other emails, each Slack channel, Flags, Google Calendar, VERA's sheets.
+
+"Needs" links are dashed red, and features that are off are dashed with faded paths. Tap a box to light up its paths:
+- for a feature, a panel lists Reads from / Needs / Needed by / Shows up in;
+- for a setting or source, it lists every feature that would lose it if it broke.
+
+Area chips narrow the map, and each box sits level with what it connects to.
+
 **ARIA's price drop after booking.** ARIA used to stop pricing a trip once it was booked.
 
 What VERA does:

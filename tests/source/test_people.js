@@ -235,7 +235,7 @@ console.log('\nThe dashboards');
     const cat = (APP.match(/var VERA_LITE_MAIN_TABS=\[(.*?)\];/) || [])[1] || '';
     return J(liteIds) === J((cat.match(/id:'([a-z_]+)'/g) || []).map(x => x.slice(4, -1)));
   })());
-  check('System › Settings › People & access', /\{id:'people',label:'👥 People & access'\}/.test(APP) && /cur==='people'&&h\(SysPeople,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) && /items:\['notifications','trip_emails','config','flags','people'\]/.test(APP));
+  check('System › Settings › People & access', /\{id:'people',label:'👥 People & access'\}/.test(APP) && /cur==='people'&&h\(SysPeople,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) && /items:\['notifications','trip_emails','config','flags','feature_map','people'\]/.test(APP));
   check('sign-in asks for a code, and no token prefix is shown any more', /"Your sign-in code"/.test(APP) && /Your sign-in code/.test(LITE) && !/vera-b479/.test(APP) && !/vera-b479/.test(LITE));
 }
 

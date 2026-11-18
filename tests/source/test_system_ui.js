@@ -18,7 +18,7 @@ check('the settings window is retired', !/NotifSettingsModal|setNotifSettingsOpe
 check('🔔 opens System on Notifications', /onClick:\(\)=>\{setSystemSub\('notifications'\);setActiveTab\('system'\);loadResources\(apiUrl,apiToken\);\}/.test(APP));
 check('System is a top tab, and opening it loads the documents', /\{id:'life',label:'Life'\},\{id:'system',label:'System'\}\];/.test(APP) && /VERA_MAIN_TABS\.map\(t=>t\.id\)\.filter\(tab=>veraCan_\(tab\)\)\.map\(tab=>/.test(APP) && /if\(tab==='system'\)\{loadResources\(apiUrl,apiToken\);\}/.test(APP) && /tab==='system'\?`🛠 System`/.test(APP));
 check('Documents load with their used-by lines', /apiGet\(url,token,\{action:'system_documents'\}\)/.test(APP));
-check('Home no longer has the Feature Flags or Milestones cards', !/"⚙️ Feature Flags"/.test(fnBody(APP, 'HomeTab')) && !/onNavigate\('milestones'\)/.test(fnBody(APP, 'HomeTab')) && /"⚙️ Feature Flags"/.test(fnBody(APP, 'SysFeatureFlags')));
+check('Home no longer has the Feature Flags or Milestones cards', !/"⚙️ Feature Flags"/.test(fnBody(APP, 'HomeTab')) && !/onNavigate\('milestones'\)/.test(fnBody(APP, 'HomeTab')) && /action:'feature_flags'/.test(fnBody(APP, 'SysFeatureFlags')));
 check('Home’s Projects tile names the active projects, or says there are none (the mockup’s tile)', /title:'Projects',lines:t\.lines/.test(fnBody(APP, 'HomeTab')) && /\['No active projects'\]/.test(APP));
 check('the ⚙ connection settings stay', /className:"btn-settings",onClick:\(\)=>setShowSettings\(true\)/.test(APP));
 
@@ -56,7 +56,7 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     await wait(300);
     const txt = sel => page.$eval('#sysprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
     const tiles = await page.$$eval('#sysprobe .vn-tile', ns => ns.map(n => n.textContent + ': ' + n.title));
-    check(L + ': three groups: Reference, Checks, Settings', JSON.stringify(tiles) === JSON.stringify(['📖Reference: 🤖 Assistants · 📚 Documents · 📘 Guides', '🧪Checks: 🧪 Test · 🩺 API health · 🤖 Agent health · 🗒️ Run log · 🧳 Trip IDs · 🔑 Script Properties', '⚙️Settings: 🔔 Notifications · ✉️ Trip emails · ⚙️ Config · 🚩 Feature Flags · 👥 People & access']), JSON.stringify(tiles));
+    check(L + ': three groups: Reference, Checks, Settings', JSON.stringify(tiles) === JSON.stringify(['📖Reference: 🤖 Assistants · 📚 Documents · 📘 Guides', '🧪Checks: 🧪 Test · 🩺 API health · 🤖 Agent health · 🗒️ Run log · 🧳 Trip IDs · 🔑 Script Properties', '⚙️Settings: 🔔 Notifications · ✉️ Trip emails · ⚙️ Config · 🚩 Feature Flags · 🕸️ Feature map · 👥 People & access']), JSON.stringify(tiles));
     check(L + ': opens on Assistants, in Reference', (await txt('.vn-chips .subtab-btn.active')) === '🤖 Assistants' && (await txt('.vn-tile.on')) === '📖 Reference');
     await clickTab0('📚 Documents'); await wait(150);
     const used = await page.$$eval('#sysprobe .sys-used-by', ns => ns.map(n => n.textContent));
@@ -70,8 +70,10 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     await clickTab('🤖 Assistants'); await wait(200);
     check(L + ': Assistants shows the roster', /VERA/.test(await txt('')) && /TESS/.test(await txt('')));
     await clickTab('🚩 Feature Flags'); await wait(200);
-    const flags = await txt('.sys-flags');
-    check(L + ': Feature Flags shows tabs and features, on and off', /Feature Flags/i.test(flags) && /Tabs/i.test(flags) && /📦 Pantry/.test(flags) && /📅 Weekend Planner/.test(flags), flags.slice(0, 120));
+    const flags = await txt('.ff');
+    check(L + ': Feature Flags asks the server for every feature, with its switches (#254)', (await page.evaluate(() => window.__calls)).includes('feature_flags') && /Turn a feature off/.test(flags), flags.slice(0, 120));
+    await clickTab('🕸️ Feature map'); await wait(200);
+    check(L + ': Feature map is a Settings subtab (#254)', !!(await page.$('#sysprobe .fm')));
     await clickTab('🧪 Test'); await wait(200);
     check(L + ': Test mounts the test emails panel', (await page.$('#sysprobe .test-emails')) !== null);
     check(L + ': buttons big enough to tap', await page.$$eval('#sysprobe .vn-tile, #sysprobe .vn-chips .subtab-btn', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
