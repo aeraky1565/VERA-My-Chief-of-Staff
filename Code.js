@@ -1407,6 +1407,8 @@ function nightlyRun() {
 
     // Step 0g: Post-trip capture prompts (Issue #87)
     nightlyStep_(ctx, 'checkPostTripCapture_', checkPostTripCapture_);
+    // Finished trips become Visited in Travel › Countries, linked to the trip (Places.js, #251)
+    nightlyStep_(ctx, 'plCloseEndedTrips_', function() { return plCloseEndedTrips_(10); });
 
     // Step 0h: Reset morning routine checkboxes for the new day
     nightlyStep_(ctx, 'morningRoutineReset', function() {

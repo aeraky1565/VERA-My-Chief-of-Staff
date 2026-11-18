@@ -2249,7 +2249,7 @@ list, both pre-trip emails and the travel-day narrative. Where the two conflict,
 the generators are told the briefing wins. Set it in the Travel tab or from chat
 with `set_trip_briefing`; `dashboard-lite` shows it read-only.
 | PackingItems | `PACKING_ITEMS` | Per-trip packing list | User + chat + AI managed |
-| Countries | `COUNTRIES` | Countries visited (Ahmed + Victoria) | User + chat managed |
+| Countries | `COUNTRIES` | Countries visited (Ahmed + Victoria). A finished trip adds a row per country stayed in, linked by Trip Key (#251) | User + chat + nightly |
 | Bucket List | `BUCKET_LIST` | Travel dream destinations | User + chat managed |
 | TripRecommendations | `TRIP_RECOMMENDATIONS` | AI-generated activity/dining recs | Generated on demand |
 | Processed Emails | `PROCESSED_EMAILS` | Email parser dedup + outcome log | Auto-managed by EmailParser |
@@ -2838,7 +2838,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `SheetStyle.js` | The VERA sheet's look as a script (#235): `styleVeraSheet()`, run by hand from the editor, re-applies headers, banding, tab colours and order, column formats and colour rules; never writes a value or moves a column; new tabs get it from `ensureSheet` |
 | `TravelerProfiles.js` · `TripReadiness.js` | Traveller documents, trusted traveller, memberships, preferences, health (last 4 digits only); per-traveller trip readiness (`trdReadiness_`) (#227) |
 | `Luggage.js` · `LeavingHome.js` · `PackPlus.js` | Bag advice and Our bags (#230); leaving-home checklists and Heading out (#231); enriched packing: statuses, staples, outfits, buy list, checkout, review (#234) |
-| `TripGifts.js` · `Places.js` · `BucketPlus.js` | Gifts per trip; Countries and the Bucket List with best months, points and long weekends (#227, #228) |
+| `TripGifts.js` · `Places.js` · `BucketPlus.js` | Gifts per trip; Countries and the Bucket List with best months, points and long weekends (#227, #228); finished trips become Visited: each country you stayed in (layovers and home left out), the year it ended, who went, linked by Trip Key, once per trip so a deleted row stays deleted; past trips catch up a few per run (`plCloseEndedTrips_`, nightly and on opening Places, #251) |
 | `GroceryRun.js` · `Groceries.js` | Log a grocery run from a receipt; grocery runs and spend (#229) |
 | `Budget.js` · `BillSchedule.js` · `FinSummary.js` · `PhonePlan.js` · `PlannedPurchases.js` · `PlannerGoals.js` · `NetWorth.js` | Finances: budget + What-if, bills & cashflow, summary + quarterly check-in, phone plan, big buys, planner goals and net worth (#224–#226) |
 | `FamilyPlanning.js` · `Cycle.js` | One shared family plan; the cycle tracker under Trying |

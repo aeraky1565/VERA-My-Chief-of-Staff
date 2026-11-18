@@ -127,6 +127,46 @@ function plUpcoming_(rows, today) {
   }).sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; }).slice(0, 6);
 }
 
+/**
+ * Trips that have ended and haven't been closed into Countries yet (#251): active, labelled,
+ * ended before today, not in done (tripId → true). Oldest first, so a catch-up walks forward.
+ */
+function plEndedTrips_(rows, today, done) {
+  return (rows || []).filter(function(r) {
+    if (r.status !== 'active' || !r.startDate || !r.label) return false;
+    if ((r.endDate || r.startDate) >= today) return false;
+    return !(done || {})[r.tripId || (r.startDate + '|' + r.label)];
+  }).sort(function(a, b) { return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0; });
+}
+
+/** Who went, as the Countries Traveller column says it: both of you → Both; one of you → that name; unknown → Both. */
+function plTravellerFor_(travellers, owner, partner) {
+  var has = function(n) { return (travellers || []).some(function(t) { return String(t).trim().toLowerCase() === String(n).trim().toLowerCase(); }); };
+  var o = has(owner), p = has(partner);
+  if (o && !p) return owner;
+  if (p && !o) return partner;
+  return 'Both';
+}
+
+/**
+ * The Countries rows a finished trip adds: one per country you stayed in, unless that country is
+ * already recorded for this trip (by hand or by a bucket-list place). countries: [{country, role}].
+ */
+function plVisitRowsFor_(trip, countries, have, traveller, stamp) {
+  var key = trip.startDate + '|' + trip.label, year = Number(String(trip.endDate || trip.startDate).slice(0, 4));
+  var seen = {};
+  (have || []).forEach(function(v) { if (String(v['Trip Key'] || '') === key) seen[String(v.Country).trim().toLowerCase()] = true; });
+  var out = [];
+  (countries || []).forEach(function(c, i) {
+    if (!c || c.role !== 'stay') return;
+    var n = String(c.country || '').trim();
+    if (!n || seen[n.toLowerCase()]) return;
+    seen[n.toLowerCase()] = true;
+    out.push(['c_' + stamp + '_' + i, n, '', year, traveller || 'Both', key, '', '']);
+  });
+  return out;
+}
+
 /** Activities rows (with headers) → {bucketId: [{id, activity, done}]} in sheet order. */
 function plActivitiesBy_(rows) {
   var out = {};
@@ -254,6 +294,29 @@ function plMoveOccasionsOnce_() {
   });
 }
 
+/**
+ * A reader of the countries a trip touches, from its itinerary (flights and addresses, no
+ * geocoding): fn(trip) → [{country, role}]. Throws when the itinerary can't be read. Shared by
+ * Planned and by closing finished trips, so a trip ends up Visited in the countries it was Planned in.
+ */
+function plTripCountryReader_(cache) {
+  var countryNames = {};
+  try { passportIndexCsv_().split('\n')[0].split(',').slice(1).forEach(function(h) { if (h.trim()) countryNames[visaNorm_(h)] = h.trim(); }); } catch (e) {}
+  var memo = {};
+  var airportCountry = function(code) {
+    if (!/^[A-Z]{3}$/.test(code || '')) return '';
+    if (memo[code] !== undefined) return memo[code];
+    var c = cache.get('iata_country_' + code);
+    if (c === null) { c = resolveIataCountry_(code, null) || ''; cache.put('iata_country_' + code, c, 21600); }
+    return (memo[code] = c);
+  };
+  var home = String(getConfigValues()['home_country'] || 'United States');
+  return function(t) {
+    var items = tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate || t.startDate, 'places');
+    return tripCountries_(items, countryNames, airportCountry, home, null);
+  };
+}
+
 /** Countries on upcoming trips: [{country, tripKey, label, startDate, endDate}]. Cached 6 hours. */
 function plPlanned_() {
   var cache = CacheService.getScriptCache();
@@ -263,22 +326,11 @@ function plPlanned_() {
   var trips = plUpcoming_((readTripRegistry_().rows || []), today);
   var out = [];
   if (trips.length) {
-    var countryNames = {};
-    try { passportIndexCsv_().split('\n')[0].split(',').slice(1).forEach(function(h) { if (h.trim()) countryNames[visaNorm_(h)] = h.trim(); }); } catch (e) {}
-    var memo = {};
-    var airportCountry = function(code) {
-      if (!/^[A-Z]{3}$/.test(code || '')) return '';
-      if (memo[code] !== undefined) return memo[code];
-      var c = cache.get('iata_country_' + code);
-      if (c === null) { c = resolveIataCountry_(code, null) || ''; cache.put('iata_country_' + code, c, 21600); }
-      return (memo[code] = c);
-    };
-    var home = String(getConfigValues()['home_country'] || 'United States');
+    var read = plTripCountryReader_(cache);
     trips.forEach(function(t) {
       var key = t.startDate + '|' + t.label;
       try {
-        var items = tripItemsFor_(key, t.startDate, t.endDate || t.startDate, 'places');
-        tripCountries_(items, countryNames, airportCountry, home, null).forEach(function(c) {
+        read(t).forEach(function(c) {
           if (c.role !== 'stay') return;
           out.push({ country: c.country, tripKey: key, label: t.label, startDate: t.startDate, endDate: t.endDate || t.startDate });
         });
@@ -289,12 +341,54 @@ function plPlanned_() {
   return out;
 }
 
+/**
+ * Finished trips become Visited (#251). Each trip that has ended adds a Countries row for every
+ * country you stayed in (layovers and home left out), linked by Trip Key, with the year it ended and
+ * who went. Each trip is closed once: its ID goes in the running note PL_TRIPS_CLOSED_, so a row you
+ * delete stays deleted. Past trips catch up the same way, oldest first, max trips per call, so the
+ * first runs after this change work through the backlog. A trip whose itinerary can't be read is
+ * left for the next run. Returns how many rows were added.
+ */
+var PL_TRIPS_CLOSED_ = 'pl_trips_closed';
+function plCloseEndedTrips_(max) {
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var done = {};
+  try { done = JSON.parse(veraNoteGet_(PL_TRIPS_CLOSED_) || '{}') || {}; } catch (e) { done = {}; }
+  var trips = plEndedTrips_(readTripRegistry_().rows || [], today, done).slice(0, max || 5);
+  if (!trips.length) return 0;
+  var read = plTripCountryReader_(CacheService.getScriptCache());
+  var found = [];
+  trips.forEach(function(t) {
+    try { found.push({ trip: t, countries: read(t) }); }
+    catch (e) { Logger.log('plCloseEndedTrips_: ' + t.label + ' — ' + e.message); }
+  });
+  if (!found.length) return 0;
+  var owner = typeof TE_OWNER_ !== 'undefined' ? TE_OWNER_ : '', partner = typeof TE_PARTNER_ !== 'undefined' ? TE_PARTNER_ : '';
+  return plLocked_(function() {
+    var cs = plCountriesSheet_();
+    var have = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
+    var added = 0;
+    found.forEach(function(f, n) {
+      var who = [];
+      try { who = typeof teTravellersForKey_ === 'function' ? teTravellersForKey_(f.trip.startDate + '|' + f.trip.label) : []; } catch (e) { who = []; }
+      plVisitRowsFor_(f.trip, f.countries, have, plTravellerFor_(who, owner, partner), Date.now() + '_' + n).forEach(function(row) {
+        cs.appendRow(row); added++;
+        have.push({ Country: row[1], 'Trip Key': row[5] });
+      });
+      done[f.trip.tripId || (f.trip.startDate + '|' + f.trip.label)] = true;
+    });
+    veraNoteSet_(PL_TRIPS_CLOSED_, JSON.stringify(done));
+    return added;
+  });
+}
+
 // ---- endpoint -----------------------------------------------------------------
 
 /** GET places → {visits, bucket, planned, notes, occasions, picks}. */
 function webGetPlaces_() {
   plMoveOccasionsOnce_();
   try { plCloseVisited_(); } catch (e) { Logger.log('webGetPlaces_: close visited — ' + e.message); }
+  try { plCloseEndedTrips_(3); } catch (e) { Logger.log('webGetPlaces_: close ended trips — ' + e.message); }
   var ss = getSpreadsheet();
   var cs = plCountriesSheet_();
   var visits = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];

@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_places_out');
 
-const FILES = ['Places.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['Places.js', 'Code.js', 'WebApp.js', 'TripIdeas.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -38,6 +38,16 @@ const CONTROLS = [
   ['trip notes are not shown', full("c.notes?h('div',{className:'pc-notes'", "false?h('div',{className:'pc-notes'")],
   ['Add a visit doesn’t reload', full("then(function(){setAdding(false);load();});", "then(function(){setAdding(false);});")],
   ['the view isn’t remembered', full("setView(v);try{localStorage.setItem('vera_countries_view',v);}catch(e){}", "setView(v);")],
+  // #251: finished trips become Visited
+  ['a trip still under way is closed', srv("if ((r.endDate || r.startDate) >= today) return false;", "if (false) return false;"), SRV],
+  ['layovers become visits', srv("if (!c || c.role !== 'stay') return;", "if (!c) return;"), SRV],
+  ['a country already recorded for the trip is added again', srv("if (!n || seen[n.toLowerCase()]) return;", "if (!n) return;"), SRV],
+  ['closed trips aren’t remembered', srv("done[f.trip.tripId || (f.trip.startDate + '|' + f.trip.label)] = true;", ""), SRV],
+  ['an itinerary that can’t be read counts as closed', srv("catch (e) { Logger.log('plCloseEndedTrips_: ' + t.label + ' — ' + e.message); }", "catch (e) { found.push({ trip: t, countries: [] }); }"), SRV],
+  ['the catch-up starts with the newest trip', srv("}).sort(function(a, b) { return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0; });\n}\n\n/** Who went", "}).sort(function(a, b) { return a.startDate < b.startDate ? 1 : -1; });\n}\n\n/** Who went"), SRV],
+  ['every visit says Both', srv("  if (o && !p) return owner;\n  if (p && !o) return partner;\n", ""), SRV],
+  ['opening Places doesn’t close trips', srv("  try { plCloseEndedTrips_(3); }", "  try { 0; }"), SRV],
+  ['the nightly run doesn’t close trips', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'plCloseEndedTrips_', function() { return plCloseEndedTrips_(10); });\n", "") }), SRV],
 ];
 
 const HAS_BROWSER = (() => {

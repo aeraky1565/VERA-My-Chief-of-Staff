@@ -49,7 +49,8 @@ function ctx(o) {
     passportIndexCsv_: () => 'Passport,Portugal,Costa Rica,Spain\n',
     visaNorm_: s => String(s).trim().toLowerCase(),
     resolveIataCountry_: code => ({ LIS: 'Portugal', OPO: 'Portugal', SJO: 'Costa Rica', EWR: 'United States' })[code] || '',
-    tripItemsFor_: key => (o.items || {})[key] || [],
+    tripItemsFor_: key => { if ((o.unreadable || []).indexOf(key) !== -1) throw new Error('itinerary unavailable'); return (o.items || {})[key] || []; },
+    TE_OWNER_: 'Alex', TE_PARTNER_: 'Sam', teTravellersForKey_: key => (o.who || {})[key] || [],
     tripCountries_: (items, names, airport) => items.map(it => ({ country: airport(it.code), role: it.role || 'stay' })).filter(x => x.country && x.country !== 'United States'),
     lfViews_: () => o.views || { places: [], things: [], lessons: [] },
     TRIP_IDEAS_HEADERS: ['Idea ID', 'Title'], tiIdeasSheet_: () => null, tiRows_: () => (o.ideas || []).map(i => [i.id, i]), tiIdeaFromRow_: r => r[1],
@@ -225,6 +226,58 @@ console.log('\nafter the trip');
   check('a visit is added for Lisbon, with its occasion; Porto already had one', cs.length === 3 && cs[2][1] === 'Portugal' && cs[2][2] === 'Lisbon' && cs[2][5] === '2027-06-12|Lisbon & Porto' && cs[2][7] === '10th anniversary', JSON.stringify(cs));
   s.webGetPlaces_();
   check('…and only once', s.__sheets.Countries.rows.length === 3);
+}
+
+console.log('\nfinished trips become Visited (#251)');
+{
+  const c = ctx();
+  const rows = [
+    { tripId: 'T3', status: 'active', startDate: '2027-03-01', endDate: '2027-03-08', label: 'Later one' },
+    { tripId: 'T1', status: 'active', startDate: '2026-05-01', endDate: '2026-05-09', label: 'Earlier one' },
+    { tripId: 'T2', status: 'active', startDate: '2027-06-28', endDate: '2027-07-04', label: 'Still going' },
+    { tripId: 'T4', status: 'cancelled', startDate: '2026-02-01', endDate: '2026-02-05', label: 'Cancelled' },
+    { tripId: 'T5', status: 'active', startDate: '2026-08-01', endDate: '2026-08-04', label: 'Already closed' },
+  ];
+  check('ended trips: active, over before today, not already closed, oldest first', c.plEndedTrips_(rows, '2027-07-01', { T5: true }).map(t => t.tripId).join() === 'T1,T3');
+  check('a trip ending today is still under way', c.plEndedTrips_([{ tripId: 'X', status: 'active', startDate: '2027-06-28', endDate: '2027-07-01', label: 'x' }], '2027-07-01', {}).length === 0);
+  check('who went: both → Both, one of you → that name, unknown → Both', c.plTravellerFor_(['Alex', 'Sam'], 'Alex', 'Sam') === 'Both' && c.plTravellerFor_(['sam '], 'Alex', 'Sam') === 'Sam'
+    && c.plTravellerFor_(['Alex', 'Kit Moreno'], 'Alex', 'Sam') === 'Alex' && c.plTravellerFor_([], 'Alex', 'Sam') === 'Both');
+  const trip = { startDate: '2027-06-12', endDate: '2027-06-22', label: 'Lisbon & Porto' };
+  const add = c.plVisitRowsFor_(trip, [{ country: 'Portugal', role: 'stay' }, { country: 'Spain', role: 'layover' }, { country: 'portugal', role: 'stay' }, { country: 'Morocco', role: 'stay' }],
+    [{ Country: 'Morocco', 'Trip Key': '2027-06-12|Lisbon & Porto' }, { Country: 'Portugal', 'Trip Key': '2019-04-01|Old trip' }], 'Sam', 's');
+  check('rows: each stayed-in country once, layovers out, one already recorded for this trip skipped', J(add.map(r => r[1])) === J(['Portugal']), J(add));
+  check('row shape: country, no city, the year it ended, who went, linked by Trip Key', J(add[0].slice(1)) === J(['Portugal', '', 2027, 'Sam', '2027-06-12|Lisbon & Porto', '', '']));
+}
+{
+  const reg = [
+    { tripId: 'TRIP-A', status: 'active', startDate: '2026-04-02', endDate: '2026-04-10', label: 'Lisbon & Porto' },
+    { tripId: 'TRIP-B', status: 'active', startDate: '2026-09-10', endDate: '2026-09-18', label: 'Costa Rica' },
+    { tripId: 'TRIP-C', status: 'active', startDate: '2027-02-10', endDate: '2027-02-18', label: 'Future' },
+  ];
+  const s = ctx({ today: '2026-11-18', registry: reg,
+    items: { '2026-04-02|Lisbon & Porto': [{ code: 'LIS' }, { code: 'OPO' }, { code: 'EWR' }], '2026-09-10|Costa Rica': [{ code: 'SJO' }], '2027-02-10|Future': [{ code: 'SJO' }] },
+    who: { '2026-04-02|Lisbon & Porto': ['Sam'], '2026-09-10|Costa Rica': ['Alex', 'Sam'] },
+    visits: [['c1', 'Italy', 'Rome', 2023, 'Both', '', '', '']] });
+  const r = s.webGetPlaces_();
+  const cs = () => s.__sheets.Countries.rows.slice(1);
+  const got = cs().map(v => v[1] + '|' + v[3] + '|' + v[4] + '|' + v[5]);
+  check('opening Places closes finished trips: Portugal (Sam) and Costa Rica (Both), home left out, linked to each trip', J(got) === J(['Italy|2023|Both|', 'Portugal|2026|Sam|2026-04-02|Lisbon & Porto', 'Costa Rica|2026|Both|2026-09-10|Costa Rica']), J(got));
+  check('…and they come back in the same answer as visits', r.visits.some(v => v.Country === 'Costa Rica' && v['Trip Key'] === '2026-09-10|Costa Rica'));
+  check('the trip still to come stays Planned, not Visited', r.planned.length === 1 && r.planned[0].country === 'Costa Rica' && r.planned[0].label === 'Future' && !cs().some(v => v[5] === '2027-02-10|Future'));
+  s.webGetPlaces_();
+  check('each trip is closed once', cs().length === 3);
+  s.__sheets.Countries.rows.splice(2, 1);
+  s.webGetPlaces_();
+  check('a row you delete stays deleted', cs().length === 2 && !cs().some(v => v[1] === 'Portugal'));
+}
+{
+  const reg = [1, 2, 3, 4].map(i => ({ tripId: 'T' + i, status: 'active', startDate: '2025-0' + i + '-01', endDate: '2025-0' + i + '-05', label: 'Trip ' + i }));
+  const items = {}; reg.forEach(t => { items[t.startDate + '|' + t.label] = [{ code: 'LIS' }]; });
+  const s = ctx({ today: '2026-11-18', registry: reg, items, unreadable: ['2025-02-01|Trip 2'] });
+  check('past trips catch up, oldest first, a few per call; one that can’t be read is left for later', s.plCloseEndedTrips_(3) === 2 && s.__sheets.Countries.rows.slice(1).map(v => v[5]).join() === '2025-01-01|Trip 1,2025-03-01|Trip 3', J(s.__sheets.Countries.rows));
+  s.__o.unreadable = [];
+  check('…the next call picks up the rest', s.plCloseEndedTrips_(3) === 2 && s.__sheets.Countries.rows.length === 5);
+  check('the nightly run closes finished trips too', /nightlyStep_\(ctx, 'plCloseEndedTrips_', function\(\) \{ return plCloseEndedTrips_\(10\); \}\);/.test(CODE));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
