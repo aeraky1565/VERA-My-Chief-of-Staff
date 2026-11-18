@@ -91,8 +91,8 @@ console.log('\nnotifWhileAway_: the setting, and its default');
   const reg = run(ctx(), 'NOTIF_REGISTRY');
   check('every registry row has a valid setting', reg.length > 30 && reg.every(r => ['send', 'hold', 'due'].indexOf(r.whileAway) !== -1), reg.filter(r => ['send', 'hold', 'due'].indexOf(r.whileAway) === -1).map(r => r.key).join(','));
   const by = p => reg.filter(r => r.whileAway === p).map(r => r.key).sort();
-  check('the agreed "send" list: travel, ARIA Book now, the system logs and watchdog, the morning email',
-        J(by('send')) === J(['aria_book_now', 'error_alerts', 'leave_home', 'morning_briefing', 'nightly_log', 'packing_reminder', 'pretrip_briefing', 'travel_day_briefing', 'travel_docs', 'watchdog_email', 'watchdog_flag', 'watchdog_slack']), J(by('send')));
+  check('the agreed "send" list: travel, ARIA Book now and its price drop after booking (#250), the system logs and watchdog, the morning email',
+        J(by('send')) === J(['aria_book_now', 'aria_price_drop', 'error_alerts', 'leave_home', 'morning_briefing', 'nightly_log', 'packing_reminder', 'pretrip_briefing', 'travel_day_briefing', 'travel_docs', 'watchdog_email', 'watchdog_flag', 'watchdog_slack']), J(by('send')));
   check('the agreed "due" list: VERA’s act-now deadlines (#250), High flags, bills, contracts, coupons, vehicle renewals (#245), the PTO plan (#248)', J(by('due')) === J(['act_now_vera', 'bill_due', 'contract_expiry', 'coupon_expiry', 'flag_high', 'pto_strategy', 'vehicle_renewals']), J(by('due')));
 }
 

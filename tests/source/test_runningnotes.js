@@ -140,7 +140,7 @@ console.log('\nthe writers use the store');
   check('the image dedupe, and Slack’s trail in its bundle', has('Slack.js', /veraNoteGet_\(dedupKey\)/) && has('Slack.js', /veraNoteSet_\(dedupKey, String\(Date\.now\(\)\)\);/)
         && !/PropertiesService\.getScriptProperties\(\)\.setProperty\('SLACK_/.test(src('Slack.js') + src('WebApp.js')) && /var props = veraStateProps_\('SLACK'\);/.test(fnSrc(WEB, 'webDebugSlack_')));
   check('a place’s climate', /var props = veraNotes_\(\), kept = null;/.test(fnSrc(read('TripIdeas.js'), 'tiClimate_')));
-  check('ARIA’s sync stamp and posts', /var props = veraNotes_\(\)/.test(fnSrc(read('Aria.js'), 'maybeSyncAriaFlags_')) && (read('Aria.js').match(/var props = veraNotes_\(\)/g) || []).length === 2);
+  check('ARIA’s sync stamp, its Book now posts and its price-drop posts (#250)', /var props = veraNotes_\(\)/.test(fnSrc(read('Aria.js'), 'maybeSyncAriaFlags_')) && /var props = veraNotes_\(\), posted = \[\];\n  try \{ posted = JSON\.parse\(props\.getProperty\(ARIA_REBOOK_POSTED_PROP_\)/.test(read('Aria.js')) && (read('Aria.js').match(/var props = veraNotes_\(\)/g) || []).length === 3);
   check('Coming up, Life, Growth histories', /veraNoteGet_\(CU_DONE_PROP_\)/.test(read('ComingUp.js')) && /veraNoteSet_\(CU_DONE_PROP_,/.test(read('ComingUp.js'))
         && /veraNoteGet_\(LF_WISHES_PROP_\)/.test(read('Life.js')) && /veraNoteSet_\(LG_DIDIT_PROP_,/.test(read('LifeGrowth.js')) && /veraNoteSet_\(LG_TIME_PROP_,/.test(read('LifeGrowth.js')));
   check('the sheet styling progress and the email admin window', /var props = veraNotes_\(\);/.test(read('SheetStyle.js')) && /var props = veraNotes_\(\);/.test(fnSrc(read('EmailAdmin.js'), 'runEmailAdmin_')));
