@@ -43,7 +43,7 @@ const CONTROLS = [
   ['the flight check isn’t logged', on('FlightStatus.js', "  try { runLogStart_('checkFlightStatuses_', forceRefresh); } catch (rlErr) {}", ''), SRV],
   ['steps aren’t reported', on('Code.js', '  try { runLogStep_(ctx, name); } catch (rlErr) {}\n', ''), SRV],
   ['veraLog_ doesn’t pass on the verdict', on('VERALog.js', '  try { runLogNote_(routine, status, summary, error); } catch (rlErr) {}', ''), SRV],
-  ['gym check-ins run all day', on('GymTracker.js', 'return hour >= 18 && hour <= 23;', 'return true;'), SRV],
+  ['gym check-ins run all day', on('GymTracker.js', 'return r ? hour >= r.from && hour <= r.to : hour >= 18 && hour <= 23;', 'return true;'), SRV],
   ['hourlyCheck doesn’t look for workouts', on('Reminders.js', '  try { gymEveningCheck_(new Date()); }', '  try { 0; }'), SRV],
   ['the screen doesn’t say where a run stopped', full("'Cut off'+(r.step?' during '", "'Cut off'+(false?' during '")],
   ['the pill ignores cut-off runs', full("return s==='Cut off'||s==='Failed';", "return s==='Failed';")],

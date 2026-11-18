@@ -1423,9 +1423,9 @@ function nightlyRun() {
     // passed. Left alone they grow by hundreds a year, and the Apps Script
     // property editor goes read-only past 50 — which is how adding a setting by
     // hand became impossible.
-    nightlyStep_(ctx, 'pruneScriptProperties_', pruneScriptProperties_);
     // Config rows nothing reads any more (Features.js, #254).
     nightlyStep_(ctx, 'purgeRetiredConfig_', purgeRetiredConfig_);
+    nightlyStep_(ctx, 'pruneScriptProperties_', pruneScriptProperties_);
     // The copy of the Config-tab settings used only if the Config tab can't be read
     // (Settings.js); written only when a value changed.
     nightlyStep_(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_);
