@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VERA Notes Prototype</title>
+<style>
+  :root{--bg:#060c1a;--card:#0d1526;--deep:#0a1220;--line:#1e2a44;--edge:#2a3f6f;--ink:#dde1f0;--mute:#9aa8c8;--faint:#6b7fa8;--gold:#c9a84c;--blue:#8ab4f8;--green:#4ade80;--red:#f87171;--vault:#1b1530;--vedge:#6a58b0}
+  @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f4f6fb;--card:#fff;--deep:#eef1f8;--line:#dfe4ef;--edge:#c5cee2;--ink:#18213a;--mute:#4e5b7a;--faint:#6d7a99;--gold:#9a7a24;--blue:#2f5fb8;--green:#1f8a4c;--red:#c0392b;--vault:#f1ecff;--vedge:#a796e0}}
+  :root[data-theme="light"]{--bg:#f4f6fb;--card:#fff;--deep:#eef1f8;--line:#dfe4ef;--edge:#c5cee2;--ink:#18213a;--mute:#4e5b7a;--faint:#6d7a99;--gold:#9a7a24;--blue:#2f5fb8;--green:#1f8a4c;--red:#c0392b;--vault:#f1ecff;--vedge:#a796e0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  button,input,textarea,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px 16px 80px}
+  header.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+  header.top h1{font-size:19px;margin:0}
+  header.top small{display:block;color:var(--faint);font-size:12.5px;font-weight:400}
+  .ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .seg{display:inline-flex;border:1px solid var(--edge);border-radius:999px;overflow:hidden}
+  .seg button{border:0;background:transparent;padding:5px 12px;font-size:12.5px;color:var(--mute);min-height:32px}
+  .seg button.on{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue);font-weight:700}
+  .lbl{font-size:11.5px;color:var(--faint)}
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tabs button{border:0;background:none;padding:9px 12px;color:var(--mute);font-weight:600;white-space:nowrap;border-bottom:2px solid transparent;min-height:40px}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--gold)}
+  .panel{display:none} .panel.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .stack{display:flex;flex-direction:column;gap:12px}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start}
+  .acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .tile{min-height:58px;border-radius:12px;font-weight:700;font-size:13px;border:1px solid;padding:0 6px}
+  .t-gro{background:#1a1608;border-color:#6b5410;color:#f0d78a} .t-note{background:#1d1a33;border-color:#4b3f8a;color:#d8ccff} .t-away{background:#0d2218;border-color:#2d6a4f;color:#a7f3c6}
+  .btn{min-height:38px;padding:0 13px;border-radius:10px;border:1px solid var(--edge);background:transparent;color:var(--blue);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+  .btn.solid{background:var(--gold);border-color:var(--gold);color:#14120a}
+  .btn.small{min-height:30px;padding:0 9px;font-size:12px}
+  .btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent)}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  textarea,input[type=text],input[type=password],input[type=search]{width:100%;background:var(--deep);border:1px solid var(--edge);border-radius:10px;padding:9px 11px;font-size:14.5px;min-height:42px}
+  textarea{min-height:76px;resize:vertical}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .hint{font-size:12.5px;color:var(--faint)}
+  .tgl{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--edge);border-radius:999px;padding:4px 11px 4px 6px;background:transparent;font-size:12.5px;color:var(--mute);min-height:34px}
+  .tgl i{width:28px;height:16px;border-radius:999px;background:var(--line);position:relative}
+  .tgl i::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--faint);transition:left .15s}
+  .tgl.on{color:var(--ink);border-color:var(--blue)} .tgl.on i{background:color-mix(in srgb,var(--blue) 50%,transparent)} .tgl.on i::after{left:14px;background:var(--blue)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:12px;border-radius:999px;padding:3px 10px;border:1px solid var(--edge);background:transparent;color:var(--mute);white-space:nowrap;min-height:28px}
+  .chip.on{border-color:var(--blue);color:var(--blue);background:color-mix(in srgb,var(--blue) 12%,transparent)}
+  .chip.sug{border-style:dashed}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:1px}
+  .notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+  @media (max-width:640px){.notes{grid-template-columns:1fr;gap:0}.notes .nc{border-radius:0;border-width:0 0 1px 4px}}
+  .nc{background:var(--deep);border:1px solid var(--line);border-left-width:4px;border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-width:0}
+  .nc .txt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
+  .nc .meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .badge{font-size:11px;border-radius:999px;padding:1px 7px;border:1px solid var(--edge);color:var(--mute)}
+  .badge.use{color:var(--gold);border-color:color-mix(in srgb,var(--gold) 55%,transparent)}
+  .badge.v{color:#b9a8ff;border-color:var(--vedge)}
+  .nacts{display:flex;gap:4px;flex-wrap:wrap}
+  .sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:6px 0 2px}
+  .vault{background:var(--vault);border:1px solid var(--vedge);border-radius:14px;padding:14px}
+  .cipher{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;word-break:break-all;color:var(--mute);background:var(--deep);border:1px solid var(--line);border-radius:8px;padding:7px 9px;max-height:120px;overflow:auto}
+  .code{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;font-size:15px;text-align:center;border:1px dashed var(--edge);border-radius:9px;padding:8px}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--card);border:1px solid var(--edge);border-radius:12px;padding:10px 12px;display:none;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:calc(100% - 32px);font-size:13.5px;z-index:20}
+  .toast.on{display:flex}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;z-index:15;padding:12px}
+  .modal.on{display:flex}
+  .sheet{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px}
+  @media (min-width:700px){.modal{align-items:center}}
+  .gift{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--deep)}
+  .ln{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:var(--card)}
+  .vera{border-left:3px solid var(--gold);padding:6px 10px;font-size:13.5px;background:color-mix(in srgb,var(--gold) 8%,transparent);border-radius:0 8px 8px 0}
+  .you{align-self:flex-end;background:color-mix(in srgb,var(--blue) 14%,transparent);border-radius:12px 12px 2px 12px;padding:6px 10px;font-size:13.5px;max-width:85%}
+  .chat{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
+  .list{display:flex;flex-direction:column;gap:6px}
+  .empty{color:var(--faint);font-size:13px}
+  .warn{border-left:3px solid var(--red);padding:8px 12px;background:color-mix(in srgb,var(--red) 8%,transparent);border-radius:0 10px 10px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--green);padding:8px 12px;background:color-mix(in srgb,var(--green) 8%,transparent);border-radius:0 10px 10px 0;font-size:13.5px}
+  .ideas label{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .ideas input{margin-top:4px;width:18px;height:18px;flex:0 0 auto}
+  .ideas b{display:block;font-size:14px} .ideas span{color:var(--mute);font-size:13px}
+  .pic{max-width:100%;max-height:120px;border-radius:9px;border:1px solid var(--line);object-fit:cover;display:block}
+  .prev{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--card);display:flex;flex-direction:column;gap:2px}
+  .prev b{font-size:13.5px} .prev span{font-size:12.5px;color:var(--mute)} .prev small{font-size:11.5px;color:var(--faint)}
+  .ask{border:1px solid var(--gold);border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+  .ck{display:flex;gap:8px;align-items:flex-start;font-size:14px;cursor:pointer}
+  .ck input{width:18px;height:18px;margin-top:2px;flex:0 0 auto}
+  .ck.done span{text-decoration:line-through;color:var(--faint)}
+  .backrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  input[type=date],select{background:var(--deep);border:1px solid var(--edge);border-radius:8px;padding:4px 8px;min-height:34px}
+  .share{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;text-align:center}
+  .share button{border:1px solid var(--line);background:var(--deep);border-radius:12px;padding:8px 2px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:64px}
+  .share button b{font-size:22px}
+  .tidy{display:flex;flex-direction:column;gap:8px}
+  .trow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
+  .trow input[type=text]{width:130px;min-height:34px;padding:4px 8px;font-size:13px}
+  .clamp{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+  .more{align-self:flex-start;border:0;background:none;color:var(--blue);font-size:12.5px;font-weight:600;padding:2px 0;min-height:28px}
+  .full{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.6}
+  .vpic{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+  mark{background:color-mix(in srgb,var(--gold) 35%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>VERA Notes: prototype (option C)<small>Every note and size here is invented. It's a prototype on its own, not VERA, and nothing leaves this page.</small></h1>
+    <div class="ctl">
+      <span class="row"><span class="lbl">View as</span><span class="seg" id="viewSeg"><button data-v="owner" class="on">You</button><button data-v="sam">Sam</button></span></span>
+      <span class="row"><span class="lbl">Vault</span><span class="seg" id="modeSeg"><button data-m="hidden">1 · Hidden</button><button data-m="encrypted" class="on">3 · Encrypted</button></span></span>
+      <button class="btn small" id="reset">Reset demo</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-t="home" class="on">Home</button>
+    <button data-t="notes" data-owner>Notes</button>
+    <button data-t="vault" data-owner>🔒 Vault</button>
+    <button data-t="pay">Where it pays off</button>
+    <button data-t="ideas">More ideas</button>
+  </nav>
+
+  <!-- HOME -->
+  <section class="panel on" id="p-home">
+    <div class="stack">
+      <div class="card stack">
+        <div class="sect">Home · quick actions</div>
+        <div class="acts">
+          <button class="tile t-gro" id="gro">🧾 Log a grocery run</button>
+          <button class="tile t-note" id="jot">🗒️ Jot a note</button>
+          <button class="tile t-away" id="away">🌴 Away</button>
+        </div>
+        <input type="search" id="hq" placeholder="🔎 Search notes" aria-label="Search notes from Home">
+        <button class="btn small" id="shareTry" style="align-self:flex-start">📤 Try sharing a page or photo from another app</button>
+        <div class="hint" id="homeHint">Try: “Sam shirt XL shoe 8 #sizes”, “remind me to call the movers Friday”, “buy printer ink”, or “gate code 4471”.</div>
+      </div>
+      <div class="card stack" id="backCard"><div class="sect">⏰ Notes back today</div><div class="list" id="backList"></div></div>
+      <div class="grid2">
+        <div class="card stack"><div class="sect">Tasks (from “remind me” / “add a task”)</div><div class="list" id="tasks"></div></div>
+        <div class="card stack"><div class="sect">Shopping list (from “buy”)</div><div class="list" id="shop"></div></div>
+      </div>
+      <div class="card stack" id="apiCard">
+        <div class="sect">The access fix</div>
+        <div class="row"><button class="btn small" id="apiTry">Ask VERA's server for notes</button><span class="hint">as whoever is viewing</span></div>
+        <div id="apiOut" class="hint"></div>
+        <div class="hint">Also part of the fix: chat only sees notes marked ✨ (pinning a note no longer sends it to chat), and linked notes never load on someone else's screens.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NOTES -->
+  <section class="panel" id="p-notes">
+    <div class="stack">
+      <div class="row"><input type="search" id="q" placeholder="Search notes, #tags or link titles  ( / )" aria-label="Search notes" style="flex:1;min-width:0"><button class="btn" id="tidyBtn" aria-expanded="false">🏷 Tidy tags</button><button class="btn solid" id="jot2">＋ Note</button></div>
+      <div class="chips" id="tagChips"></div>
+      <div class="hint" id="qInfo" aria-live="polite"></div>
+      <div id="backWrap"><div class="sect">⏰ Back today</div><div class="notes" id="backNotes"></div></div>
+      <div id="pinWrap"><div class="sect">📌 Pinned to the top</div><div class="notes" id="pinned"></div></div>
+      <div class="notes" id="notes"></div>
+      <div class="hint">Colour comes from a note's first tag. Pin only moves a note to the top of this page; it never shares it with VERA. No badge means private: only you see it, and VERA never reads it. ✨ means VERA can use it. 🔒 notes live in the Vault.</div>
+    </div>
+  </section>
+
+  <!-- VAULT -->
+  <section class="panel" id="p-vault">
+    <div class="vault stack" id="vaultBox"></div>
+  </section>
+
+  <!-- PAY OFF -->
+  <section class="panel" id="p-pay">
+    <div class="grid2">
+      <div class="card stack"><div class="sect">People › Gift Ideas</div><div id="giftCard"></div></div>
+      <div class="card stack"><div class="sect">Chat</div>
+        <div class="chat" id="chat"></div>
+        <div class="row"><input type="text" id="ask" placeholder="Ask, or start with note: to save" aria-label="Ask VERA" style="flex:1;min-width:0"><button class="btn" id="askGo">Ask</button></div>
+        <div class="hint">VERA answers from ✨ notes only, and says which note an answer came from. Start with “note:” to save to Notes; nothing typed here goes to Memory.</div></div>
+      <div class="card stack"><div class="sect">Shopping list, with sizes</div><div class="list" id="shopSized"></div><div class="hint">Clothing for a person shows their size from a ✨ note.</div></div>
+      <div class="card stack"><div class="sect">Never used anywhere</div><div class="list" id="never"></div></div>
+    </div>
+  </section>
+
+  <!-- IDEAS -->
+  <section class="panel" id="p-ideas">
+    <div class="card ideas" id="ideas"></div>
+    <p class="hint">Your ticks are saved in this browser, so you can come back to them.</p>
+  </section>
+</div>
+
+<!-- jot sheet -->
+<div class="modal" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetT">
+  <div class="sheet">
+    <b id="sheetT">Jot a note</b>
+    <div id="sharedFrom" class="hint"></div>
+    <textarea id="txt" rows="4" placeholder="Type it like a text. Add #tags if you like."></textarea>
+    <div class="hint">Enter starts a new line. Tap Save when you're done (Ctrl+Enter on a computer).</div>
+    <div class="chips" id="sug"></div>
+    <div class="row"><button class="tgl" id="tUse" aria-pressed="false"><i></i>✨ Let VERA use</button><button class="tgl" id="tVault" aria-pressed="false"><i></i>🔒 Vault</button><button class="tgl" id="tCheck" aria-pressed="false"><i></i>☑ Checklist</button></div>
+    <div class="backrow"><label class="hint" for="backDate">⏰ Bring back on</label><input type="date" id="backDate"><label class="hint"><input type="checkbox" id="backTask"> also as a reminder</label></div>
+    <div class="row"><label class="btn small" for="pic">📷 Add a picture</label><input type="file" id="pic" accept="image/*" hidden><span id="picPrev" class="hint"></span></div>
+    <div id="vaultAsk" class="hint"></div>
+    <div id="replaceAsk"></div>
+    <div class="row"><button class="btn solid" id="save">Save</button><button class="btn" id="cancel">Cancel</button><span class="hint" id="route"></span></div>
+  </div>
+</div>
+
+<div class="modal" id="viewModal" role="dialog" aria-modal="true" aria-label="Note"><div class="sheet" id="viewBox" style="max-height:88vh;overflow:auto;max-width:640px"></div></div>
+<div class="modal" id="tidyModal" role="dialog" aria-modal="true" aria-label="Tidy tags"><div class="sheet tidy" id="tidyBox" style="max-height:85vh;overflow:auto"></div></div>
+<div class="modal" id="shareSheet" role="dialog" aria-modal="true" aria-labelledby="shareT"><div class="sheet">
+  <b id="shareT">Share</b>
+  <div class="seg" id="shareWhat" style="align-self:flex-start"><button data-w="page" class="on">A web page</button><button data-w="photo">A photo</button></div>
+  <div id="shareItem" class="ln"></div>
+  <div class="share"><button data-app="msg"><b>💬</b>Messages</button><button data-app="mail"><b>✉️</b>Mail</button><button data-app="vera"><b>🗒️</b>VERA</button><button data-app="copy"><b>📋</b>Copy</button></div>
+  <div class="hint">This stands in for your phone's own share menu. On Android, the installed VERA dashboard can appear in it. iPhone doesn't let web apps join the share menu, so there a Shortcut called “VERA note” does the same job.</div>
+  <button class="btn" id="shareCancel" style="align-self:flex-start">Cancel</button>
+</div></div>
+<div class="toast" id="toast" role="status"><span id="toastT"></span><button class="btn small" id="undo">Undo</button></div>
+
+<script>
+(function(){
+var LS='vera-notes-proto-v3';
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtD(d){return new Date(d+'T12:00').toLocaleDateString([],{month:'short',day:'numeric'});}
+function byId(id){return S.notes.filter(function(x){return x.id===id;})[0];}
+function load(){try{return JSON.parse(localStorage.getItem(LS)||'null');}catch(e){return null;}}
+function store(){try{localStorage.setItem(LS,JSON.stringify({notes:S.notes,tasks:S.tasks,shop:S.shop,mode:S.mode,vault:S.vault,ideas:S.ideas}));}catch(e){}}
+var SEED=function(){return {notes:[
+  {id:1,text:'Sam shirt XL, jeans 30/32, shoe 8',tags:['sizes','sam'],use:true,pinned:true,vault:false,t:3},
+  {id:2,text:'Alex shirt 3XL, shoe 11',tags:['sizes','alex'],use:true,pinned:false,vault:false,t:2},
+  {id:3,text:'Sam likes lavender, linen, not gold',tags:['likes','sam'],use:true,pinned:false,vault:false,t:2},
+  {id:4,text:'Move to Elm St\nMovers: $2,150 (4 people, 6 hours)\nTruck: $180\nBoxes and tape: $64\nTip for the crew: $120\nCleaning deposit back: $400, expected by Dec 15\nTotal so far: $2,514',tags:['move','money'],use:false,pinned:false,vault:false,t:1},
+  {id:5,text:'Standing desk review https://example.com/desk-review',tags:['read'],use:false,pinned:false,vault:false,t:1},
+  {id:6,text:'ask about the side project before Q1',tags:['idea'],use:false,pinned:false,vault:false,t:0,back:today()},
+  {id:8,text:'Hardware store',items:[{t:'wall anchors',done:true},{t:'3/8 drill bit',done:false},{t:'painter\'s tape',done:false}],tags:['home'],use:false,pinned:false,vault:false,t:1},
+  {id:9,text:'Elm St keys: pick up from the landlord Saturday',tags:['moving'],use:false,pinned:false,vault:false,t:1},
+  {id:7,text:'side gate code 4471',tags:['codes'],use:false,pinned:false,vault:true,label:'Gate code',hideLabel:false,plain:'side gate code 4471',t:0}
+],tasks:[],shop:[{id:1,text:'running shoes for Sam'},{id:2,text:'work shirt for Alex'}],mode:'encrypted',vault:null,ideas:{}};};
+var S=Object.assign(SEED(),load()||{});S.view='owner';S.tab='home';S.key=null;S.until=0;S.filter='';S.q='';
+var COLORS=['#b79cff','#6fd69a','#7fb0ff','#f3d36b','#ffb86b','#ff9fb2','#5ad1d1','#c6a6ff'];
+function tagColor(t){if(!t)return '#7f8db0';var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))>>>0;return COLORS[h%COLORS.length];}
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function nid(){return Date.now()+Math.floor(Math.random()*1000);}
+
+// ---- word rules (no AI) ----
+function tagsIn(t){var m=t.match(/#[\w-]+/g)||[];return m.map(function(x){return x.slice(1).toLowerCase();});}
+function suggest(t){var s=[],l=t.toLowerCase();
+  if(/\b(xs|s|m|l|xl|xxl|[2-5]xl)\b|\bsize\b|\bshoe \d|\bjeans \d/i.test(t))s.push('sizes');
+  if(/\$\s?\d/.test(t))s.push('money');
+  if(/https?:\/\/|www\.|\.com\b/.test(l))s.push('read');
+  if(/\b(code|password|passcode|pin|wifi|wi-fi)\b/.test(l))s.push('codes');
+  if(/\b(idea|maybe|what if)\b/.test(l))s.push('idea');
+  if(/\blikes?\b|\bfavou?rite\b/.test(l))s.push('likes');
+  if(/\bsam\b/.test(l))s.push('sam');if(/\balex\b/.test(l))s.push('alex');
+  var have=tagsIn(t);return s.filter(function(x,i){return s.indexOf(x)===i&&have.indexOf(x)===-1;});}
+function looksSecret(t){return /\b(code|password|passcode|pin|wifi|wi-fi)\b/i.test(t);}
+function routeOf(t){var s=t.trim();if(/^(remind me|add a task)\b/i.test(s))return 'task';if(/^buy\b/i.test(s))return 'shop';return '';}
+
+// ---- crypto (option 3) ----
+var enc=new TextEncoder(),dec=new TextDecoder();
+function b64(b){var a=new Uint8Array(b),s='';for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s);}
+function unb64(s){var r=atob(s),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;}
+function kek(pass,salt){return crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']).then(function(k){return crypto.subtle.deriveKey({name:'PBKDF2',salt:salt,iterations:310000,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);});}
+function seal(key,bytes){var iv=crypto.getRandomValues(new Uint8Array(12));return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,bytes).then(function(ct){return {iv:b64(iv),ct:b64(ct)};});}
+function open_(key,box){return crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv)},key,unb64(box.ct));}
+function recCode(){var a='ABCDEFGHJKMNPQRSTUVWXYZ23456789',r=crypto.getRandomValues(new Uint8Array(16)),s='';for(var i=0;i<16;i++){s+=a[r[i]%a.length];if(i%4===3&&i<15)s+='-';}return s;}
+function setupVault(pass){var salt=crypto.getRandomValues(new Uint8Array(16)),rsalt=crypto.getRandomValues(new Uint8Array(16)),code=recCode(),raw=crypto.getRandomValues(new Uint8Array(32));
+  return Promise.all([kek(pass,salt),kek(code,rsalt)]).then(function(ks){return Promise.all([seal(ks[0],raw),seal(ks[1],raw)]);}).then(function(w){
+    S.vault={salt:b64(salt),rsalt:b64(rsalt),byPass:w[0],byCode:w[1]};return useRaw(raw).then(function(){return code;});});}
+function useRaw(raw){return crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']).then(function(k){S.key=k;S.until=Date.now()+15*60000;});}
+function unlock(secret,isCode){var v=S.vault;return kek(secret,unb64(isCode?v.rsalt:v.salt)).then(function(k){return open_(k,isCode?v.byCode:v.byPass);}).then(function(raw){return useRaw(new Uint8Array(raw));});}
+function lock(){S.key=null;S.until=0;S.notes.forEach(function(n){if(n.vault&&n.box)delete n.shown;});}
+function unlocked(){if(S.key&&Date.now()>S.until)lock();return !!S.key;}
+function encryptNote(n){return seal(S.key,enc.encode(n.plain||n.text)).then(function(box){n.box=box;delete n.plain;n.text='';});}
+function decryptNote(n){return open_(S.key,n.box).then(function(b){return dec.decode(b);});}
+
+// ---- rendering ----
+function setTab(t){S.tab=t;Array.prototype.forEach.call(document.querySelectorAll('#tabs button'),function(b){b.classList.toggle('on',b.dataset.t===t);});
+  Array.prototype.forEach.call(document.querySelectorAll('.panel'),function(p){p.classList.toggle('on',p.id==='p-'+t);});render();}
+function badgeHtml(n){return (n.back?'<span class="badge">⏰ '+(n.back<=today()?'back today':fmtD(n.back))+'</span>':'')+(n.use?'<span class="badge use">✨ VERA can use</span>':'')+(n.vault?'<span class="badge v">🔒 Vault</span>':'')+(n.pinned?'<span class="badge">📌</span>':'');}
+function noteCard(n){var c=tagColor(n.tags[0]);
+  return '<div class="nc" style="border-left-color:'+c+'" data-id="'+n.id+'"><div class="txt clamp" data-view role="button" tabindex="0" title="Open the whole note">'+(n.items?'<b>'+hl(n.text)+'</b>':hl(n.text))+'</div>'+itemsHtml(n,5)+(isLong(n)?'<button class="more" data-view>Show the whole note ›</button>':'')+(n.pic?'<img class="pic" alt="Attached picture" src="'+n.pic+'">':'')+previewHtml(n)+'<div class="meta">'+n.tags.map(function(t){return '<span class="badge"><i class="dot" style="background:'+tagColor(t)+'"></i>#'+esc(t)+'</span>';}).join('')+badgeHtml(n)+'</div>'+
+    '<div class="nacts"><button class="btn small" data-a="pin">'+(n.pinned?'Unpin':'Pin')+'</button><button class="btn small" data-a="use">'+(n.use?'✨ Stop VERA using':'✨ Let VERA use')+'</button><button class="btn small" data-a="tovault">🔒 Vault</button><button class="btn small" data-a="back">⏰ '+(n.back?'Change date':'Bring back')+'</button>'+(n.back&&n.back<=today()?'<button class="btn small" data-a="backclear">✓ Done</button>':'')+(urlOf(n.text)&&!n.preview?'<button class="btn small" data-a="preview">🔗 Get preview</button>':'')+'<button class="btn small danger" data-a="del">Delete</button></div>'+(n.editBack?'<div class="backrow"><input type="date" data-backdate value="'+(n.back||'')+'" aria-label="Bring back on"><button class="btn small" data-a="backset">Set</button>'+(n.back?'<button class="btn small" data-a="backclear">Remove date</button>':'')+'</div>':'')+'</div>';}
+function isLong(n){return n.text.split('\n').length>4||n.text.length>180||(n.items&&n.items.length>5)||!!n.pic;}
+function itemsHtml(n,max){if(!n.items)return '';var d=n.items.filter(function(x){return x.done;}).length,list=max?n.items.slice(0,max):n.items;
+  return '<div class="list">'+list.map(function(it,i){return '<label class="ck'+(it.done?' done':'')+'"><input type="checkbox" data-ck="'+i+'"'+(it.done?' checked':'')+'><span>'+hl(it.t)+'</span></label>';}).join('')+(max&&n.items.length>max?'<div class="hint">+ '+(n.items.length-max)+' more</div>':'')+'<div class="hint">'+d+' of '+n.items.length+' done'+(d?' · <button class="btn small" data-a="clearck">Clear ticked</button>':'')+'</div></div>';}
+function urlOf(t){var m=String(t||'').match(/https?:\/\/\S+/);return m?m[0]:'';}
+function qWords(){return S.q.toLowerCase().split(/\s+/).map(function(w){return w.replace(/^#/,'');}).filter(Boolean);}
+function hay(n){return (n.text+(n.items?' '+n.items.map(function(x){return x.t;}).join(' '):'')+' #'+n.tags.join(' #')+(n.preview?' '+n.preview.title+' '+n.preview.summary:'')+(n.pic?' picture photo':'')).toLowerCase();}
+function matches(h,words){return words.every(function(w){return h.indexOf(w)!==-1;});}
+function hl(t){var words=qWords();var out=esc(t);if(!words.length)return out;
+  words.forEach(function(w){var re=new RegExp('('+esc(w).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')(?![^<]*>)','gi');out=out.replace(re,'<mark>$1</mark>');});return out;}
+function previewHtml(n){if(n.loading)return '<div class="prev"><small>Fetching the page…</small></div>';if(!n.preview)return '';var p=n.preview;return '<div class="prev"><b>'+hl(p.title)+'</b><span>'+esc(p.summary)+'</span><small>'+esc(p.site)+' · fetched when you asked · <button class="btn small" data-a="unpreview" style="min-height:24px">Remove</button></small></div>';}
+var PAGES={'example.com/faucet-guide':{title:'Fix a dripping kitchen faucet in 20 minutes',summary:'Shut off the supply, swap the cartridge O-rings, and reseat the handle; most drips are a worn O-ring.',site:'example.com'},'example.com/desk-review':{title:'Six standing desks, tested for a year',summary:'The two cheapest wobble at full height; the mid-priced one with a crossbar was the steadiest.',site:'example.com'}};
+function fakeFetch(u){var k=u.replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,'');var hit=PAGES[k];var host=k.split('/')[0];
+  return new Promise(function(res){setTimeout(function(){res(hit||{title:(k.split('/').pop()||host).replace(/[-_]/g,' ').replace(/^./,function(c){return c.toUpperCase();}),summary:'A short summary of the page would appear here.',site:host});},500);});}
+var SZ={shirt:/(shirt\s+)([0-9]?x{0,3}[sml]|[0-9]xl)\b/i,shoe:/(shoe\s+)(\d+(?:\.5)?)/i,jeans:/(jeans\s+)(\d+\/\d+)/i};
+function personOf(t,tags){var l=t.toLowerCase();return /\bsam\b/.test(l)||tags.indexOf('sam')!==-1?'sam':/\balex\b/.test(l)||tags.indexOf('alex')!==-1?'alex':'';}
+function conflicts(text,tags){var who=personOf(text,tags),out=[];if(!who)return out;
+  Object.keys(SZ).forEach(function(k){var m=text.match(SZ[k]);if(!m)return;var nv=m[2].toUpperCase();
+    S.notes.filter(function(n){return !n.vault&&personOf(n.text,n.tags)===who;}).forEach(function(n){var o=n.text.match(SZ[k]);if(o&&o[2].toUpperCase()!==nv)out.push({note:n,k:k,old:o[2],nv:m[2],who:who});});});return out;}
+function render(){
+  var owner=S.view==='owner';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-owner]'),function(b){b.style.display=owner?'':'none';});
+  if(!owner&&(S.tab==='notes'||S.tab==='vault'))return setTab('home');
+  $('jot').style.display=owner?'':'none';$('hq').style.display=owner?'':'none';
+  document.querySelector('.acts').style.gridTemplateColumns=owner?'repeat(3,minmax(0,1fr))':'repeat(2,minmax(0,1fr))';
+  $('homeHint').textContent=owner?'Try: “Sam shirt XL shoe 8 #sizes”, “remind me to call the movers Friday”, “buy printer ink”, or “gate code 4471”.':'Sam\'s Home: no Jot a note tile, no Notes tab, no Vault.';
+  Array.prototype.forEach.call(document.querySelectorAll('#modeSeg button'),function(b){b.classList.toggle('on',b.dataset.m===S.mode);});
+  Array.prototype.forEach.call(document.querySelectorAll('#viewSeg button'),function(b){b.classList.toggle('on',b.dataset.v===S.view);});
+  // lists
+  $('tasks').innerHTML=S.tasks.length?S.tasks.map(function(t){return '<div class="ln">☐ '+esc(t.text)+(t.due?' <span class="badge">'+fmtD(t.due)+'</span>':'')+'</div>';}).join(''):'<div class="empty">Nothing yet. Jot “remind me to…”.</div>';
+  $('shop').innerHTML=S.shop.length?S.shop.map(function(t){return '<div class="ln">'+esc(t.text)+'</div>';}).join(''):'<div class="empty">Nothing yet.</div>';
+  // notes
+  var visible=S.notes.filter(function(n){return !n.vault;});
+  var counts={};visible.forEach(function(n){n.tags.forEach(function(t){counts[t]=(counts[t]||0)+1;});});
+  var chips=['<button class="chip'+(!S.filter?' on':'')+'" data-f="">All '+visible.length+'</button>','<button class="chip'+(S.filter==='✨'?' on':'')+'" data-f="✨">✨ '+visible.filter(function(n){return n.use;}).length+'</button>'];
+  Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];}).forEach(function(t){chips.push('<button class="chip'+(S.filter===t?' on':'')+'" data-f="'+esc(t)+'"><i class="dot" style="background:'+tagColor(t)+'"></i>#'+esc(t)+' '+counts[t]+'</button>');});
+  chips.push('<button class="chip" data-go="vault">🔒 Vault '+S.notes.filter(function(n){return n.vault;}).length+'</button>');
+  $('tagChips').innerHTML=chips.join('');
+  var words=qWords();
+  var shown=visible.filter(function(n){if(S.filter==='✨'&&!n.use)return false;if(S.filter&&S.filter!=='✨'&&n.tags.indexOf(S.filter)===-1)return false;return matches(hay(n),words);}).sort(function(a,b){return b.t-a.t||b.id-a.id;});
+  var vHits=words.length?S.notes.filter(function(n){return n.vault&&matches(((n.hideLabel?'':(n.label||''))+' #'+n.tags.join(' #')).toLowerCase(),words);}).length:0;
+  $('qInfo').innerHTML=words.length?(shown.length+' note'+(shown.length===1?'':'s')+' match “'+esc(S.q.trim())+'”'+(vHits?' · <button class="btn small" data-go="vault">🔒 '+vHits+' in the Vault (label only)</button>':'')+' · <button class="btn small" id="qClear">Clear</button>'):'';
+  var due=visible.filter(function(n){return n.back&&n.back<=today();});
+  var showBack=!words.length&&!S.filter&&due.length;
+  $('backWrap').style.display=showBack?'':'none';$('backNotes').innerHTML=showBack?due.map(noteCard).join(''):'';
+  if(showBack)shown=shown.filter(function(n){return due.indexOf(n)===-1;});
+  $('backCard').style.display=owner&&due.length?'':'none';
+  $('backList').innerHTML=due.length?due.map(function(n){return '<div class="ln row" style="justify-content:space-between"><span>'+esc(n.text.slice(0,60))+'</span><button class="btn small" data-openid="'+n.id+'">Open</button></div>';}).join(''):'<div class="empty">Nothing comes back today.</div>';
+  $('shareTry').style.display=owner?'':'none';
+  renderTidy();renderView();
+  var pins=shown.filter(function(n){return n.pinned;}),rest=shown.filter(function(n){return !n.pinned;});
+  $('pinWrap').style.display=pins.length?'':'none';$('pinned').innerHTML=pins.map(noteCard).join('');
+  $('notes').innerHTML=rest.length?rest.map(noteCard).join(''):(pins.length?'':'<div class="empty">No notes match.</div>');
+  renderVault();renderPay();renderIdeas();store();}
+
+function stem(t){return t.replace(/(ing|es|s|e)$/,'');}
+function allTags(){var c={};S.notes.forEach(function(n){n.tags.forEach(function(t){c[t]=(c[t]||0)+1;});});return c;}
+function retag(from,to){var snap=S.notes.map(function(n){return [n,n.tags.slice()];});to=to.replace(/^#/,'').toLowerCase().replace(/[^\w-]/g,'');if(!to||to===from)return;
+  S.notes.forEach(function(n){var i=n.tags.indexOf(from);if(i===-1)return;n.tags[i]=to;n.tags=n.tags.filter(function(x,j){return n.tags.indexOf(x)===j;});});
+  if(S.filter===from)S.filter=to;render();toast('#'+from+' is now #'+to+' on every note',function(){snap.forEach(function(x){x[0].tags=x[1];});});}
+function renderView(){var m=$('viewModal'),n=S.open!=null&&byId(S.open);if(!n||n.vault||S.view!=='owner'){m.classList.remove('on');S.open=null;return;}
+  var c=tagColor(n.tags[0]),h=['<div data-id="'+n.id+'" class="stack" style="border-left:4px solid '+c+';padding-left:12px">'];
+  h.push('<div class="row" style="justify-content:space-between"><span class="hint">'+(n.items?'Checklist':'Note')+(n.t>100?' · '+new Date(n.t).toLocaleDateString([],{month:'short',day:'numeric'}):'')+'</span><button class="btn small" id="viewClose">Close</button></div>');
+  if(n.editing){var src=(n.items?n.text+'\n'+n.items.map(function(x){return (x.done?'[x] ':'')+x.t;}).join('\n'):n.text)+(n.tags.length?'\n#'+n.tags.join(' #'):'');
+    h.push('<textarea id="editTxt" rows="9" aria-label="Edit note">'+esc(src)+'</textarea><div class="hint">'+(n.items?'First line is the title, then one item per line. [x] marks a ticked item. ':'')+'#tags anywhere.</div><div class="row"><button class="btn solid" data-a="saveedit">Save changes</button><button class="btn" data-a="canceledit">Cancel</button></div>');}
+  else{h.push('<div class="full">'+(n.items?'<b>'+hl(n.text)+'</b>':hl(n.text))+'</div>'+itemsHtml(n)+(n.pic?'<img class="vpic" alt="Attached picture" src="'+n.pic+'">':'')+previewHtml(n));
+    h.push('<div class="meta">'+n.tags.map(function(t){return '<span class="badge"><i class="dot" style="background:'+tagColor(t)+'"></i>#'+esc(t)+'</span>';}).join('')+badgeHtml(n)+'</div>');
+    h.push('<div class="nacts"><button class="btn small solid" data-a="edit">✎ Edit</button><button class="btn small" data-a="pin">'+(n.pinned?'Unpin':'Pin')+'</button><button class="btn small" data-a="use">'+(n.use?'✨ Stop VERA using':'✨ Let VERA use')+'</button><button class="btn small" data-a="tovault">🔒 Vault</button><button class="btn small" data-a="back">⏰ '+(n.back?'Change date':'Bring back')+'</button>'+(urlOf(n.text)&&!n.preview?'<button class="btn small" data-a="preview">🔗 Get preview</button>':'')+'<button class="btn small danger" data-a="del">Delete</button></div>'+(n.editBack?'<div class="backrow"><input type="date" data-backdate value="'+(n.back||'')+'" aria-label="Bring back on"><button class="btn small" data-a="backset">Set</button>'+(n.back?'<button class="btn small" data-a="backclear">Remove date</button>':'')+'</div>':''));}
+  h.push('</div>');$('viewBox').innerHTML=h.join('');m.classList.add('on');}
+function renderTidy(){var box=$('tidyBox');$('tidyModal').classList.toggle('on',!!S.tidy);$('tidyBtn').setAttribute('aria-expanded',!!S.tidy);if(!S.tidy)return;
+  var c=allTags(),tags=Object.keys(c).sort(),h=['<div class="row" style="justify-content:space-between"><b>Tidy tags</b><button class="btn small" id="tidyClose">Done</button></div>'];
+  tags.forEach(function(a){tags.forEach(function(b){if(a<b&&stem(a)===stem(b)){var keep=c[a]>c[b]||(c[a]===c[b]&&a.length<b.length)?a:b,drop=keep===a?b:a;
+    h.push('<div class="ask"><div>#'+esc(drop)+' and #'+esc(keep)+' look like the same tag. Merge #'+esc(drop)+' into #'+esc(keep)+'?</div><div class="row"><button class="btn small solid" data-merge="'+esc(drop)+'" data-into="'+esc(keep)+'">Merge</button></div></div>');}});});
+  tags.forEach(function(t){h.push('<div class="trow"><span style="min-width:96px"><i class="dot" style="background:'+tagColor(t)+'"></i>#'+esc(t)+' <span class="hint">'+c[t]+'</span></span><input type="text" data-ren="'+esc(t)+'" placeholder="new name" aria-label="Rename #'+esc(t)+'"><button class="btn small" data-renapply="'+esc(t)+'">Rename</button><select data-mergesel="'+esc(t)+'" aria-label="Merge #'+esc(t)+' into"><option value="">Merge into…</option>'+tags.filter(function(x){return x!==t;}).map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></div>');});
+  h.push('<div class="hint">Renaming or merging changes the tag on every note, including Vault notes. Undo is offered after each change.</div>');
+  box.innerHTML=h.join('');}
+function renderVault(){var box=$('vaultBox'),vn=S.notes.filter(function(n){return n.vault;}),h=[];
+  if(S.mode==='hidden'){
+    h.push('<b>🔒 Vault · option 1: hidden on screen</b><div class="hint">Stored as plain text in the same Notes Doc. The dashboard only hides it until you tap.</div>');
+    vn.forEach(function(n){var txt=n.plain||n.text;h.push('<div class="nc" style="border-left-color:var(--vedge)"><div class="row" style="justify-content:space-between"><b>'+esc(n.label||'Locked note')+'</b><button class="btn small" data-show="'+n.id+'">'+(n.shown?'Hide':'Show')+'</button></div>'+(n.shown?'<div class="txt">'+esc(txt)+'</div>':'')+'<div class="sect">What\'s stored in the Doc</div><div class="cipher">'+esc(txt)+'</div></div>');});
+    h.push('<div class="warn">Anyone who opens the Notes Doc, VERA\'s server or the API reads these as plain text. Switch to option 3 at the top to compare.</div>');
+    box.innerHTML=h.join('');return;}
+  h.push('<b>🔒 Vault · option 3: encrypted in your browser</b>');
+  if(!S.vault){h.push('<div class="hint">Set a vault passphrase. A few words is safer than a PIN. It never leaves this device.</div><input type="password" id="vp1" placeholder="Vault passphrase" aria-label="Vault passphrase"><input type="password" id="vp2" placeholder="Type it again" aria-label="Type it again"><div class="row"><button class="btn solid" id="vSet">Set up the vault</button></div><div id="vMsg" class="hint"></div>');box.innerHTML=h.join('');return;}
+  if(!unlocked()){h.push('<div class="row"><input type="password" id="vpass" placeholder="Vault passphrase" aria-label="Vault passphrase" style="flex:1;min-width:0"><button class="btn solid" id="vUnlock">Unlock</button></div><div class="row"><button class="btn small" id="vUseCode">Use recovery code</button><span class="hint">Locks again after 15 minutes. Never saved on the device.</span></div><div id="vMsg" class="hint"></div>');}
+  else h.push('<div class="row" style="justify-content:space-between"><span class="ok">Unlocked on this device until '+new Date(S.until).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</span><button class="btn small" id="vLock">Lock now</button></div>');
+  vn.forEach(function(n){var lab=n.hideLabel?'Locked note':(n.label||'Locked note');
+    h.push('<div class="nc" style="border-left-color:var(--vedge)"><div class="row" style="justify-content:space-between"><b>'+esc(lab)+'</b>'+(unlocked()&&n.box?'<button class="btn small" data-reveal="'+n.id+'">'+(n.shown!=null?'Hide':'Show')+'</button>':'')+'</div>'+
+      (n.shown!=null?'<div class="txt">'+esc(n.shown)+'</div>':'')+
+      (n.box?'<div class="sect">What\'s stored in the Doc</div><div class="cipher">v1:aes-gcm:'+esc(n.box.iv)+':'+esc(n.box.ct)+'</div>':'<div class="hint">Not encrypted yet. Unlock the vault to encrypt it.</div>')+
+      '<div class="row"><button class="tgl'+(n.hideLabel?' on':'')+'" data-hidelabel="'+n.id+'" aria-pressed="'+(!!n.hideLabel)+'"><i></i>Hide the label too</button></div></div>');});
+  if(!vn.length)h.push('<div class="empty">Nothing in the vault yet. Jot “gate code 4471” to try it.</div>');
+  h.push('<div class="hint">Search finds labels only. A forgotten passphrase can only be recovered with your recovery code.</div>');
+  box.innerHTML=h.join('');}
+
+function useNotes(){return S.notes.filter(function(n){return n.use&&!n.vault;});}
+var SRC={};
+function sizesFor(person){var out={};SRC={};useNotes().slice().sort(function(a,b){return b.t-a.t||b.id-a.id;}).forEach(function(n){var l=n.text.toLowerCase();if(l.indexOf(person)===-1&&n.tags.indexOf(person)===-1)return;
+  var m,put=function(k,v){if(out[k]==null){out[k]=v;SRC[k]=n;}};if((m=l.match(/shirt\s+([0-9]?x{0,3}[sml]|[0-9]xl)\b/i)))put('shirt',m[1].toUpperCase());if((m=l.match(/shoe\s+(\d+(?:\.5)?)/)))put('shoe',m[1]);if((m=l.match(/jeans\s+(\d+\/\d+)/)))put('jeans',m[1]);});return out;}
+function likesFor(person){var n=useNotes().filter(function(n){return n.tags.indexOf('likes')!==-1&&(n.text.toLowerCase().indexOf(person)!==-1||n.tags.indexOf(person)!==-1);})[0];return n?n.text.replace(/^.*?likes\s*/i,''):'';}
+function renderPay(){var owner=S.view==='owner',s=sizesFor('sam'),lk=likesFor('sam');
+  var lines=[];if(owner){if(Object.keys(s).length)lines.push('<div class="ln">📏 '+Object.keys(s).map(function(k){return k+' '+s[k];}).join(' · ')+' <span class="badge use">✨</span></div>');if(lk)lines.push('<div class="ln">💜 '+esc(lk)+' <span class="badge use">✨</span></div>');}
+  var sug=owner&&s.shirt?'<div class="vera">VERA: “A '+(lk&&/linen/i.test(lk)?'linen ':'')+'shirt'+(lk?' in '+esc(lk.split(',')[0].trim()):'')+', size '+s.shirt+'” · ＋ Add as an idea</div>':'<div class="hint">'+(owner?'No ✨ sizes note for Sam, so there\'s no size-based suggestion.':'Sam\'s view: no notes are loaded on this card.')+'</div>';
+  $('giftCard').innerHTML='<div class="gift"><div class="row" style="justify-content:space-between"><b>Sam</b><span class="chip">Birthday · in 12 d</span></div>'+(lines.join('')||'<div class="empty">No notes shown.</div>')+sug+'</div>';
+  $('shopSized').innerHTML=S.shop.map(function(it){var l=it.text.toLowerCase(),who=/sam/.test(l)?'sam':/alex/.test(l)?'alex':'',sz=owner&&who?sizesFor(who):{},chip='';
+    if(/shoe/.test(l)&&sz.shoe)chip=sz.shoe;else if(/shirt/.test(l)&&sz.shirt)chip=sz.shirt;else if(/jeans/.test(l)&&sz.jeans)chip=sz.jeans;
+    return '<div class="ln">'+esc(it.text)+(chip?' <span class="chip">size '+esc(chip)+'</span>':'')+'</div>';}).join('')||'<div class="empty">Shopping list is empty.</div>';
+  var nev=S.notes.filter(function(n){return !n.use||n.vault;});
+  $('never').innerHTML=owner?(nev.map(function(n){return '<div class="ln">'+(n.vault?'🔒 '+esc(n.hideLabel?'Locked note':(n.label||'Locked note')):esc(n.text.slice(0,60)))+' <span class="badge">'+(n.vault?'vault':'private')+'</span></div>';}).join('')+'<div class="hint">Only you see these, in Notes. VERA, the AI and other screens never read them.</div>'):'<div class="empty">Sam\'s view: nothing from Notes exists here.</div>';}
+
+function answer(q){var l=q.toLowerCase(),owner=S.view==='owner';
+  if(!owner)return 'I can\'t help with that from your sign-in.';
+  var who=/sam/.test(l)?'sam':/alex|my\b/.test(l)?'alex':'',item=/shoe/.test(l)?'shoe':/shirt/.test(l)?'shirt':/jeans/.test(l)?'jeans':/size/.test(l)?'shirt':'';
+  if(who&&item){var s=sizesFor(who);if(s[item]){var src=SRC[item];return s[item]+', from your note “'+esc(src.text.slice(0,40))+'”.';}}
+  var words=l.replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(function(w){return w.length>3&&['what','whats','much','does','wear','about','from'].indexOf(w)===-1;});
+  var hidden=S.notes.filter(function(n){return !n.use||n.vault;}).some(function(n){var t=(n.plain||n.text||'')+' '+(n.label||'')+' '+n.tags.join(' ');t=t.toLowerCase();return words.some(function(w){return t.indexOf(w)!==-1;});});
+  if(hidden)return 'I can\'t see that. It\'s in a private or vault note. Open Notes to check it, or mark it ✨ if you want me to use it.';
+  return 'I don\'t have a note about that.';}
+
+var IDEAS=[['search','Search','One box over note text, #tags, link titles and pictures; every word must match, matches are highlighted, and Vault notes match by label only. Also on Home, and / jumps to it.'],['share','Share to VERA from your phone','The installed dashboard appears in the phone\'s share menu (Android; on iPhone, a Shortcut), so a web page or photo becomes a note in one tap. Try 📤 on Home.'],
+  ['check','Checklist notes','A note can be a list you tick off, like MindChuk lists. Switch ☑ Checklist on in Jot a note; ticked items can be cleared.'],
+  ['resurface','“Bring this back on…”','Pick a date in Jot a note or on any note. It comes back at the top of Notes and on Home that day, and can also make a Task.'],
+  ['attach','Attach a picture','A photo or receipt, like the move invoice. It goes in a Notes folder in your Drive and the note links to it. Try 📷 in Jot a note.'],
+  ['preview','Link preview (opt-in)','For a saved web page, VERA fetches the title and a short summary only when you tap 🔗 Get preview on that note. Try it on the desk review note.'],
+  ['replace','Newer replaces older (VERA asks first)','Jot “Sam shoe 8.5” and VERA asks whether to update the older note or keep both.'],
+  ['tidy','Tag tidy-up','🏷 Tidy tags on Notes: rename or merge any tag, and VERA spots look-alikes (#moving and #move).'],
+  ['export','Export','All notes as Markdown or CSV. Vault notes left out, or kept encrypted.'],
+  ['chatnote','“note:” in chat','Typing “note: …” in chat saves a private note, never Memory. Try it in the Chat card.'],
+  ['lite','The tile on your lite dashboard','The same Jot a note tile on your lite Today screen. Owner only.']];
+var CHOSEN=['search','share','check','resurface','attach','preview','replace','tidy','chatnote'];
+function renderIdeas(){$('ideas').innerHTML=IDEAS.map(function(x){return '<label><input type="checkbox" data-idea="'+x[0]+'"'+((S.ideas[x[0]]!=null?S.ideas[x[0]]:CHOSEN.indexOf(x[0])!==-1)?' checked':'')+'><div><b>'+x[1]+(CHOSEN.indexOf(x[0])!==-1?' <span class="badge use">Chosen</span>':' <span class="badge">Not now</span>')+'</b><span>'+x[2]+'</span></div></label>';}).join('');}
+
+// ---- toast / undo ----
+var undoFn=null,toastTimer=null;
+function toast(t,undo){$('toastT').textContent=t;undoFn=undo||null;$('undo').style.display=undo?'':'none';$('toast').classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('on');},6000);}
+$('undo').onclick=function(){if(undoFn)undoFn();$('toast').classList.remove('on');render();};
+
+// ---- jot sheet ----
+var draft={use:false,vault:false};
+function openSheet(){draft={use:false,vault:false,pic:null,asked:false,check:false};$('backDate').value='';$('backTask').checked=false;$('sharedFrom').textContent='';$('txt').value='';$('pic').value='';$('picPrev').textContent='';$('replaceAsk').innerHTML='';syncSheet();$('sheet').classList.add('on');setTimeout(function(){$('txt').focus();},30);}
+function closeSheet(){$('sheet').classList.remove('on');}
+function syncSheet(){var t=$('txt').value,sg=suggest(t),r=routeOf(t);
+  $('sug').innerHTML=tagsIn(t).map(function(x){return '<span class="chip on">#'+esc(x)+'</span>';}).join('')+sg.map(function(x){return '<button class="chip sug" data-add="'+x+'">+ #'+x+' suggested</button>';}).join('');
+  $('tUse').classList.toggle('on',draft.use);$('tUse').setAttribute('aria-pressed',draft.use);$('tCheck').classList.toggle('on',draft.check);$('tCheck').setAttribute('aria-pressed',draft.check);$('txt').placeholder=draft.check?'First line is the title, then one item per line (or commas).':'Type it like a text. Add #tags if you like.';$('tVault').classList.toggle('on',draft.vault);$('tVault').setAttribute('aria-pressed',draft.vault);
+  $('vaultAsk').textContent=looksSecret(t)&&!draft.vault?'This looks like a code or password. Put it in the Vault?':'';
+  $('route').textContent=draft.check?'':r==='task'?'→ will become a Task':r==='shop'?'→ will go on the Shopping list':'';}
+$('txt').addEventListener('input',function(){draft.asked=false;$('replaceAsk').innerHTML='';syncSheet();});
+$('pic').addEventListener('change',function(){var f=this.files&&this.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){var img=new Image();img.onload=function(){var sc=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);draft.pic=c.toDataURL('image/jpeg',0.75);
+  $('picPrev').innerHTML='<img class="pic" style="max-height:80px;display:inline-block" alt="Picture to attach" src="'+draft.pic+'"> In VERA it goes to a Notes folder in your Drive.';};img.src=rd.result;};rd.readAsDataURL(f);});
+$('sug').addEventListener('click',function(e){var b=e.target.closest('[data-add]');if(!b)return;$('txt').value=$('txt').value.replace(/\s*$/,'')+' #'+b.dataset.add;syncSheet();});
+$('tUse').onclick=function(){draft.use=!draft.use;if(draft.use)draft.vault=false;syncSheet();};
+$('tVault').onclick=function(){draft.vault=!draft.vault;if(draft.vault)draft.use=false;syncSheet();if(draft.vault&&draft.pic){draft.pic=null;$('pic').value='';$('picPrev').textContent='Pictures can\'t go in the Vault in this version, so it was removed.';}};
+$('tCheck').onclick=function(){draft.check=!draft.check;if(draft.check&&draft.vault)draft.vault=false;syncSheet();$('txt').focus();};
+$('cancel').onclick=closeSheet;
+$('sheet').addEventListener('click',function(e){if(e.target===$('sheet'))closeSheet();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet();});
+$('txt').addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('save').click();}});
+$('save').onclick=function(){var raw=$('txt').value.trim();if(!raw)return;var r=draft.check?'':routeOf(raw);
+  var bd=$('backDate').value,bt=$('backTask').checked;
+  if(draft.check){var tg=tagsIn(raw),lines=raw.replace(/\s*#[\w-]+/g,'').split('\n').map(function(l){return l.trim();}).filter(Boolean),title='Checklist';
+    if(lines.length>1&&!/^(-|\*|\[ ?\])/.test(lines[0]))title=lines.shift();
+    if(lines.length===1&&lines[0].indexOf(',')!==-1){var parts=lines[0].split(',');if(title==='Checklist'&&/:/.test(parts[0])){var cp=parts[0].split(':');title=cp[0].trim();parts[0]=cp[1];}lines=parts;}
+    var items=lines.map(function(l){return {t:l.replace(/^(-|\*|\[ ?\])\s*/,'').trim(),done:false};}).filter(function(x){return x.t;});
+    var cn={id:nid(),text:title,items:items,tags:tg,use:draft.use,vault:false,pinned:false,t:Date.now(),back:bd||null,pic:draft.pic||null};S.notes.unshift(cn);
+    if(bd&&bt)S.tasks.unshift({id:nid(),text:'Look at your note: '+title,due:bd});
+    closeSheet();render();toast('Saved a checklist with '+items.length+' item'+(items.length===1?'':'s'),function(){S.notes=S.notes.filter(function(x){return x.id!==cn.id;});});return;}
+  if(r==='task'){var t={id:nid(),text:raw.replace(/^(remind me to|remind me|add a task:?|add a task to)\s*/i,'')};S.tasks.unshift(t);closeSheet();render();toast('Sent to Tasks: '+t.text,function(){S.tasks=S.tasks.filter(function(x){return x.id!==t.id;});});return;}
+  if(r==='shop'){var s={id:nid(),text:raw.replace(/^buy\s*/i,'')};S.shop.unshift(s);closeSheet();render();toast('Added to the Shopping list: '+s.text,function(){S.shop=S.shop.filter(function(x){return x.id!==s.id;});});return;}
+  var tags=tagsIn(raw),text=raw.replace(/\s*#[\w-]+/g,'').trim()||raw;
+  if(!draft.vault&&!draft.asked){var cf=conflicts(text,tags);if(cf.length){draft.asked=true;draft.cf=cf;
+    $('replaceAsk').innerHTML='<div class="ask"><div><b>VERA:</b> '+cf.map(function(c){return esc(c.who.replace(/^./,function(x){return x.toUpperCase();}))+'\'s '+c.k+' is <b>'+esc(c.old)+'</b> in an older note (“'+esc(c.note.text.slice(0,40))+'”)';}).join('; ')+'. Replace it with '+cf.map(function(c){return '<b>'+esc(c.nv)+'</b>';}).join(', ')+'?</div><div class="row"><button class="btn small solid" id="repYes">Replace in the older note</button><button class="btn small" id="repNo">Keep both</button></div></div>';return;}}
+  var n={id:nid(),text:text,tags:tags.length?tags:[],use:draft.use,vault:draft.vault,pinned:false,t:Date.now(),pic:draft.pic||null,back:bd||null};
+  if(bd&&bt)S.tasks.unshift({id:nid(),text:'Look at your note: '+text.slice(0,50),due:bd});
+  if(n.vault){n.label=text.split(/\s+/).slice(0,3).join(' ');n.plain=text;}
+  S.notes.unshift(n);closeSheet();
+  var after=function(){render();toast(n.vault?'Saved to the Vault'+(S.mode==='encrypted'&&n.box?', encrypted':S.mode==='encrypted'?(S.vault?'. Unlock the vault to encrypt it':'. Set up the vault to encrypt it'):''):'Saved to Notes'+(n.tags.length?' · #'+n.tags.join(' #'):'')+(n.use?' · ✨':' · private'),function(){S.notes=S.notes.filter(function(x){return x.id!==n.id;});});};
+  if(n.vault&&S.mode==='encrypted'&&unlocked())encryptNote(n).then(after);else after();};
+$('replaceAsk').addEventListener('click',function(e){if(e.target.id==='repNo'){$('replaceAsk').innerHTML='';$('save').click();return;}
+  if(e.target.id!=='repYes')return;var cf=draft.cf,before=cf.map(function(c){return [c.note,c.note.text];});
+  cf.forEach(function(c){c.note.text=c.note.text.replace(SZ[c.k],'$1'+c.nv);c.note.t=Date.now();});closeSheet();render();
+  toast('Updated your older note: '+cf.map(function(c){return c.k+' '+c.old+' → '+c.nv;}).join(', '),function(){before.forEach(function(b){b[0].text=b[1];});});});
+$('jot').onclick=openSheet;$('jot2').onclick=openSheet;
+$('gro').onclick=function(){toast('Log a grocery run: unchanged, shown for placement.');};
+$('away').onclick=function(){toast('Away: unchanged, shown for placement.');};
+
+// ---- notes actions ----
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-a]');if(b){var id=+b.closest('[data-id]').dataset.id,n=S.notes.filter(function(x){return x.id===id;})[0];if(!n)return;
+    if(b.dataset.a==='pin')n.pinned=!n.pinned;
+    else if(b.dataset.a==='edit')n.editing=true;
+    else if(b.dataset.a==='canceledit')n.editing=false;
+    else if(b.dataset.a==='saveedit'){var raw=$('editTxt').value,before={text:n.text,tags:n.tags.slice(),items:n.items&&JSON.parse(JSON.stringify(n.items))};
+      n.tags=tagsIn(raw);var body=raw.replace(/[ \t]*#[\w-]+/g,'').replace(/\n+$/,'').trim();
+      if(n.items){var ls=body.split('\n').map(function(l){return l.trim();}).filter(Boolean);n.text=ls.shift()||'Checklist';n.items=ls.map(function(l){var dn=/^\[x\]\s*/i.test(l);return {t:l.replace(/^(\[x\]|\[ ?\]|-|\*)\s*/i,''),done:dn};});}
+      else n.text=body||n.text;
+      n.editing=false;render();toast('Note updated',function(){n.text=before.text;n.tags=before.tags;if(before.items)n.items=before.items;});return;}
+    else if(b.dataset.a==='use')n.use=!n.use;
+    else if(b.dataset.a==='back')n.editBack=!n.editBack;
+    else if(b.dataset.a==='backset'){var dv=b.parentNode.querySelector('[data-backdate]').value;if(!dv)return;n.back=dv;n.editBack=false;render();toast('This note comes back on '+fmtD(dv));return;}
+    else if(b.dataset.a==='backclear'){n.back=null;n.editBack=false;}
+    else if(b.dataset.a==='clearck'){var old=n.items.slice();n.items=n.items.filter(function(x){return !x.done;});render();toast('Cleared ticked items',function(){n.items=old;});return;}
+    else if(b.dataset.a==='preview'){n.loading=true;render();fakeFetch(urlOf(n.text)).then(function(p){delete n.loading;n.preview=p;render();});return;}
+    else if(b.dataset.a==='unpreview')n.preview=null;
+    else if(b.dataset.a==='del'){S.open=null;var keep=S.notes.slice();S.notes=S.notes.filter(function(x){return x.id!==id;});render();toast('Deleted',function(){S.notes=keep;});return;}
+    else if(b.dataset.a==='tovault'){n.vault=true;n.use=false;n.label=n.text.split(/\s+/).slice(0,3).join(' ');n.plain=n.text;if(S.mode==='encrypted'&&unlocked()){encryptNote(n).then(render);return;}}
+    render();return;}
+  var oi=e.target.closest('[data-openid]');if(oi){S.open=+oi.dataset.openid;render();return;}
+  var vw=e.target.closest('[data-view]');if(vw&&vw.closest('[data-id]')){S.open=+vw.closest('[data-id]').dataset.id;render();return;}
+  if(e.target.id==='viewClose'||e.target===$('viewModal')){var on=byId(S.open);if(on)on.editing=false;S.open=null;render();return;}
+  var op=e.target.closest('[data-open]');if(op){S.q='';$('q').value='';S.filter='';setTab('notes');return;}
+  var mg=e.target.closest('[data-merge]');if(mg){retag(mg.dataset.merge,mg.dataset.into);return;}
+  var ra=e.target.closest('[data-renapply]');if(ra){var inp=ra.parentNode.querySelector('[data-ren]');retag(ra.dataset.renapply,inp.value);return;}
+  var f=e.target.closest('[data-f]');if(f){S.filter=f.dataset.f;render();return;}
+  var g=e.target.closest('[data-go]');if(g){setTab(g.dataset.go);return;}
+  var sh=e.target.closest('[data-show]');if(sh){var n2=S.notes.filter(function(x){return x.id===+sh.dataset.show;})[0];n2.shown=!n2.shown;render();return;}
+  var rv=e.target.closest('[data-reveal]');if(rv){var n3=S.notes.filter(function(x){return x.id===+rv.dataset.reveal;})[0];if(n3.shown!=null){delete n3.shown;render();return;}decryptNote(n3).then(function(t){n3.shown=t;render();});return;}
+  var hl=e.target.closest('[data-hidelabel]');if(hl){var n4=S.notes.filter(function(x){return x.id===+hl.dataset.hidelabel;})[0];n4.hideLabel=!n4.hideLabel;render();return;}
+  if(e.target.id==='vSet'){var p1=$('vp1').value,p2=$('vp2').value;if(p1.length<8){$('vMsg').textContent='Use at least 8 characters. A few words is best.';return;}if(p1!==p2){$('vMsg').textContent='The two don\'t match.';return;}
+    setupVault(p1).then(function(code){return Promise.all(S.notes.filter(function(n){return n.vault&&!n.box;}).map(encryptNote)).then(function(){render();$('vaultBox').insertAdjacentHTML('afterbegin','<div class="ok">Vault set up. Your recovery code is below. Write it down: it\'s the only way back if you forget the passphrase.</div><div class="code">'+code+'</div>');});});return;}
+  if(e.target.id==='vUnlock'||e.target.id==='vUseCode'){var isCode=e.target.id==='vUseCode';var secret=isCode?window.prompt('Recovery code'):$('vpass').value;if(!secret)return;
+    unlock(secret.trim(),isCode).then(function(){return Promise.all(S.notes.filter(function(n){return n.vault&&!n.box;}).map(encryptNote));}).then(render).catch(function(){$('vMsg').textContent=isCode?'That recovery code doesn\'t open this vault.':'Wrong passphrase.';});return;}
+  if(e.target.id==='vLock'){lock();render();return;}
+});
+document.addEventListener('change',function(e){var c=e.target.closest('[data-ck]');if(c){var n=byId(+c.closest('[data-id]').dataset.id);n.items[+c.dataset.ck].done=c.checked;render();return;}
+  var ms=e.target.closest('[data-mergesel]');if(ms&&ms.value)retag(ms.dataset.mergesel,ms.value);});
+$('tidyBtn').onclick=function(){S.tidy=true;render();};
+$('tidyModal').addEventListener('click',function(e){if(e.target===$('tidyModal')||e.target.id==='tidyClose'){S.tidy=false;render();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.tidy){S.tidy=false;render();}
+  if(e.key==='Escape'&&S.open!=null){var on=byId(S.open);if(on)on.editing=false;S.open=null;render();}
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.clamp[data-view]')){e.preventDefault();e.target.click();}});
+// ---- share from another app ----
+var shareKind='page',SHOT=null;
+function sharePhoto(){if(SHOT)return SHOT;var c=document.createElement('canvas');c.width=360;c.height=240;var g=c.getContext('2d');g.fillStyle='#e9e4d8';g.fillRect(0,0,360,240);g.fillStyle='#fff';g.fillRect(110,20,140,200);g.fillStyle='#555';g.font='bold 13px sans-serif';g.fillText('ELM ST MOVERS',122,46);g.font='11px sans-serif';[['Crew 4h','$1,600'],['Truck','$180'],['Boxes','$64'],['Fuel','$550']].forEach(function(r,i){g.fillText(r[0],122,76+i*20);g.fillText(r[1],205,76+i*20);});g.fillRect(122,162,116,1);g.font='bold 12px sans-serif';g.fillText('Total',122,182);g.fillText('$2,394',192,182);SHOT=c.toDataURL('image/jpeg',0.8);return SHOT;}
+function shareItem(){$('shareItem').innerHTML=shareKind==='page'?'🌐 <b>Kitchen faucet repair guide</b> · example.com/faucet-guide':'<img class="pic" style="max-height:120px" alt="Photo of a movers receipt" src="'+sharePhoto()+'">';
+  Array.prototype.forEach.call(document.querySelectorAll('#shareWhat button'),function(b){b.classList.toggle('on',b.dataset.w===shareKind);});}
+$('shareTry').onclick=function(){shareKind='page';shareItem();$('shareSheet').classList.add('on');};
+$('shareWhat').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;shareKind=b.dataset.w;shareItem();});
+$('shareCancel').onclick=function(){$('shareSheet').classList.remove('on');};
+$('shareSheet').addEventListener('click',function(e){if(e.target===$('shareSheet')){$('shareSheet').classList.remove('on');return;}var a=e.target.closest('[data-app]');if(!a)return;
+  if(a.dataset.app!=='vera'){toast('Only VERA does something in this demo.');return;}
+  $('shareSheet').classList.remove('on');openSheet();
+  if(shareKind==='page'){$('txt').value='Kitchen faucet repair guide https://example.com/faucet-guide #home';$('sharedFrom').textContent='📤 Shared from your browser. Tap 🔗 Get preview on the note later if you want the summary.';}
+  else{draft.pic=sharePhoto();$('txt').value='Movers receipt #move #money';$('picPrev').innerHTML='<img class="pic" style="max-height:80px;display:inline-block" alt="Picture to attach" src="'+draft.pic+'"> In VERA it goes to a Notes folder in your Drive.';$('sharedFrom').textContent='📤 Shared from Photos.';}
+  syncSheet();});
+$('q').addEventListener('input',function(){S.q=this.value;render();});
+$('hq').addEventListener('keydown',function(e){if(e.key==='Enter'&&this.value.trim()){S.q=this.value;$('q').value=this.value;this.value='';setTab('notes');}});
+document.addEventListener('keydown',function(e){if(e.key==='/'&&S.view==='owner'&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){e.preventDefault();if(S.tab!=='notes')setTab('notes');$('q').focus();}});
+document.addEventListener('click',function(e){if(e.target.id==='qClear'){S.q='';$('q').value='';render();}});
+$('ideas').addEventListener('change',function(e){var c=e.target.closest('[data-idea]');if(!c)return;S.ideas[c.dataset.idea]=c.checked;store();});
+$('askGo').onclick=function(){var q=$('ask').value.trim();if(!q)return;
+  var nm=q.match(/^note:\s*([\s\S]+)/i);if(nm){var reply;if(S.view!=='owner')reply='I can\'t save notes from your sign-in.';else{var tg=tagsIn(nm[1]),tx=nm[1].replace(/\s*#[\w-]+/g,'').trim()||nm[1];S.notes.unshift({id:nid(),text:tx,tags:tg,use:false,pinned:false,vault:false,t:Date.now()});render();reply='Saved to Notes as a private note'+(tg.length?' · #'+tg.join(' #'):'')+'. It\'s not in Memory, and I won\'t use it unless you mark it ✨.';}
+    $('chat').insertAdjacentHTML('beforeend','<div class="you">'+esc(q)+'</div><div class="vera">'+esc(reply)+'</div>');$('ask').value='';$('chat').scrollTop=1e6;return;}$('chat').insertAdjacentHTML('beforeend','<div class="you">'+esc(q)+'</div><div class="vera">'+answer(q)+'</div>');$('ask').value='';$('chat').scrollTop=1e6;};
+$('ask').addEventListener('keydown',function(e){if(e.key==='Enter')$('askGo').click();});
+$('apiTry').onclick=function(){$('apiOut').innerHTML=S.view==='owner'?'<span class="ok">ok: '+S.notes.filter(function(n){return !n.vault;}).length+' notes (vault notes come back as ciphertext only)</span>':'<span class="warn">{ ok: false, error: "Only the owner can do that" }</span>';};
+
+// ---- top controls ----
+$('tabs').addEventListener('click',function(e){var b=e.target.closest('button');if(b)setTab(b.dataset.t);});
+$('viewSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;S.view=b.dataset.v;$('apiOut').textContent='';$('chat').innerHTML='';render();});
+$('modeSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.dataset.m===S.mode)return;
+  if(b.dataset.m==='hidden'){var enc_=S.notes.filter(function(n){return n.vault&&n.box;});
+    if(enc_.length&&!unlocked()){S.mode='encrypted';setTab('vault');toast('Unlock the vault first, so its notes can be turned back into text for option 1.');return;}
+    Promise.all(enc_.map(function(n){return decryptNote(n).then(function(t){n.plain=t;delete n.box;n.text=t;});})).then(function(){S.mode='hidden';render();});}
+  else{S.mode='encrypted';S.notes.forEach(function(n){if(n.vault&&!n.box){n.plain=n.plain||n.text;}});if(unlocked())Promise.all(S.notes.filter(function(n){return n.vault&&!n.box;}).map(encryptNote)).then(render);else render();}});
+$('reset').onclick=function(){try{localStorage.removeItem(LS);}catch(e){}S=Object.assign(SEED(),{view:'owner',tab:'home',key:null,until:0,filter:'',q:''});$('q').value='';$('chat').innerHTML='';setTab('home');};
+setInterval(function(){if(S.key&&Date.now()>S.until){lock();render();}},15000);
+render();
+})();
+</script>
+</body>
+</html>
