@@ -38,6 +38,46 @@ function getAviationStackKey_() {
 
 var AS_BACKOFF_KEY_ = 'AVIATIONSTACK_BACKOFF_UNTIL';
 
+// ---- The month's lookups -----------------------------------------------------
+// Every real call to the API counts against the plan, empty answers included (the
+// free plan is 100 a month). VERA counts them, stops at the budget until the 1st,
+// and spaces out a flight's lookups whether or not the last one found anything.
+var AS_USED_KEY_            = 'AVIATIONSTACK_USED';   // "yyyy-MM:count"; another month reads 0
+var AS_BUDGET_DEFAULT_      = 100;                    // the free plan's month
+var FLIGHT_FORCE_FLOOR_MIN_ = 10;                     // ↺ skips a flight tried this recently
+
+function asMonth_(ms) { return Utilities.formatDate(new Date(ms || Date.now()), Session.getScriptTimeZone(), 'yyyy-MM'); }
+/** Pure: this month's count from the stored "yyyy-MM:n" (0 for another month or nothing). */
+function asUsedFrom_(raw, month) {
+  var m = String(raw || '').match(/^(\d{4}-\d{2}):(\d+)$/);
+  return m && m[1] === month ? parseInt(m[2], 10) : 0;
+}
+/** Pure: Config flight_status_monthly_budget, a whole number above 0, else 100. */
+function asBudget_(cfg) {
+  var n = parseInt(String((cfg || {})['flight_status_monthly_budget'] || '').trim(), 10);
+  return n > 0 ? n : AS_BUDGET_DEFAULT_;
+}
+function asUsed_() { return asUsedFrom_(PropertiesService.getScriptProperties().getProperty(AS_USED_KEY_), asMonth_()); }
+/** Counts one call. Says so in the System Log at 80% and at the budget, once each. → this month's count. */
+function asCountCall_(budget) {
+  var props = PropertiesService.getScriptProperties(), month = asMonth_();
+  var n = asUsedFrom_(props.getProperty(AS_USED_KEY_), month) + 1;
+  props.setProperty(AS_USED_KEY_, month + ':' + n);
+  var b = budget || AS_BUDGET_DEFAULT_;
+  if (n === b || n === Math.ceil(b * 0.8)) {
+    try {
+      veraLog_('checkFlightStatuses', 'Travel', 'Warning', n === b
+        ? 'This month\u2019s ' + b + ' flight lookups are used. Flight checks pause until the 1st (Feature Flags \u203a Flight status checks).'
+        : n + ' of this month\u2019s ' + b + ' flight lookups are used.', 0);
+    } catch (e) {}
+  }
+  return n;
+}
+/** Pure: when a flight was last asked about: its last good answer or its last try, whichever is later. */
+function flightLastTry_(prevStatus, attemptAt) {
+  return Math.max(Number((prevStatus && prevStatus.lastChecked) || 0), Number(attemptAt) || 0);
+}
+
 // ---- How often to check a flight (Config flight_status_poll_minutes) ---------
 var FLIGHT_POLL_MIN_MINUTES_  = 15;   // the trigger's own cadence: nothing finer is possible
 var FLIGHT_POLL_SEEDED_PROP_  = 'FLIGHT_POLL_CONFIG_SEEDED';
@@ -177,6 +217,7 @@ function fetchFlightStatus_(flightIata, flightDate) {
     + '&flight_iata=' + encodeURIComponent(flightIata.toUpperCase());
 
   try {
+    try { asCountCall_(asBudget_(getConfigValues())); } catch (cntErr) {}   // empty answers count against the plan too
     var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     var code = resp.getResponseCode();
     var body = resp.getContentText();
@@ -364,15 +405,24 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     try { veraLog_('checkFlightStatuses', 'Travel', 'Skipped', 'Flight status checks are off in Feature Flags', Date.now() - _fsStart); } catch (vlErr) {}
     return { polled: 0, skipped: 0, errors: 0, off: true };
   }
-  // Short-circuit if we received a 429 recently — don't waste requests
-  if (!forceRefresh && isAviationStackRateLimited_()) {
+  // Short-circuit if we received a 429 recently — don't waste requests. A refresh you
+  // ask for waits too: the plan's month is spent either way, so asking can't help.
+  if (isAviationStackRateLimited_()) {
     var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
     Logger.log('FlightStatus: skipping — rate-limit backoff active until ' + new Date(until).toISOString());
     // Issue #138: a backoff window is precisely when every status silently goes
     // stale, so the staleness check matters more here than on the normal path.
-    checkStaleFlightStatus_();
-    return { polled: 0, skipped: 0, errors: 0 };
+    if (!forceRefresh) checkStaleFlightStatus_();
+    return { polled: 0, skipped: 0, errors: 0, paused: until };
   }
+  // This month's lookups are used: nothing more until the 1st (said once, when it happened).
+  var budget = asBudget_(getConfigValues()), used = asUsed_();
+  if (used >= budget) {
+    Logger.log('FlightStatus: skipping — ' + used + ' of ' + budget + ' lookups used this month.');
+    if (!forceRefresh) checkStaleFlightStatus_();
+    return { polled: 0, skipped: 0, errors: 0, budget: budget, used: used };
+  }
+  var recent = 0;   // flights a refresh you asked for skipped: tried in the last few minutes
 
   var now   = Date.now();
   var tz    = Session.getScriptTimeZone();
@@ -408,19 +458,23 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
       var prev = meta.flight_status || {};
       var mins = (f.dep - now) / 60000;
       if (!forceRefresh && (prev.status === 'landed' || prev.status === 'cancelled')) { skipped++; return; }
-      if (!forceRefresh && (now - (prev.lastChecked || 0)) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
+      // Spaced from the last TRY, not the last good answer: an empty answer costs a lookup
+      // too, and used to be asked again every 15 minutes all day.
+      var lastTry = flightLastTry_(prev, meta.flight_attempt_at);
+      if (!forceRefresh && (now - lastTry) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
+      if (forceRefresh && (now - lastTry) < FLIGHT_FORCE_FLOOR_MIN_ * 60000) { skipped++; recent++; return; }
 
       Logger.log('FlightStatus: checking ' + f.num + ' on ' + f.date + ' (row ' + (i + 1) + ')');
       var statusObj = fetchFlightStatus_(f.num, f.date);
+      meta.flight_attempt_at = now;
       if (!statusObj) {
         errors++;
         // Issue #138: the refresh failed but a previous status is still cached.
         // Stamp it so downstream renders "Not live" instead of the stale value.
-        if (meta.flight_status) {
-          stampFlightFetchFailure_(meta.flight_status);
-          try { updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta)); }
-          catch (stampErr) { Logger.log('FlightStatus: could not stamp stale status on row ' + (i + 1) + ' — ' + stampErr.message); }
-        }
+        if (meta.flight_status) stampFlightFetchFailure_(meta.flight_status);
+        // Written either way, so the try is remembered and spaces the next one.
+        try { updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta)); }
+        catch (stampErr) { Logger.log('FlightStatus: could not record the try on row ' + (i + 1) + ' — ' + stampErr.message); }
         return;
       }
       meta.flight_status = statusObj;
@@ -443,20 +497,26 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
       var prev  = entry.status || {};
       var mins  = (f.dep - now) / 60000;
       if (!forceRefresh && (prev.status === 'landed' || prev.status === 'cancelled')) { skipped++; return; }
-      if (!forceRefresh && (now - (prev.lastChecked || 0)) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
+      var lastTry = flightLastTry_(prev, entry.attemptAt);
+      if (!forceRefresh && (now - lastTry) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
+      if (forceRefresh && (now - lastTry) < FLIGHT_FORCE_FLOOR_MIN_ * 60000) { skipped++; recent++; return; }
 
       Logger.log('FlightStatus: checking calendar flight ' + f.num + ' on ' + f.date + ' (' + f.calId + ')');
       var statusObj = fetchFlightStatus_(f.num, f.date);
       if (!statusObj) {
         errors++;
         // Issue #138: stamp the cached calendar status so it stops reading as live.
-        if (entry.status) { stampFlightFetchFailure_(entry.status); calCache[f.calId] = entry; }
+        if (entry.status) stampFlightFetchFailure_(entry.status);
+        // Kept either way, so the try is remembered and spaces the next one.
+        entry.attemptAt = now; entry.flightNum = f.num; entry.date = f.date; entry.time = f.time;
+        entry.tripKey = f.tripKey || entry.tripKey || targetTripKey || '';
+        calCache[f.calId] = entry;
         return;
       }
       // `date` is stored so checkStaleFlightStatus_() can reconstruct the
       // departure time without re-scanning every calendar.
       calCache[f.calId] = { tripKey: f.tripKey || entry.tripKey || targetTripKey || '', flightNum: f.num,
-                            date: f.date, time: f.time, status: statusObj };
+                            date: f.date, time: f.time, status: statusObj, attemptAt: now };
       checked++;
     });
     setCalFlightStatusCache_(calCache);
@@ -474,7 +534,7 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     veraLog_('checkFlightStatuses', 'Travel', errors ? 'Partial' : 'Success',
       'checked=' + checked + ' skipped=' + skipped + (errors ? ' errors=' + errors : ''), Date.now() - _fsStart);
   }
-  return { polled: checked, skipped: skipped, errors: errors };
+  return { polled: checked, skipped: skipped, errors: errors, recent: recent };
   } catch (err) {
     Logger.log('checkFlightStatuses_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('checkFlightStatuses', 'Travel', 'Failed', '', Date.now() - _fsStart, err.message);
@@ -851,6 +911,7 @@ function debugFlightStatusScan() {
       var loc2   = (ev2.getLocation() || '').trim();
       var rel2   = isItineraryCalendarRelevant_(title2, loc2, '');
       if (!rel2.include || rel2.type !== 'flight') continue;
+      if (tested >= 1) break;   // one lookup is enough to test the key; each costs one of the month's
       var testFlight = flightKeyFor_({ type: 'flight', title: title2 });
       if (!testFlight) continue;
       var testDate   = Utilities.formatDate(ev2.getStartTime(), tz, 'yyyy-MM-dd');
@@ -863,18 +924,8 @@ function debugFlightStatusScan() {
           + ' terminal=' + apiResult.terminal
           + ' delay=' + apiResult.delay_min + 'min');
       } else {
-        // Also fetch raw response to see the error
-        var rawKey = getAviationStackKey_();
-        var rawUrl = 'http://api.aviationstack.com/v1/flights'
-          + '?access_key=' + encodeURIComponent(rawKey)
-          + '&flight_iata=' + encodeURIComponent(testFlight);
-        Logger.log('fetchFlightStatus_ returned null. Fetching raw response...');
-        try {
-          var rawResp = UrlFetchApp.fetch(rawUrl, { muteHttpExceptions: true });
-          Logger.log('HTTP ' + rawResp.getResponseCode() + ': ' + rawResp.getContentText().substring(0, 500));
-        } catch(rawErr) {
-          Logger.log('Raw fetch error: ' + rawErr.message);
-        }
+        // The reason is in API health; a second, raw call would spend another lookup.
+        Logger.log('fetchFlightStatus_ returned null: ' + (getApiHealth_('aviationstack').lastError || 'no live data for it yet'));
       }
       tested++;
     }

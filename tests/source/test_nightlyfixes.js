@@ -182,7 +182,8 @@ console.log('\nthe flight poll: only flights near departure are looked up');
     getId: () => e.id, getTitle: () => e.title, getLocation: () => e.location,
     getStartTime: () => new C.Date(e.start), isAllDayEvent: () => e.allDay })) }] };
   vm.createContext(C); loadSettings_(C);
-  const SRC = ['flightPollGapMin_', 'flightPollIntervalMin_', 'flightStaleAfterMin_', 'flightDueForCheck_', 'flightCheckIntervalMin_',
+  const SRC = ['asMonth_', 'asUsedFrom_', 'asBudget_', 'asUsed_', 'flightLastTry_',
+               'flightPollGapMin_', 'flightPollIntervalMin_', 'flightStaleAfterMin_', 'flightDueForCheck_', 'flightCheckIntervalMin_',
                'buildFlightDays_', 'refreshFlightDays_', 'getCalFlightStatusCache_', 'setCalFlightStatusCache_', 'checkFlightStatuses_']
     .map(n => extractFn(FLIGHT, n)).join('\n');
   const consts = FLIGHT.match(/^var (FLIGHT_|AS_|CAL_)[A-Z_]*\s*=.*$/gm).join('\n');

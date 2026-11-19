@@ -7473,8 +7473,15 @@ function webForceFlightStatuses_(e) {
   var tripKey = (e.parameter && e.parameter.tripKey) || '';
   if (!tripKey) return { ok: false, error: 'Missing tripKey' };
   try {
-    checkFlightStatuses_(true, tripKey);
+    var ran = checkFlightStatuses_(true, tripKey) || {};
     var result = webGetFlightStatuses_(e);
+    // Why nothing was looked up, when nothing was: the plan's month is used, a backoff
+    // is on, or each flight was tried a few minutes ago (the ↺ toast says which).
+    if (result && typeof result === 'object') {
+      result.skippedWhy = ran.budget ? 'budget' : ran.paused ? 'paused' : (ran.recent && !ran.polled && !ran.errors) ? 'recent' : '';
+      if (ran.paused) result.pausedUntil = new Date(ran.paused).toISOString();
+      if (ran.budget) { result.lookupsUsed = ran.used; result.lookupsBudget = ran.budget; }
+    }
     return result;
   } catch (err) {
     return { ok: false, error: err.message };

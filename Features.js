@@ -48,7 +48,8 @@ var FEATURES_ = [
   { k: 'places_autovisit', n: 'Places: add visited countries', e: '🌍', a: 'Travel', kind: 'Background checks', d: 'When a trip ends, its countries are added to Countries › Visited.', t: ['Nightly step', 'Countries tab'], v: 'sees',
     steps: ['plCloseEndedTrips_'] },
   { k: 'flight_status', n: 'Flight status checks', e: '🛫', a: 'Travel', kind: 'Background checks', d: 'On travel days: delays, gate changes, cancellations.', t: ['Every 15 min', 'Slack'], v: 'na',
-    jobs: ['checkFlightStatuses_'], risky: 'You won’t hear about delays or gate changes on a travel day.', cfg: [schedOpt_('flight_status_trigger_minutes', 'Runs', 'minutes', '15'), { c: 'flight_status_poll_minutes', l: 'Re-check a flight after', type: 'num', def: '15', u: 'minutes' }] },
+    jobs: ['checkFlightStatuses_'], risky: 'You won’t hear about delays or gate changes on a travel day.', cfg: [schedOpt_('flight_status_trigger_minutes', 'Runs', 'minutes', '15'), { c: 'flight_status_poll_minutes', l: 'Re-check a flight after', type: 'num', def: '15', u: 'minutes' },
+      { c: 'flight_status_monthly_budget', l: 'Lookups a month (your plan)', type: 'num', def: '100', u: 'lookups' }] },
   // Health
   { k: 'fitness', n: 'Fitness', e: '💪', a: 'Health', kind: 'Screens', d: 'The Fitness screen, weekly target and the slow-week flag.', t: ['Screen', 'Nightly step', 'Flag'], v: 'hidden',
     steps: ['checkFitnessConsistency_', 'checkFitnessTravelGap_'], screens: ['health/fitness'], notif: ['health_performance_insight'],
@@ -243,7 +244,7 @@ function webFeatureFlags_() {
   var nm = {}; try { NOTIF_REGISTRY.forEach(function(n) { nm[n.key] = n.label; }); } catch (e) {}
   var features = FEATURES_.map(function(f) {
     var state = featureStateFrom_(f.k, cfg, today), last = featureLastMs_(f, stepsLast, beats);
-    return { k: f.k, n: f.n, e: f.e, a: f.a, kind: f.kind, d: f.d, t: f.t, v: f.v, needs: f.needs || '', risky: f.risky || '', fixed: !!f.fixed, when: featureWhen_(f, cfg),
+    return { k: f.k, n: f.n, e: f.e, a: f.a, kind: f.kind, d: f.d, t: f.t, v: f.v, needs: f.needs || '', risky: f.risky || '', fixed: !!f.fixed, when: featureWhen_(f, cfg), usage: featureUsage_(f, cfg),
       state: state, until: state === 'paused' ? String(cfg[f.k + '_paused_until']) : '', last: last ? new Date(last).toISOString() : '',
       own: String(cfg[f.k + '_enabled'] == null ? '' : cfg[f.k + '_enabled']).trim().toUpperCase() === 'FALSE' ? 'off' : 'on',
       known: cfg[f.k + '_enabled'] != null, screens: f.screens || [], steps: f.steps || [], jobs: f.jobs || [],
@@ -290,6 +291,12 @@ function webSetFeatureSetting_(body) {
     try { if (rebuildTrigger_(handler)) rebuilt.push(handler); } catch (e) { Logger.log('webSetFeatureSetting_ rebuild ' + handler + ': ' + e.message); }
   });
   return { ok: true, key: c, value: v, rebuilt: rebuilt };
+}
+
+/** A feature's running count, when it has one: flight lookups used of the month's budget. */
+function featureUsage_(f, cfg) {
+  if (f.k !== 'flight_status' || typeof asUsed_ !== 'function') return '';
+  try { return 'Lookups this month: ' + asUsed_() + ' of ' + asBudget_(cfg); } catch (e) { return ''; }
 }
 
 /** GET config_files (owner only): each linked file's name, and whether VERA can open it. */

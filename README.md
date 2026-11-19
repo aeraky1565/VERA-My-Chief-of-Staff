@@ -2129,9 +2129,15 @@ on a day with no trip.
 
 ### Flight Status Monitor
 
-`checkFlightStatuses_()` runs every 15 minutes. It scans the Itinerary tab for flight rows with a flight number, plus Google Calendar for events matching the airline-code + number pattern. For flights within 24 hours of departure it queries the AviationStack API. Results are stored in the Itinerary sheet metadata column (JSON) and in Script Properties (`FLIGHT_STATUS_CACHE`). The dashboard merges both sources via `?action=flight_statuses&tripKey=...`.
+`checkFlightStatuses_()` runs every 15 minutes. It scans the Itinerary tab for flight rows with a flight number, plus Google Calendar for events matching the airline-code + number pattern. From 6 hours before a flight's departure until it leaves, it queries the AviationStack API. Results are stored in the Itinerary sheet metadata column (JSON) and in Script Properties (`FLIGHT_STATUS_CACHE`). The dashboard merges both sources via `?action=flight_statuses&tripKey=...`.
 
-Adaptive polling intervals: 6–24h before departure → every 3 hours; 1–6h → every 60 minutes; under 1h → every 15 minutes. A 429 rate-limit response triggers a 2-hour backoff (or 30-day backoff if the monthly quota is exhausted).
+Spacing per flight: 1–6h before departure → every 60 minutes; under 1h → every 15 minutes (`flight_status_poll_minutes` can only space them further). A 429 rate-limit response triggers a 2-hour backoff (or a 30-day backoff if the monthly quota is exhausted).
+
+**Staying inside the plan.** Every call to AviationStack counts against the plan's month (the free plan is 100), including the empty answers it gives for a flight it has no data for yet. The System Log showed what used to happen: an empty or failed answer wasn't written down, so the 15-minute trigger asked again every run, all day (96 lookups on Oct 21, all empty), and a refresh from the dashboard skipped the spacing and the quota pause. Now:
+- **Every try is remembered.** An Itinerary row keeps `flight_attempt_at` in its Metadata; a calendar flight keeps `attemptAt` in `FLIGHT_STATUS_CACHE`. The spacing above counts from the last try, good answer or not, so a flight costs at most about 10 lookups on its travel day.
+- **↺ and the dashboard's own fill-in** wait during a backoff, and skip a flight tried in the last 10 minutes. The ↺ line says why ("Checked a few minutes ago", "paused until …", "this month's lookups are used").
+- **A monthly count.** Each real call is counted in the `AVIATIONSTACK_USED` Script Property (`yyyy-MM:n`; a new month starts at 0). At the budget, `flight_status_monthly_budget` (default 100, on Feature Flags › Flight status checks), nothing more is asked until the 1st. The System Log says so at 80% and at 100%, and the Flight status row shows "Lookups this month: N of 100".
+- `debugFlightStatusScan` tests one flight, with no second raw call.
 
 ### Post-trip Capture
 
@@ -2705,6 +2711,7 @@ Config tab can't be read at all.
 | `VERA_STATE_MAIL` | Auto | MailCounter.js | The mail counter: pieces, packages, last scan, last reset |
 | `VERA_STATE_CAPACITY_OVERRIDE` / `VERA_STATE_CAPACITY_INFERRED` | Auto | Chat.js, Slack.js / Code.js | Your busy/light override, and the nightly run's guess, kept apart so one never undoes the other |
 | `AVIATIONSTACK_BACKOFF_UNTIL` | Auto | FlightStatus.js | Timestamp (ms) for AviationStack rate-limit backoff |
+| `AVIATIONSTACK_USED` | Auto | FlightStatus.js | This month's AviationStack lookups, as `yyyy-MM:count` |
 | `CHAT_HISTORY_{sessionId}` | Auto | Chat.js | Stored conversation history per session (JSON, last 10 exchanges) |
 
 ---
