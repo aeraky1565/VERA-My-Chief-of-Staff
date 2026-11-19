@@ -23,7 +23,7 @@ const CONTROLS = [
   ['Chat’s context reads the old sheet', in_('Chat.js', "var freshB = (typeof bsBillRows_ === 'function' && bsBillRows_(monCtx));", "var freshB = null;")],
   ['the snapshot counts “yes” as paid', in_('Memory.js', "if (String(r[6] || '').trim() !== monS) unpaidCount++;", "if (String(r[6] || '').toLowerCase() !== 'yes') unpaidCount++;")],
   ['the Income rows are dropped', in_('BillSchedule.js', "if (!bsText_(r[0]) || !/income/i.test(bsText_(r[8]))) return;", "return;")],
-  ['any month counts as paid', in_('BillSchedule.js', "return x && x.paid === month ? month : '';", "return x && x.paid ? month : '';")],
+  ['any month counts as paid', in_('BillSchedule.js', "return bsText_(entry && entry.paid) === month;", "return !!bsText_(entry && entry.paid);")],
   ['calendar rows are listed as bills', in_('BillSchedule.js', "if (s.kind !== 'bill' || trackerNames[k]) return;", "if (trackerNames[k]) return;")],
   ['a tracker line can be deleted from VERA', in_('BillSchedule.js', "  if (plan.computed.shared.lines.some(function(x) { return x.name.toLowerCase() === low; })) return { ok: false, error: line + ' comes from the budget tracker; remove the line there.' };\n", "")],
   ['the fallback is gone', in_('WebApp.js', "  if (fresh) {\n    return { ok: true, currentMonth: monN, source: 'tracker',", "  if (true) {\n    return { ok: true, currentMonth: monN, source: 'tracker',")],

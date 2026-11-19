@@ -25,7 +25,7 @@ const CONTROLS = [
   ["a walk is added twice", "GymTracker.js", "} else if (type && !mine.some(", "} else if (type && ![].some("],
   ["the week starts on Sunday", "GymTracker.js", "back = (d.getDay() + 6) % 7;", "back = d.getDay();"],
   ["tomorrow includes all-day events", "Notify.js", "return !e.allDay && String(e.start || '').slice(0, 10) === tomorrowIso && e.title;", "return String(e.start || '').slice(0, 10) === tomorrowIso && e.title;"],
-  ["paid bills still show", "Notify.js", "|| String(r[6] || '').trim() === month) return false;", ") return false;"],
+  ["paid bills still show", "Notify.js", "    if (String(r[6] || '').trim() === month) return false;\n", ""],
   ["the evening gets no context", "Reminders.js", "sendEveningCheckinSlack_(typeof eveningContext_ === 'function' ? eveningContext_(now) : null);", "sendEveningCheckinSlack_(null);"],
   ["movement is plain text again", "Notify.js", "sendNudge_('movement_' + today + '_' + slot, 'Movement', m.text, 'movement', null, m.blocks);", "sendNudge_('movement_' + today + '_' + slot, 'Movement', m.text, 'movement');"],
   ["a tap doesn't move the next one out", "Notify.js", "  if (moveTooSoon_(mv0.tapAt, now.getTime())) return false;\n", ""],
