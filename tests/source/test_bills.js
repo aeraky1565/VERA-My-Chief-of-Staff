@@ -145,8 +145,10 @@ console.log('\nThe morning email');
   ctx.ss_       = () => ctx.getSpreadsheet();
   ctx.sub_      = (name, fn) => fn();
   ctx.escapeHtml_ = s => String(s);
+  ctx.out = { needs: [], week: [] }; ctx.meDay = () => 'Thu';   // the email's section items (MorningEmail.js)
   vm.runInContext(block, ctx);
   const out = ctx.focusRows.join('\n');
+  check('the email’s items skip the paycheck too', !JSON.stringify(ctx.out).match(/paycheck/i) && ctx.out.needs.concat(ctx.out.week).some(x => /Bills/.test(x.area)), JSON.stringify(ctx.out));
 
   check('the credit renders as a credit', /-\$310\.00/.test(out),
         out.replace(/<[^>]*>/g, '') + ' — "$-310" is what shipped');

@@ -253,7 +253,7 @@ console.log('\nWiring');
   check('sendNudge_ asks the gate first', /if \(notifKey && typeof notifGate_ === 'function'\) \{\n    if \(!notifGate_\(notifKey,/.test(REM));
   check('…and no longer logs "Reminder sent", only a failure', !/'\\u23f0 Reminder sent/.test(REM) && !/sendSlackLog_\(delivered/.test(REM) && /Reminder FAILED to send/.test(REM));
   check('isNotifEnabled_ means "not off"', /return notifDeliveryFrom_\(key, cfg\) !== 'off';/.test(CODE));
-  check('the morning email shows what was held, and clears it only after it goes', /notifHeldHtmlNow_\(\) : ''\) \+\s*\n\s*stalenessNotice/.test(CODE) && CODE.indexOf('notifHeldClear_()') > CODE.indexOf("sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');"));
+  check('the morning email shows what was held, and clears it only after it goes', /meHeldSplit_\(typeof notifHeldList_ === 'function' \? notifHeldList_\(\) : \[\]\)/.test(CODE) && CODE.indexOf('notifHeldClear_()') > CODE.indexOf("sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');"));
   check('the nightly tail posts the count line', /sendSlackLog_\('📊 ' \+ notifCountLine_\(notifCounts_\(\)\.yesterday\)\)/.test(CODE));
   check('the weekend memo: email only, no Slack ping', !/Weekend memo is ready/.test(read('WeekendPlanner.js')) && /notifGate_\('weekend_memo'/.test(read('WeekendPlanner.js')));
   check('Settings: a Where route; any Slack channel by name', /case 'set_notif_delivery':\s+return jsonOut_\((peopleOwnerOnly_\(\) \|\| )?webSetNotifDelivery_\(e\)\);/.test(WEB) && /\^\[a-z0-9\]\[a-z0-9_-\]\{0,79\}\$/.test(WEB) && /id = '#' \+ name;/.test(SLACK));

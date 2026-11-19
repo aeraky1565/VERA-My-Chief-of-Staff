@@ -2428,7 +2428,12 @@ function readSummaryTab_(ss, tabName) {
  * @param {Array=}      subTimings Collector for per-block {name, ms}.
  * @returns {string} HTML string (may be empty if nothing urgent)
  */
-function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
+function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings, out) {
+  // out (optional): the same facts as items for the email's sections (MorningEmail.js):
+  // out.needs (today), out.week (the next 7 days), out.dayPlanHtml.
+  out = out || { needs: [], week: [] };
+  out.needs = out.needs || []; out.week = out.week || [];
+  var meDay = function(d) { return typeof meWeekday_ === 'function' ? meWeekday_(d) : ''; };
   var html     = '';
   var tz       = Session.getScriptTimeZone();
   var today    = new Date(); today.setHours(0, 0, 0, 0);
@@ -2473,6 +2478,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
 
     overdueTasks.forEach(function(t) {
       var days = Math.abs(t.daysUntilDue || 0);
+      out.needs.push({ chip: 'Overdue', text: t.task + ' · ' + days + ' day' + (days === 1 ? '' : 's') + ' overdue', area: 'Tasks' });
       focusRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
         escapeHtml_(t.task) + '</strong> <span style="color:#c62828;font-size:13px;">— ' +
         days + ' day' + (days === 1 ? '' : 's') + ' overdue</span></p>');
@@ -2499,6 +2505,11 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
         if (paid || dueDay === null) return;
         var daysUntil = dueDay - dayOfMon;
         if (daysUntil < 0) daysUntil += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        if (daysUntil <= 7) {
+          var m7 = fmtMoney_(r[1]);
+          if (daysUntil === 0) out.needs.push({ chip: 'Due', text: name + ' bill' + (m7 ? ', ' + m7 : '') + ', due today', area: 'Bills' });
+          else out.week.push({ text: name + ' bill' + (m7 ? ' ' + m7 : ''), when: meDay(new Date(today.getTime() + daysUntil * 86400000)), area: 'Bills', days: daysUntil });
+        }
         if (daysUntil > 5) return;
         var money  = fmtMoney_(r[1]);
         var amtStr = money ? ' (' + money + ')' : '';
@@ -2520,6 +2531,11 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
           if (String(r[10]).trim() === 'Used') return;  // used coupons are kept for Saved this year (Coupons.js)
           var exp = new Date(r[7]); exp.setHours(0, 0, 0, 0);
           var d   = Math.round((exp - todayCp) / 86400000);
+          if (d >= 0 && d <= 7) {
+            var cpText = String(r[1] || '').trim() + ' coupon' + (r[2] ? ' ' + String(r[2]).trim() : '');
+            if (d === 0) out.needs.push({ chip: 'Due', text: cpText + ' ends today', area: 'Coupons' });
+            else out.week.push({ text: cpText + ' ends ' + meDay(exp), when: '', area: 'Coupons', days: d });
+          }
           if (d >= 0 && d <= 3) {
             var store   = escapeHtml_(String(r[1] || '').trim());
             var offerTx = r[2] ? ' — ' + escapeHtml_(String(r[2]).trim()) : '';
@@ -2542,6 +2558,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
         var serviceDays = null;
         if (r[5]) { try { serviceDays = Math.round((new Date(r[5]) - today) / 86400000); } catch(e2) {} }
         if (serviceDays === null || serviceDays > 14) return;
+        if (serviceDays <= 7) out.week.push({ text: item, when: serviceDays < 0 ? Math.abs(serviceDays) + ' d overdue' : serviceDays === 0 ? 'today' : meDay(new Date(today.getTime() + serviceDays * 86400000)), area: 'Home', days: serviceDays });
         var statusStr;
         if (serviceDays < 0)   statusStr = Math.abs(serviceDays) + ' day' + (Math.abs(serviceDays) === 1 ? '' : 's') + ' overdue';
         else if (serviceDays === 0) statusStr = 'DUE TODAY';
@@ -2562,6 +2579,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
           if (!isNaN(wExp.getTime())) { wExp.setHours(0, 0, 0, 0); wDays = Math.round((wExp - today) / 86400000); }
         } catch (e3) {}
         if (wDays === null || wDays < 0 || wDays > 60) return;
+        if (wDays <= 14) out.week.push({ text: wItem + ' warranty ends', when: wDays === 0 ? 'today' : wDays === 1 ? 'tomorrow' : 'in ' + wDays + ' days', area: 'Home', days: wDays });
         var wStatus = wDays === 0 ? 'warranty ends TODAY'
                     : wDays === 1 ? 'warranty ends tomorrow'
                     : 'warranty ends in ' + wDays + ' days';
@@ -2626,6 +2644,8 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       var packDone  = countForTripKeys_(packDoneByKey,  cKeys);
 
       var packStr = packTotal === 0 ? '⚠ packing not started' : (packDone + '/' + packTotal + ' packed');
+      if (daysAway <= 7) out.week.push({ text: 'Packing for ' + trip.label + (packTotal === 0 ? ' · not started' : ' · ' + packDone + ' of ' + packTotal + ' packed'),
+        when: daysAway === 0 ? 'leaves today' : 'leaves ' + meDay(new Date(today.getTime() + daysAway * 86400000)), area: 'Travel', days: daysAway });
       var daysStr = daysAway === 0 ? 'TODAY' : (daysAway + ' days away');
       travelRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
         escapeHtml_(trip.label) + '</strong> <span style="color:#555555;font-size:13px;">— ' +
@@ -2641,6 +2661,7 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       calPlanHtml = buildDaySequencingSection_(allEvents, openTasks, capMode);
     }, 'day sequencing (non-fatal)');
   }
+  out.dayPlanHtml = calPlanHtml;
 
   // ---- Assemble HTML -------------------------------------------------------
   if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0 && calPlanHtml === '') return '';
@@ -4507,7 +4528,7 @@ function morningNudge() {
     const medCount  = surfaced.filter(function(r) { return r[5] === 'Medium'; }).length;
     const lowCount  = surfaced.filter(function(r) { return r[5] === 'Low';    }).length;
 
-    const subject = 'Good morning, Ahmed — VERA has ' + total + (total === 1 ? ' thing' : ' things') + ' for your attention';
+    var subject = '';   // set by meRender_ below (MorningEmail.js): "☀️ Tuesday, Nov 17: 2 things need you today"
 
     // ---- Build urgency rows for HTML ------------------------------------
     function urgencyRow(color, dot, label, count) {
@@ -4712,8 +4733,9 @@ function morningNudge() {
     // back filled so the breakdown line below can name the blocks inside it.
     var intelligenceSection = '';
     var intelSubTimings     = [];
+    var meOut               = { needs: [], week: [] };   // the same facts as the email's sections (MorningEmail.js)
     nightlyStep_(ctx, 'buildMorningIntelligence_', function() {
-      intelligenceSection = buildMorningIntelligence_(allEvents, openTasks, capMode, intelSubTimings);
+      intelligenceSection = buildMorningIntelligence_(allEvents, openTasks, capMode, intelSubTimings, meOut);
     });
 
     // ---- Guest arriving soon ticker (Issue #150) ----------------------------
@@ -4722,6 +4744,7 @@ function morningNudge() {
       var guestCfg  = readPTOConfig_();
       var guestList = getUpcomingGuests_(guestCfg);
       var arriving  = guestList.filter(function(g) { return g.daysAway >= 0 && g.daysAway <= 7; });
+      arriving.forEach(function(g) { meOut.week.push({ text: 'Guests: ' + g.label, when: g.daysAway === 0 ? 'arrive today' : g.daysAway === 1 ? 'arrive tomorrow' : 'arrive ' + meWeekday_(g.arrivalDate + 'T12:00:00'), area: 'Home', days: g.daysAway }); });
       if (arriving.length > 0) {
         var guestItems = arriving.map(function(g) {
           return '<tr><td style="padding:4px 0;font-size:14px;color:#333333;">' +
@@ -4771,86 +4794,28 @@ function morningNudge() {
              '</div>';
     })();
 
-    // ---- HTML body ------------------------------------------------------
-    const htmlBody =
-      '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
-      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f5;padding:24px 0;">' +
-      '<tr><td align="center">' +
-      '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.10);">' +
-
-      // Logo header
-      (logoTag
-        ? '<tr><td style="padding:0;background:#0d1b3e;">' + logoTag + '</td></tr>'
-        : '<tr><td style="padding:24px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:28px;font-weight:bold;letter-spacing:4px;">VERA</span><br><span style="color:#c9a84c;font-size:11px;letter-spacing:2px;">YOUR PERSONAL CHIEF OF STAFF</span></td></tr>') +
-
-      // Weather ticker (empty string → nothing rendered)
-      weatherTicker +
-
-      // Body
-      '<tr><td style="padding:36px 40px;">' +
-      '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
-      (welcomeBack ? '<p style="margin:0 0 16px;font-size:15px;color:#555555;">Welcome home. Here’s what piled up.</p>' + welcomeBack.html : '') +
-      '<p style="margin:0 0 16px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
-      capacityTicker +
-      '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
-      '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
-      guestTicker +
-      calendarSection +
-      taskBadges +
-      (ptoPlanSection ? ptoPlanSection.html : '') +
-      intelligenceSection +
-      // What waited for this email: its home, quiet hours, or past the daily cap (Notify.js, #250).
-      (typeof notifHeldHtmlNow_ === 'function' ? notifHeldHtmlNow_() : '') +
-      stalenessNotice +
-      '</td></tr>' +
-
-      // Footer
-      '<tr><td style="padding:16px 40px;background:#f7f7fa;border-top:1px solid #eeeeee;">' +
-      '<p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">Sent by VERA &mdash; Virtual Executive &amp; Reminder Assistant</p>' +
-      '</td></tr>' +
-
-      '</table></td></tr></table></body></html>';
-
-    // ---- Plain text fallback --------------------------------------------
-    const calPlainText = todayEvents.length > 0
-      ? '\nToday:\n' + todayEvents.map(function(e) {
-          const t = e.isAllDay ? 'All day' : (e.start.split(' ')[1] || '');
-          return '  ' + e.title + (t ? ' · ' + t : '');
-        }).join('\n')
-      : '';
-    const taskPlainText = (totalOverdue > 0 || totalDueToday > 0)
-      ? '\nTasks: ' +
-        (totalOverdue  > 0 ? totalOverdue  + ' overdue'   : '') +
-        (totalOverdue  > 0 && totalDueToday > 0 ? ' · ' : '') +
-        (totalDueToday > 0 ? totalDueToday + ' due today' : '')
-      : '';
-
-    var capPlainLabel = capMode === 'busy'
-      ? (capSource === 'override' ? '🔴 Busy day (you said so)' : '🔴 Busy day (calendar load)')
-      : capMode === 'normal' ? '🟡 Normal day' : '🟢 Light day';
-    var capPlainLine = capPlainLabel + (heldCount > 0 ? ' · ' + heldCount + ' flag(s) held' : '');
-
-    const plainText = [
-      'Good morning, Ahmed.',
-      '',
-      welcomeBack ? welcomeBack.text + '\n' : false,
-      ptoPlanSection ? ptoPlanSection.text + '\n' : false,
-      capPlainLine,
-      '',
-      'VERA flagged ' + total + (total === 1 ? ' item' : ' items') + ' overnight:',
-      '',
-      highCount > 0 ? '  High priority:   ' + highCount : '',
-      medCount  > 0 ? '  Medium priority: ' + medCount  : '',
-      lowCount  > 0 ? '  Low priority:    ' + lowCount  : '',
-      calPlainText,
-      taskPlainText,
-      stalenessPlainText,
-      '',
-      'Open VERA: ' + veraLink,
-      dashboardPlainText,
-      '',
-      '— VERA',
-    ].filter(function(l) { return l !== false; }).join('\n');
+    // ---- The email, in the agreed layout (MorningEmail.js) ------------------
+    var meFlags = meFlagItems_(surfaced, todayStr);
+    var meNeeds = meFlags.needs.concat(meOut.needs);
+    (openTasks || []).filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).slice(0, 3).forEach(function(t) {
+      meNeeds.push({ chip: 'Due', text: t.task, area: 'Tasks' });
+    });
+    if (gOverdueCount || gDueTodayCount) meNeeds.push({ chip: gOverdueCount ? 'Overdue' : 'Due', text: (gOverdueCount ? gOverdueCount + ' overdue' : '') + (gOverdueCount && gDueTodayCount ? ', ' : '') + (gDueTodayCount ? gDueTodayCount + ' due today' : '') + ' in Google Tasks', area: 'Tasks' });
+    var meLabels = {}; try { NOTIF_REGISTRY.forEach(function(r) { meLabels[r.key] = r.emoji; }); } catch (e) {}
+    var meHeld = meHeldSplit_(typeof notifHeldList_ === 'function' ? notifHeldList_() : []);
+    var meMap = function(x) { return { label: meLabels[x.key] || '', text: x.text, at: String(x.at || '').replace(/^\w{3} /, ''), why: x.why }; };
+    var me = meRender_({
+      name: 'Ahmed', dateLabel: meDateLabel_(new Date()), logoTag: logoTag, weatherHtml: weatherTicker,
+      welcomeHtml: welcomeBack ? welcomeBack.html : '', welcomeText: welcomeBack ? welcomeBack.text : '',
+      needs: meNeeds, dayPlanHtml: meOut.dayPlanHtml || '',
+      todayEvents: todayEvents.map(function(e) { return { time: e.isAllDay ? 'All day' : (e.start.split(' ')[1] || ''), title: e.title }; }),
+      week: meOut.week.concat(meFlags.week), overnight: meHeld.overnight.map(meMap), also: meHeld.also.map(meMap),
+      moreFlags: meFlags.more + heldCount, ptoHtml: ptoPlanSection ? ptoPlanSection.html : '', ptoText: ptoPlanSection ? ptoPlanSection.text : '',
+      staleHtml: stalenessNotice, staleText: stalenessPlainText, dashboardUrl: dashboardUrl || veraLink,
+    });
+    subject = me.subject;
+    const htmlBody  = me.html;
+    const plainText = me.text;
 
     // ---- Send -----------------------------------------------------------
     const mailOptions = {

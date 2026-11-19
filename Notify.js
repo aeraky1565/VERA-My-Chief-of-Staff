@@ -121,13 +121,14 @@ function notifBump_(what) {
 }
 
 /** Adds a line to tomorrow's email. Never throws. */
-function notifHold_(key, text) {
+function notifHold_(key, text, why) {
   try {
     var st = veraStateGet_('NOTIF'), list = [];
     try { list = JSON.parse(st.NOTIF_DIGEST || '[]') || []; } catch (e) { list = []; }
     var line = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
     if (!line || list.some(function(x) { return x.key === key && x.text === line; })) return;
-    list.push({ key: key, text: line, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE h:mm a') });
+    // why: 'quiet' or 'cap' (it would have been pushed: the email's "Held overnight"), else its home is the email ("Also").
+    list.push({ key: key, text: line, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE h:mm a'), why: why || 'email' });
     if (list.length > NOTIF_DIGEST_MAX_) list = list.slice(-NOTIF_DIGEST_MAX_);
     veraStateSet_('NOTIF', { NOTIF_DIGEST: JSON.stringify(list) });
     notifBump_('held');
@@ -180,7 +181,7 @@ function notifGate_(key, text, due) {
     var kind = notifKind_(key), delivery = notifDeliveryFrom_(key, cfg);
     var away = delivery !== 'off' && kind !== 'read' && NOTIF_SYSTEM_.indexOf(key) === -1 && delivery !== 'email' && typeof awayHolds_ === 'function' ? awayHolds_(key, due) : false;
     var d = notifDecide_(key, { delivery: delivery, kind: kind, away: away, quiet: notifQuietAt_(minute, cfg), pushed: notifCounts_().counts.push || 0, cap: notifCap_(cfg) });
-    if (d.go === 'digest') { notifHold_(key, text); return false; }
+    if (d.go === 'digest') { notifHold_(key, text, d.why); return false; }
     if (d.go === 'skip') { if (d.why === 'off') notifBump_('off'); return false; }
     if (d.why !== 'system') notifBump_(kind === 'checkin' ? 'checkin' : kind === 'read' ? 'read' : kind === 'act' ? 'act' : 'push');
     return true;

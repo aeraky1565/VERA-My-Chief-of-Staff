@@ -224,7 +224,7 @@ console.log('\nThe duplicated calendar fetch is gone');
         /var openTasks\s*=\s*null;/.test(BODY) && /openTasks\s*=\s*getOpenTasks\(\);/.test(BODY),
         'the Tasks tab was read three times in one run');
   check('the intelligence section is handed what the run already has',
-        /buildMorningIntelligence_\(allEvents, openTasks, capMode, intelSubTimings\)/.test(BODY),
+        /buildMorningIntelligence_\(allEvents, openTasks, capMode, intelSubTimings, meOut\)/.test(BODY),
         'the whole point: it took no arguments and re-fetched all three');
   check('…and capMode is read before it is handed over',
         BODY.indexOf('capacityInfo.mode') < BODY.indexOf('buildMorningIntelligence_(allEvents'),
