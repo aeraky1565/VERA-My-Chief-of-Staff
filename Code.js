@@ -542,6 +542,7 @@ function createSheetTabs(ss) {
     ['movement_times',               '10:30, 13:30, 15:30'],
     ['work_hours',                   '9:00-17:00'],
     ['movement_daily_cap',           '3'],
+    ['work_busy_ics',                ''],          // optional: a free/busy link (.ics) from the work calendar; movement waits out meetings
     ['act_now_cap_aria',             '3'],            // #vera-act-now posts per assistant per day
     ['act_now_cap_vera',             '3'],
     ['act_now_cap_hailey',           '3'],
@@ -4459,14 +4460,10 @@ function morningNudge() {
     const ss    = getSpreadsheet();
     const sheet = ss.getSheetByName(TABS.FLAGS);
 
-    if (!sheet || sheet.getLastRow() < 2) {
-      Logger.log('Morning nudge: no flags found, skipping email.');
-      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();   // #244
-      return;
-    }
-
-    const numRows = sheet.getLastRow() - 1;
-    const data    = sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues();
+    // No open flags is no longer a reason to skip the email: a bill, the day plan or what
+    // waited overnight still goes. It's skipped only when every section is empty (below).
+    const numRows = sheet ? sheet.getLastRow() - 1 : 0;
+    const data    = numRows >= 1 ? sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues() : [];
 
     // Active = not acknowledged AND not resolved
     const active = data.filter(function(row) {
@@ -4474,12 +4471,6 @@ function morningNudge() {
       const resolved     = String(row[8]).toLowerCase();
       return acknowledged !== 'yes' && resolved !== 'yes';
     });
-
-    if (active.length === 0) {
-      Logger.log('Morning nudge: no active flags, skipping email.');
-      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();   // #244
-      return;
-    }
 
     // ---- Capacity mode filtering (Issue #8) ---------------------------------
     // Defaults chosen so a skip shows everything rather than nothing: if this phase
@@ -4816,6 +4807,14 @@ function morningNudge() {
     subject = me.subject;
     const htmlBody  = me.html;
     const plainText = me.text;
+
+    // Nothing in any section: no email this morning (a welcome-home catch-up still goes alone, #244).
+    if (meIsEmpty_({ needs: meNeeds, week: meOut.week.concat(meFlags.week), dayPlanHtml: meOut.dayPlanHtml || '', overnight: meHeld.overnight, also: meHeld.also,
+                     moreFlags: meFlags.more + heldCount, ptoHtml: ptoPlanSection ? ptoPlanSection.html : '', welcomeHtml: welcomeBack ? welcomeBack.html : '' })) {
+      Logger.log('Morning nudge: nothing to say today, no email.');
+      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();
+      return;
+    }
 
     // ---- Send -----------------------------------------------------------
     const mailOptions = {

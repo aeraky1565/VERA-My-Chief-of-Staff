@@ -132,7 +132,7 @@ console.log('\n#vera-act-now');
   check('VERA posts its own decisions ending within 2 days, open ones only', J(picks.map(p => p.id)) === '["F1"]');
   check('…once each', c.actNowVeraPicks_(rows, '2026-11-18', ['PPURCH|return|p1|2026-11-19']).length === 0);
   const b = c.actNowBlocks_('VERA', picks[0], 1, 3, '2026-11-18');
-  check('the post: badge and deadline, title and why, Done and Later, "act-now 1 of 3 today"', /\*VERA\*  ·  ⏳ Ends 2026-11-19/.test(b[0].elements[0].text) && /\*↩️ Last days to return the lamp\*\nThe return window ends/.test(b[1].text.text) && b[2].elements[0].action_id === 'acknowledge_flag' && b[2].elements[0].value === 'F1' && b[2].elements[1].action_id === 'snooze_flag' && /act-now 1 of 3 today/.test(b[3].elements[0].text));
+  check('the post: badge and deadline, title and why, Done and Later, "act-now 1 of 3 today"', /\*VERA\*  ·  ⏳ Ends 2026-11-19/.test(b[0].elements[0].text) && /\*↩️ Last days to return the lamp\*\nThe return window ends/.test(b[1].text.text) && b[2].elements[0].action_id === 'acknowledge_flag' && b[2].elements[0].value === 'F1' && b[2].elements[b[2].elements.length - 1].action_id === 'snooze_flag' && /act-now 1 of 3 today/.test(b[3].elements[0].text));
   check('a cap per assistant, 3 unless set', c.actNowCap_({}, 'aria') === 3 && c.actNowCap_({ act_now_cap_aria: '1' }, 'aria') === 1);
   const d = ctx({ cfg: { act_now_cap_aria: '1' } });
   check('past it, nothing more today', d.actNowAllowed_('aria') === true && d.actNowAllowed_('aria') === false);
@@ -170,7 +170,7 @@ console.log('\nHAILEY and TESS in #vera-act-now (read only)');
   check('…and a missing column reads blank rather than breaking', c.actNowTessPicks_([['Company', 'Status'], ['X', 'New']], '2026-11-18', [], 85, id).length === 0);
   const b = c.actNowAgentBlocks_('HAILEY', hp[0], 1, 3);
   check('the post: badge, what it is, the home, why, Open, "act-now 1 of 3 today"', /\*HAILEY\*  ·  ⏳ today  ·  New listing under your ceiling/.test(b[0].elements[0].text) && b[2].elements[0].url === 'https://example.test/12-elm' && /HAILEY · act-now 1 of 3 today/.test(b[3].elements[0].text));
-  check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions'));
+  check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions' || x.elements.every(e => !e.url)));
   check('hourlyCheck posts them; both kinds are in Act now, with caps and the TESS bar as settings', /try \{ actNowAgentsSync_\(new Date\(\)\); \}/.test(REM) && /key: 'act_now_hailey',[^\n]*category: 'Act now'/.test(CODE) && /key: 'act_now_tess',[^\n]*category: 'Act now'/.test(CODE) && /\['act_now_tess_min_score', +'85'\]/.test(CODE) && /\['act_now_cap_hailey',/.test(CODE));
   check('VERA only reads their sheets', !/setValue|appendRow|setValues/.test(SRC.slice(SRC.indexOf('function actNowAgentsSync_'), SRC.indexOf('    actNowPostedSave_(posted);\n    try { if (tId)'))));
 }

@@ -753,6 +753,12 @@ function handleSlackInteractionSync_(payload) {
       ackText = eveningMoveLog_(kind);
       updatedBlocks = eveningAfterTap_((payload.message && payload.message.blocks) || [], ackText);
 
+    } else if (actionId === 'act_remind') {
+      // "Remind me at 11 AM" on a #vera-act-now post (Notify.js): remembered, then the button
+      // gives way to a line saying when.
+      ackText = actRemindTap_(payload);
+      updatedBlocks = actRemindAfterTap_((payload.message && payload.message.blocks) || [], ackText);
+
     } else if (actionId === 'move_done' || actionId === 'move_skip') {
       ackText = moveTap_(actionId === 'move_done' ? 'done' : 'skip');
       updatedBlocks = moveAfterTap_((payload.message && payload.message.blocks) || [], ackText);

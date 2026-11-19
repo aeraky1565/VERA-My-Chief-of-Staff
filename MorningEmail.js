@@ -140,3 +140,10 @@ function meRender_(d) {
   lines.push('', '— VERA');
   return { subject: subject, html: html, text: lines.join('\n') };
 }
+
+/** Pure: nothing in any section, so no email this morning. Today's calendar alone doesn't count. */
+function meIsEmpty_(d) {
+  d = d || {};
+  return !(d.needs || []).length && !(d.week || []).length && !d.dayPlanHtml && !(d.overnight || []).length &&
+    !(d.also || []).length && !d.moreFlags && !d.ptoHtml && !d.welcomeHtml;
+}

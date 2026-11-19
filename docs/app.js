@@ -5087,7 +5087,8 @@ var CF_GROUPS=[
   {id:'comingup',l:'Life › Coming up looks ahead',type:'num',key:'coming_up_days',unit:'days',u:['Life › Coming up']},
   {id:'ptocal',l:'Your work calendar',type:'text',key:'pto_calendar_name',f:['pto_planner'],n:['calgrid']},
   {id:'vptocal',l:'Victoria’s work calendar',type:'text',key:'victoria_pto_calendar_name',f:['pto_planner'],n:['calgrid']},
-  {id:'veracal',l:'Calendar VERA writes PTO to',type:'text',key:'pto_vera_calendar',f:['pto_planner']}]},
+  {id:'veracal',l:'Calendar VERA writes PTO to',type:'text',key:'pto_vera_calendar',f:['pto_planner']},
+  {id:'workbusy',l:'Work busy times (optional)',type:'text',key:'work_busy_ics',mask:true,ph:'Free/busy link (.ics) from your work calendar',u:['Movement nudges wait out your meetings'],f:['reminders']}]},
  {g:'Slack & email',e:'💬',d:'Where VERA talks to you. Send a test to check VERA can post in a channel.',items:[
   {id:'email',l:'Your email',type:'text',key:'morning_nudge_email',mask:true,u:['Every VERA email','Error alerts'],f:['pretrip_briefing','posttrip_capture','monthly_review']},
   {id:'ch_chat',l:'#vera-chat',type:'channel',key:'slack_chat_channel_id',u:['Chat','Check-ins'],f:['gym_tracker']},

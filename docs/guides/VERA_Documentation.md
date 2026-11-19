@@ -1183,6 +1183,20 @@ They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCh
   - **Or type it** (`eveningTypedAnswer_`, GymTracker.js, checked in chat before the AI): after tonight's check-in has gone out, a short reply like "Gym, 45 min legs", "walked 30 minutes", "stretch 10 min hamstrings" or "45 min, legs" (details for the workout you just tapped) is logged with its minutes and note, and VERA answers "Logged: gym, 45 min, legs. That's 3 of 4 this week." "Not today", "skipped" or "no workout today" count as a no. A bare "no", a question, or a sentence that only mentions the gym further on goes to chat as usual.
 - **Movement, #vera-notifications:** "🚶 5-minute reset · Stand, walk a lap, refill your water. Next one around 1:30." with **Done** and **Skip**, and "Movement · 1 of 3 today". Either tap pushes the next one at least 2 hours out (a slot inside that window is passed over), and Done counts toward the evening's "movement breaks".
 
+**The morning email** (`MorningEmail.js`, as in the mockup). Subject "☀️ Tuesday, Nov 17: 2 things need you today". Under the masthead and the weather strip (both as before):
+- **Needs you today:** High flags and anything due or overdue today (a flag's Due date, a bill, a coupon ending, overdue tasks, tasks due today, Google Tasks), each with a High / Due / Overdue chip and its area.
+- **Your Day, Sequenced** (unchanged), or a plain 📆 Today list when the day plan is off.
+- **This week:** the next 7 days, soonest first: bills, packing for a trip, coupons, home maintenance and warranties, guests, and flags due that week.
+- **Held overnight:** pushes that waited for quiet hours or the daily limit, with why and when (held items now remember why, `notifHold_(key, text, why)`).
+- **Also:** what lives in the email (mail, Discovery, …) and "N more flags on the Flags screen".
+- The **Open Needs you in VERA** button and the closing line.
+
+It now goes on a morning with no open flags too, whenever any section has something; it's skipped only when every section is empty (`meIsEmpty_`). The card is 100% wide up to 600 px, so it fits a phone. The capacity line and the High / Medium / Low counts are gone.
+
+**Work busy times** (optional, Settings › Config › Calendars, `work_busy_ics`, shown masked). Paste the free/busy (.ics) link your work calendar publishes (Outlook: Publish calendar, "Can view when I'm busy"). A movement nudge that falls in a meeting waits: the slot isn't spent, and the next hourly run sends it once you're free, until the next slot's time. Timed events, UTC or local times, free or cancelled entries (skipped), daily and weekly repeats (with INTERVAL, BYDAY, UNTIL, EXDATE) and moved occurrences are understood; it's read at most every 30 minutes, and a link that fails is ignored.
+
+**Remind me at …** on #vera-act-now posts (VERA's decisions, HAILEY, TESS, WILLA, ARIA's Book now and price drops): about 3 hours on, on the hour; an hour before the post's deadline when that's sooner; never after 9 PM; no button when there's no sensible time. The tap replaces the button with "⏰ I'll remind you at 11:00 AM." and the 15-minute tick posts "⏰ Reminder: …" in the same channel then (`NOTIF_REMIND`, at most 30 waiting).
+
 **Sleep.** Google Fit is removed: the call, and the `fitness.*` scopes. The morning check-in asks for hours slept with one tap (≤5 h · 6 · 7 · 8 · 9 h+), logged as `sleep_hours`, manual. A watch can fill it in later.
 
 **#vera-act-now** is for a decision with a clock on it.

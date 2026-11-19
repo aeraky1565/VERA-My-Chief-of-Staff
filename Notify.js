@@ -253,9 +253,89 @@ function checkMovement_(now, cfg) {
   // A Done or Skip tap moves the next one 2 h out (the mockup's rule): a slot that lands
   // inside that window is passed over, quietly.
   if (moveTooSoon_(mv0.tapAt, now.getTime())) return false;
+  // In a meeting (Config work_busy_ics, optional): wait. The slot isn't spent, so the next
+  // hourly run sends it once the meeting is over, until the next slot's time.
+  if (moveBusyAt_(workBusyToday_(cfg, now), minute)) {
+    try { veraStateSet_('NOTIF', { NOTIF_MOVE: JSON.stringify(mv0) }); } catch (e) {}
+    return false;
+  }
   var m = moveMessage_(slot, times);
   sendNudge_('movement_' + today + '_' + slot, 'Movement', m.text, 'movement', null, m.blocks);
   return true;
+}
+
+// ---- Work busy times (Config work_busy_ics, optional) -------------------------------------
+// VERA can't see work meetings, so movement runs on a schedule. A free/busy link from the
+// work calendar (Outlook: Publish calendar → "Can view when I'm busy" → the ICS link) lets
+// it wait out a meeting. Read once every 30 minutes; a link that fails is ignored.
+
+/** Pure: unfolded ICS lines. */
+function icsLines_(text) { return String(text || '').replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n'); }
+/** Pure: an ICS date-time → {iso:'yyyy-MM-dd', min} in local time, or null for an all-day date. toLocal(ms) handles UTC ('…Z'). */
+function icsWhen_(prop, toLocal) {
+  var v = String(prop || '').split(':').pop().trim(), m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
+  if (!m || m[4] === undefined) return null;
+  if (m[7]) return toLocal(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+  return { iso: m[1] + '-' + m[2] + '-' + m[3], min: +m[4] * 60 + +m[5] };
+}
+/**
+ * Pure: today's busy blocks from a free/busy ICS, as [[startMin, endMin]] in local minutes.
+ * Handles timed events, UTC or local times, TRANSP:TRANSPARENT / STATUS:CANCELLED (skipped),
+ * daily and weekly repeats (INTERVAL, BYDAY, UNTIL, EXDATE) and a moved single occurrence.
+ */
+function icsBusyBlocks_(text, dayIso, toLocal) {
+  var evs = [], cur = null;
+  icsLines_(text).forEach(function(l) {
+    if (l === 'BEGIN:VEVENT') { cur = { ex: [] }; return; }
+    if (l === 'END:VEVENT') { if (cur) evs.push(cur); cur = null; return; }
+    if (!cur) return;
+    var k = l.split(/[;:]/)[0];
+    if (k === 'DTSTART') cur.s = icsWhen_(l, toLocal);
+    else if (k === 'DTEND') cur.e = icsWhen_(l, toLocal);
+    else if (k === 'RRULE') cur.rr = l.slice(6);
+    else if (k === 'EXDATE') l.split(':').pop().split(',').forEach(function(x) { var w = icsWhen_('X:' + x, toLocal); if (w) cur.ex.push(w.iso); });
+    else if (k === 'UID') cur.uid = l.slice(4);
+    else if (k === 'RECURRENCE-ID') cur.rid = icsWhen_(l, toLocal);
+    else if (l === 'TRANSP:TRANSPARENT' || l === 'STATUS:CANCELLED') cur.free = true;
+  });
+  var moved = {}; evs.forEach(function(e) { if (e.rid) moved[e.uid + '|' + e.rid.iso] = true; });
+  var dayNo = function(iso) { return Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000); };
+  var DOW = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'], out = [];
+  evs.forEach(function(e) {
+    if (e.free || !e.s || !e.e) return;
+    var len = (dayNo(e.e.iso) - dayNo(e.s.iso)) * 1440 + e.e.min - e.s.min;
+    if (len <= 0) return;
+    var on = e.s.iso === dayIso;
+    if (!on && e.rr && !e.rid && dayIso > e.s.iso && e.ex.indexOf(dayIso) === -1 && !moved[e.uid + '|' + dayIso]) {
+      var r = {}; e.rr.split(';').forEach(function(p) { var kv = p.split('='); r[kv[0]] = kv[1]; });
+      var until = r.UNTIL ? (icsWhen_('X:' + r.UNTIL, toLocal) || { iso: r.UNTIL.slice(0, 4) + '-' + r.UNTIL.slice(4, 6) + '-' + r.UNTIL.slice(6, 8) }).iso : '';
+      var gap = dayNo(dayIso) - dayNo(e.s.iso), n = parseInt(r.INTERVAL, 10) || 1, dow = DOW[(dayNo(dayIso) + 4) % 7];
+      if (!until || dayIso <= until) {
+        if (r.FREQ === 'DAILY') on = gap % n === 0;
+        else if (r.FREQ === 'WEEKLY') on = (r.BYDAY ? r.BYDAY.split(',').indexOf(dow) !== -1 : gap % 7 === 0) && Math.floor(gap / 7) % n === 0;
+      }
+    }
+    if (on) out.push([e.s.min, Math.min(e.s.min + len, 1440)]);
+  });
+  return out;
+}
+/** Pure: is a minute inside a busy block? */
+function moveBusyAt_(blocks, minute) { return (blocks || []).some(function(b) { return minute >= b[0] && minute < b[1]; }); }
+/** Today's busy blocks from Config work_busy_ics, cached 30 minutes. null when there's no link or it can't be read. Never throws. */
+function workBusyToday_(cfg, now) {
+  var url = String((cfg || {}).work_busy_ics || '').trim().replace(/^webcal:\/\//i, 'https://');
+  if (!/^https:\/\//i.test(url)) return null;
+  var tz = Session.getScriptTimeZone(), day = Utilities.formatDate(now || new Date(), tz, 'yyyy-MM-dd'), key = 'WORK_BUSY_' + day;
+  try { var hit = CacheService.getScriptCache().get(key); if (hit) return JSON.parse(hit); } catch (e) {}
+  try {
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    if (resp.getResponseCode() !== 200) { Logger.log('workBusyToday_: HTTP ' + resp.getResponseCode()); return null; }
+    var blocks = icsBusyBlocks_(resp.getContentText(), day, function(ms) {
+      var d = new Date(ms); return { iso: Utilities.formatDate(d, tz, 'yyyy-MM-dd'), min: parseInt(Utilities.formatDate(d, tz, 'H'), 10) * 60 + parseInt(Utilities.formatDate(d, tz, 'm'), 10) };
+    });
+    try { CacheService.getScriptCache().put(key, JSON.stringify(blocks), 1800); } catch (e) {}
+    return blocks;
+  } catch (e) { Logger.log('workBusyToday_ (ignored): ' + e.message); return null; }
 }
 
 // ---- The movement message and its taps (docs/mockups/notifications.html) ------------------
@@ -401,6 +481,83 @@ function actNowVeraPicks_(rows, today, posted) {
   });
 }
 
+// ---- "Remind me at 11 AM" on #vera-act-now posts (docs/mockups/notifications.html) ------------
+var ACT_REMIND_LAST_HOUR_ = 21;   // never later than 9 PM
+/**
+ * Pure: when "Remind me" lands: about 3 hours on, on the hour; an hour before the deadline when
+ * that's sooner; never after 9 PM. 0 when there's no sensible time (then there's no button).
+ * nowMs, endMs: times; hourAt(ms) → that time's local hour (0–23).
+ */
+function actRemindAt_(nowMs, endMs, hourAt) {
+  var H = 3600000, at = Math.ceil((nowMs + 3 * H) / H) * H;
+  if (endMs && at > endMs - H) at = Math.floor((endMs - H) / H) * H;
+  // Never after 9 PM today (3 hours on from 8:40 PM is past midnight, not "early").
+  var lastToday = Math.floor(nowMs / H) * H + (ACT_REMIND_LAST_HOUR_ - hourAt(nowMs)) * H;
+  if (at > lastToday) at = lastToday;
+  return at - nowMs >= 45 * 60000 ? at : 0;
+}
+/** Pure: "11 AM", "9 PM", "1:30 PM" for a local hour and minute. */
+function actClock_(h, m) { return ((h + 11) % 12 + 1) + (m ? ':' + (m < 10 ? '0' : '') + m : '') + (h < 12 ? ' AM' : ' PM'); }
+/** The button, or null. endMs: the post's deadline (0 = end of today). */
+function actRemindButton_(endMs) {
+  try {
+    var now = Date.now(), tz = Session.getScriptTimeZone();
+    if (!endMs) { var d = new Date(); d.setHours(23, 59, 0, 0); endMs = d.getTime(); }
+    var hourAt = function(ms) { return parseInt(Utilities.formatDate(new Date(ms), tz, 'H'), 10); };
+    var at = actRemindAt_(now, endMs, hourAt);
+    if (!at) return null;
+    return { type: 'button', text: { type: 'plain_text', text: 'Remind me at ' + actClock_(hourAt(at), 0) }, action_id: 'act_remind', value: String(at) };
+  } catch (e) { return null; }
+}
+/** Pure: the post after a "Remind me" tap: the button gone, a line saying when. */
+function actRemindAfterTap_(blocks, line) {
+  var out = [];
+  (blocks || []).forEach(function(b) {
+    if (b.type === 'actions') {
+      var els = (b.elements || []).filter(function(e) { return e.action_id !== 'act_remind'; });
+      if (els.length) out.push(Object.assign({}, b, { elements: els }));
+    } else out.push(b);
+  });
+  out.push({ type: 'context', elements: [{ type: 'mrkdwn', text: line }] });
+  return out;
+}
+/** Pure: a post's title, for the reminder: its first *bold* text, else its plain text. */
+function actRemindTitle_(message) {
+  var m = message || {}, t = '';
+  (m.blocks || []).some(function(b) { var s = b.type === 'section' && b.text && b.text.text; var x = s && String(s).match(/\*([^*]+)\*/); if (x) t = x[1]; return !!x; });
+  return (t || String(m.text || '').replace(/[*_]/g, '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+/** The tap: remembered in the NOTIF bundle (at most 30). → the line shown under the post. */
+function actRemindTap_(payload) {
+  var at = parseInt(payload.actions[0].value, 10), tz = Session.getScriptTimeZone();
+  var list = []; try { list = JSON.parse(veraStateGet_('NOTIF').NOTIF_REMIND || '[]') || []; } catch (e) { list = []; }
+  var ch = (payload.channel && payload.channel.id) || (payload.container && payload.container.channel_id) || '';
+  list.push({ at: at, ch: ch, title: actRemindTitle_(payload.message), from: Utilities.formatDate(new Date(), tz, 'h:mm a') });
+  veraStateSet_('NOTIF', { NOTIF_REMIND: JSON.stringify(list.slice(-30)) });
+  return '⏰ I’ll remind you at ' + Utilities.formatDate(new Date(at), tz, 'h:mm a') + '.';
+}
+/** Pure: the reminders due now, and the rest. */
+function actRemindDue_(list, nowMs) {
+  var due = [], keep = [];
+  (list || []).forEach(function(r) { (r.at <= nowMs ? due : keep).push(r); });
+  return { due: due, keep: keep };
+}
+/** Every 15 minutes (checkinTick_): posts each reminder that's due, in the post's channel. Never throws. */
+function actRemindTick_(now) {
+  try {
+    var list = JSON.parse(veraStateGet_('NOTIF').NOTIF_REMIND || '[]') || [];
+    if (!list.length) return 0;
+    var split = actRemindDue_(list, (now || new Date()).getTime());
+    if (!split.due.length) return 0;
+    veraStateSet_('NOTIF', { NOTIF_REMIND: split.keep.length ? JSON.stringify(split.keep) : null });
+    split.due.forEach(function(r) {
+      if (!r.ch) return;
+      sendSlackMessage_(r.ch, '⏰ Reminder: ' + r.title, [{ type: 'section', text: { type: 'mrkdwn', text: '⏰ *Reminder:* ' + r.title + '\n_You asked at ' + r.from + '. The post with its buttons is above._' } }]);
+    });
+    return split.due.length;
+  } catch (e) { Logger.log('actRemindTick_ (non-fatal): ' + e.message); return 0; }
+}
+
 /** Pure: the Slack blocks for one act-now post: badge, deadline, title, why, Done / Later. */
 function actNowBlocks_(who, item, n, cap, today) {
   var ends = item.due === today ? 'Ends today' : 'Ends ' + item.due;
@@ -409,8 +566,9 @@ function actNowBlocks_(who, item, n, cap, today) {
     { type: 'section', text: { type: 'mrkdwn', text: '*' + item.title + '*' + (item.reason ? '\n' + item.reason : '') } },
     { type: 'actions', elements: [
       { type: 'button', text: { type: 'plain_text', text: '✓ Done' }, style: 'primary', action_id: 'acknowledge_flag', value: item.id },
+      typeof actRemindButton_ === 'function' ? actRemindButton_(new Date(item.due + 'T23:59:00').getTime()) : null,
       { type: 'button', text: { type: 'plain_text', text: 'Later' }, action_id: 'snooze_flag', value: item.id },
-    ] },
+    ].filter(Boolean) },
     { type: 'context', elements: [{ type: 'mrkdwn', text: who + ' · act-now ' + n + ' of ' + cap + ' today · ' + ends.toLowerCase() }] },
   ];
 }
@@ -451,6 +609,7 @@ function checkinTick_() {
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') return;
     var now = new Date();
     try { checkMorningWellnessCheckin_(now, now.getHours(), cfg); } catch (e) { Logger.log('checkinTick_ morning: ' + e.message); }
+    try { actRemindTick_(now); } catch (e) { Logger.log('checkinTick_ reminders: ' + e.message); }   // "Remind me at …" on #vera-act-now
     try { checkEveningMobility_(now, now.getHours(), cfg); } catch (e) { Logger.log('checkinTick_ evening: ' + e.message); }
   } catch (e) { Logger.log('checkinTick_ (non-fatal): ' + e.message); }
 }
@@ -619,7 +778,11 @@ function actNowAgentBlocks_(who, item, n, cap) {
     { type: 'context', elements: [{ type: 'mrkdwn', text: '*' + who + '*  ·  ⏳ today  ·  ' + item.kind }] },
     { type: 'section', text: { type: 'mrkdwn', text: '*' + item.title + '*' + (item.reason ? '\n' + item.reason : '') } },
   ];
-  if (/^https:\/\//.test(item.url || '')) blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: item.url, action_id: 'act_now_open' }] });
+  var acts = [];
+  if (/^https:\/\//.test(item.url || '')) acts.push({ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: item.url, action_id: 'act_now_open' });
+  var rb = typeof actRemindButton_ === 'function' ? actRemindButton_(0) : null;
+  if (rb) acts.push(rb);
+  if (acts.length) blocks.push({ type: 'actions', elements: acts });
   blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: who + ' · act-now ' + n + ' of ' + cap + ' today' }] });
   return blocks;
 }

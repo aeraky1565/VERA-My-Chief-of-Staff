@@ -780,7 +780,10 @@ function ariaPostBookNow_(watch) {
     // #vera-act-now's daily cap per assistant (act_now_cap_aria, Notify.js, #250): past it,
     // the morning email carries it instead.
     if (typeof actNowAllowed_ === 'function' && !actNowAllowed_('aria')) { posted.push(p.id); notifHold_('aria_book_now', p.text); return; }
-    if (sendSlack_(ch, p.text)) { posted.push(p.id); sent++; try { notifBump_('act'); } catch (e) {} }
+    // With "Remind me at …" under it (Notify.js); the text stays the message's fallback.
+    var rb = typeof actRemindButton_ === 'function' ? actRemindButton_(0) : null;
+    var blocks = rb ? [{ type: 'section', text: { type: 'mrkdwn', text: p.text } }, { type: 'actions', elements: [rb] }] : null;
+    if (sendSlack_(ch, p.text, blocks)) { posted.push(p.id); sent++; try { notifBump_('act'); } catch (e) {} }
   });
   if (sent) props.setProperty(ARIA_POSTED_PROP_, JSON.stringify(posted.slice(-ARIA_POSTED_KEEP_)));
   Logger.log('aria: ' + sent + ' Book now post(s) to Slack');
@@ -1118,7 +1121,11 @@ function ariaRebookBlocks_(p, n, cap) {
     { type: 'context', elements: [{ type: 'mrkdwn', text: '*ARIA*  ·  ⏳ until ' + p.until + '  ·  Price drop after booking' }] },
     { type: 'section', text: { type: 'mrkdwn', text: '*' + p.label + ' · now ' + money(p.now) + ' pp, you paid ' + money(p.paid) + ' pp*\nSave about ' + money(p.save) + ' each, ' + money(p.save * p.travelers) + ' for ' + p.travelers + '.' + (facts ? ' ' + facts + '.' : '') + '\nCheck your airline’s change or credit rules before you rebook.' } },
   ];
-  if (/^https:\/\//.test(String(f.link || ''))) blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: String(f.link), action_id: 'act_now_open' }] });
+  var acts = [];
+  if (/^https:\/\//.test(String(f.link || ''))) acts.push({ type: 'button', text: { type: 'plain_text', text: 'Open' }, style: 'primary', url: String(f.link), action_id: 'act_now_open' });
+  var rb = typeof actRemindButton_ === 'function' ? actRemindButton_(0) : null;   // Notify.js
+  if (rb) acts.push(rb);
+  if (acts.length) blocks.push({ type: 'actions', elements: acts });
   blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: 'ARIA · act-now ' + n + ' of ' + cap + ' today' }] });
   return blocks;
 }

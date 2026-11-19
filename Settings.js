@@ -165,7 +165,7 @@ var VERA_STATE_BUNDLES_ = {
   PTO_BUFFER:        ['PTO_BUFFER_EVENT_ID', 'PTO_BUFFER_EVENT_DATE', 'PTO_BUFFER_DECLINED_UNTIL'],
   // Notifications (Notify.js, #250): the day's counts, yesterday's, what waits for the email,
   // the movement slots sent today, whether today is a day off, the check-ins sent today.
-  NOTIF:             ['NOTIF_DAY', 'NOTIF_COUNTS', 'NOTIF_YESTERDAY', 'NOTIF_DIGEST', 'NOTIF_MOVE', 'NOTIF_OFF', 'NOTIF_CHECKINS', 'NOTIF_ACTNOW'],
+  NOTIF:             ['NOTIF_DAY', 'NOTIF_COUNTS', 'NOTIF_YESTERDAY', 'NOTIF_DIGEST', 'NOTIF_MOVE', 'NOTIF_OFF', 'NOTIF_CHECKINS', 'NOTIF_ACTNOW', 'NOTIF_REMIND'],
   // Act now's memory, in its own property so a long list can't push NOTIF past the 9 KB a
   // Script Property holds: what was posted (short keys), and the last status seen per TESS job.
   ACTNOW:            ['ACTNOW_POSTED', 'ACTNOW_SEEN'],
