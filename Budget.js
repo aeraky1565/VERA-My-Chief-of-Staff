@@ -113,8 +113,8 @@ function budgetCompute_(model,ov,catMap,raw){ov=ov||{};var own=function(x){retur
   var val=function(k,base){return Object.prototype.hasOwnProperty.call(ov,k)&&ov[k]!==''&&ov[k]!=null&&isFinite(Number(ov[k]))?Number(ov[k]):(Number(base)||0);};
   var split=Math.min(1,Math.max(0,val('split',model.split)));
   var shares={};shares[model.people[0].key]=split;shares[model.people[1].key]=1-split;
-  var lines=model.shared.fixed.map(function(x){return {key:x.key,name:x.name,kind:'fixed',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount};})
-    .concat(model.shared.nice.map(function(x){return {key:x.key,name:x.name,kind:'nice',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount};}));
+  var lines=model.shared.fixed.map(function(x){return {key:x.key,name:x.name,kind:'fixed',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount,fromPay:x.fromPay||''};})
+    .concat(model.shared.nice.map(function(x){return {key:x.key,name:x.name,kind:'nice',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount,fromPay:x.fromPay||''};}));
   var sum=function(a){return a.reduce(function(s,x){return s+x.amount;},0);};
   var total=sum(lines),required=sum(lines.filter(function(x){return x.kind==='fixed'&&x.amount>0;}));
   var savings=val('shared.savings',model.sharedSavings);
@@ -124,16 +124,20 @@ function budgetCompute_(model,ov,catMap,raw){ov=ov||{};var own=function(x){retur
   var categories=order.filter(function(c){return cats[c];}).map(function(c){var C=cats[c];var acc={};Object.keys(C.accounts).forEach(function(a){acc[a]=bgRound_(C.accounts[a]);});
     return {name:c,total:bgRound_(C.total),accounts:acc,keys:C.keys};});
   var people=model.people.map(function(p){var share=shares[p.key];
-    var pick=function(list){return list.map(function(x){return {key:x.key,name:x.name,amount:val(x.key,x.amount)};});};
+    var pick=function(list){return list.map(function(x){return {key:x.key,name:x.name,amount:val(x.key,x.amount),fromPay:!!x.fromPay};});};
     var ded=pick(p.deductions),fixed=pick(p.fixed),nice=pick(p.nice);
     var gross=val(p.key+'.gross',p.gross),psave=val(p.key+'.psave',p.psave);
     var net=gross-sum(ded),contribution=total*share,ssave=savings*share;
     var own=sum(lines.filter(function(x){return x.account.toLowerCase()===p.key;}));
     var fx=sum(fixed),nc=sum(nice),netExp=fx+nc+psave+contribution+ssave;
+    // Taken from pay (marked on the model, Budget.js bgWithPay_): this person's own lines and the shared
+    // lines on their paycheck. Take-home = net income − these; the split and disposable are unchanged.
+    var payLines=fixed.concat(nice).filter(function(x){return x.fromPay;}).concat(lines.filter(function(x){return x.fromPay===p.key;}))
+      .map(function(x){return {name:x.name,amount:bgRound_(x.amount)};}),fromPay=sum(payLines);
     return {key:p.key,name:p.name,share:share,gross:bgRound_(gross),deductions:ded,net:bgRound_(net),fixed:fixed,nice:nice,
       fixedTotal:bgRound_(fx),niceTotal:bgRound_(nc),psave:bgRound_(psave),contribution:bgRound_(contribution),sharedSavings:bgRound_(ssave),
       contributions:bgRound_(psave+contribution+ssave),ownCards:bgRound_(own),checking:bgRound_(contribution-own),savings:bgRound_(ssave),
-      netExpenses:bgRound_(netExp),disposable:bgRound_(net-netExp)};});
+      netExpenses:bgRound_(netExp),disposable:bgRound_(net-netExp),fromPay:bgRound_(fromPay),fromPayLines:payLines,takeHome:bgRound_(net-fromPay)};});
   var emergency=[3,6,9].map(function(n){var t=required*n;return {months:n,total:bgRound_(t),half:bgRound_(t/2),
     byShare:people.map(function(p){return {key:p.key,amount:bgRound_(t*p.share)};})};});
   return {split:split,shared:{lines:lines,total:bgRound_(total),fixed:bgRound_(sum(lines.filter(function(x){return x.kind==='fixed';}))),
@@ -229,11 +233,55 @@ function bgWithPhone_(model, plan) {
   return model;
 }
 
-/** The budget tracker's model, with the phone plan applied when its tracker is connected. */
+// What comes out of a paycheck before it's paid: insurance premiums, disability, AD&D and life cover,
+// identity/legal plans, HSA and FSA. Config `from_pay:<line>` = yes / no overrides the words.
+var BG_FROM_PAY_RX_ = /health insurance|\bmedical\b|\bvision\b|\bdental\b|disability|ad&d|life insurance|identity|\blegal\b|\bhsa\b|\bfsa\b|health savings|flexible spending/i;
+var BG_HSA_RX_ = /\bhsa\b|health savings/i;
+
+/**
+ * Pure: the model with the lines taken from pay marked (fromPay: the person's key) and the HSA
+ * deduction set from Config `hsa_annual_<year>` ÷ 12 (the tracker's own figure kept as trackerAmount).
+ * A person's own fixed and nice-to-have lines are on their paycheck; a shared line is when its account
+ * names a person (on Joint it can't be). cfg: the Config values; year: 'yyyy'.
+ */
+function bgWithPay_(model, cfg, year) {
+  if (!model || !model.ok) return model;
+  cfg = cfg || {};
+  var say = function(name) {
+    var v = String(cfg['from_pay:' + bgLow_(name)] == null ? (cfg['from_pay:' + name] == null ? '' : cfg['from_pay:' + name]) : cfg['from_pay:' + bgLow_(name)]).trim().toLowerCase();
+    return /^(yes|y|true|1)$/.test(v) ? true : /^(no|n|false|0)$/.test(v) ? false : BG_FROM_PAY_RX_.test(name);
+  };
+  var byName = {};
+  model.people.forEach(function(p) {
+    byName[p.key] = p.key;
+    p.fixed.concat(p.nice).forEach(function(x) { if (say(x.name)) x.fromPay = p.key; });
+  });
+  model.shared.fixed.concat(model.shared.nice).forEach(function(x) {
+    var who = byName[bgLow_(x.account)];
+    if (who && say(x.name)) x.fromPay = who;
+  });
+  var annual = parseFloat(String(cfg['hsa_annual_' + year] == null ? '' : cfg['hsa_annual_' + year]).replace(/[$,\s]/g, ''));
+  if (isFinite(annual) && annual >= 0) {
+    model.people.forEach(function(p) { p.deductions.forEach(function(x) {
+      if (!BG_HSA_RX_.test(x.name)) return;
+      x.trackerAmount = x.amount; x.amount = bgRound_(annual / 12);
+      model.hsa = { person: p.key, line: x.name, year: String(year), annual: annual, monthly: x.amount, tracker: x.trackerAmount };
+    }); });
+  }
+  return model;
+}
+
+/** The budget tracker's model, with the phone plan applied when its tracker is connected, and what comes from pay marked. */
 function bgModel_(grid) {
   var model = budgetModel_(grid);
-  if (!model.ok || typeof phnPlan_ !== 'function') return model;
-  try { var plan = phnPlan_(model.people.map(function(p) { return p.name; })); if (plan && plan.ok) bgWithPhone_(model, plan); } catch (e) {}
+  if (!model.ok) return model;
+  if (typeof phnPlan_ === 'function') {
+    try { var plan = phnPlan_(model.people.map(function(p) { return p.name; })); if (plan && plan.ok) bgWithPhone_(model, plan); } catch (e) {}
+  }
+  try {
+    var cfg = getConfigValues() || {};
+    bgWithPay_(model, cfg, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy'));
+  } catch (e2) { Logger.log('bgWithPay_ (non-fatal): ' + e2.message); }
   return model;
 }
 
@@ -260,10 +308,16 @@ function webGetBudgetModel_() {
   if (!model.ok) return { ok: true, configured: true, unavailable: true, error: model.error };
   var catMap = bgCategoryMap_();
   var computed = budgetCompute_(model, {}, catMap);
+  // The HSA for this year and next (Config hsa_annual_<year>), for Budget's HSA editor.
+  var hsaYears = [];
+  try {
+    var cfgH = getConfigValues() || {}, y0 = +Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy');
+    [y0, y0 + 1].forEach(function(y) { var v = parseFloat(String(cfgH['hsa_annual_' + y] == null ? '' : cfgH['hsa_annual_' + y]).replace(/[$,\s]/g, '')); hsaYears.push({ year: String(y), annual: isFinite(v) ? v : null }); });
+  } catch (eH) {}
   bgFlagUncategorized_(computed.shared.other);
   var scenarios = [];
   try { scenarios = bgListScenarios_(); } catch (e) {}
-  return { ok: true, configured: true, model: model, computed: computed, match: budgetMatch_(model, computed, model.phone ? budgetCompute_(model, {}, catMap, true) : null),
+  return { ok: true, configured: true, model: model, computed: computed, hsaYears: hsaYears, match: budgetMatch_(model, computed, model.phone ? budgetCompute_(model, {}, catMap, true) : null),
            categoryMap: catMap, scenarios: scenarios, quarter: bgQuarter_() };
 }
 

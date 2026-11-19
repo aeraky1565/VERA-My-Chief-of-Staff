@@ -1081,6 +1081,13 @@ Change only column B. The full list of keys is in the appendix (§22).
 ## 17. Finances (November 2026)
 
 - **Budget (`Budget.js`):** reads the budget tracker's Tracker tab live and by label; works out plan vs actual and a What-if overlay without writing the tracker.
+  - **Taken from pay.** Some lines come out of a paycheck before it's paid: medical, vision and dental premiums, disability, AD&D and life cover, identity/legal plans, HSA and FSA.
+    - **On a person's own list,** they count as theirs.
+    - **On the shared list,** they count as from pay when their account names that person. A premium on Joint is left as a bill, because VERA can't tell whose pay it comes from.
+  - **They aren't bills,** so there's no due day, reminder, Accounts minimum or reconcile for them. Bills & cashflow names them.
+  - **Each person's Budget card** shows them under **Taken from pay**, then **Take-home pay** (net income minus those lines). The split, the transfers and disposable income don't change: a shared premium on your pay still counts in the split, so the other person's share comes through their transfer.
+  - **To change one,** add a Config row `from_pay:<line>` set to `yes` or `no`.
+  - **The HSA:** the card's **HSA for the year** sets this year's and next year's total (Config `hsa_annual_<year>`). VERA uses the total ÷ 12 as the monthly deduction in place of the tracker's figure, and switches to the new year's on January 1.
 - **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
   - **How often each bill is due:** Edit a bill and choose **How often**: Monthly, Every 2 weeks, Quarterly, Twice a year or Yearly.
     - For Quarterly, Twice a year and Yearly, also pick the **First due** month.

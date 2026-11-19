@@ -145,7 +145,7 @@ check('a line already in Bill Schedule isn’t added again', run('bsMigrate_(OLD
 
 console.log('\nthe server');
 let r = run('webGetBillsSchedule_()');
-check('bills_schedule: bills, cards, timeline, and the migration offered while Bill Schedule is empty', r.ok && r.bills.length === 7 && r.timeline.events.length === 7 && r.migration && r.migration.matched.length === 3 && r.migration.unmatched.length === 1, J(Object.keys(r)));
+check('bills_schedule: bills (the medical premium comes from pay, so it isn’t one), cards, timeline, and the migration offered while Bill Schedule is empty', r.ok && r.bills.length === 6 && JSON.stringify(r.fromPay) === '["Health Insurance - Medical"]' && r.timeline.events.length === 7 && r.migration && r.migration.matched.length === 3 && r.migration.unmatched.length === 1, J(Object.keys(r)));
 r = run('webMigrateBillSchedule_({ apply: true })');
 check('migrate writes Bill Schedule only', r.ok && r.written === 4 && VERA['Bill Schedule'].length === 5 && J(VERA['Bill Schedule'][0]) === J(['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes', 'Paid', 'Cadence', 'Starts']), J(r));
 check('…and twice adds nothing', run('webMigrateBillSchedule_({ apply: true })').written === 0 && VERA['Bill Schedule'].length === 5);

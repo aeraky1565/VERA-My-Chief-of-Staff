@@ -2206,6 +2206,18 @@ Four bento cards on the Finance tab:
 |---|---|---|
 | `bill_estimates` | — | For bills with no amount: `{ bill: { amount, count, months } }` from the last 12 months of transactions |
 
+### Budget: what comes from pay (`Budget.js` `bgWithPay_`)
+
+`bgModel_` marks the lines taken from a paycheck before it's paid, matching `BG_FROM_PAY_RX_`: premiums, disability, AD&D and life cover, identity/legal plans, HSA and FSA. Config `from_pay:<line>` = `yes` or `no` overrides the match. A line is marked `fromPay = <person key>` when it is:
+- on a person's own fixed or nice-to-have list;
+- on the shared list, with an account naming a person (not Joint).
+
+`budgetCompute_` (the shared engine) gives each person `fromPay`, `fromPayLines` and `takeHome` (net − fromPay). The split, the transfers and disposable are unchanged. `bsBills_` leaves these lines out of the bills (`list.fromPay` names them).
+
+The HSA deduction (`BG_HSA_RX_`) is Config `hsa_annual_<year>` ÷ 12 when that row is set, with the tracker's figure kept as `trackerAmount`. `budget_model` sends `hsaYears` (this year and next) for the Budget card's editor, which saves through `set_config_value`.
+
+Tested by `test_frompay.js` (with `ctl_frompay.js`) and `test_frompay_ui.js`.
+
 ### Bills Tab
 
 The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. The chat interface can mark bills paid, add new bills, and delete bills by row number.

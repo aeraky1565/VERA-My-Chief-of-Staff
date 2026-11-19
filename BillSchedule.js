@@ -134,9 +134,11 @@ function bsStem_(name) { return bsText_(name).toLowerCase().split(/[\s\-–:]+/)
  */
 function bsBills_(computed, schedule, when) {
   schedule = schedule || {};
-  var lines = computed.shared.lines, bills = [], credits = [], budgetLines = [];
+  var lines = computed.shared.lines, bills = [], credits = [], budgetLines = [], fromPay = [];
   lines.forEach(function(x) {
     if (x.category === 'Household') { budgetLines.push(x.name); return; }
+    // Taken from a paycheck (Budget.js bgWithPay_): payroll pays it, so it isn't a bill.
+    if (x.fromPay) { fromPay.push(x.name); return; }
     if (!x.amount) return;
     if (x.amount < 0) { credits.push(x); return; }
     var s = schedule[x.name.toLowerCase()] || {};
@@ -163,7 +165,7 @@ function bsBills_(computed, schedule, when) {
     .map(function(s) { return { line: s.line, dueDay: s.dueDay, account: s.account, autopay: s.autopay, cardLink: s.cardLink, notes: s.notes }; })
     .sort(function(a, b) { return (a.dueDay || 99) - (b.dueDay || 99) || a.line.localeCompare(b.line); });
   var r2 = function(n) { return Math.round(n * 100) / 100; };
-  return { bills: bills, cards: cards, budgetLines: budgetLines,
+  return { bills: bills, cards: cards, budgetLines: budgetLines, fromPay: fromPay,
     total: r2(bills.reduce(function(s, b) { return s + (b.dueThisMonth ? (b.amount || 0) * Math.max(1, b.dueDates.length) : 0); }, 0)),
     monthlyShare: r2(bills.reduce(function(s, b) { return s + (b.monthlyShare || 0); }, 0)) };
 }
@@ -393,7 +395,7 @@ function webGetBillsSchedule_() {
     var rows = old && old.getLastRow() >= 2 ? old.getRange(2, 1, old.getLastRow() - 1, Math.min(old.getLastColumn(), BILL_HEADERS.length)).getValues() : [];
     if (rows.length) { var m = bsMigrate_(rows, plan.computed, schedule); preview = { matched: m.matched, cards: m.cards, unmatched: m.unmatched, skipped: m.skipped }; }
   }
-  return { ok: true, configured: true, bills: list.bills, cards: list.cards, budgetLines: list.budgetLines, total: list.total, monthlyShare: list.monthlyShare,
+  return { ok: true, configured: true, bills: list.bills, cards: list.cards, budgetLines: list.budgetLines, fromPay: list.fromPay, total: list.total, monthlyShare: list.monthlyShare,
     month: when.month, today: when.today, cadences: BS_CADENCES_.map(function(c) { return { value: c, label: BS_CADENCE_LABEL_[c] }; }),
     timeline: timeline, migration: preview, quarter: bgQuarter_() };
 }
