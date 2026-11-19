@@ -2210,6 +2210,25 @@ Four bento cards on the Finance tab:
 
 The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. The chat interface can mark bills paid, add new bills, and delete bills by row number.
 
+**How often a bill is due (`BillSchedule.js`).** Bill Schedule's `Cadence` and `Starts` columns hold it:
+- **Monthly:** blank, the default.
+- **Bi-weekly:** `Starts` is one payment date (yyyy-MM-dd), and VERA counts every 14 days from it.
+- **Quarterly, Semi-annual, Annual:** `Starts` is the first due month (yyyy-MM). The bill is due on its due day only in months a whole cycle from it.
+
+The tracker's amount is **each payment**:
+
+| Helper | Gives |
+|---|---|
+| `bsDueDates_(entry, month)` | a month's due dates |
+| `bsNextDue_` | the next one |
+| `bsMonthlyShare_` | the payment × 1, 26/12, 1/3, 1/6 or 1/12 |
+
+`bsBillRows_` writes the real label into Frequency, so Accounts' "Keep at least" sets aside the right share. It also adds three columns after the old layout: this month's **Due Dates**, the **Paid Dates** (bi-weekly) and **Next**.
+
+Every reader that means "due this month" skips a bill with no due dates there, through `bsRowDue_`: the bill nudge, the evening check-in, cashflow and Joint through the month.
+
+A bi-weekly bill's Paid cell holds the dates paid (the last 60 days). `bills_toggle` takes `line` and `date` to tick one payment. Tested by `test_billcadence.js` (with `ctl_billcadence.js`) and `test_billcadence_ui.js`.
+
 ---
 
 ## Health & Wellness Module

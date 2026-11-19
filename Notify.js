@@ -404,7 +404,12 @@ function eveningFirstTomorrow_(events, tomorrowIso) {
 function eveningUnpaid_(rows, day, nextDay, month) {
   return (rows || []).filter(function(r) {
     var name = String(r[0] || '').trim(), due = Number(r[2]);
-    if (!name || String(r[8] || '').toLowerCase() === 'income' || String(r[6] || '').trim() === month) return false;
+    if (!name || String(r[8] || '').toLowerCase() === 'income') return false;
+    // How often it's due (BillSchedule.js): only today's or tomorrow's due dates, unpaid.
+    if (typeof bsRowDue_ === 'function' && r.length > 10) {
+      return [day, nextDay].some(function(d) { var x = bsRowDue_(r, month, d); return x.due && x.day === d && !x.paid; });
+    }
+    if (String(r[6] || '').trim() === month) return false;
     return due === day || due === nextDay;
   }).map(function(r) { return String(r[0]).trim().toLowerCase(); });
 }

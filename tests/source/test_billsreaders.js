@@ -81,8 +81,9 @@ let rows = run('bsBillRows_(M)', { M: MONTH });
 const row = n => (Array.isArray(rows) ? rows : []).find(r => r[0] === n) || [];
 check('the tracker’s bills, in the old layout, amounts from the tracker', row('Rent') && row('Rent')[1] === 2000 && row('Rent')[5] === 'Joint' && row('Rent')[8] === 'Expense' && row('Family Plan Payment')[1] === 150, J(row('Rent')));
 check('paid this month from Bill Schedule; last time’s month isn’t this month', row('Rent')[6] === MONTH && row('Internet')[6] === '' && row('Family Plan Payment')[6] === '');
-check('card payments with no amount', J(row('Gold Card')) === J(['Gold Card', '', DAY, 'Monthly', 'Credit Card', 'Pat checking', '', '', 'Expense', '']));
-check('the old sheet’s Income rows, as they are', J(row('Sam paycheck')) === J(OLD[2]));
+check('card payments with no amount', J(row('Gold Card').slice(0, 10)) === J(['Gold Card', '', DAY, 'Monthly', 'Credit Card', 'Pat checking', '', '', 'Expense', '']), J(row('Gold Card')));
+check('…and, after the old layout, this month’s due date (cadence columns, BillSchedule.js)', row('Gold Card')[10] === MONTH + '-' + String(DAY).padStart(2, '0'), J(row('Gold Card')));
+check('the old sheet’s Income rows, as they are (plus the due-date columns)', J(row('Sam paycheck').slice(0, OLD[2].length)) === J(OLD[2]) && row('Sam paycheck').length === 13, J(row('Sam paycheck')));
 check('the old sheet’s own bills are not read (the tracker has them)', !rows.some(r => r[7] === 'an old amount'));
 
 console.log('\nthe bills route and paid');

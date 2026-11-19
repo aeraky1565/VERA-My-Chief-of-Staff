@@ -2614,7 +2614,10 @@ function webGetBills_() {
     return { ok: true, currentMonth: monN, source: 'tracker', bills: fresh.filter(function(r) { return String(r[0] || '').trim(); }).map(function(r) {
       return { row: null, key: String(r[0]).trim(), bill: String(r[0]).trim(), amount: r[1] !== '' ? Number(r[1]) : null, dueDay: r[2] !== '' ? Number(r[2]) : null,
         frequency: String(r[3] || 'Monthly').trim(), category: String(r[4] || '').trim(), account: String(r[5] || '').trim(), paid: String(r[6] || '').trim() === monN,
-        notes: String(r[7] || '').trim(), type: String(r[8] || 'Expense').trim() || 'Expense', budgetEntry: String(r[9] || '').trim(), txMatch: null, txCandidates: [] }; }) };
+        notes: String(r[7] || '').trim(), type: String(r[8] || 'Expense').trim() || 'Expense', budgetEntry: String(r[9] || '').trim(), txMatch: null, txCandidates: [],
+        // How often it's due (BillSchedule.js): this month's due dates, the dates paid (every 2 weeks), the next due date.
+        dueDates: String(r[10] || '').split(',').filter(Boolean), paidDates: String(r[11] || '').split(',').filter(Boolean), next: String(r[12] || ''),
+        dueThisMonth: r.length <= 10 || String(r[10] || '') !== '' }; }) };
   }
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.BILLS);
@@ -2667,7 +2670,9 @@ function webToggleBill_(e) {
   var lineP = e && e.parameter && String(e.parameter.line || '').trim();
   if (lineP && typeof bsSetPaid_ === 'function') {
     var monT = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
-    return { ok: true, line: lineP, paid: bsSetPaid_(lineP, monT, null) };
+    // date: one payment of a bill every 2 weeks (yyyy-MM-dd).
+    var dateT = String(e.parameter.date || '').trim();
+    return { ok: true, line: lineP, date: dateT, paid: bsSetPaid_(lineP, monT, null, undefined, /^\d{4}-\d{2}-\d{2}$/.test(dateT) ? dateT : undefined) };
   }
   var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
   if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + e.parameter.row);
@@ -3271,8 +3276,15 @@ function webGetCashflow_(e) {
     var frequency = String(row[3] || 'Monthly').trim();
     var type      = String(row[8] || 'Expense').trim() || 'Expense';
 
-    if (!dueDay || dueDay < 1) return;
-    var days = projectDays_(dueDay, frequency, daysInMonth);
+    // An expense from the tracker carries this month's due dates (BillSchedule.js: column 11):
+    // a quarterly or yearly bill only in its months, a bill every 2 weeks on each date.
+    var days;
+    if (type !== 'Income' && row.length > 10) {
+      days = String(row[10] || '').split(',').filter(Boolean).map(function(d) { return +d.slice(8, 10); });
+    } else {
+      if (!dueDay || dueDay < 1) return;
+      days = projectDays_(dueDay, frequency, daysInMonth);
+    }
 
     days.forEach(function(day) {
       if (type === 'Income') {

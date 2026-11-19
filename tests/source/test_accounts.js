@@ -51,7 +51,7 @@ console.log('\nmoving a tracker bill to an account');
   vm.runInContext((BS.match(/var BS_HEADERS_\s*=\s*[^;]+;/) || [''])[0] + '\n' + ['bsText_', 'bsWithAccount_'].map(n => fnSrc(BS, n)).join('\n'), B);
   const rows = [['Rent', 1, 'Old acct', true, '', 'bill', 'landlord', '2026-11'], ['Water', '', '', false, '', 'bill', '', '']];
   const w = B.bsWithAccount_(rows, 'rent', 'Joint checking');
-  check('a line already in the Bill Schedule: only its account changes', w.at === 0 && J(w.row) === J(['Rent', 1, 'Joint checking', true, '', 'bill', 'landlord', '2026-11']), J(w));
+  check('a line already in the Bill Schedule: only its account changes', w.at === 0 && J(w.row.slice(0, 8)) === J(['Rent', 1, 'Joint checking', true, '', 'bill', 'landlord', '2026-11']), J(w));
   const n = B.bsWithAccount_(rows, 'Internet', 'Ahmed checking');
   check('…a new line gets a bill row with just the account', n.at === -1 && J(n.row) === J(['Internet', '', 'Ahmed checking', false, '', 'bill', '', '']), J(n));
   check('the route is wired (POST)', /case 'bills_schedule_account':\s+return jsonOut_\(webSaveBillAccount_\(body\)\)/.test(read('WebApp.js')));

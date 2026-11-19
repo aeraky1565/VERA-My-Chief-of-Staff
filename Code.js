@@ -1784,6 +1784,8 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings, ou
         if (isIncomeBillRow_(r[8])) return;
         var dueDay = r[2] !== '' ? Number(r[2]) : null;
         var paid   = String(r[6] || '').trim() === currMonth;
+        // How often it's due (BillSchedule.js): not due this month → not listed; every 2 weeks → the next date.
+        if (typeof bsRowDue_ === 'function') { var rdM = bsRowDue_(r, currMonth, dayOfMon); if (!rdM.due) return; dueDay = rdM.day; paid = rdM.paid; }
         if (paid || dueDay === null) return;
         var daysUntil = dueDay - dayOfMon;
         if (daysUntil < 0) daysUntil += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();

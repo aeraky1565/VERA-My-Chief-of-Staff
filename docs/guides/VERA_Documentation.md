@@ -1082,6 +1082,13 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 - **Budget (`Budget.js`):** reads the budget tracker's Tracker tab live and by label; works out plan vs actual and a What-if overlay without writing the tracker.
 - **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
+  - **How often each bill is due:** Edit a bill and choose **How often**: Monthly, Every 2 weeks, Quarterly, Twice a year or Yearly.
+    - For Quarterly, Twice a year and Yearly, also pick the **First due** month.
+    - For Every 2 weeks, pick **A payment date**. VERA counts 14 days from it, and the due day isn't used.
+  - **The amount is each payment,** as the tracker shows it. VERA shows a bill only in the months it's due. In other months it's dimmed: "Not due this month · next Mar 15".
+  - **The list's two totals:** **Due this month**, and the **Monthly share**, which spreads every bill over the year (a quarterly bill counts a third, a yearly one a twelfth).
+  - **Every 2 weeks gets a Paid tick per payment** in the bills list. The month counts as paid once every payment is ticked.
+  - **Everything else follows the same dates:** the Joint timeline, the bill reminder, the evening check-in, cashflow and Accounts' "Keep at least" (which sets aside the monthly share).
 - **Summary & check-in (`FinSummary.js`):** quarterly snapshots (*Finance Snapshots*), decisions with owners (*Check-in Decisions*), notes, and the `quarterly_checkin` reminder.
 - **Groceries and receipt runs (`Groceries.js`, `GroceryRun.js`):** a receipt photo is read by Claude vision (store, date, lines, total); picked lines go to Purchase History (On Hand syncs from it), matching shopping-list items are ticked across stores, and the run is logged to *Grocery Runs* with its date.
 - **Card Hub (`CardValue.js`, `CardHub.js`):** Finances › Cards has four subtabs.

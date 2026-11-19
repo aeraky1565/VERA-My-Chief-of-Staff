@@ -158,6 +158,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           dueDay:    r[2] !== '' ? Number(r[2]) : null,
           frequency: String(r[3] || 'Monthly').trim(),
           paid:      paidVal === currMonth,
+          // How often it's due (BillSchedule.js): whether it's due this month at all, and when next.
+          dueThisMonth: r.length <= 10 || String(r[10] || '') !== '',
+          nextDue:   String(r[12] || ''),
           notes:     String(r[7] || '').trim(),
           isIncome:  isIncomeBillRow_(r[8]),
         });

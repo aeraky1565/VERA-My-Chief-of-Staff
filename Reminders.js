@@ -298,6 +298,12 @@ function checkBillsDue_(now, hour, cfg) {
     var amount   = row[1] !== '' ? Number(row[1]) : null;
     var paidVal  = String(row[6] || '').trim();
     var paid     = paidVal === currMonth;
+    // How often it's due (BillSchedule.js): not due this month → no nudge; every 2 weeks → the next date.
+    if (typeof bsRowDue_ === 'function') {
+      var rd = bsRowDue_(row, currMonth, dayOfMonth);
+      if (!rd.due) return;
+      dueDay = rd.day; paid = rd.paid;
+    }
 
     if (paid || dueDay === null) return;
 

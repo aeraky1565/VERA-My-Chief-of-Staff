@@ -87,7 +87,7 @@ const REC = Object.assign({ ok: true }, vm.runInContext('bsReconcile_(C, LIST, T
       const rows = await page.$$eval('#bsprobe .bs-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': bills by due day, amounts from the tracker', /^1st Rent Joint \$2,000\.00/.test(rows[0]) && /^12th Family Plan Payment Joint · net of the \$50 credit \$150\.00/.test(rows[1]) && /^— Dog Walker Joint · set a due day \$40\.00/.test(rows[4]), JSON.stringify(rows));
       const cards = await txt('.bs-cards');
-      check(L + ': card payments apart, never counted', /Card payments \(not counted as spending\) Gold Card due 3rd · Pat checking · statement amount · Cards: Gold Card · autopay/.test(cards) && /Bills each month \$2,450\.00/.test(await txt('.bs-list')), cards);
+      check(L + ': card payments apart, never counted', /Card payments \(not counted as spending\) Gold Card due 3rd · Pat checking · statement amount · Cards: Gold Card · autopay/.test(cards) && /Due this month \$2,450\.00/.test(await txt('.bs-list')), cards);
       check(L + ': budget lines named, not listed', /Groceries, Home Cleaning are budget lines, not bills/.test(await txt('.bs-list')));
       check(L + ': the old Bills list offered, with what matches nothing', /1 match a tracker line, 1 are card payments, and these match nothing: Gym/.test(await txt('.bs-migrate')));
       await click('.bs-migrate-go'); await wait(150);
