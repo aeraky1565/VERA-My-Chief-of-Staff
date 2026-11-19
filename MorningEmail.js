@@ -119,7 +119,8 @@ function meRender_(d) {
     '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f5;padding:24px 0;"><tr><td align="center" style="padding:0 8px;">' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.10);">' +
     (d.logoTag ? '<tr><td style="padding:0;background:#0d1b3e;">' + d.logoTag + '</td></tr>'
-      : '<tr><td style="padding:20px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:26px;font-weight:bold;letter-spacing:4px;">VERA</span></td></tr>') +
+      // The masthead, exactly as the email has always had it.
+      : '<tr><td style="padding:24px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:28px;font-weight:bold;letter-spacing:4px;">VERA</span><br><span style="color:#c9a84c;font-size:11px;letter-spacing:2px;">YOUR PERSONAL CHIEF OF STAFF</span></td></tr>') +
     (d.weatherHtml || '') +
     '<tr><td style="padding:28px 24px 26px;">' + body + '</td></tr>' +
     '<tr><td style="padding:14px 40px;background:#f7f7fa;border-top:1px solid #eeeeee;"><p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">Sent by VERA &mdash; Virtual Executive &amp; Reminder Assistant</p></td></tr>' +
