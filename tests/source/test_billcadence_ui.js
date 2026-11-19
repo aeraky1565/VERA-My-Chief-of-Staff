@@ -52,7 +52,8 @@ const T = vm.runInContext('bsTimeline_(LIST, C, { transferDay: 1 })', E);
   const TRACK = { ok: true, currentMonth: '2026-11', source: 'tracker', bills: [
     { row: null, key: 'Dog Walker', bill: 'Dog Walker', amount: 120, dueDay: null, frequency: 'Bi-weekly', category: 'Pets', account: 'Joint', paid: false, notes: '', type: 'Expense', txMatch: null, txCandidates: [], dueDates: ['2026-11-06', '2026-11-20'], paidDates: ['2026-11-06'], next: '2026-11-20', dueThisMonth: true },
     { row: null, key: 'Water', bill: 'Water', amount: 90, dueDay: 9, frequency: 'Quarterly', category: 'Utilities', account: 'Joint', paid: false, notes: '', type: 'Expense', txMatch: null, txCandidates: [], dueDates: [], paidDates: [], next: '2026-12-09', dueThisMonth: false },
-    { row: null, key: 'Rent', bill: 'Rent', amount: 2000, dueDay: 1, frequency: 'Monthly', category: 'Housing', account: 'Joint', paid: true, notes: '', type: 'Expense', txMatch: null, txCandidates: [], dueDates: ['2026-11-01'], paidDates: [], next: '2026-12-01', dueThisMonth: true }] };
+    { row: null, key: 'Rent', bill: 'Rent', amount: 2000, dueDay: 1, frequency: 'Monthly', category: 'Housing', account: 'Joint', paid: true, notes: '', type: 'Expense', txMatch: null, txCandidates: [], dueDates: ['2026-11-01'], paidDates: [], next: '2026-12-01', dueThisMonth: true },
+    { row: null, key: 'Internet', bill: 'Internet', amount: 60, dueDay: 9, frequency: 'Monthly', category: 'Utilities', account: 'Joint', paid: true, autopay: true, notes: '', type: 'Expense', txMatch: null, txCandidates: [], dueDates: ['2026-11-09'], paidDates: [], next: '2026-12-09', dueThisMonth: true }] };
   for (const kind of ['full', 'lite']) {
     for (const width of [390, 1280]) {
       const LB = kind + ' ' + width;
@@ -112,6 +113,9 @@ const T = vm.runInContext('bsTimeline_(LIST, C, { transferDay: 1 })', E);
       await wait(80);
       const tg = await page.evaluate(() => window.__toggles);
       check(LB + ': ticking one payment sends its date', clicked && tg.some(t => t.bill === 'Dog Walker' && t.row == null && t.payDate === '2026-11-20'), J(tg));
+      const autoTxt = await page.evaluate(() => { const n = Array.from(document.querySelectorAll('#btprobe button')).find(x => /Internet/.test(x.parentElement.innerText)); return n ? n.parentElement.innerText.replace(/\s+/g, ' ') : ''; });
+      await page.evaluate(() => { const n = Array.from(document.querySelectorAll('#btprobe button')).find(x => /Internet/.test(x.parentElement.innerText)); if (n) n.click(); }); await wait(80);
+      check(LB + ': a bill on autopay reads Autopay and has nothing to tick', /🔁 Autopay/.test(autoTxt) && !/✅ Paid/.test(autoTxt) && !(await page.evaluate(() => window.__toggles)).some(t => t.bill === 'Internet'), autoTxt);
       check(LB + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       check(LB + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();

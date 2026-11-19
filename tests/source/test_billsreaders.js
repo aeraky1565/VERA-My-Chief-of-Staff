@@ -49,7 +49,7 @@ const OLD = [['Bill', 'Amount', 'Due Day', 'Frequency', 'Category', 'Account', '
   ['Sam paycheck', 2000, 15, 'Bi-weekly', 'Income', 'Sam checking', '', '', 'Income', '']];
 const VERA = { Bills: OLD,
   'Bill Schedule': [['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes', 'Paid'],
-    ['Internet', DAY, '', true, '', 'bill', '', ''], ['Rent', '', '', false, '', 'bill', '', MONTH], ['Gold Card', DAY, 'Pat checking', false, 'Gold Card', 'card payment', '', ''], ['Family Plan Payment', '', '', false, '', 'bill', '', '2000-01']] };
+    ['Internet', DAY, '', false, '', 'bill', '', ''], ['Rent', '', '', false, '', 'bill', '', MONTH], ['Gold Card', DAY, 'Pat checking', false, 'Gold Card', 'card payment', '', ''], ['Family Plan Payment', '', '', false, '', 'bill', '', '2000-01']] };
 const BILLS_BEFORE = J(OLD);
 const ss = (store, owner) => ({ getSheetByName: n => store[n] ? fakeSheet(n, store[n], owner) : null, getSheets: () => Object.keys(store).map(n => fakeSheet(n, store[n], owner)),
   insertSheet: n => { store[n] = []; return fakeSheet(n, store[n], owner); } });
@@ -83,8 +83,13 @@ check('the tracker’s bills, in the old layout, amounts from the tracker', row(
 check('paid this month from Bill Schedule; last time’s month isn’t this month', row('Rent')[6] === MONTH && row('Internet')[6] === '' && row('Family Plan Payment')[6] === '');
 check('card payments with no amount', J(row('Gold Card').slice(0, 10)) === J(['Gold Card', '', DAY, 'Monthly', 'Credit Card', 'Pat checking', '', '', 'Expense', '']), J(row('Gold Card')));
 check('…and, after the old layout, this month’s due date (cadence columns, BillSchedule.js)', row('Gold Card')[10] === MONTH + '-' + String(DAY).padStart(2, '0'), J(row('Gold Card')));
-check('the old sheet’s Income rows, as they are (plus the due-date columns)', J(row('Sam paycheck').slice(0, OLD[2].length)) === J(OLD[2]) && row('Sam paycheck').length === 13, J(row('Sam paycheck')));
+check('the old sheet’s Income rows, as they are (plus the due-date columns)', J(row('Sam paycheck').slice(0, OLD[2].length)) === J(OLD[2]) && row('Sam paycheck').length === 14, J(row('Sam paycheck')));
 check('the old sheet’s own bills are not read (the tracker has them)', !rows.some(r => r[7] === 'an old amount'));
+sched('Internet')[3] = true;
+const autoRows = run('bsBillRows_(M)', { M: MONTH }), autoNet = autoRows.find(x => x[0] === 'Internet');
+check('a bill on autopay counts as paid when it’s due, with nothing ticked', autoNet[6] === MONTH && autoNet[13] === 'Autopay' && sched('Internet')[7] === '' && run('bsRowDue_(R, M, D).paid', { R: autoNet, M: MONTH, D: DAY }) === true, J(autoNet));
+check('…and the bills route says so, for the Bills list', (run('webGetBills_()').bills.find(b => b.bill === 'Internet') || {}).autopay === true && (run('webGetBills_()').bills.find(b => b.bill === 'Rent') || {}).autopay === false);
+sched('Internet')[3] = false;
 
 console.log('\nthe bills route and paid');
 let r = run('webGetBills_()');

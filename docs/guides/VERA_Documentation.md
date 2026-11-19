@@ -1107,6 +1107,7 @@ Change only column B. The full list of keys is in the appendix (§22).
   - **The amount is each payment,** worked out from Household Split's monthly figure (×3 quarterly, ×6 twice a year, ×12 yearly). VERA shows a bill only in the months it's due. In other months it's dimmed: "Not due this month · next Mar 15".
   - **The list's two totals:** **Due this month**, and the **Monthly share**, which spreads every bill over the year (a quarterly bill counts a third, a yearly one a twelfth).
   - **Every 2 weeks gets a Paid tick per payment** in the bills list. The month counts as paid once every payment is ticked.
+  - **A bill on autopay is paid.** It shows 🔁 Autopay instead of a tick, and VERA never reminds you about it. Only bills without autopay get a tick to mark.
   - **Everything else follows the same dates:** the Joint timeline, the bill reminder, the evening check-in, cashflow and Accounts' "Keep at least" (which sets aside the monthly share).
 - **Summary & check-in (`FinSummary.js`):** quarterly snapshots (*Finance Snapshots*), decisions with owners (*Check-in Decisions*), notes, and the `quarterly_checkin` reminder.
 - **Groceries and receipt runs (`Groceries.js`, `GroceryRun.js`):** a receipt photo is read by Claude vision (store, date, lines, total); picked lines go to Purchase History (On Hand syncs from it), matching shopping-list items are ticked across stores, and the run is logged to *Grocery Runs* with its date.

@@ -615,18 +615,20 @@ function bsBillRows_(month) {
     var plan = bsPlan_();
     if (plan.error) return null;
     var sched = bsReadSchedule_(), list = bsBills_(plan.computed, sched, bsWhen_(month));
-    var paid = function(n) { var x = sched[String(n).toLowerCase()]; return x && bsPaidFor_(x, month) ? month : ''; };
-    // Columns 11–12 beyond the old layout: this month's due dates, and the dates paid (every 2 weeks).
+    // A bill on autopay counts as paid whenever it's due: there's nothing to tick.
+    var auto = function(n) { var x = sched[String(n).toLowerCase()]; return !!(x && x.autopay); };
+    var paid = function(n) { var x = sched[String(n).toLowerCase()]; return x && (x.autopay || bsPaidFor_(x, month)) ? month : ''; };
+    // Columns 11–14 beyond the old layout: this month's due dates, the dates paid (every 2 weeks), the next due date, and Autopay.
     // A bill with no due dates this month isn't due; readers that mean "due this month" skip it.
     var rows = list.bills.map(function(b) { return [b.line, b.amount == null ? '' : b.amount, b.dueDay || '', b.cadenceLabel, b.category || '', b.account || '', paid(b.line), b.notes || '', 'Expense', b.notInTracker ? '' : b.line,
-      b.dueDates.join(','), b.paidDates.join(','), b.next || '']; });
+      b.dueDates.join(','), (auto(b.line) ? b.dueDates : b.paidDates).join(','), b.next || '', auto(b.line) ? 'Autopay' : '']; });
     list.cards.forEach(function(c) { var dd = bsDueDates_({ dueDay: c.dueDay }, month);
-      rows.push([c.line, '', c.dueDay || '', 'Monthly', 'Credit Card', c.account || '', paid(c.line), c.notes || '', 'Expense', '', dd.join(','), '', '']); });
+      rows.push([c.line, '', c.dueDay || '', 'Monthly', 'Credit Card', c.account || '', paid(c.line), c.notes || '', 'Expense', '', dd.join(','), '', '', auto(c.line) ? 'Autopay' : '']); });
     var old = getSpreadsheet().getSheetByName(TABS.BILLS);
     if (old && old.getLastRow() >= 2) {
       old.getRange(2, 1, old.getLastRow() - 1, Math.min(old.getLastColumn(), BILL_HEADERS.length)).getValues().forEach(function(r) {
         if (!bsText_(r[0]) || !/income/i.test(bsText_(r[8]))) return;
-        var x = r.slice(); while (x.length < 10) x.push(''); x.push(bsDueDates_({ dueDay: x[2] }, month).join(','), '', ''); rows.push(x);
+        var x = r.slice(); while (x.length < 10) x.push(''); x.push(bsDueDates_({ dueDay: x[2] }, month).join(','), '', '', ''); rows.push(x);
       });
     }
     return rows;

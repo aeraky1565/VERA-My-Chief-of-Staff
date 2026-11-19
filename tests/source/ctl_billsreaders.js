@@ -12,6 +12,8 @@ const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error(
 const in_ = (f, from, to) => b => ({ [f]: swap(b[f], from, to) });
 const TEST = 'test_billsreaders.js';
 const CONTROLS = [
+  ['autopay isn’t counted as paid', in_('BillSchedule.js', "return x && (x.autopay || bsPaidFor_(x, month)) ? month : '';", "return x && bsPaidFor_(x, month) ? month : '';")],
+  ['the bills route drops autopay', in_('WebApp.js', ", autopay: String(r[13] || '') === 'Autopay' }; }) };", " }; }) };")],
   ['the bills route reads the old sheet', in_('WebApp.js', "var fresh = (typeof bsBillRows_ === 'function' && bsBillRows_(monN));", "var fresh = null;")],
   ['paid by name is ignored', in_('WebApp.js', "if (lineP && typeof bsSetPaid_ === 'function') {", "if (false) {")],
   ['Cashflow reads the old sheet', in_('WebApp.js', "var billsData = (typeof bsBillRows_ === 'function' && bsBillRows_(month)) || [];", "var billsData = [];")],

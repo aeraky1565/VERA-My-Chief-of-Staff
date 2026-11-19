@@ -3946,7 +3946,7 @@ On an HSA row, **You** and **Employer** are the plan for the year. The money goe
 
 ### Bills Tab
 
-The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. The chat interface can mark bills paid, add new bills, and delete bills by row number.
+The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. A bill marked Autopay in Bill Schedule counts as paid whenever it's due (`bsBillRows_` fills Paid and adds an Autopay column), so it gets no tick and no reminder. The chat interface can mark bills paid, add new bills, and delete bills by row number.
 
 **How often a bill is due (`BillSchedule.js`).** Bill Schedule's `Cadence` and `Starts` columns hold it:
 - **Monthly:** blank, the default.

@@ -2479,7 +2479,7 @@ function webGetBills_() {
         notes: String(r[7] || '').trim(), type: String(r[8] || 'Expense').trim() || 'Expense', budgetEntry: String(r[9] || '').trim(), txMatch: null, txCandidates: [],
         // How often it's due (BillSchedule.js): this month's due dates, the dates paid (every 2 weeks), the next due date.
         dueDates: String(r[10] || '').split(',').filter(Boolean), paidDates: String(r[11] || '').split(',').filter(Boolean), next: String(r[12] || ''),
-        dueThisMonth: r.length <= 10 || String(r[10] || '') !== '' }; }) };
+        dueThisMonth: r.length <= 10 || String(r[10] || '') !== '', autopay: String(r[13] || '') === 'Autopay' }; }) };
   }
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.BILLS);
