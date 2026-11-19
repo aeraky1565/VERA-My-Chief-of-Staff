@@ -12,7 +12,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_geninpt');
 
-const FILES = ['GenerationInputs.js', 'Code.js', 'WebApp.js', 'Trips.js', 'TravelDayBriefing.js', 'docs/app.js', 'docs/dashboard-lite.html'];
+const FILES = ['NightlyRunner.js', 'GenerationInputs.js', 'Code.js', 'WebApp.js', 'Trips.js', 'TravelDayBriefing.js', 'docs/app.js', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 

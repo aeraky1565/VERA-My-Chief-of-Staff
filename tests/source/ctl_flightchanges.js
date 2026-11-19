@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_fc');
 
-const FILES = ['WebApp.js', 'Code.js', 'Trips.js', 'docs/app.js', 'docs/index.html'];
+const FILES = ['NightlyRunner.js', 'WebApp.js', 'Code.js', 'Trips.js', 'docs/app.js', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 

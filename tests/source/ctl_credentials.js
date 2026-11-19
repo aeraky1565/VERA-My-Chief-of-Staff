@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_credentials_out');
-const FILES = ['CareerCredentials.js', 'Career.js', 'WebApp.js', 'Code.js', 'Chat.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['NightlyRunner.js', 'CareerCredentials.js', 'Career.js', 'WebApp.js', 'Code.js', 'Chat.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70)); return src.split(from).join(to); };

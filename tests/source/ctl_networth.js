@@ -13,7 +13,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_netwrth');
 
-const FILES = ['NetWorth.js', 'Trips.js', 'Code.js', 'WebApp.js', 'TestBench.js',
+const FILES = ['NightlyRunner.js', 'NetWorth.js', 'Trips.js', 'Code.js', 'WebApp.js', 'TestBench.js',
                'docs/app.js', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });

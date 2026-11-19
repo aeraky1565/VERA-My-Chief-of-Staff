@@ -73,10 +73,10 @@ const CONTROLS = {
       "    recordFlagOutcome_(key, 'expired');"),
   }),
   'the pass runs AFTER the checker': b => {
-    const s = b['Code.js'];
-    const close = /    nightlyStep_\(ctx, 'closeExpiredPerkFlags_'[^\n]*\n/.exec(s)[0];
-    const check = /    nightlyStep_\(ctx, 'checkCardPerksExpiring_'[^\n]*\n/.exec(s)[0];
-    return { 'Code.js': s.replace(close + check, check + close) };
+    const s = b['NightlyRunner.js'];
+    const close = /    S\('closeExpiredPerkFlags_'[^\n]*\n/.exec(s)[0];
+    const check = /    S\('checkCardPerksExpiring_'[^\n]*\n/.exec(s)[0];
+    return { 'NightlyRunner.js': s.replace(close + check, check + close) };
   },
 };
 

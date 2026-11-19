@@ -98,7 +98,7 @@ const CONTROLS = {
   }),
   'the start marker moves after the first part': b => {
     const s = swapNR_(b['NightlyRunner.js'], "  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n", '');
-    return { 'NightlyRunner.js': swapNR_(s, '  nightlyRunPart_(st);\n}\n\n/** A one-off trigger', '  nightlyRunPart_(st);\n  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n}\n\n/** A one-off trigger') };
+    return { 'NightlyRunner.js': swapNR_(s, '  nightlyRunPart_(st);\n}\n\n/** A one-off trigger', "  nightlyRunPart_(st);\n  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n}\n\n/** A one-off trigger") };
   },
   'the completion marker is removed': b => ({
     'NightlyRunner.js': swapNR_(b['NightlyRunner.js'], "  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_RUN', new Date().toISOString()); } catch (e) {}\n", ''),
@@ -110,9 +110,9 @@ const CONTROLS = {
       /  if \(Date\.now\(\) \+ NIGHTLY_STEP_RESERVE_MS_ >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
   }),
   'a step hand-rolls its own budget check again': b => ({
-    'Code.js': b['Code.js'].replace(
+    'NightlyRunner.js': swapNR_(b['NightlyRunner.js'],
       "    S('pruneMemoryLog_', 5, function() { pruneMemoryLog_(); }),",
-      "    if (Date.now() < DEADLINE) { nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_); }"),
+      "    S('pruneMemoryLog_', 5, function() { if (Date.now() < DEADLINE) { pruneMemoryLog_(); } }),"),
   }),
 };
 

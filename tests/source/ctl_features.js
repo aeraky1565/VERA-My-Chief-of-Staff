@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_features_out');
-const FILES = ['Features.js', 'Co' + 'de.js', 'WebApp.js', 'Notify.js', 'FlightStatus.js', 'MailCounter.js', 'NeighborhoodWatcher.js', 'Aria.js', 'RunLog.js', 'Away.js', 'GymTracker.js',
+const FILES = ['NightlyRunner.js', 'Features.js', 'Co' + 'de.js', 'WebApp.js', 'Notify.js', 'FlightStatus.js', 'MailCounter.js', 'NeighborhoodWatcher.js', 'Aria.js', 'RunLog.js', 'Away.js', 'GymTracker.js',
   'Reminders.js', 'EmailParser.js', 'PostTripCapture.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
