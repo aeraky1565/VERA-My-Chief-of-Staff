@@ -267,7 +267,9 @@ function bgParseJson_(s, dflt) { try { var v = JSON.parse(String(s || '')); retu
 /** Saved scenarios, newest first. */
 function bgListScenarios_() {
   return tiRows_(bgScenarioSheet_(), BG_SCENARIO_HEADERS_.length).filter(function(r) { return String(r[0]).trim(); }).map(function(r) {
-    return { id: String(r[0]).trim(), name: String(r[1] || ''), changes: bgParseJson_(r[2], {}), results: bgParseJson_(r[3], {}),
+    var ch = bgParseJson_(r[2], {}), st = ch && typeof ch._starts === 'object' ? ch._starts : {};
+    if (ch) delete ch._starts;
+    return { id: String(r[0]).trim(), name: String(r[1] || ''), changes: ch, starts: st, results: bgParseJson_(r[3], {}),
              created: r[4] instanceof Date ? r[4].toISOString() : String(r[4] || ''), quarter: String(r[5] || '') };
   }).reverse();
 }
@@ -396,10 +398,14 @@ function webSaveBudgetScenario_(body) {
   if (!model.ok) return { ok: false, error: model.error };
   var changes = bgCleanChanges_(model, body && body.changes);
   if (!Object.keys(changes).length) return { ok: false, error: 'Nothing is changed in What if yet.' };
+  // When a change starts (yyyy-MM), for changes the scenario keeps; the results are once every change has started.
+  var starts = {};
+  Object.keys((body && body.starts) || {}).forEach(function(k) { var v = String(body.starts[k] || ''); if (changes.hasOwnProperty(k) && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)) starts[k] = v; });
   var results = bgResults_(budgetCompute_(model, changes, bgCategoryMap_()));
   return tiLocked_(function() {
-    var s = { id: tiMintId_('BGS-'), name: name, changes: changes, results: results, created: tiNow_(), quarter: bgQuarter_() };
-    bgScenarioSheet_().appendRow([s.id, s.name, JSON.stringify(changes), JSON.stringify(results), s.created, s.quarter]);
+    var s = { id: tiMintId_('BGS-'), name: name, changes: changes, starts: starts, results: results, created: tiNow_(), quarter: bgQuarter_() };
+    var keep = Object.keys(starts).length ? Object.assign({}, changes, { _starts: starts }) : changes;
+    bgScenarioSheet_().appendRow([s.id, s.name, JSON.stringify(keep), JSON.stringify(results), s.created, s.quarter]);
     return { ok: true, scenario: s };
   });
 }

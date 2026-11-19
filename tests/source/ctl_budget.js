@@ -54,6 +54,13 @@ const CONTROLS = [
   ['the HSA plan replaces the sheet’s figure', b => ({ [B]: swap(b[B], "  model.people.some(function(p) {\n    var d = p.deductions.filter(", "  model.people.forEach(function(p) { p.deductions.forEach(function(x) { if (BG_HSA_RX_.test(x.name) && num(year) != null) x.amount = num(year) / 12; }); });\n  model.people.some(function(p) {\n    var d = p.deductions.filter(") })],
   ['the budget_model route is missing', b => ({ [W]: swap(b[W], "      case 'budget_model':", "      case 'budget_model_old':") })],
   // the dashboard (BudgetTab, both)
+  ['a change applies before its month', both("if(!s||s<=month)o[k]=changed[k];", "o[k]=changed[k];"), UI],
+  ['a % is taken as a plain number', both("var m=String(text==null?'':text).trim().match(", "var m=null&&String(text==null?'':text).trim().match("), UI],
+  ['an added line counts before it starts', both("return (extras||[]).filter(function(x){return !x.from||x.from<=month;})", "return (extras||[]).filter(function(x){return true;})"), UI],
+  ['what moves leaves out each person’s own bills', both("b.people.forEach(function(p,i){var f=a.people[i].personalBills;", "[].forEach(function(p,i){var f=a.people[i].personalBills;"), UI],
+  ['Write sends changes that start later', both("var edits=whatIf?bgEditsFrom_(model,nowCh,c.split)", "var edits=whatIf?bgEditsFrom_(model,changed,c.split)"), UI],
+  ['the strip ignores spending', both("fld=yMode==='spend'?'spend':'left'", "fld='left'"), UI],
+  ['a scenario forgets when its changes start', b => ({ [B]: swap(b[B], "if (changes.hasOwnProperty(k) && /^\\d{4}-(0[1-9]|1[0-2])$/.test(v)) starts[k] = v;", "") })],
   ['the summary boxes show cents', both("tile('bg-kpi-left','Left over',bgMoney_(c.totalDisposable),", "tile('bg-kpi-left','Left over',bgMoney_(c.totalDisposable,true),"), UI],
   ['the phone gets the wide table', both("var tbl=function(head,rows,foot,cls){if(narrow)return tblNarrow(head,rows,foot,cls);", "var tbl=function(head,rows,foot,cls){"), UI],
   ['✎ on a bill sends every field', both("if(String(v[f[0]]).trim()!==String(f[1]==null?'':f[1]).trim())edits.push(", "edits.push("), UI],
@@ -63,7 +70,7 @@ const CONTROLS = [
   ['a refused write closes the form silently', both("if(vedit)setVedit(Object.assign({},vedit,{err:e.message}));else flash(e.message);", "setVedit(null);"), UI],
   ['sections forget being opened', both("n[id]=!p[id];bgOpenWrite_(n);return n;", "n[id]=!p[id];return n;"), UI],
   ['actuals never show', both("setActs(r&&r.ok&&r.lines?r:null);", "setActs(null);"), UI],
-  ['a scenario sends everything typed', both("changes:changed}", "changes:ov}"), UI],
+  ['a scenario sends everything typed', both("changes:changed,starts:", "changes:ov,starts:"), UI],
   ['the lite Budget isn’t BudgetTab', b => ({ [L]: swap(b[L], "{activeFinanceTab === 'fin_budget' && <BudgetTab apiUrl={apiUrl} apiToken={apiToken} />}", "{activeFinanceTab === 'fin_budget' && <div />}") }), UI],
 ];
 

@@ -15010,10 +15010,35 @@ function bgDonut_(h,parts,center,sub,label){var off=0,tot=parts.reduce(function(
     h('g',{transform:'rotate(-90 75 75)',fill:'none',strokeWidth:22},parts.map(function(p,i){var len=Math.max(0,p.v)/tot*100;var el=h('circle',{key:i,cx:75,cy:75,r:56,pathLength:100,stroke:p.c,strokeDasharray:len+' '+(100-len),strokeDashoffset:-off});off+=len;return el;})),
     h('text',{x:75,y:72,textAnchor:'middle',fill:BGC.txt,style:{font:"600 17px 'Space Grotesk',Inter,sans-serif"}},center),
     h('text',{x:75,y:90,textAnchor:'middle',fill:BGC.mute,style:{font:'500 11px Inter,sans-serif'}},sub));}
+// What if through the year: a change can start in a later month (starts: { key: 'yyyy-MM' }) and can be
+// typed as a % of the sheet's figure ("+3%"). Pure helpers, shared by both dashboards.
+function bgThisMonth_(d){d=d||new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);}
+function bgMonths_(from,n){var y=+from.slice(0,4),m=+from.slice(5,7)-1,out=[];for(var i=0;i<n;i++){var d=new Date(y,m+i,1);out.push(bgThisMonth_(d));}return out;}
+function bgStarted_(changed,starts,month){var o={};Object.keys(changed||{}).forEach(function(k){var s=starts&&starts[k];if(!s||s<=month)o[k]=changed[k];});return o;}
+function bgPctOf_(text,base){var m=String(text==null?'':text).trim().match(/^([+-]?\d+(?:\.\d+)?)\s*%$/);return m&&isFinite(Number(base))?Math.round(Number(base)*(1+Number(m[1])/100)*100)/100:null;}
+// Lines added in What if (a car payment that doesn't exist yet): [{name, amount, type, forWho, paidBy, from}], only from their month.
+function bgWithExtras_(model,extras,month){return (extras||[]).filter(function(x){return !x.from||x.from<=month;}).reduce(function(m,x){return bgWithBill_(m,x);},model);}
+// Everything spent a month: the shared costs and both people's own bills.
+function bgSpend_(c){return Math.round((c.shared.total+c.people.reduce(function(s,p){return s+p.personalBills;},0))*100)/100;}
+function bgYearStrip_(model,changed,starts,catMap,from,extras){return bgMonths_(from,12).map(function(mo){var c=budgetCompute_(bgWithExtras_(model,extras,mo),bgStarted_(changed,starts,mo),catMap);return {month:mo,left:c.totalDisposable,spend:bgSpend_(c)};});}
+// What moves by category (shared) and each person's own bills, between two computes: [{name, from, to}] that differ.
+function bgMoves_(a,b){var out=[],at={};a.shared.categories.forEach(function(x){at[x.name]=x.total;});var seen={};
+  b.shared.categories.forEach(function(x){seen[x.name]=1;var f=at[x.name]||0;if(Math.abs(f-x.total)>0.5)out.push({name:x.name,from:f,to:x.total});});
+  a.shared.categories.forEach(function(x){if(!seen[x.name])out.push({name:x.name,from:x.total,to:0});});
+  b.people.forEach(function(p,i){var f=a.people[i].personalBills;if(Math.abs(f-p.personalBills)>0.5)out.push({name:p.name+'’s own bills',from:f,to:p.personalBills});});
+  return out;}
+// The first person's share if the split followed take-home pay, and what that moves to Joint a month.
+function bgFairSplit_(c){var a=c.people[0].takeHome,b=c.people[1].takeHome,s=a+b>0?a/(a+b):c.split;return {share:s,move:Math.round((s-c.split)*c.shared.total)};}
+var BG_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function bgMonLabel_(mo){return BG_MON[+mo.slice(5,7)-1]+(mo.slice(5,7)==='01'?' '+mo.slice(2,4):'');}
 function BudgetTab(props){var h=React.createElement;
   var _d=React.useState(null),d=_d[0],setD=_d[1];
   var _w=React.useState(false),whatIf=_w[0],setWhatIf=_w[1];
   var _o=React.useState({}),ov=_o[0],setOv=_o[1];
+  var _st=React.useState({}),starts=_st[0],setStarts=_st[1];
+  var _ex=React.useState([]),extras=_ex[0],setExtras=_ex[1];
+  var _xf=React.useState(null),xform=_xf[0],setXform=_xf[1];
+  var _ym=React.useState('left'),yMode=_ym[0],setYMode=_ym[1];
   var _op=React.useState(bgOpenRead_),open=_op[0],setOpen=_op[1];
   var _f=React.useState('shared'),forBills=_f[0],setForBills=_f[1];
   var _n=React.useState(''),scName=_n[0],setScName=_n[1];
@@ -15033,13 +15058,14 @@ function BudgetTab(props){var h=React.createElement;
   if(!d)return h('div',{className:'bg-tab',style:{color:BGC.mute,fontSize:13,padding:'12px 0'}},'Reading Household Split…');
   if(!d.ok||d.configured===false||d.unavailable||!d.model)return h('div',{className:'bg-tab bg-unavailable',style:{padding:14,borderRadius:12,background:BGC.card,border:'1px solid '+BGC.br,color:BGC.soft,fontSize:13,lineHeight:1.5}},
     d.error||'The budget tracker couldn’t be read.');
-  var model=d.model,catMap=d.categoryMap||{},P=model.people;
-  var changed=whatIf?bgChanged_(model,ov):{};var nChanged=Object.keys(changed).length;
-  var base=budgetCompute_(model,{},catMap),c=whatIf?budgetCompute_(model,changed,catMap):base;
+  var model0=d.model,catMap=d.categoryMap||{},nowMo=bgThisMonth_(),model=whatIf?bgWithExtras_(model0,extras,nowMo):model0,P=model.people;
+  var changed=whatIf?bgChanged_(model,ov):{};var nChanged=Object.keys(changed).length+(whatIf?extras.length:0);
+  var nowCh=bgStarted_(changed,starts,nowMo),later=Object.keys(changed).filter(function(k){return !nowCh.hasOwnProperty(k);});
+  var base=budgetCompute_(model0,{},catMap),c=whatIf?budgetCompute_(model,nowCh,catMap):base;
   var match=d.match||budgetMatch_(model,base);
   var A=c.people[0],V=c.people[1];
   var toggle=function(id){setOpen(function(p){var n=Object.assign({},p);n[id]=!p[id];bgOpenWrite_(n);return n;});};
-  var setVal=function(k,v){setOv(function(p){var n=Object.assign({},p);n[k]=v;return n;});};
+  var setVal=function(k,v){var U=bgUnits_(model)[k],pc=k==='split'?null:bgPctOf_(v,U&&U.base);setOv(function(p){var n=Object.assign({},p);n[k]=pc!=null?pc:v;return n;});};
   var isCh=function(k){return Object.prototype.hasOwnProperty.call(changed,k);};
   var flash=function(t){setMsg(t);setTimeout(function(){setMsg('');},6000);};
   var write=function(edits,done){setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'budget_write',edits:edits}).then(function(r){setBusy(false);done&&done();
@@ -15052,7 +15078,7 @@ function BudgetTab(props){var h=React.createElement;
   var pencil=function(aria,onClick){return h('button',{type:'button',className:'bg-pencil','aria-label':aria,onClick:onClick,disabled:busy,
     style:{minWidth:narrow?36:40,minHeight:40,padding:0,borderRadius:10,border:'1px solid '+BGC.br,background:'transparent',color:BGC.soft,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',flex:'none'}},
     h('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,'aria-hidden':'true'},h('path',{d:'M4 20h4L19 9l-4-4L4 16v4z'})));};
-  var input=function(k,shownV,aria,w){return h('input',{type:'number',step:'any',className:'bg-input'+(isCh(k)?' bg-changed':''),'aria-label':aria,value:shownV,
+  var input=function(k,shownV,aria,w){return h('input',{type:'text',inputMode:'decimal',title:'An amount, or a change like +3%',className:'bg-input'+(isCh(k)?' bg-changed':''),'aria-label':aria,value:shownV,
     onChange:function(ev){setVal(k,ev.target.value);},style:Object.assign({minHeight:40,width:w||110,padding:'0 8px',borderRadius:8,background:BGC.deep,border:'1px solid '+(isCh(k)?BGC.warn:BGC.br),color:BGC.txt,fontSize:14,textAlign:'right',boxSizing:'border-box'},num)});};
   var shownOf=function(k,b){return Object.prototype.hasOwnProperty.call(ov,k)?ov[k]:(b==null?'':b);};
   // a figure: an input in What if, else the value with ✎ that writes its cell
@@ -15302,26 +15328,83 @@ function BudgetTab(props){var h=React.createElement;
        h('button',{key:'s',type:'button',className:'bg-value-save',disabled:busy,onClick:save,style:btn(true)},busy?'Saving…':'Save to the sheet')]);}
   // ---- What if ----
   var saveScenario=function(){var nm=scName.trim();if(!nm){flash('Give the scenario a name.');return;}setBusy(true);
-    apiPost(props.apiUrl,props.apiToken,{action:'budget_scenario_save',name:nm,changes:changed}).then(function(r){setBusy(false);setScName('');flash('Saved “'+nm+'”.');
+    apiPost(props.apiUrl,props.apiToken,{action:'budget_scenario_save',name:nm,changes:changed,starts:Object.keys(changed).reduce(function(o,k){if(starts[k])o[k]=starts[k];return o;},{})}).then(function(r){setBusy(false);setScName('');flash('Saved “'+nm+'”.');
       setD(Object.assign({},d,{scenarios:[r.scenario].concat(d.scenarios||[])}));}).catch(function(e){setBusy(false);flash(e.message);});};
-  var edits=whatIf?bgEditsFrom_(model,changed,c.split):[];var u=bgUnits_(model);var blocked=Object.keys(changed).filter(function(k){return u[k]&&u[k].taxes;});
+  var edits=whatIf?bgEditsFrom_(model,nowCh,c.split).filter(function(e){return String(e.key).indexOf('new:')===-1;}):[];var u=bgUnits_(model);var blocked=Object.keys(nowCh).filter(function(k){return u[k]&&u[k].taxes;});
   var confirmEl=confirmWrite?sheet('bg-write-confirm','Write these to the sheet?','Each changes one input cell of Household Split.',
-      [h('ul',{key:'l',style:{margin:0,paddingLeft:18,display:'flex',flexDirection:'column',gap:4,fontSize:14}},Object.keys(changed).map(function(k){var U=u[k];
+      [h('ul',{key:'l',style:{margin:0,paddingLeft:18,display:'flex',flexDirection:'column',gap:4,fontSize:14}},Object.keys(nowCh).map(function(k){var U=u[k];
         return h('li',{key:k,style:num},U.label+': '+(k==='split'?Math.round(U.base*100)+'% → '+Math.round(changed[k]*100)+'%':bgMoney_(U.base,true)+' → '+bgMoney_(changed[k]/U.mult,true)+(U.per?' a paycheck':'')));})),
-       blocked.length?h('span',{key:'b',style:{fontSize:13,color:BGC.warn}},'Taxes are worked out by the sheet, so that change stays in What if; change the net deposit instead.'):null],
+       blocked.length?h('span',{key:'b',style:{fontSize:13,color:BGC.warn}},'Taxes are worked out by the sheet, so that change stays in What if; change the net deposit instead.'):null,
+       extras.length?h('span',{key:'x',className:'bg-write-extra',style:{fontSize:13,color:BGC.mute}},'Lines added in What if aren’t written: add them with Add a bill when they’re real.'):null,
+       later.length?h('span',{key:'p',className:'bg-write-later',style:{fontSize:13,color:BGC.mute}},'Not written yet, because it starts later: '+later.map(function(k){return u[k].label+' (from '+bgMonLabel_(starts[k])+')';}).join(', ')+'. Save it as a scenario to keep it.'):null],
       [h('button',{key:'c',type:'button',onClick:function(){setConfirmWrite(false);},style:btn(false)},'Cancel'),
        h('button',{key:'w',type:'button',className:'bg-write-go',disabled:busy||!edits.filter(function(e){return !(u[e.key]&&u[e.key].taxes);}).length,
-         onClick:function(){write(edits.filter(function(e){return !(u[e.key]&&u[e.key].taxes);}),function(){setConfirmWrite(false);setOv({});setWhatIf(false);});},style:btn(true)},busy?'Writing…':'Write to the sheet')]):null;
+         onClick:function(){write(edits.filter(function(e){return !(u[e.key]&&u[e.key].taxes);}),function(){setConfirmWrite(false);setOv({});setStarts({});setExtras([]);setWhatIf(false);});},style:btn(true)},busy?'Writing…':'Write to the sheet')]):null;
   var wiBar=whatIf?h('div',{className:'bg-whatif-bar',style:Object.assign({},card,{border:'1px dashed #8a7330',display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'})},
-    h('span',{style:{fontSize:14,color:'#e8cc7a',flex:'1 1 220px'}},nChanged?nChanged+' change'+(nChanged===1?'':'s')+' · left over '+bgMoney_(base.totalDisposable,true)+' → '+bgMoney_(c.totalDisposable,true)+'. Nothing is written until you say so.':'Change any figure below; every sum reruns. Nothing is written to the sheet while What if is on.'),
-    nChanged?h('button',{type:'button',className:'bg-reset',onClick:function(){setOv({});},style:Object.assign(btn(false),{minHeight:40})},'Reset'):null,
+    h('span',{style:{fontSize:14,color:'#e8cc7a',flex:'1 1 220px'}},nChanged?nChanged+' change'+(nChanged===1?'':'s')+' · left over this month '+bgMoney_(base.totalDisposable,true)+' → '+bgMoney_(c.totalDisposable,true)+(later.length?' · '+later.length+' start'+(later.length===1?'s':'')+' later':'')+'. Nothing is written until you say so.':'Change any figure below; every sum reruns. Nothing is written to the sheet while What if is on.'),
+    nChanged?h('button',{type:'button',className:'bg-reset',onClick:function(){setOv({});setStarts({});setExtras([]);},style:Object.assign(btn(false),{minHeight:40})},'Reset'):null,
     nChanged?h('input',{type:'text','aria-label':'Scenario name',placeholder:'Scenario name',value:scName,onChange:function(ev){setScName(ev.target.value);},style:{minHeight:40,padding:'0 10px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:14,width:160}}):null,
     nChanged?h('button',{type:'button',className:'bg-save-scenario',disabled:busy,onClick:saveScenario,style:Object.assign(btn(false),{minHeight:40})},'Save as a scenario'):null,
-    nChanged?h('button',{type:'button',className:'bg-write',disabled:busy,onClick:function(){setConfirmWrite(true);},style:Object.assign(btn(false),{minHeight:40,borderColor:'#8a7330',color:'#e8cc7a'})},'Write these to the sheet'):null):null;
+    nChanged?h('button',{type:'button',className:'bg-write',disabled:busy||!edits.length,onClick:function(){setConfirmWrite(true);},style:Object.assign(btn(false),{minHeight:40,borderColor:'#8a7330',color:'#e8cc7a'})},'Write these to the sheet'):null):null;
+  var monthOpts=bgMonths_(nowMo,12);
+  var startsEl=whatIf&&nChanged?h('div',{className:'bg-starts',style:{display:'flex',flexWrap:'wrap',gap:8}},Object.keys(changed).map(function(k){var U=u[k];if(!U)return null;
+    return h('label',{key:k,className:'bg-start',style:{display:'inline-flex',alignItems:'center',gap:6,minHeight:40,padding:'0 4px 0 12px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,fontSize:13,color:BGC.soft,maxWidth:'100%'}},
+      h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},U.label),
+      h('select',{'aria-label':U.label+' starts',value:starts[k]||'',onChange:function(ev){var v=ev.target.value;setStarts(function(p){var n=Object.assign({},p);if(v&&v!==nowMo)n[k]=v;else delete n[k];return n;});},
+        style:{minHeight:36,borderRadius:8,border:'1px solid '+BGC.br,background:BGC.card,color:BGC.txt,fontSize:13}},
+        monthOpts.map(function(mo,i){return h('option',{key:mo,value:i?mo:''},i?'from '+bgMonLabel_(mo):'from now');})));})):null;
+  var people=model0.people.map(function(p){return p.name;});
+  var xNew=function(){setXform({name:'',amount:'',type:'Fixed',forWho:'Shared',paidBy:'Joint',from:'',err:''});};
+  var xSave=function(){var a=Number(String(xform.amount).replace(/[$,\s]/g,''));if(!xform.name.trim()){setXform(Object.assign({},xform,{err:'Give the line a name.'}));return;}
+    if(!isFinite(a)||!String(xform.amount).trim()){setXform(Object.assign({},xform,{err:'Type an amount a month.'}));return;}
+    setExtras(extras.concat([{name:xform.name.trim(),amount:a,type:xform.type,forWho:xform.forWho,paidBy:xform.paidBy,keptAs:'Actual',category:'',from:xform.from||''}]));setXform(null);};
+  var sel=function(cls,label,v,opts,on){return h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:BGC.mute,minWidth:0}},label,
+    h('select',{className:cls,value:v,onChange:function(ev){on(ev.target.value);},style:{minHeight:40,borderRadius:8,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:14,padding:'0 8px'}},opts.map(function(o){return h('option',{key:o[0],value:o[0]},o[1]);})));};
+  var extrasEl=whatIf?h('div',{className:'bg-wi-extras',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:8})},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}},h('span',{style:lbl},'Lines that aren’t in the sheet yet'),
+      xform?null:h('button',{type:'button',className:'bg-wi-add',onClick:xNew,style:Object.assign(btn(false),{minHeight:40})},'＋ Add a line')),
+    extras.map(function(x,i){return h('div',{key:i,className:'bg-wi-extra',style:Object.assign({display:'flex',alignItems:'center',gap:10,minHeight:44,fontSize:14,borderBottom:'1px solid '+BGC.line},num)},
+      h('span',{style:{flex:1,minWidth:0}},h('b',null,x.name),h('span',{style:{color:BGC.mute,fontSize:13}},' · '+x.forWho+' · '+x.type+(x.from?' · from '+bgMonLabel_(x.from):''))),
+      h('span',null,bgMoney_(x.amount,true)),
+      h('button',{type:'button','aria-label':'Remove '+x.name,onClick:function(){setExtras(extras.filter(function(_,k){return k!==i;}));},style:Object.assign(btn(false),{minHeight:40,minWidth:40,padding:0})},'×'));}),
+    !extras.length&&!xform?h('span',{style:{fontSize:13,color:BGC.mute}},'A new car payment, a second rent, a gym: add it here to see the month with it. It isn’t written to the sheet.'):null,
+    xform?h('div',{className:'bg-wi-form',style:{display:'grid',gridTemplateColumns:narrow?'1fr 1fr':'repeat(6,minmax(0,1fr))',gap:8,alignItems:'end'}},
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:BGC.mute,gridColumn:narrow?'1 / -1':'span 2'}},'Name',h('input',{type:'text','aria-label':'Line name',value:xform.name,onChange:function(ev){setXform(Object.assign({},xform,{name:ev.target.value,err:''}));},style:{minHeight:40,borderRadius:8,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:14,padding:'0 10px'}})),
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:BGC.mute}},'A month',h('input',{type:'text',inputMode:'decimal','aria-label':'Amount a month',value:xform.amount,onChange:function(ev){setXform(Object.assign({},xform,{amount:ev.target.value,err:''}));},style:Object.assign({minHeight:40,borderRadius:8,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:14,padding:'0 10px',textAlign:'right'},num)})),
+      sel('bg-wi-type','Type',xform.type,[['Fixed','Fixed'],['Variable','Variable'],['Nice to have','Nice to have']],function(v){setXform(Object.assign({},xform,{type:v}));}),
+      sel('bg-wi-for','For',xform.forWho,[['Shared','Shared']].concat(people.map(function(n){return [n,n];})),function(v){setXform(Object.assign({},xform,{forWho:v,paidBy:v==='Shared'?'Joint':v}));}),
+      sel('bg-wi-from','Starts',xform.from,monthOpts.map(function(mo,k){return [k?mo:'',k?bgMonLabel_(mo):'Now'];}),function(v){setXform(Object.assign({},xform,{from:v}));}),
+      h('div',{style:{display:'flex',gap:8,gridColumn:'1 / -1',flexWrap:'wrap',alignItems:'center'}},
+        h('button',{type:'button',onClick:function(){setXform(null);},style:Object.assign(btn(false),{minHeight:40})},'Cancel'),
+        h('button',{type:'button',className:'bg-wi-save',onClick:xSave,style:Object.assign(btn(true),{minHeight:40})},'Add to What if'),
+        xform.err?h('span',{role:'alert',style:{color:BGC.bad,fontSize:13}},xform.err):null)):null):null;
+  var yearEl=null;
+  if(whatIf){var strip=bgYearStrip_(model0,changed,starts,catMap,nowMo,extras),fld=yMode==='spend'?'spend':'left',bl=fld==='spend'?bgSpend_(base):base.totalDisposable;
+    var endModel=bgWithExtras_(model0,extras,'9999-12'),end=budgetCompute_(endModel,changed,catMap),fair=bgFairSplit_(end),moves=bgMoves_(base,end);
+    strip=strip.map(function(x){return {month:x.month,left:x[fld],spend:x.spend};});
+    var vals=strip.map(function(x){return x.left;}).concat([bl,0]),hi=Math.max.apply(null,vals),lo=Math.min.apply(null,vals),W=600,H=150,pl=8,pr=8,pt=10,pb=24;
+    var X=function(i){return pl+(W-pl-pr)*(i+0.5)/12;},Y=function(v){return pt+(H-pt-pb)*(1-(v-lo)/((hi-lo)||1));},bw=(W-pl-pr)/12*0.6;
+    var fp=Math.round(fair.share*100),sp=Math.round(end.split*100);
+    yearEl=h('div',{className:'bg-year',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:8})},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',alignItems:'baseline'}},h('span',{style:lbl},(fld==='spend'?'Spending':'Left over')+' through the year'),
+        h('span',{role:'group','aria-label':'Show',style:{display:'flex',gap:6}},[['left','Left over'],['spend','Spending']].map(function(o){return h('button',{key:o[0],type:'button',className:'bg-ymode bg-ymode-'+o[0],'aria-pressed':yMode===o[0]?'true':'false',onClick:function(){setYMode(o[0]);},
+          style:{minHeight:36,padding:'0 12px',borderRadius:999,border:'1px solid '+(yMode===o[0]?BGC.gold:BGC.br),background:yMode===o[0]?'rgba(212,179,90,.15)':'transparent',color:yMode===o[0]?BGC.txt:BGC.soft,fontSize:13,cursor:'pointer'}},o[1]);}))),
+      h('span',{style:{fontSize:12,color:BGC.mute}},'Bars: with your changes · dashed: the sheet today'+(fld==='spend'?' · shared costs and both of your own bills':' · after Joint, bills and savings')),
+      h('div',{style:{overflowX:'auto'}},h('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':'Left over each month for the next 12 months',style:{display:'block',width:'100%',minWidth:340,height:'auto'}},
+        strip.map(function(x,i){var t=Y(Math.max(0,x.left)),b=Y(Math.min(0,x.left));return h('g',{key:x.month,className:'bg-year-m'},
+          h('rect',{x:X(i)-bw/2,y:t,width:bw,height:Math.max(1,b-t),rx:3,fill:fld==='left'&&x.left<0?BGC.bad:(Math.abs(x.left-bl)>0.5?BGC.gold:BGC.br)},h('title',null,bgMonLabel_(x.month)+': '+bgMoney_(x.left,true))),
+          h('text',{x:X(i),y:H-8,textAnchor:'middle',fill:BGC.mute,style:{font:'500 11px Inter,sans-serif'}},bgMonLabel_(x.month)));}),
+        h('line',{x1:pl,x2:W-pr,y1:Y(bl),y2:Y(bl),stroke:BGC.soft,strokeWidth:1.5,strokeDasharray:'5 5'}))),
+      moves.length?h('div',{className:'bg-moves',style:{display:'flex',flexDirection:'column',gap:2}},h('span',{style:lbl},'What moves, a month, once every change has started'),
+        moves.map(function(m){var dd=m.to-m.from;return h('div',{key:m.name,className:'bg-move',style:Object.assign({display:'flex',justifyContent:'space-between',gap:10,fontSize:13,minHeight:28,alignItems:'center',borderBottom:'1px solid '+BGC.line},num)},
+          h('span',{style:{color:BGC.soft}},m.name),h('span',null,bgMoney_(m.from,true)+' → '+bgMoney_(m.to,true)+' ',h('b',{style:{color:dd>0?BGC.warn:BGC.ok}},(dd>0?'+':'−')+bgMoney_(Math.abs(dd),true))));})):null,
+      h('span',{className:'bg-year-sum',style:Object.assign({fontSize:13,color:BGC.soft},num)},'Today '+bgMoney_(bl,true)+' a month · in '+bgMonLabel_(strip[11].month)+' '+bgMoney_(strip[11].left,true)+' · the year '+bgMoney_(strip.reduce(function(s,x){return s+x.left;},0),true)),
+      h('span',{className:'bg-fair',style:Object.assign({fontSize:13,color:BGC.soft},num)},
+        Math.abs(fp-sp)<1?'The split '+sp+' / '+(100-sp)+' matches your take-home pay.':'By take-home pay the split would be '+fp+' / '+(100-fp)+' (you use '+sp+' / '+(100-sp)+'): '+end.people[0].name+' '+(fair.move>0?'+':'−')+bgMoney_(Math.abs(fair.move),true)+' a month to Joint.'));}
   var scen=(d.scenarios||[]).length?h('div',{className:'bg-scenarios',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:6})},h('span',{style:lbl},'Saved scenarios'),
     d.scenarios.slice(0,8).map(function(s){return h('div',{key:s.id,className:'bg-scenario',style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',minHeight:40,fontSize:14,borderBottom:'1px solid '+BGC.line}},
       h('b',null,s.name),h('span',{style:Object.assign({color:BGC.mute,fontSize:13},num)},(s.quarter||'')+' · left over '+bgMoney_(s.results&&s.results.totalDisposable,true)),
-      h('span',{style:{marginLeft:'auto',display:'flex',gap:6}},h('button',{type:'button',onClick:function(){setOv(Object.keys(s.changes||{}).reduce(function(o,k){var U=u[k];if(U)o[k]=k==='split'?s.changes[k]:s.changes[k]/U.mult;return o;},{}));setWhatIf(true);},style:Object.assign(btn(false),{minHeight:40})},'Open in What if'),
+      h('span',{style:{marginLeft:'auto',display:'flex',gap:6}},h('button',{type:'button',onClick:function(){setOv(Object.keys(s.changes||{}).reduce(function(o,k){var U=u[k];if(U)o[k]=k==='split'?s.changes[k]:s.changes[k]/U.mult;return o;},{}));setStarts(s.starts||{});setWhatIf(true);},style:Object.assign(btn(false),{minHeight:40})},'Open in What if'),
         confirmDel===s.id?h('button',{type:'button',onClick:function(){apiPost(props.apiUrl,props.apiToken,{action:'budget_scenario_delete',id:s.id}).then(function(){setConfirmDel('');setD(Object.assign({},d,{scenarios:d.scenarios.filter(function(x){return x.id!==s.id;})}));}).catch(function(e){flash(e.message);});},style:Object.assign(btn(false),{minHeight:40,color:BGC.bad})},'Delete'):
           h('button',{type:'button','aria-label':'Delete '+s.name,onClick:function(){setConfirmDel(s.id);},style:Object.assign(btn(false),{minHeight:40})},'×')));})):null;
   // ---- the page ----
@@ -15330,10 +15413,10 @@ function BudgetTab(props){var h=React.createElement;
       h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,font:"600 26px 'Space Grotesk',Inter,sans-serif"}},'This month at a glance'),
         h('span',{className:'bg-sub',style:{fontSize:13,color:BGC.mute}},'From Household Split · a regular month'+(model.phone?' · phone plan from the phone tracker':'')+(acts&&acts.quarter?' · actuals: '+acts.quarter+', a month on average':''))),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        h('button',{type:'button',className:'bg-whatif-toggle','aria-pressed':whatIf?'true':'false',onClick:function(){setWhatIf(!whatIf);if(whatIf)setOv({});},style:btn(false)},whatIf?'Done with What if':'What if…'),
+        h('button',{type:'button',className:'bg-whatif-toggle','aria-pressed':whatIf?'true':'false',onClick:function(){setWhatIf(!whatIf);if(whatIf){setOv({});setStarts({});setExtras([]);setXform(null);}},style:btn(false)},whatIf?'Done with What if':'What if…'),
         h('button',{type:'button',className:'bg-add-top',disabled:busy||whatIf,onClick:function(){openForm(null);},style:btn(true)},'Add a bill'))),
     msg?h('div',{role:'status',className:'bg-msg',style:{fontSize:13,color:BGC.ok}},msg):null,
-    wiBar,kpis,flow,charts,checks,
+    wiBar,startsEl,extrasEl,yearEl,kpis,flow,charts,checks,
     h('div',{className:'bg-sections-head',style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:10,flexWrap:'wrap',paddingTop:6}},
       h('div',{style:{display:'flex',flexDirection:'column',gap:3}},h('h3',{style:{margin:0,font:"600 20px 'Space Grotesk',Inter,sans-serif"}},'The sheet, section by section'),
         h('span',{style:{fontSize:13,color:BGC.mute}},'In Household Split’s order. A closed section shows its headline; open it for the detail.')),

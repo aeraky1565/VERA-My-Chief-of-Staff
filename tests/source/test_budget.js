@@ -201,6 +201,9 @@ RESET();
 r = run('webSaveBudgetScenario_(B)', { B: { name: 'Bigger flat', changes: { 'shared.fixed:Rent': 2500 } } });
 check('saved with its results, the sheet untouched', r.ok && r.scenario.results.totalShared === 3650 && writes.length === 0 && VERA['Budget Scenarios'].length === 2);
 check('listed back', run('bgListScenarios_()')[0].name === 'Bigger flat');
+r = run('webSaveBudgetScenario_(B)', { B: { name: 'Rent from spring', changes: { 'shared.fixed:Rent': 2500 }, starts: { 'shared.fixed:Rent': '2027-04', bogus: '2027-01', 'shared.fixed:Internet': 'soon' } } });
+check('a change can start in a later month; only real changes and real months are kept', r.ok && JSON.stringify(r.scenario.starts) === '{"shared.fixed:Rent":"2027-04"}' && JSON.stringify(run('bgListScenarios_()')[0].starts) === '{"shared.fixed:Rent":"2027-04"}' && JSON.stringify(run('bgListScenarios_()')[0].changes) === '{"shared.fixed:Rent":2500}', JSON.stringify(r.scenario));
+check('an older scenario has no start months', JSON.stringify(run('bgListScenarios_()')[1].starts) === '{}');
 check('nothing changed → not saved', /Nothing is changed/.test(run('webSaveBudgetScenario_(B)', { B: { name: 'x', changes: { bogus: 1 } } }).error));
 
 console.log('\nthe tab');
