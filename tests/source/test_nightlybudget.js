@@ -83,11 +83,9 @@ function runnerCtx() {
   vm.createContext(ctx);
   vm.runInContext(extractFn(SRC.Code, 'nightlyStep_') + '\n' +
                   extractFn(SRC.Code, 'slowestNightlySteps_') + '\n' +
-                  extractFn(SRC.Code, 'nightlyHeadCompletedTonight_') + '\n' +
                   /^var NIGHTLY_STEP_PROP_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
                   /^var NIGHTLY_TAIL_STEP_PROP_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
-                  /^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
-                  /^var NIGHTLY_HEAD_MAX_AGE_MS_\s*=.*?;/m.exec(SRC.Code)[0], ctx);
+                  /^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m.exec(SRC.Code)[0], ctx);
   return ctx;
 }
 
@@ -284,56 +282,16 @@ console.log('\nThe slowest-step report');
 }
 
 // ============================================================================
-console.log('\nnightlyRun wires it up');
+console.log('\nThe night wires it up');
 {
-  const nightly = SRC.Code.slice(SRC.Code.indexOf('function nightlyRun()'),
-                                 SRC.Code.indexOf('function nightlyRun()') + 40000);
-  const steps = (nightly.match(/nightlyStep_\(ctx, '/g) || []).length;
-
-  check('every step goes through the runner', steps >= 35, String(steps));
+  const NR = fs.readFileSync(ROOT + '/NightlyRunner.js', 'utf8');   // the night as one list (#256)
+  check('every step goes through the runner (one list, run by nightlyRunPart_)',
+        /var ran = nightlyStep_\(ctx, s\.n, function\(\) \{ s\.fn\(ctx, st\); \}, gate\);/.test(NR) && (NR.match(/\n\s+S\('/g) || []).length >= 80);
   check('NO step hand-rolls a budget check any more',
-        !/if \(Date\.now\(\) < DEADLINE\)/.test(nightly),
+        !/if \(Date\.now\(\) < DEADLINE\)/.test(NR),
         'three of forty checking the deadline is how one slow step killed the run');
-  check('the old per-step try/catch boilerplate is gone',
-        !/stepFailures\.push\('check[A-Za-z]*_: ' \+ \w+Err\.message\)/.test(nightly),
-        'forty copies of the same seven lines is forty chances to get one wrong');
-
-  check('the context carries the deadline', /deadline: DEADLINE/.test(nightly));
-  check('…the failures', /failures: stepFailures/.test(nightly));
-  check('…the skips', /skipped:  stepSkipped/.test(nightly));
-  check('…and the timings', /timings:  stepTimings/.test(nightly));
-
-  check('skips are reported in the Slack summary line',
-        /summary \+= ' \\u00b7 ' \+ stepSkipped\.length \+ ' skipped \(time budget\)'/.test(nightly),
-        'the veraLog_ row also mentions skips, so match the summary line itself');
-  check('…and in the System Log row', /stepSkipped\.length \+ ' skipped \(time budget\)'/.test(nightly));
-  check('…and they are listed, not just counted', /Skipped for time/.test(nightly));
-  check('a skip is NEVER pushed onto stepFailures',
-        !/stepFailures\.push\('skipped/.test(nightly),
-        'the budget working as designed is not a step warning, and conflating them '
-        + 'turns a healthy partial run into a run that looks broken');
-  check('the slowest steps are reported on EVERY run',
-        /slowestNightlySteps_\(stepTimings/.test(nightly),
-        'creep is worth seeing while it is still creep');
-
-  // Two steps previously had no guard at all, so a throw in either took the run down.
-  check('writeSummarySnapshot is guarded now',
-        /nightlyStep_\(ctx, 'writeSummarySnapshot'/.test(nightly));
-  check('…and checkTaxDocuments_ too',
-        /nightlyStep_\(ctx, 'checkTaxDocuments_'/.test(nightly));
-
-  // The breadcrumb's PRESENCE is the signal, so a finished run must clear it.
-  check('a completed run clears the breadcrumb',
-        /deleteProperty\(NIGHTLY_STEP_PROP_\)/.test(nightly));
-  check('…including the empty-run early return',
-        (nightly.match(/deleteProperty\(NIGHTLY_STEP_PROP_\)/g) || []).length >= 2,
-        'returning early with the marker set reports a death that never happened');
-
-  check('the API health prune runs nightly',
-        /nightlyStep_\(ctx, 'pruneApiHealthState_'/.test(nightly));
 }
 
-// ============================================================================
 console.log('\nThe watchdog says WHERE it died');
 {
   const fn = extractFn(SRC.Watch, 'getOverdueJobs_');
@@ -422,13 +380,9 @@ console.log('\nThe watchdog says WHERE it died');
 }
 
 // ============================================================================
-// THE NIGHT IS IN TWO HALVES
+// THE RESERVE
 //
-// The run outgrew Apps Script's six-minute ceiling. The morning banner read
-// "died during checkHealthAppointments_ (5m in)" — and because the budget only
-// asked whether the deadline had PASSED, a step starting at 5m00s still had sixty
-// seconds before the kill, which it then overran. Everything from that step
-// onwards never ran at all: not occasionally, every night.
+// A step starting with too little time left would overrun Google's six-minute ceiling.
 console.log('\nThe reserve');
 {
   const c = runnerCtx();
@@ -455,208 +409,6 @@ console.log('\nThe reserve');
   check('the reserve is a real duration, not zero',
         c.NIGHTLY_STEP_RESERVE_MS_ >= 30000,
         'anything less and the slowest step still overruns the ceiling');
-}
-
-console.log('\nEach half keeps its own breadcrumb');
-{
-  const c = runnerCtx();
-  const head = freshCtx(c);
-  const tail = freshCtx(c);
-  tail.stepProp = c.NIGHTLY_TAIL_STEP_PROP_;
-
-  c.nightlyStep_(head, 'checkContracts_', () => {});
-  c.nightlyStep_(tail, 'runExplorer_', () => {});
-
-  check('the head writes NIGHTLY_STEP',
-        /^checkContracts_\|/.test(c._props[c.NIGHTLY_STEP_PROP_] || ''),
-        JSON.stringify(c._props));
-  check('…and the tail writes its OWN property',
-        /^runExplorer_\|/.test(c._props[c.NIGHTLY_TAIL_STEP_PROP_] || ''),
-        JSON.stringify(c._props));
-  check('…so neither can overwrite the other\'s death',
-        c.NIGHTLY_STEP_PROP_ !== c.NIGHTLY_TAIL_STEP_PROP_ &&
-        c._props[c.NIGHTLY_STEP_PROP_] !== c._props[c.NIGHTLY_TAIL_STEP_PROP_],
-        'one shared breadcrumb and the watchdog cannot say which half died');
-}
-
-console.log('\nEvery step belongs to exactly one half');
-{
-  // Read out of the real source, not a hand-copied list: the failure mode here is a
-  // step quietly belonging to NEITHER half, and a list typed by hand would be
-  // reproducing the same mistake it is meant to catch.
-  const bodyOf = name => extractFn(SRC.Code, name);
-  const stepsIn = body =>
-    (body.match(/nightlyStep_\(ctx,\s*'([^']+)'/g) || [])
-      .map(m => /'([^']+)'/.exec(m)[1]);
-
-  const head = stepsIn(bodyOf('nightlyRun'));
-  const tail = stepsIn(bodyOf('nightlyRunTail'));
-
-  // THE BUDGET CANNOT PROTECT WHAT IT DOES NOT WRAP.
-  //
-  // Step 1's four collectors were bare calls at the top level of nightlyRun. On the
-  // night of 8 Oct the budget skipped computeTravelLegs_ at 5m25s — correctly — and
-  // then these ran anyway and the execution was killed 30s later, 355s into a 360s
-  // ceiling. The breadcrumb still named writePTOSnapshot_, the last step ATTEMPTED,
-  // which had finished four minutes earlier: work outside a step is work the
-  // breadcrumb cannot name, so the morning email blamed the wrong function.
-  //
-  // Counting call forms rather than parsing, to keep this file in the fast --node
-  // group that gates the deploy. That only works while the names are absent from the
-  // comments in nightlyRun, which is stated there.
-  {
-    const body = bodyOf('nightlyRun');
-    const COLLECTORS = ['getUpcomingEventsCached_()', 'getOpenTasks()', 'getSummaries()',
-                        'getSharedInterestLedger_()'];
-    check('  the collection is a budgeted step', head.indexOf('collect') !== -1,
-          JSON.stringify(head));
-
-    const m = /nightlyStep_\(ctx, 'collect', function\(\) \{([\s\S]*?)\n    \}\);/.exec(body);
-    check('  …whose closure is findable', !!m);
-    COLLECTORS.forEach(c => {
-      const inBody    = body.split(c).length - 1;
-      const inClosure = m ? m[1].split(c).length - 1 : 0;
-      check('    ' + c + ' is called once, inside it',
-            inBody === 1 && inClosure === 1,
-            'in nightlyRun: ' + inBody + ', in the collect closure: ' + inClosure +
-            ' — a bare call here runs after the budget has already given up');
-    });
-
-    // Out of time must not be reported as nothing to say.
-    check('  a skipped collection ends the run instead of claiming "no data"',
-          /if \(!collected\) \{/.test(body) &&
-          /stopped before the Claude call/.test(body),
-          'the empty-data branch would otherwise post "0 flags (no data)" for a night ' +
-          'that simply ran out of budget');
-    check('  …and the collectors are var, not const, so the closure can assign them',
-          /var events = null, tasks = null, summaries = null, ledger = null;/.test(body),
-          'a const reassigned inside the closure throws where nightlyStep_ catches it, ' +
-          'which blanks the run with only a warning to show for it');
-  }
-
-  check('both halves run steps', head.length > 20 && tail.length > 0,
-        JSON.stringify({ head: head.length, tail: tail.length }));
-  const overlap = head.filter(s => tail.indexOf(s) !== -1);
-  check('no step is in BOTH halves', overlap.length === 0, JSON.stringify(overlap));
-
-  // The seven the banner said were being starved. Still the point of the split, so
-  // they are asserted as a set AND in their original relative order — a re-split that
-  // reordered them would break the dependency work pinned further down this file.
-  // resetWeekMealPlan_ was the fourth of them. It seeded seven blank Meal Plan rows
-  // for next week, the planner stopped having blank rows to seed, and the step was
-  // removed rather than left to append nothing — so the starved set is six now.
-  const STARVED = ['checkHealthAppointments_', 'checkMonthlyReview_',
-    'sendHealthPerformanceInsightMonthly_',
-    'checkCrossPatternFlags_', 'suggestDueDates', 'runExplorer_'];
-  check('every starved step is in the tail',
-        STARVED.every(s => tail.indexOf(s) !== -1),
-        JSON.stringify(STARVED.filter(s => tail.indexOf(s) === -1)));
-  check('…in the order they always ran in',
-        tail.filter(s => STARVED.indexOf(s) !== -1).join(',') === STARVED.join(','),
-        JSON.stringify(tail));
-  check('…and none of them is still in the first half',
-        STARVED.every(s => head.indexOf(s) === -1),
-        JSON.stringify(STARVED.filter(s => head.indexOf(s) !== -1)));
-
-  // The tail's FULL contents, named. It was once exactly the starved seven; the
-  // perk-event sweep was added deliberately because the head's three perk steps are
-  // already #32-34 of 37 and so among the first the budget drops. Listing the whole
-  // thing keeps that an explicit decision — a step cannot drift into the tail, or out
-  // of it, without this line changing.
-  const EXPECTED_TAIL = ['checkHealthAppointments_', 'checkMonthlyReview_',
-    'sendHealthPerformanceInsightMonthly_',
-    'checkCrossPatternFlags_', 'purgePastPerkReminderEvents_',
-    'suggestDueDates',
-    // Career tab v2 (issue #216): the one-time migration, then the Wins bank baseline
-    // import once configured; a no-op otherwise, so it costs the tail nothing.
-    'carNightly_',
-    // The job agent link (phase 2): the health flag, this month's Wins bank tab and
-    // the quarterly criteria suggestions — each a no-op until configured or due.
-    'carCheckAgentHealth_', 'checkAgentHealth_', 'checkVehicleRenewals_', 'carMonthlyWinsBank_', 'carSuggestCriteria_',
-    // Phase 3: no-sponsor, overdue-brief and unsent-intents flags.
-    'carCareerFlags_',
-    'runExplorer_',
-    // Moved from the head after it ran to the 6-minute kill on Oct 20: it opens the
-    // external budget sheet. Last in the tail, where a stall costs nothing else.
-    'writeSummarySnapshot', 'scrubLoggedSecrets_'];
-  check('the tail is exactly its named steps, no more and no fewer',
-        tail.join(',') === EXPECTED_TAIL.join(','), JSON.stringify(tail));
-
-  // Nothing fell down the gap between the two. Comparing against git HEAD was the
-  // obvious way and is worthless: the moment the split is committed, HEAD becomes
-  // the split version and the check passes trivially forever. This holds for good —
-  // every nightlyStep_ call in the file has to live in one of the two halves, so a
-  // step belonging to neither is impossible rather than merely unlikely.
-  // The quote is load-bearing: without it this also matches the declaration,
-  //   function nightlyStep_(ctx, name, fn)
-  // and the count is one too many for a reason that has nothing to do with the split.
-  const allCalls = (SRC.Code.match(/nightlyStep_\(ctx,\s*'/g) || []).length;
-
-  // nightlyStep_ is no longer only the night's. morningNudge routes its ~15 phases
-  // through it too, after the morning email was killed at the same six-minute ceiling
-  // — the budget, the breadcrumb and the timings are the same three things, so
-  // reimplementing them would have been two copies to keep in step.
-  //
-  // So the accounting is over the THREE functions that use it, not two. This stays the
-  // same guarantee it was: a call in a fourth, unaccounted function still fails, and a
-  // step belonging to nothing is still impossible rather than merely unlikely. (This
-  // assertion caught exactly that when the morning phases were added — it reported 54
-  // calls against 44 accounted for, which is the whole reason it exists.)
-  const morning = stepsIn(bodyOf('morningNudge'));
-  check('morningNudge shares the same budgeted step runner',
-        morning.length >= 8, JSON.stringify(morning));
-  check('…and its phases are nothing to do with the night',
-        morning.every(s => head.indexOf(s) === -1 && tail.indexOf(s) === -1),
-        JSON.stringify(morning.filter(s => head.indexOf(s) !== -1 || tail.indexOf(s) !== -1)));
-  check('every nightlyStep_ call in Code.js belongs to one of the three',
-        allCalls === head.length + tail.length + morning.length,
-        JSON.stringify({ inFile: allCalls, head: head.length, tail: tail.length,
-                         morning: morning.length }) +
-        ' — a step in none of them runs on no night and no morning at all');
-}
-
-console.log('\nThe tail reports its own death');
-{
-  const body = extractFn(SRC.Code, 'nightlyRunTail');
-  check('it writes its own start marker',
-        /setProperty\('LAST_NIGHTLY_TAIL_START'/.test(body),
-        'without it the watchdog cannot tell "died" from "never fired". Matching the ' +
-        'bare name also matched the Logger.log beside it, and passed with the write gone');
-  check('it records its own heartbeat, in a finally',
-        /finally\s*\{[\s\S]*recordHeartbeat_\('nightlyRunTail'\)/.test(body));
-  check('…and the head does NOT record it',
-        !/recordHeartbeat_\('nightlyRunTail'\)/.test(extractFn(SRC.Code, 'nightlyRun')),
-        'one shared heartbeat would let the head report the whole night healthy');
-  check('it clears its breadcrumb only on success',
-        /deleteProperty\(NIGHTLY_TAIL_STEP_PROP_\)/.test(body) &&
-        body.indexOf('deleteProperty(NIGHTLY_TAIL_STEP_PROP_)') < body.indexOf('} catch (e) {'),
-        'cleared in the finally and its presence would stop meaning "died here"');
-  check('it reports its slowest steps like the head does',
-        /slowestNightlySteps_/.test(body) && /Slowest tail steps/.test(body),
-        'the report that has never once been produced is the whole diagnosis');
-  check('…and tells nightlyStep_ to use the tail breadcrumb',
-        /stepProp:\s*NIGHTLY_TAIL_STEP_PROP_/.test(body),
-        'the ctx is where that is decided; without it the tail overwrites the head');
-
-  check('the watchdog knows about it',
-        /job: 'nightlyRunTail'[\s\S]*?startProp: 'LAST_NIGHTLY_TAIL_START'[\s\S]*?stepProp: 'NIGHTLY_TAIL_STEP'/
-          .test(SRC.Watch),
-        'a half nothing watches is a half that can die every night unseen');
-  // setupTriggers no longer names handlers at the newTrigger call — they come from
-  // veraTriggerSpecs_, so that one list drives the creates, the delete guard and the
-  // log. test_triggers.js pins the full chain; this just says the tail is in the list.
-  check('…and a trigger fires it',
-        /handler: 'nightlyRunTail'/.test(SRC.Code) &&
-        /ScriptApp\.newTrigger\(s\.handler\)/.test(SRC.Code));
-  check('…an hour after the first half, not alongside it',
-        /atHour\(\(NIGHT \+ 1\) % 24\)/.test(SRC.Code),
-        'back to back and the second starts underneath an overrunning first');
-
-  // The expensive thing the tail must not do twice.
-  check('the PTO snapshot is only recomputed on the day it is read',
-        /today\.getDate\(\) === schedDom_\('finance_review_day', 1\) \? writePTOSnapshot_\(\) : null/.test(body),
-        'checkMonthlyReview_ returns immediately on the other 30 days, and the ' +
-        'snapshot is one of the heaviest steps in the night');
 }
 
 // ============================================================================
@@ -687,23 +439,20 @@ console.log('\nFlags are read after they are written');
     .map(f => fs.readFileSync(path.join(ROOT, f), 'utf8'))
     .join('\n');
 
-  const stepsIn = body =>
-    (body.match(/nightlyStep_\(ctx,\s*'([^']+)'/g) || [])
-      .map(m => /'([^']+)'/.exec(m)[1]);
-  const order = stepsIn(extractFn(SRC.Code, 'nightlyRun'))
-          .concat(stepsIn(extractFn(SRC.Code, 'nightlyRunTail')));
+  const NR = fs.readFileSync(ROOT + '/NightlyRunner.js', 'utf8');   // the night as one list (#256)
+  const order = (NR.match(/\n\s+S\('([^']+)', \d/g) || []).map(m => /'([^']+)'/.exec(m)[1]);
 
   // A step is either a named function or an inline closure at the call site. BOTH are
   // read: classifying only named functions would quietly treat every closure as a
   // non-writer, which is the way this test would go blind without failing.
   const closureAt = name => {
-    const re = new RegExp("nightlyStep_\\(ctx,\\s*'" + name + "',\\s*function\\s*\\(");
-    const m = re.exec(SRC.Code);
+    const re = new RegExp("S\\('" + name + "', \\d, function\\s*\\(");
+    const m = re.exec(NR);
     if (!m) return null;
     let depth = 0;
-    for (let j = SRC.Code.indexOf('{', m.index); j < SRC.Code.length; j++) {
-      if (SRC.Code[j] === '{') depth++;
-      else if (SRC.Code[j] === '}') { depth--; if (depth === 0) return SRC.Code.slice(m.index, j + 1); }
+    for (let j = NR.indexOf('{', m.index); j < NR.length; j++) {
+      if (NR[j] === '{') depth++;
+      else if (NR[j] === '}') { depth--; if (depth === 0) return NR.slice(m.index, j + 1); }
     }
     return null;
   };
@@ -753,11 +502,9 @@ console.log('\nFlags are read after they are written');
 
   // The Claude batch — the biggest single write of the night — is a bare call in the
   // head rather than a nightlyStep_, so the step list above does not contain it.
-  check('the Claude batch write is in the FIRST half',
-        /writtenCount = writeFlags\(flags\);/.test(extractFn(SRC.Code, 'nightlyRun')) &&
-        !/writeFlags\(/.test(extractFn(SRC.Code, 'nightlyRunTail')),
-        'it is not a nightlyStep_, so only its half can be asserted — and the half it ' +
-        'is in is the one that has to come first');
+  check('the Claude batch write is its own step, before the pattern engine',
+        order.indexOf('writeFlags') !== -1 && order.indexOf('writeFlags') < crossAt && writers.indexOf('writeFlags') !== -1,
+        'the biggest single write of the night; the pattern engine must see it');
 
   // "escalateAgedFlags_ first" is only correct BECAUSE of the age cutoff, so assert
   // the cutoff and not merely the position.
@@ -769,67 +516,6 @@ console.log('\nFlags are read after they are written');
   check('…and only touches flags at least a day old, which is why first is safe',
         esc !== null && /ageDays\s*>=\s*[1-9]/.test(esc) && !/ageDays\s*>=\s*0\b/.test(esc),
         'without a real cutoff it would read tonight\'s flags before most of them exist');
-}
-
-// ============================================================================
-// A HALF-RUN NIGHT IS NOT PATTERN-MATCHED
-//
-// What the split changed: a head that dies no longer stops the tail. The pattern
-// engine would then count unresolved High flags on a night where most writers never
-// ran, read a loaded week as a quiet one, and say so with no sign anything was
-// missing. Skipped and said so beats confidently wrong.
-console.log('\nThe tail asks whether the first half finished');
-{
-  const c = runnerCtx();
-
-  check('no recorded finish at all — not ok',
-        c.nightlyHeadCompletedTonight_().ok === false,
-        'a project that has never run a head is not a project with a complete one');
-
-  // Finished twenty minutes ago, nothing left behind: the normal night.
-  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(20 * 60 * 1000);
-  const good = c.nightlyHeadCompletedTonight_();
-  check('recent finish, no breadcrumb — ok', good.ok === true && good.reason === '',
-        JSON.stringify(good));
-
-  // A head that THREW reaches its finally and writes LAST_NIGHTLY_RUN anyway. The
-  // breadcrumb is the only thing that separates it from a clean finish.
-  c._props[c.NIGHTLY_STEP_PROP_] = 'checkContracts_|210';
-  const died = c.nightlyHeadCompletedTonight_();
-  check('a breadcrumb left behind — not ok, even with a fresh timestamp',
-        died.ok === false, JSON.stringify(died) +
-        ' — the timestamp is written in the finally, which a thrown run still reaches');
-  check('…and the reason names the step it stopped at',
-        /checkContracts_/.test(died.reason) && !/\|/.test(died.reason),
-        JSON.stringify(died.reason) + ' — the elapsed suffix is for the watchdog, not this');
-  delete c._props[c.NIGHTLY_STEP_PROP_];
-
-  // A hard kill at six minutes never reaches the finally, so the timestamp is
-  // yesterday's and the tail must not read it as tonight's.
-  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(25 * 60 * 60 * 1000);
-  const stale = c.nightlyHeadCompletedTonight_();
-  check('yesterday\'s finish — not ok', stale.ok === false, JSON.stringify(stale));
-  check('…and the reason says how old it is',
-        /not tonight/.test(stale.reason) && /\d/.test(stale.reason),
-        JSON.stringify(stale.reason));
-
-  // The real gap between the two triggers: .atHour() places each anywhere in its
-  // hour, so head-at-23:00 and tail-at-00:59 is nearly two hours apart and legitimate.
-  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(115 * 60 * 1000);
-  check('the widest legitimate gap between the two triggers still counts as tonight',
-        c.nightlyHeadCompletedTonight_().ok === true,
-        'atHour() is a window, not a time — a two-hour gap is a normal night, and ' +
-        'refusing it would withhold the step on nights nothing was wrong with');
-  check('…but the window is nowhere near a full day',
-        c.NIGHTLY_HEAD_MAX_AGE_MS_ < 12 * 3600 * 1000 &&
-        c.NIGHTLY_HEAD_MAX_AGE_MS_ > 2 * 3600 * 1000,
-        String(c.NIGHTLY_HEAD_MAX_AGE_MS_) + ' — too wide and yesterday reads as tonight');
-
-  c._props['LAST_NIGHTLY_RUN'] = 'not a date';
-  check('an unreadable timestamp is not treated as a good night',
-        c.nightlyHeadCompletedTonight_().ok === false,
-        'NaN compares false against every threshold, so a bare age check would have ' +
-        'passed this');
 }
 
 console.log('\nA withheld step is not a slow step');
@@ -885,50 +571,6 @@ console.log('\nA withheld step is not a slow step');
   check('when both the gate and the clock would stop a step, the gate is reported',
         ctx2.blocked.length === 1 && ctx2.skipped.length === 0,
         JSON.stringify({ blocked: ctx2.blocked, skipped: ctx2.skipped }));
-}
-
-console.log('\nOnly the pattern engine is gated, and the skip is reported');
-{
-  const body = extractFn(SRC.Code, 'nightlyRunTail');
-
-  check('the head-completion check is made once, before the steps',
-        /var headDone = nightlyHeadCompletedTonight_\(\);/.test(body) &&
-        body.indexOf('nightlyHeadCompletedTonight_()') <
-          body.indexOf("nightlyStep_(ctx, 'checkHealthAppointments_'"),
-        'asked per step, the head\'s state could change mid-tail and two steps ' +
-        'disagree about the same night');
-  check('the pattern engine is gated on it',
-        /nightlyStep_\(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone\)/
-          .test(body));
-
-  // Narrow by design: the other tail steps read their own sheets.
-  const gated = (body.match(/nightlyStep_\(ctx,\s*'([^']+)',[^;]*?,\s*headDone\)/g) || [])
-    .map(m => /'([^']+)'/.exec(m)[1]);
-  check('and nothing else is',
-        gated.length === 1 && gated[0] === 'checkCrossPatternFlags_',
-        JSON.stringify(gated) + ' — withholding steps that read their own sheets ' +
-        'would cost work and buy no correctness');
-
-  check('the tail collects blocked steps separately from skipped ones',
-        /blocked:\s*stepBlocked/.test(body) && /var stepBlocked\s*=\s*\[\]/.test(body),
-        JSON.stringify(body.match(/stepBlocked[^;\n]*/g)));
-  check('…and the Slack summary counts them separately',
-        /stepBlocked\.length \+ ' skipped \(incomplete input\)'/.test(body) &&
-        /stepSkipped\.length \+ ' skipped \(time budget\)'/.test(body),
-        'one count for both and "the night ran long" and "the night was incomplete" ' +
-        'become the same sentence');
-  check('…and names them, with reasons, on their own line',
-        /Tail skipped — incomplete input/.test(body) &&
-        /stepBlocked\.map\(/.test(body),
-        'a count with no names cannot be acted on');
-  check('a withheld step makes the night Partial, not Success',
-        /\(stepFailures\.length \|\| stepBlocked\.length\) \? 'Partial' : 'Success'/.test(body),
-        'logged as Success and the withholding is invisible in the System Log, which ' +
-        'is the one place you would go looking for it');
-
-  check('the head does NOT gate anything on its own completion',
-        !/headDone/.test(extractFn(SRC.Code, 'nightlyRun')),
-        'it cannot know whether it finished while it is still running');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

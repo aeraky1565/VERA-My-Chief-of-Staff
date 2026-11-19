@@ -186,7 +186,7 @@ console.log('\nRead only, and wired');
 {
   check('AgentHealth.js never writes to a sheet it opens', !/\.(setValue|setValues|appendRow|insertSheet|deleteRow|deleteRows|deleteSheet|clear|clearContent|setFormula)\(/.test(AH));
   check('…its only writes are VERA’s own flag tab and VERA State', /upsertKeyedFlags_\(flagSheet, AGENT_FLAG_PREFIX_, 'System', agentWantedFlags_\(h\.agents\), today\)/.test(fnSrc(AH, 'checkAgentHealth_')) && /veraStoreSet_\('AGENT_HEALTH_LEVELS'/.test(fnSrc(AH, 'checkAgentHealth_')));
-  check('the nightly run checks it', /nightlyStep_\(ctx, 'checkAgentHealth_', checkAgentHealth_\);/.test(CODE));
+  check('the nightly run checks it', /S\('checkAgentHealth_', \d, function\(\) \{ checkAgentHealth_\(\); \}\)/.test(read('NightlyRunner.js')));
   check('the schedules are Config rows', /\['agent_schedule_tess',\s+'weekdays 06:36 America\/New_York eod'\]/.test(CODE) && /\['agent_schedule_hailey_digest', 'fri 18:00 America\/Chicago'\]/.test(CODE));
   check('the route, with Check again', /case 'agent_health':\s+return jsonOut_\(webAgentHealth_\(\{ refresh: \(e\.parameter \|\| \{\}\)\.refresh === '1' \}\)\);/.test(WEB));
   check('TESS’s job-find guess steps aside once it keeps a Run Log', /if \(typeof agentTessHasRunLog_ === 'function' && agentTessHasRunLog_\(sheetId\)\) \{\s*resolveFlagsWithPrefix_\(/.test(fnSrc(CAR, 'carCheckAgentHealth_')));

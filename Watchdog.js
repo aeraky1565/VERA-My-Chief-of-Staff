@@ -49,11 +49,8 @@ var _heartbeatCache_ = null;
  */
 var HEARTBEAT_REGISTRY = [
   { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26, startProp: 'LAST_NIGHTLY_START', stepProp: 'NIGHTLY_STEP' },
-  // The night runs in two halves on two triggers, and each needs its own entry.
-  // One shared heartbeat would let the first half's success report the whole night
-  // healthy while the second died every night unseen — which is the failure the
-  // split exists to fix, rebuilt one level up.
-  { job: 'nightlyRunTail',        label: 'Nightly run (part 2)', maxAgeHours: 26, startProp: 'LAST_NIGHTLY_TAIL_START', stepProp: 'NIGHTLY_TAIL_STEP' },
+  // One entry for the whole night: it continues itself in parts (NightlyRunner.js, #256)
+  // and records its heartbeat once, when the last part finishes the list.
   // The morning email was killed at the six-minute ceiling and this entry could only
   // say "has not run in 1d 2h" — the same sentence as a trigger that never fired. It
   // now carries the same start marker and breadcrumb as the nightly run, so
@@ -495,6 +492,9 @@ function runWatchdog_(exclude) {
       if (put.indexOf(j.job) !== -1) notices.lines[i] += ' \u2014 its trigger was missing, so VERA put it back';
     });
   } catch (e) { Logger.log('runWatchdog_: trigger repair error — ' + e.message); }
+
+  // A continuation trigger with no night in progress is left over: removed (NightlyRunner.js, #256).
+  try { if (typeof nightlyLoad_ === 'function' && !nightlyLoad_()) nightlyDropContinues_(); } catch (e) { Logger.log('runWatchdog_: continuation cleanup — ' + e.message); }
 
   try { syncWatchdogFlags_(notices); }
   catch (e) { Logger.log('runWatchdog_: flag sync error — ' + e.message); }

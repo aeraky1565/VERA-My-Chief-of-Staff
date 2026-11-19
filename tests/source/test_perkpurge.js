@@ -277,15 +277,12 @@ console.log('\nNothing to do is not a failure');
 // ============================================================================
 console.log('\nWired into the night and the dashboard');
 {
-  const tail = extractFn(CODE, 'nightlyRunTail');
-  const head = extractFn(CODE, 'nightlyRun');
-
-  check('the nightly sweep runs in the TAIL',
-        /nightlyStep_\(ctx, 'purgePastPerkReminderEvents_'/.test(tail),
-        'the head\'s three perk steps are already #32–34 of 37, so they are among the ' +
-        'first the budget drops; this is housekeeping and belongs where there is room');
-  check('…and NOT in the head as well',
-        !/purgePastPerkReminderEvents_/.test(head),
+  const tail = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
+  check('the nightly sweep runs with the housekeeping (group 5)',
+        /S\('purgePastPerkReminderEvents_', 5,/.test(tail),
+        'housekeeping: it belongs after the flag writers');
+  check('…once a night, not twice',
+        tail.split("purgePastPerkReminderEvents_(").length === 2,
         'running it twice a night is two calendar sweeps for one job');
   check('…with the nightly lookback, not the backlog one',
         /purgePastPerkReminderEvents_\(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false\)/.test(tail),

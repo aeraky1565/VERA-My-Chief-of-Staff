@@ -893,6 +893,7 @@ function getUpcomingTravel_(cfg) {
   var seen   = {};   // deduplicate regular events by "label|startStr"
 
   // ---- Phase 3: Collect regular multi-day non-cruise events
+  var noKeyword = 0;
   for (var ei = 0; ei < allCalEvents.length; ei++) {
     var ev               = allCalEvents[ei].ev;
     var calName          = allCalEvents[ei].calName;
@@ -922,10 +923,7 @@ function getUpcomingTravel_(cfg) {
           break;
         }
       }
-      if (!matched) {
-        Logger.log('getUpcomingTravel_: skipped "' + label + '" — no travel keyword match');
-        continue;
-      }
+      if (!matched) { noKeyword++; continue; }   // counted, logged once below (#256: dozens of lines a night)
     }
 
     var evStart      = ev.getAllDayStartDate();
@@ -1006,6 +1004,7 @@ function getUpcomingTravel_(cfg) {
   // reasoning as the cache-hit branch above: this call's array must never be
   // the same object a caller could mutate.
   _upcomingTravelCache_ = { key: cacheKey, result: travel };
+  if (noKeyword) Logger.log('getUpcomingTravel_: ' + noKeyword + ' all-day event(s) skipped — no travel keyword match');
   try {
     // Only cache a fully-resolved array. A blank id cached here is a blank id
     // for the next ten minutes, including for whatever nightlyRun does next.

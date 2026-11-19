@@ -87,14 +87,14 @@ function isReachable(fn) {
 
 console.log('\nitem 1 — checkImportantDates_ now runs');
 {
-  const nightly = extract(CODE, 'nightlyRun');
-  check('nightlyRun runs it', /nightlyStep_\(ctx, 'checkImportantDates_'/.test(nightly));
-  check('…and the calendar sync too', /nightlyStep_\(ctx, 'syncImportantDatesToCalendar_'/.test(nightly));
+  const nightly = fs.readFileSync(path.join(ROOT, 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
+  check('nightlyRun runs it', /S\('checkImportantDates_', \d/.test(nightly));
+  check('…and the calendar sync too', /S\('syncImportantDatesToCalendar_', \d/.test(nightly));
 
   // Order matters: a date placed on the calendar this run should also be
   // considered for a flag on the same run.
-  const syncAt  = nightly.indexOf("nightlyStep_(ctx, 'syncImportantDatesToCalendar_'");
-  const checkAt = nightly.indexOf("nightlyStep_(ctx, 'checkImportantDates_'");
+  const syncAt  = nightly.indexOf("S('syncImportantDatesToCalendar_'");
+  const checkAt = nightly.indexOf("S('checkImportantDates_'");
   check('the sync runs BEFORE the check', syncAt !== -1 && checkAt > syncAt,
         'sync@' + syncAt + ' check@' + checkAt);
 

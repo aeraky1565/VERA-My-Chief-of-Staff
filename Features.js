@@ -28,13 +28,13 @@ var SCHED_DEC_O_ = (function() { var o = []; for (var d = 1; d <= 31; d++) o.pus
 var SCHED_MIN_O_ = [['5', 'every 5 minutes'], ['10', 'every 10 minutes'], ['15', 'every 15 minutes'], ['30', 'every 30 minutes']];
 function schedOpt_(c, l, kind, def, u) { return { c: c, l: l, type: 'select', sched: kind, def: def, u: u || '', o: kind === 'weekday' ? SCHED_WEEKDAY_O_ : kind === 'hour' ? SCHED_HOUR_O_ : kind === 'dom' ? SCHED_DOM_O_ : kind === 'dec' ? SCHED_DEC_O_ : SCHED_MIN_O_ }; }
 // Changing one of these rebuilds that trigger (Code.js rebuildTrigger_).
-var SCHED_TRIGGER_KEYS_ = { nightly_run_hour: ['nightlyRun', 'nightlyRunTail'], morning_nudge_time: ['morningNudge'], usps_scan_hour: ['scanUSPSMail_'],
+var SCHED_TRIGGER_KEYS_ = { nightly_run_hour: ['nightlyRun'], morning_nudge_time: ['morningNudge'], usps_scan_hour: ['scanUSPSMail_'],
   hoa_scan_day: ['scanHoaWebsite_'], hoa_scan_hour: ['scanHoaWebsite_'], email_parser_minutes: ['runEmailScan_'], flight_status_trigger_minutes: ['checkFlightStatuses_'] };
 
 var FEATURES_ = [
   // Always on: when they run is all there is to set.
-  { k: 'nightly_run', n: 'Nightly run', e: '🌙', a: 'System', kind: 'Housekeeping', d: 'Collects the day, writes flags, and tidies up. The second half runs an hour later.', t: ['Nightly'], v: 'na', fixed: true,
-    jobs: ['nightlyRun', 'nightlyRunTail'], cfg: [schedOpt_('nightly_run_hour', 'Starts at', 'hour', '23', 'the second half an hour later')] },
+  { k: 'nightly_run', n: 'Nightly run', e: '🌙', a: 'System', kind: 'Housekeeping', d: 'Collects the day, writes flags, and tidies up. It continues itself in parts until it\u2019s done.', t: ['Nightly'], v: 'na', fixed: true,
+    jobs: ['nightlyRun'], cfg: [schedOpt_('nightly_run_hour', 'Starts at', 'hour', '23', 'and continues itself until done')] },
   { k: 'morning_email', n: 'Morning email', e: '☀️', a: 'System', kind: 'Emails & briefings', d: 'The daily briefing email.', t: ['Morning email', 'Email'], v: 'na', fixed: true,
     jobs: ['morningNudge'], cfg: [schedOpt_('morning_nudge_time', 'Sent at', 'hour', '7')] },
   // Travel

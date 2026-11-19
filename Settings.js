@@ -169,6 +169,8 @@ var VERA_STATE_BUNDLES_ = {
   // Act now's memory, in its own property so a long list can't push NOTIF past the 9 KB a
   // Script Property holds: what was posted (short keys), and the last status seen per TESS job.
   ACTNOW:            ['ACTNOW_POSTED', 'ACTNOW_SEEN'],
+  // The night in progress, saved between its parts, and steps cut off or near the limit (NightlyRunner.js, #256).
+  NIGHT:             ['NIGHTLY_RESUME', 'NIGHTLY_KILLED'],
   // When each nightly/morning step last ran (Features.js), for "last ran …" in Feature Flags.
   STEPS:             ['STEPS_LAST'],
   MAIL:              ['MAIL_COUNTER_PIECES', 'MAIL_COUNTER_PACKAGES', 'MAIL_COUNTER_LAST_SCAN',

@@ -294,14 +294,14 @@ console.log('\nA failing signal hook does not abort the sweep');
 
 console.log('\nIt is wired into the nightly run, before the checker');
 {
-  const nightly = extractFn(SRC.Code, 'nightlyRun');
-  const iClose = nightly.indexOf("nightlyStep_(ctx, 'closeExpiredPerkFlags_'");
-  const iCheck = nightly.indexOf("nightlyStep_(ctx, 'checkCardPerksExpiring_'");
+  const nightly = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
+  const iClose = nightly.indexOf("S('closeExpiredPerkFlags_'");
+  const iCheck = nightly.indexOf("S('checkCardPerksExpiring_'");
   check('closeExpiredPerkFlags_ is called in nightlyRun', iClose !== -1);
   check('…before checkCardPerksExpiring_', iClose !== -1 && iClose < iCheck,
         'tidy last period before raising this one');
   check('…through the step runner, which catches',
-        /nightlyStep_\(ctx, 'closeExpiredPerkFlags_', closeExpiredPerkFlags_\)/.test(nightly),
+        /S\('closeExpiredPerkFlags_', \d, function\(\) \{ closeExpiredPerkFlags_\(\); \}\)/.test(nightly),
         'one broken pass must not take the nightly run down — the try/catch each step '
         + 'used to hand-roll now lives in nightlyStep_');
 }

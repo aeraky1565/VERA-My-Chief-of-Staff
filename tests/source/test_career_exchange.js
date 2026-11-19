@@ -378,7 +378,7 @@ console.log('\nwiring');
   });
   check('the v1 Network GET writers are gone, route and function', !/career_network|webAddCareerNetwork_|webUpdateCareerNetwork/.test(WEB + APP));
   check('the legacy Network view is gone', !/CareerNetworkView|handleAddCareerNetwork/.test(APP));
-  check('the flags run nightly, in the second half', /nightlyStep_\(ctx, 'carCareerFlags_', carCareerFlags_\);/.test(CODE.slice(CODE.indexOf('function nightlyRunTail'))));
+  check('the flags run nightly', /S\('carCareerFlags_', \d, function\(\) \{ carCareerFlags_\(\); \}\)/.test(read('NightlyRunner.js')));
   ['CAREER_CONTACTS', 'CAREER_EXCHANGE_LOG', 'CAREER_ROLE_MATCHES'].forEach(t => check(t + ' is a named tab', new RegExp(t + ":\\s*'Career ").test(CODE)));
   check('all eight subtabs, in the spec’s order, in both built files', [APP, INDEX].every(t =>
     /\{id:'northstar'[^\]]*\{id:'readiness'[^\]]*\{id:'evidence'[^\]]*\{id:'pipeline'[^\]]*\{id:'network'[^\]]*\{id:'market'[^\]]*\{id:'brand'[^\]]*\{id:'exchange'/.test(t)));

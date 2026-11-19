@@ -1271,7 +1271,7 @@ Some are new:
 - the weekend memo (day and hour), the goal check-in, the chores reset, the email tidy-up (frequency and day);
 - the monthly review and PTO snapshot, card perks, the health insight, the PTO accrual day (day of the month, 1st–28th);
 - the wish-list wrap-up and the last day of gift flags; the fitness slow-week day; the weekly memory snapshot;
-- the nightly run's hour (its second half runs an hour later), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
+- the nightly run's hour (it continues itself in parts until done), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
 
 The nightly run and the morning email are **always on**: they have no switch, only their time. Saving a time that a trigger owns rebuilds just that trigger (`rebuildTrigger_`, using the same `veraTriggerSpecs_` as `setupTriggers`), so the change takes effect without running anything in the editor. The rest are read by the hourly or nightly checks, so they take effect at once. A blank or bad value keeps the old default.
 
@@ -1356,7 +1356,7 @@ Times are Eastern. VERA's jobs are Apps Script triggers (`veraTriggerSpecs_` in 
 | VERA | `runEmailScan_` | Every 30 minutes (when `email_parser_enabled`) | Reads booking confirmation emails | Itinerary |
 | VERA | `scanUSPSMail_` | Daily 10:00 AM | Informed Delivery mail and packages | Flags, Slack |
 | VERA | `scanHoaWebsite_` | Mondays 9:00 AM | The HOA website | Flags |
-| VERA | `nightlyRun`, `nightlyRunTail` | Daily 11 PM and midnight | Calendars, trips, money, the planner (WILLA), the job agent's health (TESS), patterns, new flags; the Monthly Life Review on the 1st | The VERA sheet, Flags, email |
+| VERA | `nightlyRun` (continues itself in parts) | Daily 11 PM, until done | Calendars, trips, money, the planner (WILLA), the job agent's health (TESS), patterns, new flags; the Monthly Life Review on the 1st | The VERA sheet, Flags, email |
 | HAILEY | **HAILEY weekly digest** | Fridays 7:00 PM (6 PM Central) | The week's homes: available, under ceiling, new, price cuts, gone | Weekly Digest tab; the digest email |
 | TESS | **TESS calibration review** | The 1st and 15th, 7:43 PM | Compares what TESS sent with what you did; read only | One email with up to 5 proposed changes; nothing changes until you approve |
 | PIES | (on the work machine) | Its own schedule, not on this account | Work signal and the monthly PIES-BRIEF | The work machine only |
@@ -1458,9 +1458,11 @@ System › Checks › **Agent health**, next to API health: whether each Claude 
 
 ### 21.6 Run log (`RunLog.js`)
 
-System › Checks › **Run log** answers "did VERA's own scheduled jobs run, and where did one stop?". It covers the eight scheduled jobs: the nightly run and its second half, the morning email, the hourly check, the flight status check, the email scan, the USPS mail scan and the HOA website scan. Dashboard calls aren't logged.
+System › Checks › **Run log** answers "did VERA's own scheduled jobs run, and where did one stop?". It covers the scheduled jobs: the nightly run (one row per part; a part that hands off to the next reads **Continued**), the morning email, the hourly check, the flight status check, the email scan, the USPS mail scan and the HOA website scan. Dashboard calls aren't logged.
 
 **Why it exists.** Apps Script stops a run at six minutes, and a stopped run never reaches the end of its code. The System Log is written at the end of a run, so a run that was cut off left nothing in it. In November 2026 the nightly run stopped three nights in a row and no sheet said where.
+
+**The nightly run continues itself.** It is one list of steps run in parts of up to 4 minutes. When a part runs short of time it saves its place and starts the next part a minute later, up to 6 parts. If a part is cut off anyway, a backup 7 minutes later skips the step that died, names it in #vera-logs, and carries on. A step cut off, or over 150 s, two nights running raises a flag naming it. The night's summary in #vera-logs says how many parts it took and which steps ran over 90 s.
 
 **How it writes.**
 - A row is added the moment a job starts (Status **Running**).

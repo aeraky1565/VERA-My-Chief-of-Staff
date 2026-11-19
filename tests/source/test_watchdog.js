@@ -151,16 +151,16 @@ console.log('\nA job that has never run');
 
   // 2. Registered, but not yet past its own window. Not due, so not overdue.
   const young = vm.runInContext('getOverdueJobs_()', loadWatchdog({}, {
-    nightlyRunTail: now - 2 * HOUR,          // 26h window
+    morningNudge: now - 2 * HOUR,          // 26h window
   }));
   check('a job registered two hours ago is not yet overdue at a 26h window',
-        !young.map(j => j.job).includes('nightlyRunTail'),
+        !young.map(j => j.job).includes('morningNudge'),
         'registering a trigger must not alarm before the job was ever due');
 
   // 3. Registered well past its window, never ran, no start marker. THE CASE.
-  const ctx3 = loadWatchdog({}, { nightlyRunTail: now - 30 * HOUR });
+  const ctx3 = loadWatchdog({}, { morningNudge: now - 30 * HOUR });
   const dead = vm.runInContext('getOverdueJobs_()', ctx3);
-  const tail = dead.filter(j => j.job === 'nightlyRunTail')[0];
+  const tail = dead.filter(j => j.job === 'morningNudge')[0];
   check('a job registered 30h ago that has never run IS overdue',
         !!tail, JSON.stringify(dead.map(j => j.job)) +
         ' — this is the state nothing could report before');
@@ -180,19 +180,19 @@ console.log('\nA job that has never run');
 
   // The whole line, as the morning banner renders it.
   const notices = vm.runInContext('getWatchdogNotices_()', ctx3);
-  const line = (notices.lines || []).filter(l => /part 2/.test(l))[0] || '';
+  const line = (notices.lines || []).filter(l => /Morning email/.test(l))[0] || '';
   check('the rendered line reads as one sentence',
-        /Nightly run \(part 2\) has not run in the .+ since it was registered — the trigger may not exist/
+        /Morning email has not run in the .+ since it was registered — the trigger may not exist/
           .test(line), JSON.stringify(line) +
         ' — verb before the age and suffix after it, or the age lands mid-clause');
 
   // 4. Registered, never completed, but a START MARKER exists: it fires and dies.
   //    Same distinction the stale branch already draws, applied to the never-ran case.
-  const ctx4 = loadWatchdog({}, { nightlyRunTail: now - 30 * HOUR });
-  ctx4._props.LAST_NIGHTLY_TAIL_START = new Date(now - 2 * HOUR).toISOString();
-  ctx4._props.NIGHTLY_TAIL_STEP = 'checkHealthAppointments_|300';
+  const ctx4 = loadWatchdog({}, { morningNudge: now - 30 * HOUR });
+  ctx4._props.LAST_MORNING_START = new Date(now - 2 * HOUR).toISOString();
+  ctx4._props.MORNING_STEP = 'checkHealthAppointments_|300';
   const died = vm.runInContext('getOverdueJobs_()', ctx4)
-    .filter(j => j.job === 'nightlyRunTail')[0];
+    .filter(j => j.job === 'morningNudge')[0];
   check('a never-completed job WITH a start marker is worded as dying, not missing',
         died && /never finished/.test(died.verb) &&
         !/may not exist/.test(died.suffix || ''),
@@ -241,14 +241,14 @@ console.log('\nA registered job still reports normally once it has run');
   // however long ago it was registered, and one that is stale reports the old way.
   const ctx = loadWatchdog(
     // Heartbeats are { job: { lastRun } }; the registrations below are bare numbers.
-    { nightlyRun: { lastRun: now - 27 * HOUR }, nightlyRunTail: { lastRun: now - 1 * HOUR } },
-    { nightlyRun: now - 90 * DAY, nightlyRunTail: now - 90 * DAY });
+    { nightlyRun: { lastRun: now - 27 * HOUR }, morningNudge: { lastRun: now - 1 * HOUR } },
+    { nightlyRun: now - 90 * DAY, morningNudge: now - 90 * DAY });
   const jobs = vm.runInContext('getOverdueJobs_()', ctx);
   const byJob = {};
   jobs.forEach(j => { byJob[j.job] = j; });
 
   check('a job that ran an hour ago is not overdue, however old its registration',
-        !byJob.nightlyRunTail, JSON.stringify(Object.keys(byJob)));
+        !byJob.morningNudge, JSON.stringify(Object.keys(byJob)));
   check('a stale job is still reported, with the original wording',
         byJob.nightlyRun && /has not run in/.test(byJob.nightlyRun.verb) &&
         !byJob.nightlyRun.suffix && byJob.nightlyRun.neverRan === false,
@@ -516,28 +516,26 @@ console.log('\nflushSystemLog_ failure handling');
 console.log('\nnightlyRun records both ends of the run');
 {
   const COD = fs.readFileSync(ROOT + '/Code.js', 'utf8');
-  const fn  = COD.slice(COD.indexOf('function nightlyRun()'),
-                        COD.indexOf('function nightlyRun()') + 32000);
+  const NR = fs.readFileSync(ROOT + '/NightlyRunner.js', 'utf8');   // the night as one list (#256)
+  const ex = name => { const i = NR.indexOf('function ' + name + '('); let d = 0; for (let j = NR.indexOf('{', i); j < NR.length; j++) { if (NR[j] === '{') d++; else if (NR[j] === '}' && --d === 0) return NR.slice(i, j + 1); } return ''; };
+  const fn = ex('nightlyRun'), fin = ex('nightlyFinish_');
 
   check('it writes a start marker', /LAST_NIGHTLY_START/.test(fn));
-  check('…before any work', fn.indexOf('LAST_NIGHTLY_START') < fn.indexOf('escalateAgedFlags_'),
+  check('…before any work', fn.indexOf('LAST_NIGHTLY_START') < fn.indexOf('nightlyRunPart_(st)'),
         'a marker written after the first slow step cannot prove the run started');
-  check('…and non-fatally', /catch \(startErr\)/.test(fn),
+  check('…and non-fatally', /try \{ PropertiesService\.getScriptProperties\(\)\.setProperty\('LAST_NIGHTLY_START'[^\n]*catch \(e\) \{\}/.test(fn),
         'a dead Properties service must not take the run down');
 
-  check('it writes the completion marker Slack reads', /LAST_NIGHTLY_RUN/.test(fn));
-  check('…in the finally, beside the heartbeat',
-        fn.indexOf('recordHeartbeat_') < fn.indexOf('LAST_NIGHTLY_RUN'),
+  check('it writes the completion marker Slack reads, once, when the last part finishes', /LAST_NIGHTLY_RUN/.test(fin) && NR.split(".setProperty('LAST_NIGHTLY_RUN'").length === 2);
+  check('…beside the heartbeat',
+        /LAST_NIGHTLY_RUN[^\n]*\n[^\n]*\n  try \{ recordHeartbeat_\('nightlyRun'\); \}/.test(fin),
         'it describes the same moment the heartbeat does');
 
-  // The guard used to be spelled out at this one call site. It is now in
-  // nightlyStep_, which EVERY step goes through — so the assertion got stronger:
-  // not "the prune is guarded" but "nothing is unguarded".
-  check('the memory prune goes through the budgeted step runner',
-        /nightlyStep_\(ctx, 'pruneMemoryLog_', pruneMemoryLog_\)/.test(fn),
+  check('the memory prune goes through the step runner',
+        /S\('pruneMemoryLog_', \d, function\(\) \{ pruneMemoryLog_\(\); \}\)/.test(NR),
         'a slow maintenance step early in the run leaves the later guards no budget to skip with');
   check('…and NO step still hand-rolls its own budget check',
-        !/if \(Date\.now\(\) < DEADLINE\)/.test(fn),
+        !/if \(Date\.now\(\) < DEADLINE\)/.test(NR),
         'three of forty steps checking the deadline is how one slow step killed the run');
   const runner = COD.slice(COD.indexOf('function nightlyStep_('),
                            COD.indexOf('function slowestNightlySteps_('));

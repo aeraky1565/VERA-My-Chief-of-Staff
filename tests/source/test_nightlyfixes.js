@@ -103,30 +103,18 @@ console.log('\nscrubLoggedSecrets_: what was logged before, once');
   check('counts what it changed', n === 2, n);
   written = null;
   check('runs once: a second call does nothing', vm.runInContext('scrubLoggedSecrets_()', S) === -1 && written === null);
-  check('it runs in the nightly tail', /nightlyStep_\(ctx, 'scrubLoggedSecrets_', scrubLoggedSecrets_\);/.test(CODE));
+  check('it runs nightly', /S\('scrubLoggedSecrets_', \d, function\(\) \{ scrubLoggedSecrets_\(\); \}\)/.test(require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8')));
 }
 
 // ============ the nightly run ================================================
 console.log('\nthe nightly run');
 {
-  const head = CODE.slice(CODE.indexOf('function nightlyRun() {'), CODE.indexOf('function nightlyRunTail() {'));
-  const tail = CODE.slice(CODE.indexOf('function nightlyRunTail() {'));
-  check('writeSummarySnapshot is no longer a first-half step', !/nightlyStep_\(ctx, 'writeSummarySnapshot'/.test(head));
-  check('…it is the second half’s, after runExplorer_', /nightlyStep_\(ctx, 'runExplorer_', runExplorer_\);[\s\S]{0,600}nightlyStep_\(ctx, 'writeSummarySnapshot', writeSummarySnapshot\);/.test(tail));
-  check('…and the first half still reads Summaries in collect (it always read the previous night’s)', /var collected = nightlyStep_\(ctx, 'collect'[\s\S]{0,400}summaries = getSummaries\(\);/.test(head));
-
-  // The first half's System Log entry: run the REAL call with captured arguments.
-  const at = head.indexOf("veraLog_('nightlyRun', 'Nightly',");
-  const call = head.slice(at, head.indexOf(');', head.indexOf("stepFailures.length ? stepFailures.join('; ') : ''", at)) + 2);
-  const S = {};
-  vm.createContext(S); loadSettings_(S);
-  S.got = null;
-  vm.runInContext('function veraLog_() { got = Array.prototype.slice.call(arguments); }' +
-    'var stepFailures = [], stepSkipped = ["a"], flagCount = 2, highCount = 1, medCount = 1, lowCount = 0, deduped = 0, elapsed = 300;' +
-    'var slowest = ["writePTOSnapshot_ 120.0s", "collect 40.0s"];' + call, S);
-  check('the slowest steps are in the SUMMARY of the System Log row', S.got && /slowest: writePTOSnapshot_ 120\.0s, collect 40\.0s/.test(S.got[3]), JSON.stringify(S.got));
-  check('…with the time-budget skips', /1 skipped \(time budget\)/.test(S.got[3]));
-  check('…and the duration slot is the duration', S.got[4] === 300000, String(S.got[4]));
+  const NR = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
+  const list = NR.slice(NR.indexOf('function nightlySteps_'), NR.indexOf('function morningRoutineReset_'));
+  check('writeSummarySnapshot runs after runExplorer_', list.indexOf("S('runExplorer_'") !== -1 && list.indexOf("S('runExplorer_'") < list.indexOf("S('writeSummarySnapshot'"));
+  check('…and collect reads Summaries (the previous night’s)', /S\('collect', 2, function\(ctx, st\) \{\n\s+var events = [^\n]*summaries = getSummaries\(\)/.test(list));
+  // The System Log entry's summary carries the slowest steps (driven in test_nightlyrunner).
+  check('the slowest steps are in the SUMMARY of the System Log row', /\(slowest\.length \? ' · slowest: ' \+ slowest\.join\(', '\) : ''\), elapsed \* 1000,/.test(NR));
 }
 
 // ============ the flight poll ================================================
@@ -140,7 +128,7 @@ console.log('\nthe flight poll: only flights near departure are looked up');
   check('unset → 15, the trigger’s own cadence', gap(undefined) === 15 && gap('') === 15);
   check('below 15, or junk, reads as 15', gap('5') === 15 && gap('abc') === 15 && gap('-30') === 15);
   check('the settings modal lists it, in both built files', [APP, INDEX].every(t => /\{label:'Travel',keys:\['weather_location','home_country','flight_status_poll_minutes',/.test(t)));
-  check('the Config row is seeded once by the nightly run', /nightlyStep_\(ctx, 'seedFlightPollConfig_', seedFlightPollConfig_\);/.test(CODE));
+  check('the Config row is seeded once by the nightly run', /S\('seedFlightPollConfig_', \d, function\(\) \{ seedFlightPollConfig_\(\); \}\)/.test(require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8')));
 }
 {
   // The real poller, its flight list and its helpers, on a fixed clock. Invented

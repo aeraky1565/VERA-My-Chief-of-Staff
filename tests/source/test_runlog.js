@@ -170,9 +170,15 @@ console.log('\nThe card’s data');
   check('the hourly sweep goes through every job’s tab', cs.runLogSweep_(null, null, Date.now()) === 2 && sw['Nightly run'].rows[0][2] === 'Cut off' && sw['Morning email'].rows[0][2] === 'Cut off');
 }
 
+function extractFnNR_(name) {
+  const src = read('NightlyRunner.js'), start = src.indexOf('function ' + name + '(');
+  if (start === -1) return '';
+  let d = 0; for (let j = src.indexOf('{', start); j < src.length; j++) { if (src[j] === '{') d++; else if (src[j] === '}' && --d === 0) return src.slice(start, j + 1); }
+  return '';
+}
 console.log('\nWired into the scheduled handlers');
 {
-  const files = { 'Code.js': ['nightlyRun', 'nightlyRunTail', 'morningNudge'], 'Reminders.js': ['hourlyCheck'], 'FlightStatus.js': ['checkFlightStatuses_'],
+  const files = { 'NightlyRunner.js': ['nightlyRun'], 'Code.js': ['morningNudge'], 'Reminders.js': ['hourlyCheck'], 'FlightStatus.js': ['checkFlightStatuses_'],
                   'EmailParser.js': ['runEmailScan_'], 'MailCounter.js': ['scanUSPSMail_'], 'NeighborhoodWatcher.js': ['scanHoaWebsite_'] };
   Object.keys(files).forEach(f => {
     const src = read(f);
@@ -184,7 +190,8 @@ console.log('\nWired into the scheduled handlers');
   });
   const code = read('Code.js'), spec = code.slice(code.indexOf("{ handler: 'nightlyRun',"), code.indexOf("{ handler: 'scanHoaWebsite_'") + 40);
   const handlers = (spec.match(/handler: '([A-Za-z_]+)'/g) || []).map(s => s.split("'")[1]);
-  check('…which is every handler in TRIGGER_SPECS, and the card lists them all', handlers.length === 8 && handlers.every(h => /RUN_LOG_ORDER_ = \[[^\]]*'/.test(SRC) && SRC.indexOf("'" + h + "'") !== -1), handlers.join(','));
+  check('…which is every handler in TRIGGER_SPECS, and the card lists them all', handlers.length === 7 && handlers.indexOf('nightlyRunTail') === -1 && handlers.every(h => /RUN_LOG_ORDER_ = \[[^\]]*'/.test(SRC) && SRC.indexOf("'" + h + "'") !== -1), handlers.join(','));
+  check('each nightly part after the first opens its own row (a part that hands off ends as Continued)', /  try \{ runLogStart_\('nightlyRun', arguments\[0\]\); \} catch \(rlErr\) \{\}/.test(extractFnNR_('nightlyContinue')) && /runLogHandoff_\(ctx, /.test(read('NightlyRunner.js')));
   check('nightlyStep_ reports each step', /try \{ runLogStep_\(ctx, name\); \} catch \(rlErr\) \{\}/.test(code));
   check('recordHeartbeat_ completes the row', /try \{ runLogFinish_\(job\); \} catch \(rlErr\) \{\}/.test(read('Watchdog.js')));
   check('the hourly watchdog sweeps rows left Running', /runLogSweep_\(null, null, Date\.now\(\)\)/.test(read('Watchdog.js')));

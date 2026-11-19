@@ -13362,7 +13362,7 @@ function webRunPerkEventPurge_() {
 }
 
 /**
- * GET home_nightly — when the nightly run's first half last finished, and the step it
+ * GET home_nightly — when the nightly run last finished (all its parts), and the step it
  * stopped in if it didn't (the full Home's System health tile). Read only; never a value
  * but these two. → { ok, at: ISO or '', stoppedAt: step name or '' }
  * stoppedAt is also set while a run is still going (the breadcrumb is cleared on success),

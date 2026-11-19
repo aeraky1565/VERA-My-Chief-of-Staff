@@ -370,7 +370,7 @@ console.log('\nThe four duplicate consumers read the memo');
   const LIVE   = 'getUpcomingEvents(';
   const MEMO   = 'getUpcomingEventsCached_(';
   const opted  = [
-    ['the nightly collect step', bodyOf(CODE, 'nightlyRun')],
+    ['the nightly collect step', (s => s.slice(s.indexOf("S('collect'"), s.indexOf("S('writeFlags'")))(require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8'))],
     ['buildCalendarMetrics_',    bodyOf(SUM,  'buildCalendarMetrics_')],
     ['the pattern snapshot',     bodyOf(PR,   'buildCrossDomainSnapshot_')],
     ['runExplorer_',             bodyOf(REM,  'runExplorer_')],

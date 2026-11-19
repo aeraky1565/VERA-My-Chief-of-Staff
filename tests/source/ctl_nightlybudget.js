@@ -36,11 +36,6 @@ const CONTROLS = {
       '    ctx.skipped.push(name);',
       '    ctx.skipped.push(name);\n    ctx.timings.push({ name: name, ms: 0 });'),
   }),
-  'one step hand-rolls its own budget check again': b => ({
-    'Code.js': b['Code.js'].replace(
-      "    nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_);",
-      "    if (Date.now() < DEADLINE) { nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_); }"),
-  }),
 
   // ---- the catch -----------------------------------------------------------
   'a throwing step takes the run down again': b => ({
@@ -81,38 +76,14 @@ const CONTROLS = {
       /  \} catch \(bcErr\) \{ \/\* a breadcrumb must never be able to break the run \*\/ \}/,
       '  } catch (bcErr) { throw bcErr; }'),
   }),
-  'a completed run leaves the breadcrumb set': b => ({
-    'Code.js': b['Code.js'].replace(/\n *PropertiesService\.getScriptProperties\(\)\.deleteProperty\(NIGHTLY_STEP_PROP_\);/g, ''),
-  }),
-  'the empty-run early return forgets to clear it': b => {
-    const s = b['Code.js'];
-    const i = s.indexOf('no events, tasks, or summaries tonight');
-    const j = s.indexOf('deleteProperty(NIGHTLY_STEP_PROP_);', i);
-    const k = s.indexOf('\n', j);
-    return { 'Code.js': s.slice(0, j) + 'void 0;' + s.slice(k) };
-  },
 
   // ---- the reporting -------------------------------------------------------
-  'skips are reported as step warnings': b => ({
-    'Code.js': b['Code.js'].replace(
-      "      if (stepSkipped.length) summary += ' \\u00b7 ' + stepSkipped.length + ' skipped (time budget)';",
-      "      if (stepSkipped.length) stepFailures.push('skipped');"),
-  }),
-  'the slowest steps are never reported': b => ({
-    'Code.js': b['Code.js'].replace(/      var slowest = slowestNightlySteps_\(stepTimings, 5\);\n/g,
-                                    '      var slowest = [];\n'),
-  }),
   'the slowest report sorts fastest first': b => ({
     'Code.js': b['Code.js'].replace('.sort(function(a, b) { return b.ms - a.ms; })',
                                     '.sort(function(a, b) { return a.ms - b.ms; })'),
   }),
   'the slowest report sorts the caller\'s array in place': b => ({
     'Code.js': b['Code.js'].replace('  return (timings || []).slice()\n', '  return (timings || [])\n'),
-  }),
-  'the two previously-unguarded steps go back to being bare calls': b => ({
-    'Code.js': b['Code.js']
-      .replace("    nightlyStep_(ctx, 'writeSummarySnapshot', writeSummarySnapshot);", '    writeSummarySnapshot();')
-      .replace("    nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);", '    checkTaxDocuments_();'),
   }),
 
   // ---- the watchdog --------------------------------------------------------
@@ -149,97 +120,19 @@ const CONTROLS = {
     'Code.js': b['Code.js'].replace(/^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m,
                                     'var NIGHTLY_STEP_RESERVE_MS_ = 5;'),
   }),
-  'both halves share one breadcrumb': b => ({
-    'Code.js': b['Code.js'].replace('ctx.stepProp || NIGHTLY_STEP_PROP_', 'NIGHTLY_STEP_PROP_'),
-  }),
-  'the tail does not tell nightlyStep_ which breadcrumb to write': b => ({
-    'Code.js': b['Code.js'].replace('      stepProp: NIGHTLY_TAIL_STEP_PROP_,\n', ''),
-  }),
-  'the tail records no heartbeat of its own': b => ({
-    'Code.js': b['Code.js'].replace("    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}\n", ''),
-  }),
-  'the head records the tail\'s heartbeat too (masking its death)': b => ({
-    'Code.js': b['Code.js'].replace("    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}",
-                                    "    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}\n" +
-                                    "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}"),
-  }),
-  'the tail writes no start marker': b => ({
-    'Code.js': b['Code.js'].replace(/        \.setProperty\('LAST_NIGHTLY_TAIL_START'[^;]*;/, ';'),
-  }),
-  'the watchdog does not know about the tail': b => ({
-    'Watchdog.js': b['Watchdog.js'].replace(/  \{ job: 'nightlyRunTail'[^\n]*\n/, ''),
-  }),
-  // Also went vacuous: setupTriggers no longer names handlers at the newTrigger call.
-  // The tail is a spec in veraTriggerSpecs_ now, so that is what has to be removed.
-  'no trigger fires the tail': b => ({
-    'Code.js': b['Code.js'].replace(
-      /    \{ handler: 'nightlyRunTail',[\s\S]*?\n      \} \},\n/, ''),
-  }),
-  'the tail runs at the same hour as the head': b => ({
-    'Code.js': b['Code.js'].replace('.atHour((NIGHT + 1) % 24)',
-                                    '.atHour(NIGHT)'),
-  }),
-  'a tail step is left behind in the head as well': b => ({
-    'Code.js': b['Code.js'].replace(
-      "    // The night now ends here.",
-      "    nightlyStep_(ctx, 'runExplorer_', runExplorer_);\n    // The night now ends here."),
-  }),
-  // Went vacuous when the call site gained its gate argument, which is exactly the
-  // way a control stops testing anything without saying so — hence the harness's
-  // "MUTATION DID NOT APPLY" check. Matched on the call rather than the whole line now.
-  'a step is dropped from both halves': b => ({
-    'Code.js': b['Code.js'].replace(
-      /    nightlyStep_\(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_[^;]*\);\n/, ''),
-  }),
-  'the tail clears its breadcrumb in the finally (presence stops meaning died)': b => ({
-    'Code.js': b['Code.js'].replace(
-      "    try {\n      PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_TAIL_STEP_PROP_);\n    } catch (bcErr) { /* non-fatal */ }",
-      ''). replace(
-      "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}",
-      "    try { PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_TAIL_STEP_PROP_); } catch (bcErr) {}\n" +
-      "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}"),
-  }),
-  'the tail never reports its slowest steps': b => ({
-    'Code.js': b['Code.js'].replace(/Slowest tail steps: /, 'Tail ran: '),
-  }),
-  'the PTO snapshot is recomputed every night in the tail': b => ({
-    'Code.js': b['Code.js'].replace("var ptoStats = today.getDate() === schedDom_('finance_review_day', 1) ? writePTOSnapshot_() : null;",
-                                    'var ptoStats = writePTOSnapshot_();'),
-  }),
 
   // ---- the dependency order ------------------------------------------------
   // The one consumer of tonight's flags has to come after every producer.
-  'the pattern engine runs FIRST in the tail, before the writers after it': b => ({
-    'Code.js': b['Code.js']
-      .replace("    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);\n", '')
-      .replace("    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);",
-               "    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);\n" +
-               "    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);"),
-  }),
-  'a flag writer is appended after the pattern engine': b => ({
-    'Code.js': b['Code.js'].replace(
-      "    nightlyStep_(ctx, 'runExplorer_', runExplorer_);",
-      "    nightlyStep_(ctx, 'runExplorer_', function() { runExplorer_(); writeFlags([]); });"),
-  }),
   'escalateAgedFlags_ loses its age cutoff (it now reads tonight\'s flags, first)': b => ({
     'Code.js': b['Code.js']
       .replace('ageDays >= 7 && currentEscalated', 'ageDays >= 0 && currentEscalated')
       .replace('ageDays >= 3 && currentEscalated', 'ageDays >= 0 && currentEscalated'),
-  }),
-  'a step name no longer resolves to a body (the classifier goes blind)': b => ({
-    'Code.js': b['Code.js'].replace("nightlyStep_(ctx, 'checkContracts_', checkContracts_);",
-                                    "nightlyStep_(ctx, 'contracts', checkContracts_);"),
   }),
 
   // ---- the guard -----------------------------------------------------------
   'the gate is ignored and the step runs on a half-populated night (the bug)': b => ({
     'Code.js': b['Code.js'].replace(
       /  if \(gate && !gate\.ok\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
-  }),
-  'the pattern engine is ungated again': b => ({
-    'Code.js': b['Code.js'].replace(
-      "nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);",
-      "nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);"),
   }),
   'a blocked step is counted as skipped for time instead': b => ({
     'Code.js': b['Code.js'].replace(
@@ -265,92 +158,20 @@ const CONTROLS = {
       "    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));\n" +
       "    ctx.timings.push({ name: name, ms: 0 });"),
   }),
-  'the breadcrumb is not consulted — a head that THREW counts as finished': b => ({
-    'Code.js': b['Code.js'].replace(
-      /  var crumb = props\.getProperty\(NIGHTLY_STEP_PROP_\);\n  if \(crumb\) \{\n[\s\S]*?\n  \}\n/, ''),
-  }),
-  'the age is not consulted — yesterday\'s finish counts as tonight\'s': b => ({
-    'Code.js': b['Code.js'].replace(
-      /  var ageMs = Date\.now\(\) - at;\n  if \(ageMs > NIGHTLY_HEAD_MAX_AGE_MS_\) \{\n[\s\S]*?\n  \}\n/, ''),
-  }),
-  'the window is a full week (yesterday reads as tonight)': b => ({
-    'Code.js': b['Code.js'].replace('var NIGHTLY_HEAD_MAX_AGE_MS_ = 4 * 60 * 60 * 1000;',
-                                    'var NIGHTLY_HEAD_MAX_AGE_MS_ = 7 * 24 * 60 * 60 * 1000;'),
-  }),
-  'the window is tighter than the gap between the two triggers': b => ({
-    'Code.js': b['Code.js'].replace('var NIGHTLY_HEAD_MAX_AGE_MS_ = 4 * 60 * 60 * 1000;',
-                                    'var NIGHTLY_HEAD_MAX_AGE_MS_ = 30 * 60 * 1000;'),
-  }),
-  'an unreadable timestamp is treated as a good night': b => ({
-    'Code.js': b['Code.js'].replace(
-      "  if (isNaN(at)) return { ok: false, reason: 'LAST_NIGHTLY_RUN is unreadable (' + last + ')' };",
-      ''),
-  }),
-  'a project that has never run a head is treated as having finished one': b => ({
-    'Code.js': b['Code.js'].replace(
-      "  if (!last) return { ok: false, reason: 'the first half has never recorded a finish' };",
-      "  if (!last) return { ok: true, reason: '' };"),
-  }),
-  'the head completion is re-asked per step instead of once': b => ({
-    'Code.js': b['Code.js'].replace(
-      '    var headDone = nightlyHeadCompletedTonight_();',
-      '    var headDone = { ok: true, reason: \'\' };'),
-  }),
 
   // ---- reporting the skip --------------------------------------------------
-  'blocked steps are folded into the time-budget line': b => ({
-    'Code.js': b['Code.js'].replace(
-      "      if (stepBlocked.length)  summary += ' · ' + stepBlocked.length + ' skipped (incomplete input)';",
-      "      if (stepBlocked.length)  summary += ' · ' + stepBlocked.length + ' skipped (time budget)';"),
-  }),
-  'the blocked steps are counted but never named': b => ({
-    'Code.js': b['Code.js'].replace(
-      /      if \(stepBlocked\.length\) \{\n        sendSlackLog_\('🚧 Tail skipped — incomplete input:\\n' \+\n[\s\S]*?\n      \}\n/, ''),
-  }),
-  'a night with a withheld step is logged as Success': b => ({
-    'Code.js': b['Code.js'].replace(
-      "        (stepFailures.length || stepBlocked.length) ? 'Partial' : 'Success',",
-      "        stepFailures.length ? 'Partial' : 'Success',"),
-  }),
 
   // ---- Step 1 outside the budget: the Oct 8 kill ----------------------------
   // Restores the four bare calls verbatim. This is what ran after the budget had
   // already skipped computeTravelLegs_, and what the execution was killed inside.
-  'the collection goes back to bare calls, outside the budget': b => {
-    const s = b['Code.js'];
-    const start = s.indexOf('    var events = null, tasks = null, summaries = null, ledger = null;');
-    const end   = s.indexOf('    // Step 2: Skip Claude if there is no meaningful data', start);
-    if (start === -1 || end === -1) throw new Error('collect step not found');
-    return { 'Code.js': s.slice(0, start) +
-      '    const events    = getUpcomingEvents();\n' +
-      '    const tasks     = getOpenTasks();\n' +
-      '    const summaries = getSummaries();\n' +
-      '    const ledger    = getSharedInterestLedger_();\n\n' +
-      s.slice(end) };
+  // ---- the one list (#256) ---------------------------------------------------
+  'a flag writer is appended after the pattern engine': b => {
+    const s = b['NightlyRunner.js'], at = s.indexOf("    S('checkCrossPatternFlags_'");
+    const nl = s.indexOf('\n', at) + 1;
+    return { 'NightlyRunner.js': s.slice(0, nl) + "    S('checkRefills2_', 4, function() { checkRefills_(); }),\n" + s.slice(nl) };
   },
-  // Anchored on the call line alone and made to throw if it moves, rather than on the
-  // call plus the step line as one string: that form sat next to a comment, and adding
-  // a line to the comment would have made the mutation silently fail to apply.
-  'one collector is hoisted back out of the step': b => {
-    const s    = b['Code.js'];
-    const call = '      events    = getUpcomingEventsCached_();\n';
-    if (s.indexOf(call) === -1) throw new Error('the collect call moved: ' + call.trim());
-    return { 'Code.js': s.replace(call, '').replace(
-      "    var collected = nightlyStep_(ctx, 'collect', function() {",
-      '    events = getUpcomingEventsCached_();\n' +
-      "    var collected = nightlyStep_(ctx, 'collect', function() {") };
-  },
-  'a skipped collection falls through to the empty-data branch': b => ({
-    'Code.js': b['Code.js'].replace('    if (!collected) {', '    if (false) {'),
-  }),
-  'the collectors go back to const, so the closure throws into the catch': b => ({
-    'Code.js': b['Code.js'].replace(
-      '    var events = null, tasks = null, summaries = null, ledger = null;',
-      '    const events = null, tasks = null, summaries = null, ledger = null;'),
-  }),
-  'the out-of-time message claims there was no data': b => ({
-    'Code.js': b['Code.js'].replace(
-      'stopped before the Claude call: ', '0 flags (no data): '),
+  'a step name no longer resolves to a body (the classifier goes blind)': b => ({
+    'NightlyRunner.js': b['NightlyRunner.js'].replace("S('checkRefills_', 1, function() { checkRefills_(); }),", "S('checkRefillz_', 1, function() { checkRefillz_(); }),"),
   }),
 };
 

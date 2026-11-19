@@ -125,6 +125,7 @@ function runLogStatus_(r) {
   var c = r.ctx || {};
   if (r.status === 'Failed') return 'Failed';
   if (r.status === 'Skipped') return 'Skipped';
+  if (r.status === 'Continued') return 'Continued';   // a nightly part that handed off (NightlyRunner.js)
   if (r.status === 'Partial' || (c.failures || []).length || (c.skipped || []).length || (c.blocked || []).length) return 'Partial';
   return 'Done';
 }
@@ -150,6 +151,18 @@ function runLogFinish_(job) {
     var sheet = runLogSheet_(r.fn), n = runLogFind_(sheet, r.id);
     if (n) sheet.getRange(n, RUN_LOG_C_.STATUS + 1, 1, RUN_LOG_C_.SUM - RUN_LOG_C_.STATUS + 1).setValues([runLogFinishCells_(r, Date.now())]);
   } catch (e) { Logger.log('runLogFinish_ (non-fatal): ' + e.message); }
+}
+
+/** A nightly part that handed off to the next (NightlyRunner.js, #256): its row finishes as Continued. */
+function runLogHandoff_(ctx, summary) {
+  var r = _runLog_;
+  if (!r) return;
+  r.ctx = ctx || r.ctx; r.status = 'Continued'; if (summary) r.summary = String(summary);
+  _runLog_ = null;
+  try {
+    var sheet = runLogSheet_(r.fn), n = runLogFind_(sheet, r.id);
+    if (n) sheet.getRange(n, RUN_LOG_C_.STATUS + 1, 1, RUN_LOG_C_.SUM - RUN_LOG_C_.STATUS + 1).setValues([runLogFinishCells_(r, Date.now())]);
+  } catch (e) { Logger.log('runLogHandoff_ (non-fatal): ' + e.message); }
 }
 
 /** The sheet row (1-based) holding a run id, searching the newest rows only. */

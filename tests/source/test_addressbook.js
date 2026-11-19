@@ -1912,10 +1912,9 @@ console.log('\nBulk import');
 
 console.log('\nWiring');
 {
-  const nightly = SRC.Code.slice(SRC.Code.indexOf('function nightlyRun()'),
-                                 SRC.Code.indexOf('function nightlyRun()') + 40000);
+  const nightly = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
   check('the property prune runs nightly',
-        /nightlyStep_\(ctx, 'pruneScriptProperties_'/.test(nightly),
+        /S\('pruneScriptProperties_', \d/.test(nightly),
         'unpruned, the latches grow by hundreds a year');
 
   check('the read is a GET action', /case 'address_book':\s*return jsonOut_\(webGetAddressBook_\(\)\)/.test(SRC.Web));

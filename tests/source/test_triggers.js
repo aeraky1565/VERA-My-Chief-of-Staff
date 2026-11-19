@@ -118,7 +118,7 @@ console.log('Every handler created is also deletable');
   const specs = vm.runInContext('veraTriggerSpecs_()', c);
   const handlers = specs.map(s => s.handler);
 
-  check('there are specs at all', handlers.length >= 8, JSON.stringify(handlers));
+  check('there are specs at all', handlers.length >= 7, JSON.stringify(handlers));
   check('no handler is listed twice',
         new Set(handlers).size === handlers.length, JSON.stringify(handlers));
 
@@ -146,14 +146,23 @@ console.log('Every handler created is also deletable');
         lastDelete < firstCreate, JSON.stringify(c2._log.slice(0, 20)));
 
   // A project with duplicates already in it — the state a pre-fix double run leaves.
-  const c3 = harness({ existing: handlers.concat(['nightlyRunTail', 'nightlyRunTail']) });
+  const c3 = harness({ existing: handlers.concat(['nightlyRun', 'nightlyRun']) });
   vm.runInContext('setupTriggers()', c3);
-  const tails = c3._created.filter(r => r.handler === 'nightlyRunTail');
-  check('a project that already has duplicate tails is collapsed back to one',
-        tails.length === 1 &&
-        c3._log.filter(l => l === 'delete:nightlyRunTail').length === 3,
-        JSON.stringify({ created: tails.length,
-                         deleted: c3._log.filter(l => l === 'delete:nightlyRunTail').length }));
+  const heads = c3._created.filter(r => r.handler === 'nightlyRun');
+  check('a project that already has duplicates is collapsed back to one',
+        heads.length === 1 && c3._log.filter(l => l === 'delete:nightlyRun').length === 3,
+        JSON.stringify({ created: heads.length, deleted: c3._log.filter(l => l === 'delete:nightlyRun').length }));
+
+  // The night's second half is retired (#256): its old trigger is removed and not made again.
+  const c5 = harness({ existing: handlers.concat(['nightlyRunTail']) });
+  vm.runInContext('setupTriggers()', c5);
+  check('the retired second-half trigger is deleted, and not created again',
+        c5._log.indexOf('delete:nightlyRunTail') !== -1 && !c5._created.some(r => r.handler === 'nightlyRunTail'),
+        JSON.stringify(c5._log.filter(l => /nightlyRunTail/.test(l))));
+  const c6 = harness({ existing: handlers.concat(['nightlyContinue']) });
+  vm.runInContext('setupTriggers()', c6);
+  check('…but a night in progress keeps its continuation',
+        c6._log.indexOf('delete:nightlyContinue') === -1, JSON.stringify(c6._log.filter(l => /Continue/.test(l))));
 
   // Other people's triggers are not ours to remove.
   const c4 = harness({ existing: ['processSlackQueue_', 'someoneElsesJob'] });
@@ -173,7 +182,6 @@ console.log('\nEvery schedule, pinned');
   // production.
   const EXPECTED = {
     nightlyRun:           ['atHour(23)', 'everyDays(1)', 'inTimezone(America/New_York)'],
-    nightlyRunTail:       ['atHour(0)',  'everyDays(1)', 'inTimezone(America/New_York)'],
     morningNudge:         ['atHour(7)',  'everyDays(1)', 'inTimezone(America/New_York)'],
     hourlyCheck:          ['everyHours(1)', 'inTimezone(America/New_York)'],
     checkFlightStatuses_: ['everyMinutes(15)'],
@@ -188,7 +196,7 @@ console.log('\nEvery schedule, pinned');
   const byHandler = {};
   c._created.forEach(r => { byHandler[r.handler] = r.chain; });
 
-  check('exactly the eight known handlers are created, no more',
+  check('exactly the seven known handlers are created, no more',
         Object.keys(byHandler).sort().join(',') === Object.keys(EXPECTED).sort().join(','),
         JSON.stringify(Object.keys(byHandler)) +
         ' — a new trigger belongs in this table too, deliberately');
@@ -210,24 +218,14 @@ console.log('\nEvery schedule, pinned');
         !byHandler.runEmailScan_.some(s => /inTimezone/.test(s)),
         JSON.stringify([byHandler.checkFlightStatuses_, byHandler.runEmailScan_]));
 
-  // The tail is an hour after the head, derived rather than hardcoded, and wraps.
-  const c23 = harness();
-  c23.CONFIG.NIGHTLY_RUN_HOUR = 23;
-  vm.runInContext('setupTriggers()', c23);
-  const tail23 = c23._created.filter(r => r.handler === 'nightlyRunTail')[0];
-  check('the tail wraps past midnight rather than scheduling hour 24',
-        tail23.chain[0] === 'atHour(0)', JSON.stringify(tail23.chain) +
-        ' — atHour(24) is not a valid hour');
-
+  // The nightly hour is read at call time.
   const c9 = harness();
   c9.CONFIG.NIGHTLY_RUN_HOUR = 9;
   vm.runInContext('setupTriggers()', c9);
   const head9 = c9._created.filter(r => r.handler === 'nightlyRun')[0];
-  const tail9 = c9._created.filter(r => r.handler === 'nightlyRunTail')[0];
-  check('both halves follow NIGHTLY_RUN_HOUR, an hour apart',
-        head9.chain[0] === 'atHour(9)' && tail9.chain[0] === 'atHour(10)',
-        JSON.stringify([head9.chain[0], tail9.chain[0]]) +
-        ' — read at call time, so the two can never drift apart');
+  check('the nightly run follows NIGHTLY_RUN_HOUR, and there is no second half',
+        head9.chain[0] === 'atHour(9)' && !c9._created.some(r => r.handler === 'nightlyRunTail'),
+        JSON.stringify(head9.chain));
 
   // Read at CALL time, not load time: the root .js files share one global scope with
   // no guaranteed order, and a spec list built at load time would depend on CONFIG
@@ -254,7 +252,7 @@ console.log('\nThe log says what it actually did');
   check('…and counting them',
         new RegExp('\\(' + c._created.length + '\\)').test(logged), JSON.stringify(logged));
   check('…and saying when each runs',
-        /nightlyRunTail daily at 0:00/.test(logged) &&
+        /nightlyRun daily at 23:00/.test(logged) &&
         /checkFlightStatuses_ every 15 min/.test(logged),
         JSON.stringify(logged));
 
@@ -286,7 +284,7 @@ console.log('\nRegistration is recorded, and cannot break the install');
   let threw = '';
   try { vm.runInContext('setupTriggers()', c2); } catch (e) { threw = e.message; }
   check('a failed registration write does not stop the triggers installing',
-        threw === '' && c2._created.length >= 8,
+        threw === '' && c2._created.length >= 7,
         threw || JSON.stringify(c2._created.length));
   check('…and is logged rather than swallowed in silence',
         c2._log.some(l => /recordTriggerRegistrations_/.test(l)),

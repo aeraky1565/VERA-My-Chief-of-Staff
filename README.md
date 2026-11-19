@@ -633,7 +633,7 @@ Some are new:
 - the weekend memo (day and hour), the goal check-in, the chores reset, the email tidy-up (frequency and day);
 - the monthly review and PTO snapshot, card perks, the health insight, the PTO accrual day (day of the month, 1st–28th);
 - the wish-list wrap-up and the last day of gift flags; the fitness slow-week day; the weekly memory snapshot;
-- the nightly run's hour (its second half runs an hour later), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
+- the nightly run's hour (it continues itself in parts until done), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
 
 The nightly run and the morning email are **always on**: they have no switch, only their time. Saving a time that a trigger owns rebuilds just that trigger (`rebuildTrigger_`, using the same `veraTriggerSpecs_` as `setupTriggers`), so the change takes effect without running anything in the editor. The rest are read by the hourly or nightly checks, so they take effect at once. A blank or bad value keeps the old default.
 
@@ -1223,47 +1223,53 @@ Each step used to hand-roll its own seven-line `try/catch`, forty times over, an
 only three of those forty consulted the deadline. Two (`writeSummarySnapshot`,
 `checkTaxDocuments_`) had no guard at all and could take the whole run down.
 
-### The night runs in two halves
+### The night is one list that continues itself (#256)
 
-It outgrew Apps Script's six-minute ceiling. The morning banner read
+Google stops any execution at six minutes. The night outgrew one run, then two halves
+an hour apart, and each split drifted back over the limit as steps were added: on
+Nov 18 the first half spent its budget by 341 s, skipped 50 steps and was killed.
 
-```
-Nightly run started but did not finish — died during checkHealthAppointments_ (5m in)
-```
+So the night no longer has to fit. `NightlyRunner.js` holds **one ordered list** of
+every step (`nightlySteps_`, in five groups: what you'd notice missing, the data and
+the flags call, every other flag writer, analysis, housekeeping) and runs it in
+**parts**:
 
-and that breadcrumb — the only timing evidence a *terminated* execution leaves — is
-what chose the boundary: five minutes of work reached exactly that step, so
-everything from it onwards **had not run on any night** for as long as it had been
-happening. `checkMonthlyReview_`, `sendHealthPerformanceInsightMonthly_`,
-`resetWeekMealPlan_`, `checkCrossPatternFlags_`, `suggestDueDates` and `runExplorer_`.
-
-| Trigger | Covers |
+| | |
 |---|---|
-| `nightlyRun`, `NIGHTLY_RUN_HOUR` | everything through `checkTaxDocuments_` |
-| `nightlyRunTail`, an hour later | `checkHealthAppointments_` → `runExplorer_` |
+| `nightlyRun`, `NIGHTLY_RUN_HOUR` | starts tonight's list from the top |
+| a part | runs steps for up to 4 minutes (`NIGHT_PART_BUDGET_MS_`), then saves its place (`NIGHTLY_RESUME`, state bundle `NIGHT`) and schedules `nightlyContinue` a minute later |
+| `nightlyContinue` | a one-off trigger: picks up at the saved step |
+| at most 6 parts | after that the rest is listed as skipped, and the night still finishes |
 
-> Splitting at the tidier `=== Critical path done — flags written ===` banner was
-> rejected: it leaves nearly forty steps on the far side, which is where all the time
-> goes. It would have moved the death, not prevented it.
+**A part that is killed anyway** (a single step longer than ~5 minutes) is picked up by
+the backup continuation every part schedules 7 minutes out before its first step. A
+saved place with no handoff plus a breadcrumb (`NIGHTLY_STEP`) means that step died:
+it is recorded as **cut off** and the night goes on from the one after it, so one bad
+step costs itself, not the rest of the night.
 
-**Each half keeps its own start marker, breadcrumb and heartbeat** —
-`LAST_NIGHTLY_TAIL_START`, `NIGHTLY_TAIL_STEP`, `nightlyRunTail`. One shared
-heartbeat would let the first half's success report the whole night healthy while the
-second died every night unseen, which is the failure the split exists to fix, rebuilt
-one level up.
+**The night finishes once**: one #vera-logs summary ("Nightly run — N new flags ·
+3 parts · 87 steps · 1 cut off (…)"), the slowest steps with any over 90 s named, one
+heartbeat, `LAST_NIGHTLY_RUN`. In the Run Log each part is its own row; a part that
+handed off reads **Continued**.
 
-**And a step is now only started if the budget could plausibly cover it**
-(`NIGHTLY_STEP_RESERVE_MS_`). The guard used to ask only whether the deadline had
-*passed*, so a step beginning at 5m00s still had sixty seconds before the kill — and
-took it. A reserve turns "killed, silently" into "skipped, and said so".
+**Slow steps are caught while they creep.** A step cut off, or over 150 s, on two
+nights running raises one Medium flag naming it (`NIGHTLY_KILLED`).
 
-> This is also why the `⏱️ Slowest steps` line had never once appeared: it is emitted
-> at the *end* of a run, so it existed only for runs that did not need it. A run that
-> ends cleanly produces it, which is the number that says whether the split bought
-> enough headroom or only some.
+**The pattern engine still waits for complete input.** `checkCrossPatternFlags_` runs
+after every flag writer, and is withheld on a night where one was skipped or cut off
+(`nightlyCrossGate_`).
 
-**Adding the second trigger needs `setupTriggers` re-run in the Apps Script editor.**
-It cannot be registered from outside.
+The old second half's trigger removes itself the first time it fires (`nightlyRunTail`
+is kept only as that shim), and `setupTriggers` deletes it too. **No setup is needed.**
+
+> Tonight's slow steps were sped up alongside: the Flags sheet's colours are one
+> `setBackgrounds` call instead of one per row (writeFlags took 57 s), the travel
+> calendar read logs one count instead of a line per event, and `recordFlagsGenerated_`
+> is its own step inside the budget.
+
+**A step is only started if the part's budget could plausibly cover it**
+(`NIGHTLY_STEP_RESERVE_MS_`). Without the reserve, a step beginning with seconds left
+overran the ceiling; with it, the part hands off instead.
 
 ### `setupTriggers` is safe to re-run, and says what it did
 

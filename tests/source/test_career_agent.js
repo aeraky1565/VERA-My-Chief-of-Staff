@@ -362,9 +362,9 @@ console.log('\nwiring');
     check('POST ' + a + ' is routed', new RegExp("case '" + a + "':\\s+return jsonOut_\\(" + fn + "\\);").test(WEB));
     check('…and the dashboard uses it', APP.includes("'" + a + "'"));
   });
-  const tail = CODE.slice(CODE.indexOf('function nightlyRunTail'));
+  const tail = read('NightlyRunner.js');   // the night's one list (#256)
   ['carCheckAgentHealth_', 'carMonthlyWinsBank_', 'carSuggestCriteria_'].forEach(n =>
-    check(n + ' runs nightly, in the second half', new RegExp("nightlyStep_\\(ctx, '" + n + "', " + n + "\\);").test(tail)));
+    check(n + ' runs nightly', new RegExp("S\\('" + n + "', \\d, function\\(\\) \\{ " + n + "\\(\\); \\}\\)").test(tail)));
   check('the Suggestions tab is named', /CAREER_SUGGESTIONS:\s+'Career Suggestions'/.test(CODE));
   check('Pipeline is a Career subtab in both built files', [APP, INDEX].every(t => t.includes("{id:'pipeline',label:'📥 Pipeline'}") && t.includes('carH(CarPipeline,')));
 }

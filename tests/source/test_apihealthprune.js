@@ -289,9 +289,8 @@ console.log('\nRecovery: the banner actually clears');
 
 console.log('\nWiring and documentation');
 {
-  const nightly = SRC.Code.slice(SRC.Code.indexOf('function nightlyRun()'),
-                                 SRC.Code.indexOf('function nightlyRun()') + 40000);
-  check('the prune runs nightly', /nightlyStep_\(ctx, 'pruneApiHealthState_'/.test(nightly),
+  const nightly = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
+  check('the prune runs nightly', /S\('pruneApiHealthState_', \d/.test(nightly),
         'a manual clearApiHealthSource_ existed already and nobody ever called it');
 
   // One declaration across the shared global scope.

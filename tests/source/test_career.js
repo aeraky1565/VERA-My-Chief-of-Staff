@@ -286,7 +286,7 @@ console.log('\nwiring');
     check('…and the dashboard posts it', APP.includes("'" + a + "'"));
   });
   check('the v1 writers are gone from WebApp.js', !/function webGetCareer_|function webAddCareerWin_|case 'add_career_goal'/.test(WEB));
-  check('the migration runs nightly, in the second half', /nightlyStep_\(ctx, 'carNightly_', carNightly_\);/.test(CODE.slice(CODE.indexOf('function nightlyRunTail'))));
+  check('the migration runs nightly', /S\('carNightly_', \d, function\(\) \{ carNightly_\(\); \}\)/.test(read('NightlyRunner.js')));
   check('the six v2 tabs are named in TABS', ['CAREER_LADDER','CAREER_CRITERIA','CAREER_EVIDENCE','CAREER_INTENTS','CAREER_PACKAGE','CAREER_STATE'].every(k => new RegExp(k + ':').test(CODE)));
   check('Chat still reads webGetCareer_ and calls the v1 writers', /webGetCareer_\(\)/.test(CHAT) && /webAddCareerWin_\(/.test(CHAT) && /webUpdateCareerPosition_\(/.test(CHAT));
   check('Chat’s profile includes the next steps and their verdicts', /Next step: /.test(CHAT) && /readiness /.test(CHAT));

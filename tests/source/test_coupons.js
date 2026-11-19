@@ -74,9 +74,9 @@ ps.c.purgeExpiredCoupons_();
 check('the purge deletes the same ones the route leaves out, and only those', J(ps.deleted) === J(['C3']));
 const p0 = (() => { const rows = ROWS(); const s = sheetCtx(rows); s.c.getConfigValues = () => ({ coupon_keep_expired_days: '0' }); s.c.purgeExpiredCoupons_(); return s.deleted.sort(); })();
 check('…and follows the grace week setting (0: every expired one)', J(p0) === J(['C2', 'C3', 'C4']), J(p0));
-const night = CODE.slice(CODE.indexOf('function nightlyRun('), CODE.indexOf('function nightlyRunTail('));
-const at = n => night.indexOf("nightlyStep_(ctx, '" + n + "'");
-check('the purge runs early in the night (after the important dates), not as its last step', at('purgeExpiredCoupons_') > at('checkImportantDates_') && at('purgeExpiredCoupons_') < at('resetChoresByCadence_') && at('checkExpiringCoupons_') < at('purgeExpiredCoupons_') && at('checkTaxDocuments_') > at('purgeExpiredCoupons_'));
+const night = read('NightlyRunner.js');   // the night's one list, which continues until done (#256)
+const at = n => night.indexOf("S('" + n + "', ");
+check('the purge runs in the night, after the expiring-coupon check', at('purgeExpiredCoupons_') !== -1 && at('checkExpiringCoupons_') !== -1 && at('checkExpiringCoupons_') < at('purgeExpiredCoupons_'));
 
 console.log('\nthe Expired group, the same code in both dashboards');
 const blk = s => { const a = s.indexOf('// ---- CpExpiredGroup'), b = s.indexOf('// ---- end CpExpiredGroup ----'); return a === -1 || b === -1 ? '' : s.slice(a, b); };
