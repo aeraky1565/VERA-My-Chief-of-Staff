@@ -40,7 +40,7 @@ const CONTROLS = [
   ['the email never shows what was held', on('Code.js', "(typeof notifHeldHtmlNow_ === 'function' ? notifHeldHtmlNow_() : '') +", "'' +"), SRV],
   ['no count line', on('Code.js', "try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + notifCountLine_(notifCounts_().yesterday)); } catch (ncErr) {}", ''), SRV],
   ['the weekend memo pings Slack again', on('WeekendPlanner.js', "  if (typeof notifGate_ !== 'function' || notifGate_('weekend_memo', 'Weekend memo')) {", "  sendSlack_('vera-notifications', '🗓️ Weekend memo is ready — check your email.');\n  if (true) {"), SRV],
-  ['no sleep row', on('Slack.js', "  if (sleepHours === null) {\n    blocks.push({ type: 'actions', block_id: 'wellness_row_hours'", "  if (false) {\n    blocks.push({ type: 'actions', block_id: 'wellness_row_hours'"), SRV],
+  ['no sleep row', on('Slack.js', "  if (sleepHours === null || sleepHours === undefined) row('hours',", "  if (false) row('hours',"), SRV],
   ['the old rules run again', on('Reminders.js', "    function() { checkMovement_(now, cfg); },", "    function() { checkMovement_(now, cfg); },\n    function() { checkErgonomicBreak_(hour, isWeekday, cfg); },"), SRV],
   ['HAILEY posts listings over the ceiling', nf("&& /under/i.test(String(col(r, 'cost flag')))) {", ') {'), SRV],
   ['HAILEY posts any old listing', nf("if (status === 'new' && iso(col(r, 'first seen')) === today &&", "if (status === 'new' &&"), SRV],
