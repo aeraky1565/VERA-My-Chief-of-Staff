@@ -539,6 +539,11 @@ The morning email shows what waited under **📨 Held for this email**, and clea
 
 They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCheck as a backstop. The old `wellness_checkin_hour` and `mobility_reminder_hour` are still read when the new rows are blank.
 
+**What the check-ins and the movement nudge look like** (as in `docs/mockups/notifications.html`; rebuilt Nov 19, since #250 had moved them but kept the old messages):
+- **Morning, #vera-chat:** "☀️ Morning. How are you starting the day?" with three labelled rows: **Slept** ≤5 h · 6 · 7 · 8 · 9 h+ (only when no watch gave it), **Energy** 1–5, **Mood** 😞 😐 🙂 😄 (logged as 1, 3, 4, 5). A tap turns that row into "✅ Mood 🙂".
+- **Evening, #vera-chat:** "🌙 Evening check-in · Did you move today? You logged N movement breaks." with **🏋️ Gym · 🚶 Walk · 🧘 Stretch · Not today**, and a line for tomorrow's first event (your personal calendars, `lgEvents_`) and any bill due today or tomorrow that isn't paid. It replaces the gym check-in and the evening mobility nudge. A tap logs to Health › Fitness and answers with the week so far ("✅ Logged: gym. That's 2 of 4 this week."): **Gym** marks today's planned workout as went (or adds one), **Walk** / **Stretch** add one, **Not today** marks today's planned workout as skipped. Only today's rows are touched; the old Yes button marked whichever session was last left open. Buttons on older messages still work.
+- **Movement, #vera-notifications:** "🚶 5-minute reset · Stand, walk a lap, refill your water. Next one around 1:30." with **Done** and **Skip**, and "Movement · 1 of 3 today". Either tap pushes the next one at least 2 hours out (a slot inside that window is passed over), and Done counts toward the evening's "movement breaks".
+
 **Sleep.** Google Fit is removed: the call, and the `fitness.*` scopes. The morning check-in asks for hours slept with one tap (≤5 h · 6 · 7 · 8 · 9 h+), logged as `sleep_hours`, manual. A watch can fill it in later.
 
 **#vera-act-now** is for a decision with a clock on it.

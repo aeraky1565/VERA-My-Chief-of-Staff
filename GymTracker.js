@@ -125,6 +125,42 @@ function gymEveningCheck_(now) {
 
 // ---------------------------------------------------------------------------
 
+/** Pure: workouts you went to this week (Monday to today), from getGymLog_ rows. */
+function gymWeekDone_(log, todayIso) {
+  var d = new Date(todayIso + 'T12:00:00'), back = (d.getDay() + 6) % 7;
+  var mon = new Date(d.getTime() - back * 86400000), monIso = mon.getFullYear() + '-' + ('0' + (mon.getMonth() + 1)).slice(-2) + '-' + ('0' + mon.getDate()).slice(-2);
+  return (log || []).filter(function(s) { return s.attended === 'Yes' && s.date >= monIso && s.date <= todayIso; }).length;
+}
+/** Pure: what the evening check-in says back. */
+function eveningReply_(kind, weekDone, target) {
+  var of = target ? ' of ' + target : '';
+  if (kind === 'none') return 'Logged: not today. ' + weekDone + of + ' this week so far.';
+  var what = { gym: 'gym', walk: 'a walk', stretch: 'a stretch' }[kind] || kind;
+  return '\u2705 Logged: ' + what + '. That\u2019s ' + weekDone + of + ' this week.';
+}
+/**
+ * The evening check-in's answer, logged to Health › Fitness (Gym Log). Gym marks today's
+ * scheduled workout as went, or adds one; Walk and Stretch add one of that type; Not today
+ * marks today's open scheduled workouts as skipped. Only TODAY's rows are touched: the old
+ * Yes button marked whichever session was last left open, even one from weeks ago.
+ * → the reply line.
+ */
+function eveningMoveLog_(kind) {
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var log = getGymLog_(), mine = log.filter(function(s) { return s.date === today; });
+  var open = mine.filter(function(s) { return !s.attended; });
+  var type = { gym: 'Gym', walk: 'Walk', stretch: 'Stretch' }[kind];
+  if (kind === 'none') {
+    open.forEach(function(s) { try { logGymAttendance_(s.id, 'No'); } catch (e) {} });
+  } else if (kind === 'gym' && open.length) {
+    logGymAttendance_(open[0].id, 'Yes');
+  } else if (type && !mine.some(function(s) { return s.attended === 'Yes' && String(s.type).toLowerCase() === type.toLowerCase(); })) {
+    webWorkoutAdd_({ parameter: { type: type } });   // Workouts.js
+  }
+  var target = 0; try { target = wkTarget_(getConfigValues()); } catch (e) {}
+  return eveningReply_(kind, gymWeekDone_(getGymLog_(), today), target);
+}
+
 /**
  * Reads all rows from the Gym Log sheet.
  * @returns {Array<{id, title, date, attended, loggedAt, rowNum}>}

@@ -244,12 +244,105 @@ function checkMovement_(now, cfg) {
   var minute = parseInt(Utilities.formatDate(now, tz, 'H'), 10) * 60 + parseInt(Utilities.formatDate(now, tz, 'm'), 10);
   var st = {}; try { st = veraStateGet_('NOTIF'); } catch (e) {}
   var sent = []; try { var mv = JSON.parse(st.NOTIF_MOVE || '{}'); sent = mv.day === today ? (mv.sent || []) : []; } catch (e) { sent = []; }
-  var slot = moveDue_(minute, moveTimes_(cfg), sent, moveDayOff_(now));
+  var mv0 = moveState_(st, today), times = moveTimes_(cfg);
+  var slot = moveDue_(minute, times, sent, moveDayOff_(now));
   if (slot === -1) return false;
-  try { veraStateSet_('NOTIF', { NOTIF_MOVE: JSON.stringify({ day: today, sent: sent.concat([slot]) }) }); } catch (e) {}
-  sendNudge_('movement_' + today + '_' + slot, 'Movement',
-    '🚶 Time to move: 5 minutes standing or walking, and a glass of water. Your back and focus will thank you.', 'movement');
+  var next = mv0; next.sent = sent.concat([slot]);
+  try { veraStateSet_('NOTIF', { NOTIF_MOVE: JSON.stringify(next) }); } catch (e) {}
+  // A Done or Skip tap moves the next one 2 h out (the mockup's rule): a slot that lands
+  // inside that window is passed over, quietly.
+  if (moveTooSoon_(mv0.tapAt, now.getTime())) return false;
+  var m = moveMessage_(slot, times);
+  sendNudge_('movement_' + today + '_' + slot, 'Movement', m.text, 'movement', null, m.blocks);
   return true;
+}
+
+// ---- The movement message and its taps (docs/mockups/notifications.html) ------------------
+var MOVE_GAP_MIN_ = 120;   // after Done or Skip, the next nudge waits at least this long
+
+/** Today's movement state from the NOTIF bundle: {day, sent:[slot minutes], done:n, tapAt:ms}. */
+function moveState_(st, today) {
+  var mv = {}; try { mv = JSON.parse((st || {}).NOTIF_MOVE || '{}') || {}; } catch (e) { mv = {}; }
+  return mv.day === today ? { day: today, sent: mv.sent || [], done: mv.done || 0, tapAt: mv.tapAt || 0 } : { day: today, sent: [], done: 0, tapAt: 0 };
+}
+/** Pure: is a slot inside the 2 hours after a tap? */
+function moveTooSoon_(tapAt, nowMs) { return !!tapAt && nowMs - tapAt < MOVE_GAP_MIN_ * 60000; }
+/** Pure: minutes of the day as a clock, "1:30", "10:30". */
+function moveClock_(m) { var h = Math.floor(m / 60), mm = m % 60; return ((h + 11) % 12 + 1) + ':' + (mm < 10 ? '0' : '') + mm; }
+/** Pure: the movement message for a slot: {text, blocks}. */
+function moveMessage_(slot, times) {
+  var i = times.indexOf(slot), after = times.filter(function(t) { return t > slot; });
+  var line = 'Stand, walk a lap, refill your water. ' + (after.length ? 'Next one around ' + moveClock_(after[0]) + '.' : 'That\u2019s the last one today.');
+  return {
+    text: '\ud83d\udeb6 5-minute reset: ' + line,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: '\ud83d\udeb6 *5-minute reset*\n' + line } },
+      { type: 'actions', block_id: 'move_row', elements: [
+        { type: 'button', text: { type: 'plain_text', text: 'Done' }, style: 'primary', action_id: 'move_done', value: String(slot) },
+        { type: 'button', text: { type: 'plain_text', text: 'Skip' }, action_id: 'move_skip', value: String(slot) } ] },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: 'Movement \u00b7 ' + (i + 1) + ' of ' + times.length + ' today \u00b7 Done moves the next one 2 h out' }] },
+    ],
+  };
+}
+/** A Done or Skip tap: counted (Done only) and remembered, so the next one waits 2 h. → the reply line. */
+function moveTap_(how, now) {
+  now = now || new Date();
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var st = {}; try { st = veraStateGet_('NOTIF'); } catch (e) {}
+  var mv = moveState_(st, today);
+  if (how === 'done') mv.done = (mv.done || 0) + 1;
+  mv.tapAt = now.getTime();
+  try { veraStateSet_('NOTIF', { NOTIF_MOVE: JSON.stringify(mv) }); } catch (e) {}
+  var nextOk = Utilities.formatDate(new Date(now.getTime() + MOVE_GAP_MIN_ * 60000), tz, 'h:mm a');
+  return how === 'done' ? '\u2705 Logged. Nice. Next nudge no sooner than ' + nextOk + '.'
+                        : 'Skipped. Next nudge no sooner than ' + nextOk + '.';
+}
+/** Movement breaks you tapped Done on today. */
+function moveDoneToday_(now) {
+  var st = {}; try { st = veraStateGet_('NOTIF'); } catch (e) {}
+  return moveState_(st, Utilities.formatDate(now || new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')).done;
+}
+
+// ---- The evening check-in's context: movement so far, tomorrow, an unpaid bill ----------------
+/** Pure: "Tomorrow: Dentist at 4:30. The electric bill is still unpaid." ('' when there's nothing). */
+function eveningExtraLine_(first, bills) {
+  var parts = [];
+  if (first && first.title) parts.push('Tomorrow: ' + first.title + (first.time ? ' at ' + first.time : '') + '.');
+  (bills || []).slice(0, 2).forEach(function(b) { parts.push('The ' + b + ' bill is still unpaid.'); });
+  return parts.join(' ');
+}
+/** Pure: the first timed event tomorrow from lgEvents_-shaped events. → {title, time} or null. */
+function eveningFirstTomorrow_(events, tomorrowIso) {
+  var list = (events || []).filter(function(e) { return !e.allDay && String(e.start || '').slice(0, 10) === tomorrowIso && e.title; })
+    .sort(function(a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+  if (!list.length) return null;
+  var hm = String(list[0].start).slice(11, 16).split(':'), mins = parseInt(hm[0], 10) * 60 + parseInt(hm[1], 10);
+  return { title: list[0].title, time: moveClock_(mins) };
+}
+/** Pure: bill names due today or tomorrow and not paid this month. rows: bsBillRows_ shape. */
+function eveningUnpaid_(rows, day, nextDay, month) {
+  return (rows || []).filter(function(r) {
+    var name = String(r[0] || '').trim(), due = Number(r[2]);
+    if (!name || String(r[8] || '').toLowerCase() === 'income' || String(r[6] || '').trim() === month) return false;
+    return due === day || due === nextDay;
+  }).map(function(r) { return String(r[0]).trim().toLowerCase(); });
+}
+/** Everything the evening check-in shows besides its question. Never throws. */
+function eveningContext_(now) {
+  now = now || new Date();
+  var tz = Session.getScriptTimeZone(), moved = 0, first = null, bills = [];
+  try { moved = moveDoneToday_(now); } catch (e) {}
+  var tm = new Date(now.getTime() + 86400000), tIso = Utilities.formatDate(tm, tz, 'yyyy-MM-dd');
+  try {
+    var from = new Date(tIso + 'T00:00:00'), to = new Date(tIso + 'T23:59:59');
+    if (typeof lgEvents_ === 'function') first = eveningFirstTomorrow_(lgEvents_(from, to), tIso);
+  } catch (e) { Logger.log('eveningContext_ calendar (non-fatal): ' + e.message); }
+  try {
+    var month = Utilities.formatDate(now, tz, 'yyyy-MM'), rows = typeof bsBillRows_ === 'function' ? bsBillRows_(month) : null;
+    var nextDay = tm.getMonth() === now.getMonth() ? tm.getDate() : -1;
+    bills = eveningUnpaid_(rows, now.getDate(), nextDay, month);
+  } catch (e) { Logger.log('eveningContext_ bills (non-fatal): ' + e.message); }
+  return { moved: moved, extra: eveningExtraLine_(first, bills) };
 }
 
 // ---- Check-in times (minutes, not just hours) ---------------------------------

@@ -312,109 +312,74 @@ function buildMorningNudgeBlocks_(flags, capacityMode, heldCount) {
 }
 
 /**
- * Builds the evening check-in Block Kit message with Yes / No buttons.
+ * The evening check-in (docs/mockups/notifications.html, #250): one message at 8 PM in
+ * #vera-chat that replaces the gym check-in and the evening mobility nudge.
+ *   🌙 Evening check-in
+ *   Did you move today? You logged 2 movement breaks.
+ *   [🏋️ Gym] [🚶 Walk] [🧘 Stretch] [Not today]
+ *   Tomorrow: Dentist at 4:30. The electric bill is still unpaid.
+ * ctx: eveningContext_ (Notify.js) → {moved, extra}.
  */
-function buildEveningCheckinBlocks_() {
-  var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
-  return [
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: ':person_in_lotus_position: *' + dayName + ' Evening Check-In* — did you get movement in today?\nReply here or tap a button to log it.' },
-    },
-    {
-      type: 'actions',
-      elements: [
-        {
-          type:      'button',
-          text:      { type: 'plain_text', text: '✅ Yes' },
-          style:     'primary',
-          action_id: 'evening_checkin_yes',
-          value:     'yes',
-        },
-        {
-          type:      'button',
-          text:      { type: 'plain_text', text: '🚶 I walked instead' },
-          action_id: 'evening_checkin_walk',
-          value:     'walk',
-        },
-        {
-          type:      'button',
-          text:      { type: 'plain_text', text: '❌ No — skipped' },
-          style:     'danger',
-          action_id: 'evening_checkin_no',
-          value:     'no',
-        },
-      ],
-    },
+function buildEveningCheckinBlocks_(ctx) {
+  ctx = ctx || {};
+  var n = ctx.moved || 0;
+  var q = 'Did you move today?' + (n > 0 ? ' You logged ' + n + ' movement break' + (n === 1 ? '' : 's') + '.' : '');
+  var blocks = [
+    { type: 'section', text: { type: 'mrkdwn', text: '🌙 *Evening check-in*\n' + q } },
+    { type: 'actions', block_id: 'evening_move', elements: [
+      { type: 'button', text: { type: 'plain_text', text: '🏋️ Gym' },     action_id: 'evening_move_gym',     value: 'gym' },
+      { type: 'button', text: { type: 'plain_text', text: '🚶 Walk' },          action_id: 'evening_move_walk',    value: 'walk' },
+      { type: 'button', text: { type: 'plain_text', text: '🧘 Stretch' },       action_id: 'evening_move_stretch', value: 'stretch' },
+      { type: 'button', text: { type: 'plain_text', text: 'Not today' },                  action_id: 'evening_move_none',    value: 'none' } ] },
   ];
+  if (ctx.extra) blocks.push({ type: 'section', block_id: 'evening_extra', text: { type: 'mrkdwn', text: ctx.extra } });
+  return blocks;
 }
 
-/**
- * Builds the morning wellness check-in Block Kit message (3 rows × 5 rating buttons).
- * @param {number|null} sleepHours - Auto-logged sleep hours from Google Fit, or null if unavailable.
- */
-/** How a tapped value reads back: hours slept as "7 h" (≤5 h, 9 h+), a rating as "4/5". */
+/** How a tapped value reads back: hours slept as "7 h" (≤5 h, 9 h+), mood as its face, energy as "4/5". */
+var WELL_MOOD_ = [[1, '😞'], [3, '😐'], [4, '🙂'], [5, '😄']];
 function wellShow_(metric, val) {
   if (metric === 'hours') return val <= 5 ? '≤5 h' : val >= 9 ? '9 h+' : val + ' h';
+  if (metric === 'mood') { var f = WELL_MOOD_.filter(function(m) { return m[0] === Number(val); })[0]; if (f) return f[1]; }
   return val + '/5';
 }
 
+/**
+ * The morning check-in (docs/mockups/notifications.html, #250), in #vera-chat:
+ *   ☀️ Morning. How are you starting the day?
+ *   Slept   [≤5 h] [6 h] [7 h] [8 h] [9 h+]      (only when no watch gave it)
+ *   Energy  [1] [2] [3] [4] [5]
+ *   Mood    [😞] [😐] [🙂] [😄]
+ * Each row's label is a small line above it (not a button), and a tap replaces the label and
+ * its row with "✅ Slept 7 h".
+ */
 function buildMorningWellnessBlocks_(sleepHours, steps) {
-  var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
-  var metrics = [
-    { label: 'Energy today',  id: 'energy' },
-    { label: 'Mood / stress', id: 'mood'   },
-    { label: 'Sleep quality', id: 'sleep'  },
-  ];
-
-  var fitParts = [];
-  if (sleepHours !== null) fitParts.push('Sleep: ' + sleepHours + 'h');
-  if (steps !== null)      fitParts.push('Steps: ' + steps.toLocaleString());
-
-  var blocks = [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: ':sunny: *' + dayName + ' Morning Check-In* — 3 quick taps:' +
-          (fitParts.length ? '\n_' + fitParts.join(' · ') + ' from your watch_' : ''),
-      },
-    },
-  ];
-
+  var watch = [];
+  if (sleepHours !== null && sleepHours !== undefined) watch.push('You slept ' + sleepHours + ' h');
+  if (steps !== null && steps !== undefined) watch.push(Number(steps).toLocaleString() + ' steps yesterday');
+  var blocks = [{ type: 'section', text: { type: 'mrkdwn',
+    text: '☀️ *Morning.* How are you starting the day?' + (watch.length ? '\n_' + watch.join(' · ') + ' (from your watch)_' : '') } }];
+  var row = function(id, label, buttons) {
+    blocks.push({ type: 'context', block_id: 'wellness_lbl_' + id, elements: [{ type: 'mrkdwn', text: '*' + label + '*' }] });
+    blocks.push({ type: 'actions', block_id: 'wellness_row_' + id, elements: buttons.map(function(b) {
+      return { type: 'button', text: { type: 'plain_text', text: b[1] }, action_id: 'wellness_' + id + '_' + b[0], value: String(b[0]) };
+    }) });
+  };
   // Last night's sleep, one tap (#250): Google Fit is gone; a watch can fill it in later.
-  if (sleepHours === null) {
-    blocks.push({ type: 'actions', block_id: 'wellness_row_hours', elements: [
-      { type: 'button', text: { type: 'plain_text', text: 'Hours slept' }, action_id: 'wellness_label_hours', value: 'noop' },
-    ].concat([5, 6, 7, 8, 9].map(function(n) {
-      return { type: 'button', text: { type: 'plain_text', text: n === 5 ? '≤5 h' : n === 9 ? '9 h+' : n + ' h' }, action_id: 'wellness_hours_' + n, value: String(n) };
-    })) });
-  }
-
-  metrics.forEach(function(m) {
-    var buttons = [1, 2, 3, 4, 5].map(function(n) {
-      return {
-        type:      'button',
-        text:      { type: 'plain_text', text: String(n) },
-        action_id: 'wellness_' + m.id + '_' + n,
-        value:     String(n),
-      };
-    });
-    blocks.push({
-      type: 'actions',
-      block_id: 'wellness_row_' + m.id,
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: m.label },
-          action_id: 'wellness_label_' + m.id,
-          value: 'noop',
-        },
-      ].concat(buttons),
-    });
-  });
-
+  if (sleepHours === null || sleepHours === undefined) row('hours', 'Slept', [5, 6, 7, 8, 9].map(function(n) { return [n, wellShow_('hours', n)]; }));
+  row('energy', 'Energy', [1, 2, 3, 4, 5].map(function(n) { return [n, String(n)]; }));
+  row('mood', 'Mood', WELL_MOOD_);
   return blocks;
+}
+
+/** Pure: the morning message after a tap: that row and its label become one "✅ Mood 🙂" line. */
+function wellnessAfterTap_(blocks, metric, val) {
+  var label = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Slept' }[metric] || metric;
+  return (blocks || []).filter(function(b) { return b.block_id !== 'wellness_lbl_' + metric; }).map(function(b) {
+    return b.block_id === 'wellness_row_' + metric
+      ? { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: '✅ *' + label + '* ' + wellShow_(metric, val) } }
+      : b;
+  });
 }
 
 /**
@@ -781,28 +746,16 @@ function handleSlackInteractionSync_(payload) {
       webSnooze_(value, 3);
       ackText = ':zzz: Snoozed for 3 days.';
 
-    } else if (actionId === 'evening_checkin_yes') {
-      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('gym log: ' + e.message); }
-      var chatCh = getSlackChannelId_('chat');
-      var uName  = getSlackUserName_(userId) || 'Ahmed';
-      sendSlackMessage_(chatCh, ':muscle: Nice work, ' + uName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
-      var logsCh = getSlackChannelId_('logs');
-      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *got movement* (logged as attended)');
-      ackText = ':white_check_mark: Got it — logged! What did you do? _(Reply in #vera-chat)_';
+    } else if (EVENING_MOVE_IDS_[actionId]) {
+      // The evening check-in's answer (Gym / Walk / Stretch / Not today), logged to Fitness;
+      // the old Yes / Walked / No ids still work on messages sent before this.
+      var kind = EVENING_MOVE_IDS_[actionId];
+      ackText = eveningMoveLog_(kind);
+      updatedBlocks = eveningAfterTap_((payload.message && payload.message.blocks) || [], ackText);
 
-    } else if (actionId === 'evening_checkin_walk') {
-      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('gym log: ' + e.message); }
-      var logsCh = getSlackChannelId_('logs');
-      var uName  = getSlackUserName_(userId) || 'Ahmed';
-      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *walked* (logged as attended)');
-      ackText = ':walking: Walking counts! Logged as movement for today.';
-
-    } else if (actionId === 'evening_checkin_no') {
-      try { webGymAttendLatest_('No'); } catch (e) { Logger.log('gym log: ' + e.message); }
-      var logsCh = getSlackChannelId_('logs');
-      var uName  = getSlackUserName_(userId) || 'Ahmed';
-      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *skipped* movement today');
-      ackText = ':ok_hand: No worries — logged as skipped.';
+    } else if (actionId === 'move_done' || actionId === 'move_skip') {
+      ackText = moveTap_(actionId === 'move_done' ? 'done' : 'skip');
+      updatedBlocks = moveAfterTap_((payload.message && payload.message.blocks) || [], ackText);
 
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
@@ -813,20 +766,13 @@ function handleSlackInteractionSync_(payload) {
       var metric = parts[1] || '';
       var val    = parseFloat(parts[2]);
       var canon  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality', hours: 'sleep_hours' }[metric] || metric;
-      var label  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Sleep' }[metric] || metric;
+      var label  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality', hours: 'Slept' }[metric] || metric;
       if (!isNaN(val) && canon) {
         try { logWellness_('Ahmed', canon, val, 'manual'); }
         catch (e) { Logger.log('wellness log: ' + e.message); }
       }
-      ackText = ':white_check_mark: ' + label + ' logged as *' + wellShow_(metric, val) + '*.';
-      var curBlocks = (payload.message && payload.message.blocks) || [];
-      var newBlocks = curBlocks.map(function(b) {
-        if (b.block_id === 'wellness_row_' + metric) {
-          return { type: 'section', block_id: b.block_id,
-                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + label + '*  ' + wellShow_(metric, val) + ' logged' } };
-        }
-        return b;
-      });
+      ackText = '\u2705 ' + label + ' ' + wellShow_(metric, val);
+      var newBlocks = wellnessAfterTap_((payload.message && payload.message.blocks) || [], metric, val);
       if (newBlocks.length) updatedBlocks = newBlocks;
     }
   } catch (err) {
@@ -1270,11 +1216,28 @@ function pinSlackMessage_(channelId, ts) {
  * Posts the evening check-in to #vera-chat with Yes/No buttons.
  * Called from checkEveningMobility_() in Reminders.js.
  */
-function sendEveningCheckinSlack_() {
+function sendEveningCheckinSlack_(ctx) {
   var channelId = getSlackChannelId_('chat');
   if (!channelId) return;
-  var blocks = buildEveningCheckinBlocks_();
-  sendSlackMessage_(channelId, 'Evening check-in', blocks);
+  var blocks = buildEveningCheckinBlocks_(ctx);
+  sendSlackMessage_(channelId, 'Evening check-in: did you move today?', blocks);
+}
+
+/** The evening buttons → what they log. The old ids are on check-ins sent before Nov 19. */
+var EVENING_MOVE_IDS_ = { evening_move_gym: 'gym', evening_move_walk: 'walk', evening_move_stretch: 'stretch', evening_move_none: 'none',
+  evening_checkin_yes: 'gym', evening_checkin_walk: 'walk', evening_checkin_no: 'none' };
+
+/** Pure: the evening message after a tap: the question stays, the buttons become the answer. */
+function eveningAfterTap_(blocks, reply) {
+  return (blocks || []).map(function(b) {
+    return b.block_id === 'evening_move' || (b.type === 'actions' && !b.block_id) ? { type: 'section', block_id: 'evening_move', text: { type: 'mrkdwn', text: reply } } : b;
+  });
+}
+/** Pure: the movement message after a tap: the buttons become the reply. */
+function moveAfterTap_(blocks, reply) {
+  return (blocks || []).map(function(b) {
+    return b.block_id === 'move_row' ? { type: 'section', block_id: 'move_row', text: { type: 'mrkdwn', text: reply } } : b;
+  });
 }
 
 // ─── VOICE MESSAGE — transcription via Slack's built-in transcript ───────────

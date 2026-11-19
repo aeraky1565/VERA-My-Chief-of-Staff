@@ -110,13 +110,13 @@ console.log('\nCheck-in times, to the minute');
 console.log('\nSleep: Google Fit is gone, one tap instead');
 {
   check('no Google Fit call, function, or scope', !/fetchGoogleFitSleep_\(\)/.test(REM) && !/function fetchGoogleFitSleep_/.test(read('Wellness.js')) && !/fitness\./.test(read('appsscript.json')));
-  const blocksSrc = SLACK.slice(SLACK.indexOf('function wellShow_'), SLACK.indexOf('function sendMorningWellnessSlack_'));
+  const blocksSrc = SLACK.slice(SLACK.indexOf('var WELL_MOOD_'), SLACK.indexOf('function sendMorningWellnessSlack_'));
   const s = { Utilities: { formatDate: () => 'Wednesday' }, Session: { getScriptTimeZone: () => 'UTC' }, String, JSON };
   vm.createContext(s); vm.runInContext(blocksSrc, s);
   const row = s.buildMorningWellnessBlocks_(null, null).filter(b => b.block_id === 'wellness_row_hours')[0];
-  check('the check-in asks for hours slept: ≤5 h · 6 · 7 · 8 · 9 h+', row && J(row.elements.slice(1).map(e => e.text.text)) === J(['≤5 h', '6 h', '7 h', '8 h', '9 h+']) && row.elements[3].action_id === 'wellness_hours_7');
+  check('the check-in asks for hours slept: ≤5 h · 6 · 7 · 8 · 9 h+', row && J(row.elements.map(e => e.text.text)) === J(['≤5 h', '6 h', '7 h', '8 h', '9 h+']) && row.elements[2].action_id === 'wellness_hours_7');
   check('…and doesn’t ask when a watch already gave it', s.buildMorningWellnessBlocks_(7.5, null).every(b => b.block_id !== 'wellness_row_hours'));
-  check('a tap reads back as hours, a rating as /5', s.wellShow_('hours', 7) === '7 h' && s.wellShow_('hours', 5) === '≤5 h' && s.wellShow_('hours', '9') === '9 h+' && s.wellShow_('mood', 4) === '4/5');
+  check('a tap reads back as hours, energy as /5, mood as its face', s.wellShow_('hours', 7) === '7 h' && s.wellShow_('hours', 5) === '≤5 h' && s.wellShow_('hours', '9') === '9 h+' && s.wellShow_('energy', 4) === '4/5' && s.wellShow_('mood', 4) === '🙂');
   check('a tap logs sleep_hours, manual', (SLACK.match(/hours: 'sleep_hours'/g) || []).length === 2);
 }
 

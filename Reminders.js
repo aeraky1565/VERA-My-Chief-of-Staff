@@ -211,7 +211,7 @@ function checkEveningMobility_(now, hour, cfg) {
 
   // Evening check-in goes to #vera-chat (bidirectional) with Yes/No buttons when Slack is configured
   if (isSlackConfigured_()) {
-    sendEveningCheckinSlack_();
+    sendEveningCheckinSlack_(typeof eveningContext_ === 'function' ? eveningContext_(now) : null);
     markSent_(ruleKey, 'evening_checkin');
     Logger.log('sendNudge_ [Slack chat]: ' + ruleKey);
   } else {
@@ -795,7 +795,7 @@ function writeExplorerHistory_(discoveryText) {
  * @param {string} message  - Message body
  * @param {string} [notifKey] - NOTIF_REGISTRY key for channel routing (Issue #188)
  */
-function sendNudge_(ruleKey, subject, message, notifKey, due) {
+function sendNudge_(ruleKey, subject, message, notifKey, due, blocks) {
   // One gate for every push (Notify.js, #250): off, held for the morning email (its home,
   // quiet hours, or past the daily cap), or held while away (Away.js, #246). Remembered
   // either way, so a held nudge isn't asked about again every hour.
@@ -817,7 +817,7 @@ function sendNudge_(ruleKey, subject, message, notifKey, due) {
     channel = 'email';
     delivered = true;   // MailApp.sendEmail throws on failure rather than failing silently
   } else {
-    delivered = sendSlack_(ch, message);
+    delivered = sendSlack_(ch, message, blocks);   // blocks: buttons, when the message has them (Slack only)
     Logger.log('sendNudge_ [Slack/' + ch + ']: ' + ruleKey + (delivered ? '' : ' \u2014 FAILED'));
     channel = ch;
   }
