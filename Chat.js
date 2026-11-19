@@ -2973,6 +2973,12 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
     return { reply: 'Saved to your Notes, private: *' + noteParts.title + '*. Mark it ✨ in Notes if you want me to use it.' };
   }
 
+  // ── A typed answer to tonight's evening check-in ("Gym, 45 min legs"): logged, no AI ──
+  try {
+    var moveAnswer = typeof eveningTypedAnswer_ === 'function' ? eveningTypedAnswer_(trimmedMsg, new Date()) : null;
+    if (moveAnswer) return { reply: moveAnswer };
+  } catch (moveErr) { Logger.log('evening typed answer (non-fatal, goes to chat): ' + moveErr.message); }
+
   var history   = loadChatHistory_(sessionId);
   var context   = buildChatContext_();
   var sysPrompt = buildChatSystemPrompt_(context);

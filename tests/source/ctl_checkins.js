@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_ci');
-const FILES = ['Slack.js', 'Notify.js', 'GymTracker.js', 'Reminders.js'];
+const FILES = ['Slack.js', 'Notify.js', 'GymTracker.js', 'Reminders.js', 'Chat.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 const swap = (src, from, to) => {
@@ -32,6 +32,13 @@ const CONTROLS = [
   ["Skip is counted as Done", "Notify.js", "  if (how === 'done') mv.done = (mv.done || 0) + 1;", "  mv.done = (mv.done || 0) + 1;"],
   ["no Next one line", "Notify.js", "(after.length ? 'Next one around ' + moveClock_(after[0]) + '.' : 'That\\u2019s the last one today.')", "''"],
   ["the live handler ignores Done", "Slack.js", "    } else if (actionId === 'move_done' || actionId === 'move_skip') {", "    } else if (false) {"],
+  ["a question is logged as a workout", "GymTracker.js", "  if (/\\?/.test(t) || /^(what|how|when|why|where|who|can|could|should|would|will|do|does|did i|is|are|was|tell|show|remind|add|please)\\b/.test(t)) return null;", ""],
+  ["a bare no counts as not today", "GymTracker.js", "  if (/^(not today|skipped( (it|today))?", "  if (/^(no|not today|skipped( (it|today))?"],
+  ["the workout word can come anywhere", "GymTracker.js", "if (EVENING_TYPED_WORDS_[i][1].test(lead)) { type = EVENING_TYPED_WORDS_[i][0]; break; }", "if (words.some(function(w) { return EVENING_TYPED_WORDS_[i][1].test(w); })) { type = EVENING_TYPED_WORDS_[i][0]; break; }"],
+  ["'in 30 min' is read as details", "GymTracker.js", "if (minutes !== null && /^\\d/.test(String(text).trim())) return { kind: 'details'", "if (minutes !== null) return { kind: 'details'"],
+  ["typed answers before tonight's check-in", "GymTracker.js", "  try { if (!wasRecentlySent_('mobility_' + today, 1440)) return null; } catch (e) { return null; }", ""],
+  ["the minutes aren't saved", "GymTracker.js", "      if (p.minutes) sheet.getRange(row.rowNum, WK_MIN_COL_).setValue(p.minutes);", ""],
+  ["chat never asks", "Chat.js", "    var moveAnswer = typeof eveningTypedAnswer_ === 'function' ? eveningTypedAnswer_(trimmedMsg, new Date()) : null;", "    var moveAnswer = null;"],
 ].map(c => [c[0], b => ({ [c[1]]: swap(b[c[1]], c[2], c[3]) }), T]);
 
 let allBit = true;

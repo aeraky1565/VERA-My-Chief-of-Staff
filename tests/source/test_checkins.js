@@ -156,5 +156,49 @@ console.log('\nThe movement nudge');
   check('the live handler takes Done and Skip', /actionId === 'move_done' \|\| actionId === 'move_skip'/.test(extractFn(SLACK, 'handleSlackInteractionSync_')));
 }
 
+console.log('\nTyping an answer to the evening check-in');
+{
+  const mk = (log, sentToday) => {
+    const c = ctx(); c.clock = new Date(2026, 10, 19, 20, 30).getTime(); c.log = log; c.calls = []; c.cells = [];
+    vm.runInContext(/var EVENING_TYPED_WORDS_ = [^\n]*\n[^\n]*\n[^\n]*\]\];/.exec(GYM)[0] + '\n' + /var EVENING_TYPED_FILLER_ = .*;/.exec(GYM)[0] + '\n' +
+      ['eveningTypedParse_', 'eveningTypedReply_', 'eveningTypedAnswer_'].map(n => extractFn(GYM, n)).join('\n'), c);
+    c.WK_MIN_COL_ = 7; c.TABS = { GYM_LOG: 'Gym Log' }; c.wkEnsureCols_ = () => {};
+    c.wasRecentlySent_ = k => sentToday && k === 'mobility_2026-11-19';
+    c.getGymLog_ = () => c.log.map((s, i) => Object.assign({ rowNum: i + 2, title: s.title || s.type }, s));
+    c.getSpreadsheet = () => ({ getSheetByName: () => ({ getRange: (r, col) => ({ setValue: v => c.cells.push(r + ',' + col + '=' + v) }) }) });
+    c.logGymAttendance_ = (id, a) => { c.calls.push(a + ':' + id); c.log.forEach(s => { if (s.id === id) s.attended = a; }); };
+    c.webWorkoutAdd_ = e => { c.calls.push('add:' + e.parameter.type + ':' + e.parameter.minutes); c.log.push({ id: 'add', date: '2026-11-19', attended: 'Yes', type: e.parameter.type }); };
+    c.getConfigValues = () => ({ fitness_weekly_target: '4' }); c.wkTarget_ = cfg => parseInt(cfg.fitness_weekly_target, 10);
+    return c; };
+  const p = t => { const c = mk([], true); c.t = t; return JSON.stringify(vm.runInContext('eveningTypedParse_(t)', c)); };
+  check('"Gym, 45 min legs" reads as gym, 45 min, legs', p('Gym, 45 min legs') === J({ kind: 'workout', type: 'Gym', minutes: 45, note: 'legs' }));
+  check('"Went to the gym for 1.5 hours" reads as 90 min', p('Went to the gym for 1.5 hours') === J({ kind: 'workout', type: 'Gym', minutes: 90, note: '' }));
+  check('"walked 30 minutes" and "stretch 10 min hamstrings"', JSON.parse(p('walked 30 minutes')).type === 'Walk' && p('stretch 10 min hamstrings') === J({ kind: 'workout', type: 'Stretch', minutes: 10, note: 'hamstrings' }));
+  check('"not today", "skipped", "no workout today" are a no', ['not today', 'skipped', 'no workout today'].every(t => JSON.parse(p(t)).kind === 'none'));
+  check('a bare "no" isn’t (it may answer something else)', p('no') === 'null' && p('nope') === 'null');
+  check('questions and other sentences go to chat', ['how many gym sessions this week', 'what’s on tomorrow?', 'gym open tomorrow?', 'walk the dog at 6?', 'I need to book the gym', 'remind me in 30 min', 'in 30 min', 'yes'].every(t => p(t) === 'null'));
+  check('"45 min, legs" is details for today’s workout', p('45 min, legs') === J({ kind: 'details', type: '', minutes: 45, note: 'legs' }));
+  let c = mk([{ id: 'G-today', date: '2026-11-19', attended: '', type: 'Gym', title: 'GYM DAY A' }], true);
+  let r = c.eveningTypedAnswer_('Gym, 45 min legs', new c.Date());
+  check('it marks today’s planned gym as went, with its minutes and the note', J(c.calls) === J(['Yes:G-today']) && c.cells.includes('2,7=45') && c.cells.includes('2,2=GYM DAY A · legs'), J([c.calls, c.cells]));
+  check('…and answers as the mockup does', r === 'Logged: gym, 45 min, legs. That’s 1 of 4 this week.', r);
+  c = mk([{ id: 'tap', date: '2026-11-19', attended: 'Yes', type: 'Gym', title: 'Gym' }], true);
+  c.eveningTypedAnswer_('45 min, legs', new c.Date());
+  check('details after a tap go on the workout the tap logged', c.calls.length === 0 && c.cells.includes('2,7=45') && c.cells.includes('2,2=Gym · legs'), J(c.cells));
+  c = mk([], true);
+  r = c.eveningTypedAnswer_('walked 30 minutes', new c.Date());
+  check('nothing planned: it adds the walk with its minutes', J(c.calls) === J(['add:Walk:30']) && /^Logged: walk, 30 min\./.test(r), r);
+  c = mk([], true);
+  check('details with nothing logged today go to chat', c.eveningTypedAnswer_('45 min, legs', new c.Date()) === null && c.calls.length === 0);
+  c = mk([{ id: 'G-today', date: '2026-11-19', attended: '', type: 'Gym' }], false);
+  check('before tonight’s check-in went out, nothing is read as an answer', c.eveningTypedAnswer_('Gym, 45 min legs', new c.Date()) === null && c.calls.length === 0);
+  c = mk([{ id: 'G-today', date: '2026-11-19', attended: '', type: 'Gym' }], true);
+  r = c.eveningTypedAnswer_('not today', new c.Date());
+  check('"not today" marks today’s planned workout as skipped', J(c.calls) === J(['No:G-today']) && /^Logged: not today\./.test(r), r);
+  const CHAT = read('Chat.js');
+  const hook = CHAT.indexOf('eveningTypedAnswer_(trimmedMsg, new Date())');
+  check('chat checks it before the AI, after "note:"', hook > CHAT.indexOf('var noteMatch = trimmedMsg.match(') && hook < CHAT.indexOf('var history   = loadChatHistory_(sessionId);'));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

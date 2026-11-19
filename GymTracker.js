@@ -161,6 +161,91 @@ function eveningMoveLog_(kind) {
   return eveningReply_(kind, gymWeekDone_(getGymLog_(), today), target);
 }
 
+// ---- A typed answer to the evening check-in ("Gym, 45 min legs") -----------------------------
+var EVENING_TYPED_WORDS_ = [['Gym', /^(gym|lift(ed|ing)?|weights|workout|strength)$/], ['Walk', /^(walk(ed|ing)?)$/], ['Stretch', /^(stretch(ed|ing)?|mobility)$/],
+  ['Run', /^(run|ran|running|jog(ged|ging)?)$/], ['Swim', /^(swim|swam|swimming)$/], ['Yoga', /^(yoga|pilates)$/], ['Ride', /^(bike|biked|biking|cycl(e|ed|ing)|ride|rode)$/],
+  ['Hike', /^(hike|hiked|hiking)$/], ['Sport', /^(tennis|squash|pickleball|basketball|soccer|climbing|golf)$/]];
+var EVENING_TYPED_FILLER_ = /^(i|did|went|to|the|a|an|for|of|and|some|just|today|tonight|at|my|about|~)$/;
+
+/**
+ * Pure: a short reply to the evening check-in, read as a workout, or null when it isn't one
+ * (then it goes to chat as usual). → {kind: 'workout'|'none'|'details', type, minutes, note}
+ *   "Gym, 45 min legs" → workout Gym 45 "legs"     "walked 30 minutes" → workout Walk 30
+ *   "not today" / "skipped" → none                  "45 min, legs" → details 45 "legs" (for today's workout)
+ */
+function eveningTypedParse_(text) {
+  var t = String(text || '').trim().toLowerCase();
+  if (!t || t.length > 60 || t.split(/\s+/).length > 8) return null;
+  // A question is for chat, never a log ("how many gym sessions this week?").
+  if (/\?/.test(t) || /^(what|how|when|why|where|who|can|could|should|would|will|do|does|did i|is|are|was|tell|show|remind|add|please)\b/.test(t)) return null;
+  // No, only when it says so: a bare "no" may be answering something else in chat.
+  if (/^(not today|skipped( (it|today))?|skip(ping)? (it|today)|no (workout|gym|movement|exercise)( today)?|rest day|didn'?t (go|work out|move)( today)?)[.!]*$/.test(t)) return { kind: 'none' };
+  var minutes = null, m = t.match(/(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)\b/);
+  if (m) { minutes = Math.round(parseFloat(m[1]) * 60); t = t.replace(m[0], ' '); }
+  m = t.match(/(\d+)\s*(m|min|mins|minute|minutes)\b/);
+  if (m) { minutes = parseInt(m[1], 10); t = t.replace(m[0], ' '); }
+  var words = t.replace(/[^a-z0-9'\s-]/g, ' ').split(/\s+/).filter(Boolean), type = '';
+  // The workout word has to come first (after "I went to the…"), so a sentence that
+  // only mentions the gym further on isn't read as one.
+  var lead = words.filter(function(w) { return !EVENING_TYPED_FILLER_.test(w); })[0] || '';
+  for (var i = 0; i < EVENING_TYPED_WORDS_.length; i++) if (EVENING_TYPED_WORDS_[i][1].test(lead)) { type = EVENING_TYPED_WORDS_[i][0]; break; }
+  var dropped = false;
+  var rest = words.filter(function(w) {
+    if (type && !dropped && w === lead) { dropped = true; return false; }
+    return !EVENING_TYPED_FILLER_.test(w);
+  });
+  var note = rest.join(' ').trim().slice(0, 40);
+  if (minutes !== null && !(minutes > 0 && minutes <= 600)) minutes = null;
+  if (type) return { kind: 'workout', type: type, minutes: minutes, note: note };
+  if (minutes !== null && /^\d/.test(String(text).trim())) return { kind: 'details', type: '', minutes: minutes, note: note };   // "45 min, legs"; not "in 30 min"
+  return null;
+}
+/** Pure: "Logged: gym, 45 min, legs. That's 3 of 4 this week." */
+function eveningTypedReply_(p, type, weekDone, target) {
+  if (p.kind === 'none') return eveningReply_('none', weekDone, target);
+  var bits = [String(type || p.type || 'workout').toLowerCase()];
+  if (p.minutes) bits.push(p.minutes + ' min');
+  if (p.note) bits.push(p.note);
+  return 'Logged: ' + bits.join(', ') + '. That’s ' + weekDone + (target ? ' of ' + target : '') + ' this week.';
+}
+
+/**
+ * From chat (Chat.js), before the AI: a typed answer to tonight's evening check-in, logged
+ * to Health › Fitness like a tap, with its minutes and a note. Only after tonight's check-in
+ * went out, and only for a short reply that reads as one. → the reply, or null.
+ */
+function eveningTypedAnswer_(text, now) {
+  now = now || new Date();
+  var p = eveningTypedParse_(text);
+  if (!p) return null;
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  try { if (!wasRecentlySent_('mobility_' + today, 1440)) return null; } catch (e) { return null; }   // tonight's check-in went out
+  var sheet = getSpreadsheet().getSheetByName(TABS.GYM_LOG);
+  if (!sheet) return null;
+  var log = getGymLog_(), mine = log.filter(function(s) { return s.date === today; });
+  var type = p.type, row = null;
+  if (p.kind === 'none') {
+    mine.filter(function(s) { return !s.attended; }).forEach(function(s) { try { logGymAttendance_(s.id, 'No'); } catch (e) {} });
+  } else {
+    // The row this answer belongs to: today's same-type workout already logged (a tap, then
+    // the details), today's planned one, or — for details alone — today's latest one.
+    var same = function(s) { return String(s.type).toLowerCase() === String(type).toLowerCase(); };
+    if (p.kind === 'details') { row = mine.filter(function(s) { return s.attended === 'Yes'; }).pop() || mine.filter(function(s) { return !s.attended; })[0] || null; type = row ? row.type : 'Workout'; }
+    else row = mine.filter(function(s) { return s.attended === 'Yes' && same(s); })[0] || mine.filter(function(s) { return !s.attended && same(s); })[0] || null;
+    if (row) {
+      if (!row.attended) logGymAttendance_(row.id, 'Yes');
+      wkEnsureCols_(sheet);
+      if (p.minutes) sheet.getRange(row.rowNum, WK_MIN_COL_).setValue(p.minutes);
+      if (p.note && String(row.title).toLowerCase().indexOf(p.note) === -1) sheet.getRange(row.rowNum, 2).setValue(row.title + ' · ' + p.note);
+    } else if (p.kind === 'workout') {
+      webWorkoutAdd_({ parameter: { type: type, minutes: p.minutes || '' } });
+      if (p.note) { var after = getGymLog_().filter(function(s) { return s.date === today && s.attended === 'Yes' && same(s); }).pop(); if (after) sheet.getRange(after.rowNum, 2).setValue(type + ' · ' + p.note); }
+    } else return null;   // details, but nothing logged today to attach them to: let chat answer
+  }
+  var target = 0; try { target = wkTarget_(getConfigValues()); } catch (e) {}
+  return eveningTypedReply_(p, type, gymWeekDone_(getGymLog_(), today), target);
+}
+
 /**
  * Reads all rows from the Gym Log sheet.
  * @returns {Array<{id, title, date, attended, loggedAt, rowNum}>}
