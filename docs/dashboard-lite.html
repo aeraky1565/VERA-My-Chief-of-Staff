@@ -13073,6 +13073,144 @@ function JointPlan(props){var h=React.createElement,tb=props.tb,part=props.part,
     (cp.undated||[]).length?h('span',{key:'und',className:'jp-undated',style:{fontSize:12,color:C.warn}},'No due day yet: '+cp.undated.join(', ')+'. Set one on Bills to place it.'):null]);}
 // ---- /JointPlan ----
 
+// ---- CoverageTab (Health › Care › Coverage, issue #257) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Four tabs for looking things up: Cards (who has medical, dental and vision, and each card's numbers,
+// READ from the household cheat sheet; a private number shows on tap, then copies), Covered (from the
+// plan documents in Resources; search), FSA/HSA (balances from Health Accounts and "can I pay for it
+// with the FSA?"), Perks (Hinge, Maven…: what each is for, a yearly allowance, Log a session).
+var CVC={card:'#0d1b3e',br:'#1e3060',deep:'#070f1e',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',acc:'#8ab4f8',gold:'#d4b35a',ok:'#8fe3c4',warn:'#f6d27a',bad:'#ffb4a9',who:['#5c9eff','#c97ef2','#2bb5a0','#f0a35e']};
+var CV_PLAN_NAMES=['Medical','Dental','Vision'];
+function cvMoney_(n){if(n==null||isNaN(n))return '—';return '$'+Math.round(Number(n)).toLocaleString('en-US');}
+function cvDay_(s){var m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return s||'';return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1]+' '+(+m[3]);}
+function CoverageTab(props){var h=React.createElement,C=CVC;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];
+  var _h=React.useState(null),ha=_h[0],setHa=_h[1];
+  var _t=React.useState('cards'),tab=_t[0],setTab=_t[1];
+  var _p=React.useState(''),person=_p[0],setPerson=_p[1];
+  var _s=React.useState({}),shown=_s[0],setShown=_s[1];
+  var _q=React.useState(''),q=_q[0],setQ=_q[1];
+  var _pl=React.useState('Medical'),plan=_pl[0],setPlan=_pl[1];
+  var _a=React.useState(''),ask=_a[0],setAsk=_a[1];
+  var _r=React.useState(null),answer=_r[0],setAnswer=_r[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var _pf=React.useState(null),pform=_pf[0],setPform=_pf[1];
+  var load=function(){return apiGet(props.apiUrl,props.apiToken,{action:'coverage'}).then(function(r){setD(r||{ok:false});}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;load();
+    apiGet(props.apiUrl,props.apiToken,{action:'health_accounts'}).then(function(r){setHa(r&&r.ok?r:null);}).catch(function(){setHa(null);});},[props.apiUrl,props.apiToken]);
+  var flash=function(t){setMsg(t);setTimeout(function(){setMsg('');},5000);};
+  var num={fontVariantNumeric:'tabular-nums'};
+  var card=function(cls,kids,extra){return h('section',{className:'cv-card '+cls,style:Object.assign({background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:16,display:'flex',flexDirection:'column',gap:10,boxSizing:'border-box',minWidth:0},extra||{})},kids);};
+  var title=function(t,right){return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,font:"600 18px 'Space Grotesk',Inter,sans-serif"}},t),right?h('span',{style:{fontSize:12,color:C.mute}},right):null);};
+  var btn=function(primary){return {minHeight:44,padding:'0 14px',borderRadius:12,border:primary?0:'1px solid '+C.br,background:primary?C.gold:'transparent',color:primary?'#0b1430':C.txt,fontWeight:primary?700:600,fontSize:14,cursor:'pointer'};};
+  var chipBtn=function(on,cls,label,onClick,color){return h('button',{key:label,type:'button',className:cls,'aria-pressed':on?'true':'false',onClick:onClick,
+    style:{minHeight:40,padding:'0 12px',borderRadius:10,border:'1px solid '+(on?(color||'#5c7cc4'):C.br),background:on?'#1d2d57':'transparent',color:on?C.txt:C.soft,fontWeight:on?600:500,fontSize:13,cursor:'pointer'}},label);};
+  if(!d)return h('div',{className:'cv-tab',style:{color:C.mute,fontSize:13,padding:'12px 0'}},'Reading your coverage…');
+  if(!d.ok)return h('div',{className:'cv-tab cv-unavailable',style:{padding:14,borderRadius:12,background:C.card,border:'1px solid '+C.br,color:C.soft,fontSize:13}},d.error||'Coverage couldn’t be read.');
+  var people=d.people||[],who=person||people[0]||'';
+  var tabs=[['cards','Cards'],['covered','Covered'],['fsa','FSA / HSA'],['perks','Perks']];
+  var nav=h('nav',{'aria-label':'Coverage',className:'cv-nav',style:{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6}},tabs.map(function(t){var on=tab===t[0];
+    return h('button',{key:t[0],type:'button',className:'cv-nav-'+t[0],'aria-pressed':on?'true':'false',onClick:function(){setTab(t[0]);},
+      style:{minHeight:40,borderRadius:10,border:'1px solid '+(on?'#5c7cc4':C.br),background:on?'#1d2d57':'transparent',color:on?C.txt:C.soft,fontWeight:on?600:500,fontSize:13,cursor:'pointer',padding:0}},t[1]);}));
+  var body=null;
+  // ---- Cards ----
+  if(tab==='cards'){
+    var grid=d.grid||{};
+    var gridEl=card('cv-grid',[title('Who has what'),
+      h('div',{key:'g',style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) repeat('+Math.max(1,people.length)+',minmax(0,1fr))',fontSize:14}},
+        [h('span',{key:'h0',style:{padding:'6px 0',borderBottom:'1px solid '+C.br}})].concat(people.map(function(p,i){return h('span',{key:'h'+i,style:{padding:'6px 0',textAlign:'center',color:C.who[i%4],fontWeight:700,fontSize:12,borderBottom:'1px solid '+C.br}},p);}),
+          CV_PLAN_NAMES.reduce(function(acc,k,ri){var last=ri===CV_PLAN_NAMES.length-1;acc.push(h('span',{key:k,style:{padding:'11px 0',borderBottom:last?0:'1px solid '+C.line}},k));
+            people.forEach(function(p){var has=!!(grid[k]&&grid[k][p]);acc.push(h('span',{key:k+p,className:'cv-has '+(has?'yes':'no'),style:{padding:'11px 0',textAlign:'center',color:has?C.ok:C.warn,borderBottom:last?0:'1px solid '+C.line}},has?'✓ Yes':'✗ No'));});return acc;},[]))),
+      h('span',{key:'n',style:{fontSize:12,color:C.mute}},'From the household cheat sheet’s Insurance section. ✗ means no card there.')]);
+    var mine=(d.cards||[]).filter(function(c){return c.person===who;});
+    var field=function(c,f,i){var k=c.kind+'|'+c.person+'|'+f.label,open=!f.private||shown[k];
+      return h('div',{key:i,className:'cv-field',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,minHeight:44,borderTop:'1px solid '+C.line,fontSize:14}},
+        h('span',{style:{color:C.mute}},f.label),
+        h('span',{style:Object.assign({display:'flex',alignItems:'center',gap:8,minWidth:0,justifyContent:'flex-end'},num)},
+          h('span',{className:'cv-value',style:{overflowWrap:'anywhere',textAlign:'right'}},open?f.value:'••••'+String(f.value).slice(-4)),
+          open?h('button',{type:'button',className:'cv-copy','aria-label':'Copy '+f.label,onClick:function(){try{navigator.clipboard.writeText(f.value);flash('Copied '+f.label+'.');}catch(e){}},
+              style:{minHeight:36,padding:'0 10px',borderRadius:8,border:'1px solid '+C.br,background:'transparent',color:C.soft,fontSize:12,cursor:'pointer',flex:'none'}},'Copy'):
+            h('button',{type:'button',className:'cv-show','aria-label':'Show '+f.label,onClick:function(){var n=Object.assign({},shown);n[k]=true;setShown(n);},
+              style:{minHeight:36,padding:'0 10px',borderRadius:8,border:'1px solid '+C.br,background:'transparent',color:C.soft,fontSize:12,cursor:'pointer',flex:'none'}},'Show')));};
+    var docs=(d.doctors||[]).filter(function(x){return x.person===who;});
+    body=[gridEl,
+      h('div',{key:'ph',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,font:"600 18px 'Space Grotesk',Inter,sans-serif"}},'Insurance cards'),
+        h('div',{role:'group','aria-label':'Whose',style:{display:'flex',gap:6}},people.map(function(p,i){return chipBtn(who===p,'cv-person',p,function(){setPerson(p);},C.who[i%4]);}))),
+      mine.length?mine.map(function(c){return card('cv-ins cv-ins-'+c.kind.toLowerCase(),[h('div',{key:'t',style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('b',{style:{fontSize:15}},c.kind),h('span',{style:{fontSize:12,color:C.mute}},c.provider||'')),
+          h('div',{key:'f',style:{display:'flex',flexDirection:'column'}},c.fields.map(function(f,i){return field(c,f,i);}))],{key:c.kind,gap:4});}):
+        card('cv-none',[h('span',{key:'n',style:{fontSize:13,color:C.soft}},'No insurance cards for '+who+' in the household cheat sheet yet.')]),
+      CV_PLAN_NAMES.filter(function(k){return !(grid[k]&&grid[k][who]);}).map(function(k){return h('div',{key:'no'+k,className:'cv-missing',style:{border:'1px dashed #8a7330',borderRadius:14,padding:'12px 16px',fontSize:14}},h('b',null,k),h('span',{style:{color:C.warn}},' · '+who+' isn’t covered'));}),
+      docs.length?card('cv-doctors',[title('Doctors'),h('div',{key:'d',style:{display:'flex',flexDirection:'column'}},docs.map(function(x,i){return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8,minHeight:40,alignItems:'center',borderTop:i?'1px solid '+C.line:0,fontSize:14}},h('span',{style:{color:C.mute}},x.kind+' · '+x.label),h('span',{style:{textAlign:'right',overflowWrap:'anywhere'}},x.value));}))]):null,
+      h('span',{key:'src',style:{fontSize:12,color:'#6f7fa6',lineHeight:1.45}},'Read from the household cheat sheet (Home › Household). Change a number there and it shows here.')];}
+  // ---- Covered ----
+  if(tab==='covered'){
+    var rows=(d.covered||[]).filter(function(r){return r.plan===plan&&(!q||(r.service+' '+r.detail).toLowerCase().indexOf(q.toLowerCase())!==-1);});
+    var group=function(status,color,label){var list=rows.filter(function(r){return r.status===status;});
+      return card('cv-'+(status==='Covered'?'yes':'no'),[h('h3',{key:'t',style:{margin:0,font:"600 17px 'Space Grotesk',Inter,sans-serif",color:color}},label+' · '+list.length),
+        list.length?list.map(function(r){return h('div',{key:r.id,className:'cv-row',style:{display:'flex',flexDirection:'column',gap:2,padding:'8px 0',borderTop:'1px solid '+C.line}},
+          h('b',{style:{fontSize:14}},r.service),r.detail?h('span',{style:{fontSize:13,color:C.soft}},r.detail):null,
+          h('span',{style:{fontSize:11,color:C.mute}},[r.source,r.page?'p. '+r.page:'',r.edited?'corrected':''].filter(Boolean).join(' · ')));}):h('span',{key:'e',style:{fontSize:13,color:C.mute}},q?'Nothing matches “'+q+'”.':'Nothing listed yet.')]);};
+    body=[h('label',{key:'s',style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:C.mute}},'Search what’s covered',
+        h('input',{type:'search',className:'cv-search',value:q,onChange:function(ev){setQ(ev.target.value);},placeholder:'e.g. physical therapy',style:{minHeight:44,padding:'0 12px',borderRadius:10,border:'1px solid '+C.br,background:C.deep,color:C.txt,fontSize:15,boxSizing:'border-box',width:'100%'}})),
+      h('div',{key:'p',role:'group','aria-label':'Plan',style:{display:'flex',gap:6,flexWrap:'wrap'}},CV_PLAN_NAMES.map(function(p){return chipBtn(plan===p,'cv-plan',p,function(){setPlan(p);});})),
+      (d.covered||[]).length?[group('Covered',C.ok,'✓ Covered'),group('Not covered',C.warn,'✗ Not covered')]:
+        card('cv-empty',[h('span',{key:'e',style:{fontSize:13,color:C.soft,lineHeight:1.5}},(d.docs&&d.docs.plan&&d.docs.plan.length)?'VERA hasn’t read the plan documents yet: '+d.docs.plan.join(', ')+'.':'Add the medical, dental and vision plan summaries to Resources (category HR & Benefits), then read them here.')]),
+      h('button',{key:'r',type:'button',className:'cv-read',disabled:busy,onClick:function(){setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'coverage_read_docs'}).then(function(r){setBusy(false);flash('Read '+r.from.join(', ')+': '+r.rows+' lines.');return load();}).catch(function(e){setBusy(false);flash(e.message);});},style:Object.assign(btn(false),{alignSelf:'flex-start'})},busy?'Reading…':'Read the plan documents'),
+      h('span',{key:'n',style:{fontSize:12,color:'#6f7fa6',lineHeight:1.45}},'Not listed? Ask in chat: “is a sleep study covered?” VERA reads the plan documents and names the page.')];}
+  // ---- FSA / HSA ----
+  if(tab==='fsa'){
+    var fsa=ha&&ha.fsa&&ha.fsa[0],hsa=ha&&ha.hsa;
+    var tile=function(cls,label,value,sub,color){return h('div',{key:cls,className:cls,style:{background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:4,minWidth:0}},
+      h('span',{style:{fontSize:11,letterSpacing:'.06em',textTransform:'uppercase',color:C.mute,fontWeight:600}},label),h('span',{style:Object.assign({font:"600 24px 'Space Grotesk',Inter,sans-serif",color:color||C.txt},num)},value),h('span',{style:{fontSize:12,color:C.soft,lineHeight:1.4}},sub));};
+    var verdictColor={yes:C.ok,no:C.warn,maybe:C.acc},verdictWord={yes:'Yes',no:'Probably not',maybe:'It depends'};
+    var go=function(){var t=ask.trim();if(!t)return;setBusy(true);setAnswer(null);apiPost(props.apiUrl,props.apiToken,{action:'coverage_ask',q:t}).then(function(r){setBusy(false);setAnswer(r);load();}).catch(function(e){setBusy(false);flash(e.message);});};
+    body=[h('div',{key:'b',style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}},
+        tile('cv-fsa','FSA '+(fsa?fsa.year:'')+' left',fsa&&fsa.balance!=null?cvMoney_(fsa.balance):'—',fsa?'use by '+cvDay_(fsa.useBy)+(fsa.daysLeft!=null&&fsa.daysLeft>=0?' · '+fsa.daysLeft+' days':''):'no FSA listed',C.warn),
+        tile('cv-hsa','HSA balance',hsa&&hsa.balance!=null?cvMoney_(hsa.balance):'—',hsa?(hsa.balanceAsOf?'typed '+cvDay_(hsa.balanceAsOf):'type it from your HSA site')+' · update on Money › FSA & HSA':'no HSA listed')),
+      card('cv-ask',[title('Can I pay for it with the FSA?'),
+        h('label',{key:'l',style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:C.mute}},'What are you buying?',
+          h('div',{style:{display:'flex',gap:8}},h('input',{type:'text',className:'cv-ask-input',value:ask,onChange:function(ev){setAsk(ev.target.value);},onKeyDown:function(ev){if(ev.key==='Enter')go();},placeholder:'e.g. electric toothbrush',
+            style:{flex:1,minWidth:0,minHeight:44,padding:'0 12px',borderRadius:10,border:'1px solid '+C.br,background:C.deep,color:C.txt,fontSize:15,boxSizing:'border-box'}}),
+            h('button',{type:'button',className:'cv-ask-go',disabled:busy||!ask.trim(),onClick:go,style:btn(true)},busy?'…':'Check'))),
+        answer&&answer.ok?h('div',{key:'a',className:'cv-answer cv-'+answer.verdict,style:{display:'flex',flexDirection:'column',gap:4,padding:12,borderRadius:10,background:C.deep,border:'1px solid '+verdictColor[answer.verdict]}},
+          h('b',{style:{color:verdictColor[answer.verdict],fontSize:14}},verdictWord[answer.verdict]+' · '+answer.item),h('span',{style:{fontSize:13,color:C.soft,lineHeight:1.5}},answer.why),
+          h('span',{style:{fontSize:12,color:C.mute}},'From: '+(answer.source||'—'))):null,
+        (d.questions||[]).length?h('div',{key:'r',className:'cv-recent',style:{display:'flex',flexDirection:'column'}},h('span',{style:{fontSize:12,color:C.mute,paddingBottom:4}},'Recent questions'),
+          d.questions.slice(0,6).map(function(x,i){return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8,minHeight:36,alignItems:'center',borderTop:'1px solid '+C.line,fontSize:13}},h('span',null,x.question),h('b',{style:{color:verdictColor[x.verdict]||C.soft}},verdictWord[x.verdict]||x.verdict));})):null]),
+      card('cv-rules',[title('The rules, short'),
+        h('span',{key:'1',style:{fontSize:13,color:C.soft,lineHeight:1.5}},'Counts: copays, deductible, prescriptions, glasses and contacts, dental, medical supplies, over-the-counter medicine and feminine care.'),
+        h('span',{key:'2',style:{fontSize:13,color:C.soft,lineHeight:1.5}},'Keep the receipt or the EOB: a card receipt alone isn’t proof.'),
+        h('span',{key:'3',style:{fontSize:13,color:C.soft,lineHeight:1.5}},'Also in chat: “is a heating pad FSA eligible?”')])];}
+  // ---- Perks ----
+  if(tab==='perks'){
+    var log=function(p,kind){setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'perk_log',perkId:p.id,kind:kind}).then(function(){setBusy(false);flash('Logged '+kind+' for '+p.name+'.');return load();}).catch(function(e){setBusy(false);flash(e.message);});};
+    var unlog=function(l){apiPost(props.apiUrl,props.apiToken,{action:'perk_log_delete',id:l.id}).then(load).catch(function(e){flash(e.message);});};
+    var perkCard=function(p){return card('cv-perk',[title(p.name,(p.forWho&&p.forWho!=='Both'?p.forWho+' · ':'')+(p.left.length?d.year+' · resets Jan 1':'')),
+      p.what?h('span',{key:'w',style:{fontSize:13,color:C.soft,lineHeight:1.5}},p.what):null,
+      p.left.length?h('div',{key:'a',style:{display:'grid',gridTemplateColumns:'repeat('+Math.min(2,p.left.length)+',minmax(0,1fr))',gap:10}},p.left.map(function(a){
+        return h('div',{key:a.kind,className:'cv-allow',style:{background:C.deep,borderRadius:10,padding:12,display:'flex',flexDirection:'column',gap:6}},
+          h('span',{style:{fontSize:12,color:C.mute,textTransform:'capitalize'}},a.kind),
+          h('span',{className:'cv-left',style:Object.assign({font:"600 22px 'Space Grotesk',Inter,sans-serif"},num)},String(a.left),h('span',{style:{fontSize:13,fontWeight:400,color:C.soft}},' of '+a.of+' left')),
+          h('div',{'aria-hidden':'true',style:{display:'flex',gap:3}},Array.from({length:a.of}).map(function(_,i){return h('span',{key:i,style:{flex:1,height:6,borderRadius:3,background:i<a.used?'#5c9eff':C.br}});})),
+          h('button',{type:'button',className:'cv-log','aria-label':'Log '+a.kind+' for '+p.name,disabled:busy||a.left<=0,onClick:function(){log(p,a.kind);},style:Object.assign(btn(a.kind===p.left[0].kind),{minHeight:40,fontSize:13,textTransform:'none'})},a.left<=0?'All used':'Log '+a.kind));})):null,
+      (p.log||[]).length?h('div',{key:'l',style:{display:'flex',flexDirection:'column'}},p.log.slice(0,4).map(function(l){return h('div',{key:l.id,className:'cv-log-row',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,minHeight:40,borderTop:'1px solid '+C.line,fontSize:13,color:C.soft}},
+        h('span',{style:{textTransform:'capitalize'}},l.kind),h('span',{style:{display:'flex',alignItems:'center',gap:8}},cvDay_(l.date),h('button',{type:'button','aria-label':'Remove this '+l.kind+' on '+cvDay_(l.date),onClick:function(){unlog(l);},style:{minWidth:36,minHeight:36,borderRadius:8,border:'1px solid '+C.br,background:'transparent',color:C.mute,cursor:'pointer'}},'×')));})):null,
+      h('div',{key:'b',style:{display:'flex',gap:10,flexWrap:'wrap'}},p.link?h('a',{href:p.link,target:'_blank',rel:'noopener noreferrer',style:{minHeight:44,display:'inline-flex',alignItems:'center',fontSize:13,color:C.acc}},'Open '+p.name+' ↗'):null,
+        h('button',{type:'button',className:'cv-perk-edit',onClick:function(){setPform(Object.assign({},p));},style:Object.assign(btn(false),{minHeight:40,fontSize:13})},'Edit'))],{key:p.id});};
+    var save=function(){setBusy(true);apiPost(props.apiUrl,props.apiToken,Object.assign({action:'perk_save'},pform)).then(function(){setBusy(false);setPform(null);flash('Saved.');return load();}).catch(function(e){setBusy(false);flash(e.message);});};
+    var del=function(){setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'perk_delete',id:pform.id}).then(function(){setBusy(false);setPform(null);return load();}).catch(function(e){setBusy(false);flash(e.message);});};
+    var inp=function(label,k,ph){return h('label',{key:k,style:{display:'flex',flexDirection:'column',gap:5,fontSize:13,color:C.mute}},label,h('input',{type:'text','aria-label':label,value:pform[k]||'',placeholder:ph||'',onChange:function(ev){var n=Object.assign({},pform);n[k]=ev.target.value;setPform(n);},
+      style:{minHeight:44,padding:'0 12px',borderRadius:10,border:'1px solid '+C.br,background:C.deep,color:C.txt,fontSize:15,boxSizing:'border-box',width:'100%'}}));};
+    body=(d.perks||[]).map(perkCard).concat([
+      pform?card('cv-perk-form',[title(pform.id?'Edit '+pform.name:'Add a perk'),inp('Name','name','e.g. Hinge'),inp('Who can use it','forWho','Both, or a name'),inp('What it’s for','what'),inp('Link','link','https://…'),
+        inp('Yearly allowance (optional)','allowances','e.g. therapy: 6; coaching: 6'),
+        h('div',{key:'b',style:{display:'flex',gap:10,flexWrap:'wrap'}},h('button',{type:'button',className:'cv-perk-save',disabled:busy,onClick:save,style:btn(true)},'Save'),h('button',{type:'button',onClick:function(){setPform(null);},style:btn(false)},'Cancel'),
+          pform.id?h('button',{type:'button',className:'cv-perk-del',onClick:del,style:Object.assign(btn(false),{color:C.bad,marginLeft:'auto'})},'Remove'):null)],{key:'form'}):
+      h('button',{key:'add',type:'button',className:'cv-perk-add',onClick:function(){setPform({name:'',forWho:'Both',what:'',link:'',allowances:''});},style:{minHeight:52,borderRadius:14,border:'1px dashed #33467a',background:'transparent',color:C.soft,fontSize:14,fontWeight:600,cursor:'pointer'}},'＋ Add a perk')]);}
+  return h('div',{className:'cv-tab',style:{display:'flex',flexDirection:'column',gap:14,color:C.txt}},nav,
+    msg?h('div',{role:'status',className:'cv-msg',style:{fontSize:13,color:C.ok}},msg):null,body);}
+// ---- /CoverageTab ----
+
 // ---- Finance Summary Lite tab -----------------------------------------------
 
 function FinSummaryLiteTab({ apiUrl, apiToken, part }) {
@@ -14150,7 +14288,7 @@ var VN_GROUPS={
     {id:'places',label:'Places',icon:'🌍',items:['countries','bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags','gifts']}],
   career:[{id:'direction',label:'Direction',icon:'🧭',items:['northstar','readiness']},{id:'proof',label:'Proof',icon:'📎',items:['evidence','credentials']},
     {id:'search',label:'Search',icon:'🔍',items:['brand','market']},{id:'agents',label:'Agents',icon:'🔁',items:['pipeline','exchange']},{id:'network',label:'Network',icon:'🤝',items:['network']}],
-  health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['prescriptions','appointments']},
+  health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['coverage','prescriptions','appointments']},
     {id:'family',label:'Family',icon:'👶',items:['family_planning']}],
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
@@ -14248,7 +14386,7 @@ const TOP_TABS = [
 const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 'coupons'], prescriptions: ['family', 'prescriptions'],
   wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
 const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '🥇 Which card' }, { id: 'coupons', label: '🎟️ Coupons' }];
-const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
+const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'coverage', label: '🩺 Coverage' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
 const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'bucketlist', label: '🪣 Bucket List' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'bags', label: '🧳 Our bags' }, { id: 'gifts', label: '🎁 Gifts' }];
 // Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
 const HF_GROUPS_LITE = [
@@ -15957,6 +16095,7 @@ function App() {
           <VeraTileNav name="lite_family" label="Family" tabs={LITE_FAMILY_TABS} sub={familySub} onPick={setFamilySub} />
         )}
         {activeTab === 'family' && familySub === 'planning' && <FamilyPlanningPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />}
+        {activeTab === 'family' && familySub === 'coverage' && <CoverageTab apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'prescriptions' && <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'wishlists' && <WishListsView apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'contacts' && <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />}

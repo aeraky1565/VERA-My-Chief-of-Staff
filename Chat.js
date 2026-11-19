@@ -990,6 +990,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     'ACTION:gift_bought|{item}|{for whom, or blank}|{amount, or blank}  \u2014 a gift or souvenir bought on the trip under way (or just ended): ticks it off Travel \u203a Gifts, or adds it\n' +
     // Reference documents
+    'ACTION:fsa_check|{item}  \u2014 is an item or service FSA / HSA eligible? Answers from the FSA documents in Resources (Coverage.js). Use it whenever asked whether something is FSA, HSA or HCSA eligible.\n' +
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
     'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
     'ACTION:log_trip_lesson|{category}|{scope}|{trip}|{lesson}  \u2014 record a lesson to apply to FUTURE trips. ' +
@@ -2663,6 +2664,12 @@ function executeActions_(rawText) {
       }
 
       // ACTION:read_resource|{name_or_id} — fetch document content; result triggers a second Claude pass
+      else if (type === 'fsa_check') {
+        var fcItem = (args[0] || '').trim();
+        var fc = fcItem ? cvFsaCheck_(fcItem, 'chat') : { ok: false, error: 'no item' };
+        executed.push(fc.ok ? 'FSA_CHECK:' + fc.item + ' → ' + fc.verdict + ' — ' + fc.why + ' (source: ' + fc.source + ')' : 'FSA_CHECK_ERROR:' + (fc.error || 'unknown'));
+      }
+
       else if (type === 'read_resource') {
         var rrQuery = (args[0] || '').trim();
         if (rrQuery) {
@@ -2999,7 +3006,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
   // Second pass — if read_resource was executed, feed the content back to Claude
   var resourceContents = actionResult.executed.filter(function(x) {
-    return x.indexOf('READ_RESOURCE_CONTENT:') === 0 || x.indexOf('READ_RESOURCE_ERROR:') === 0;
+    return x.indexOf('READ_RESOURCE_CONTENT:') === 0 || x.indexOf('READ_RESOURCE_ERROR:') === 0 || x.indexOf('FSA_CHECK') === 0;
   });
   if (resourceContents.length > 0) {
     var resourceMsg = 'The following document content was retrieved:\n\n' + resourceContents.join('\n\n') +

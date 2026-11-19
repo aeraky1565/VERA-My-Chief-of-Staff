@@ -221,6 +221,15 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 `update_tax_document` calls `txStampReceived_` before writing the status (column 11, Received On; cleared when set back to Not received). `txUsual_` matches last year's copy by `txKey_` (form, issuer, owner) and gives `expected` (a year on, `txNextYear_`) and `daysLate` while still not received; `txWhen_` words it. `checkTaxLate_` runs right after `checkTaxDocuments_` and keeps one Medium flag per document 14+ days late through `upsertKeyedFlags_`. `txNeeds_` / `tax_needs` give the Needs you row (`FhNeeds` reads it; it opens Finances › Tax).
 
+### Coverage
+
+**Health › Care › Coverage** (`CoverageTab`, `Coverage.js`), first under Care, and on lite under Family. It's for quick lookups.
+
+- **Cards:** a grid of who has medical, dental and vision; then, per person, each card with its provider and every line from the household cheat sheet (Insurance › "Medical – Name" and so on). Private numbers show as ••••1234 until you tap **Show**, then **Copy**. The doctors and pharmacy are listed under the cards. VERA reads the cheat sheet each time and copies nothing out of it.
+- **Covered:** what each plan covers and doesn't, with the document and page, and a search. Add the medical, dental and vision plan summaries to **Resources** (category HR & Benefits), then tap **Read the plan documents**. A row you correct in the **Coverage** tab and mark Edited = Yes stays as you wrote it.
+- **FSA / HSA:** the FSA balance left and its use-by date, the HSA balance, and a box to ask "is this FSA eligible?". The answer gives a verdict, why, and which document it came from. You can also ask in chat. Recent questions are listed.
+- **Perks:** Hinge with its therapy and coaching sessions left this year and a **Log** button for each, Maven with what it's for, and **Add a perk** for more.
+
 ### Prescriptions: refilled today, refill flags, her lite Today (`Rx.js`, `PrescriptionsTab`)
 
 `rx_refilled` (`webRxRefilled_`) writes Last Filled and `rxNext_` (Days Supply, else the last gap, else blank). `checkRefills_` runs after `checkTaxLate_` and keeps one `rx_refill_<id>` flag per active prescription due within 7 days through `upsertKeyedFlags_`. The shared NeedsYou block takes an optional `rx` (the lite Today passes it; the full Home doesn't) and lists `d.who`'s refills (Victoria by default) due within 7 days. On the screen, `rxCounts_`, `rxSupply_` and `rxWhen_` do the numbers.

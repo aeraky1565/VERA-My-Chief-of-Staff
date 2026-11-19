@@ -126,7 +126,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
   - Home: Kitchen, House, Chores, Hosting;
   - Money: This month, Saving, Our cards, Net worth;
   - Travel: My trips, Bucket list, Profiles, Gifts;
-  - Family: Planning, Prescriptions, Wish lists, Addresses;
+  - Family: Planning, Coverage, Prescriptions, Wish lists, Addresses;
   - More: Projects, Settings, and Your assistants.
 - **Under the bar** are the same tabs as before, with the same ids (`TOP_TABS`), so People & access and old links still work. A hidden tab has no button and no icon.
 - **On iPhone**, the page runs to the screen edges (`viewport-fit=cover`), and the bar pads itself clear of the home indicator.
@@ -187,6 +187,7 @@ VERA's chat system supports the following action categories, each backed by a li
 | **Takeouts** | add_takeout_restaurant, add_takeout_item, delete_takeout_restaurant, delete_takeout_item |
 | **Pantry / Purchase History** | add_purchase, log_receipt_items (image → line items) |
 | **Career** | add_career_win, add_career_goal, update_career_position |
+| **Coverage** | fsa_check (is this FSA / HSA eligible? answered from the FSA documents in Resources, logged to Coverage Questions) |
 | **Prescriptions** | add_prescription, mark_prescription_refilled |
 | **Health Appointments** | log_health_visit (creates DR: calendar event), add_health_appointment, query_health_due |
 | **Credit Cards** | log_card_used, mark_perk_used, update_loyalty_points |
@@ -218,6 +219,17 @@ Runs nightly as Step 0q. Assembles a lightweight cross-domain snapshot and evalu
 | 7 | **Health Neglect Compound** | Overdue health appointments + no gym sessions this week |
 
 Config overrides: `pattern_max_flags` (default 2 per run), `pattern_dedup_days` (default 7 days before same pattern can re-fire).
+
+### Coverage: cards, what the plans cover, FSA questions, perks (`Coverage.js`, `CoverageTab`)
+
+**Health › Care › Coverage** (first under Care; on lite, Family › Coverage). One place to look things up instead of the insurance apps. Four tabs:
+
+- **Cards.** Who has medical, dental and vision (a ✓ / ✗ grid), then a person switch and each of their cards: the provider, then every line from the household cheat sheet. Member IDs, group numbers and the like are hidden (••••1234) until **Show**, then **Copy**. The doctors and pharmacy come from the cheat sheet's Medical / Dental / Vision sections. A plan someone doesn't have is said plainly. Nothing is copied: the cards are read from the HouseholdInfo tab (Insurance › "Medical – Name", "Dental – Name", "Vision – Name") each time.
+- **Covered.** Covered and not-covered services per plan, with a search, the source document and page. **Read the plan documents** (owner) sends the Resources rows that look like plan summaries (category HR & Benefits; names or tags with medical, dental, vision, SBC or plan) to Claude and fills VERA's **Coverage** tab. A row you correct (Edited = Yes) is never overwritten or duplicated by a later read.
+- **FSA / HSA.** The FSA left and its use-by date, and the HSA balance (from Health Accounts). An ask box: "electric toothbrush" → Yes / Probably not / It depends, why, and the document it came from. The FSA documents are cached for 6 hours; the last 10 questions are kept in **Coverage Questions**. Chat answers the same question with `ACTION:fsa_check`. Deductibles and spending aren't tracked.
+- **Perks.** Employer perks in VERA's **Perks** tab (Name, For, What, Link, Allowances like `therapy:6; coaching:6`, Resets). Hinge (the owner's) and Maven are added once. A perk with an allowance shows how many are left this year and a **Log** button per kind (refused once the year's allowance is used, or for a kind it doesn't have); uses go in **Perk Log**. **Add a perk** for more.
+
+Routes: GET `coverage`; POST `coverage_read_docs`, `perk_save`, `perk_delete` (owner only), `coverage_ask`, `perk_log`, `perk_log_delete`.
 
 ### Signal Learning & Noise Filtering (`SignalLearning.js`)
 

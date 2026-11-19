@@ -171,6 +171,7 @@ function doGet(e) {
       case 'bills_schedule':          return jsonOut_(webGetBillsSchedule_()); // BillSchedule.js — tracker amounts + VERA's Bill Schedule
       case 'bills_reconcile':         return jsonOut_(webGetBillsReconcile_(e));
       case 'budget_actuals':          return jsonOut_(webGetBudgetActuals_(e)); // plan vs actual per Budget line, from the uploads
+      case 'coverage':                return jsonOut_(webGetCoverage_()); // Coverage.js — Health › Care › Coverage: cards (from the cheat sheet), covered, FSA questions, perks
       case 'checkin':                 return jsonOut_(webGetCheckin_()); // FinSummary.js — the Summary page and the quarterly check-in
       case 'phone_plan':              return jsonOut_(webGetPhonePlan_()); // PhonePlan.js — reads the phone tracker, never writes it
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
@@ -741,6 +742,13 @@ function doPost(e) {
       // Writing to the budget tracker's Household Split tab (Budget.js): input cells only, owner only.
       case 'budget_write':               return jsonOut_(peopleOwnerOnly_() || webBudgetWrite_(body));
       case 'budget_add_bill':            return jsonOut_(peopleOwnerOnly_() || webBudgetAddBill_(body));
+      // Health › Care › Coverage (Coverage.js): reading the plan documents and editing perks is the owner's.
+      case 'coverage_read_docs':         return jsonOut_(peopleOwnerOnly_() || webCoverageReadDocs_());
+      case 'coverage_ask':               return jsonOut_(webCoverageAsk_(body));
+      case 'perk_save':                  return jsonOut_(peopleOwnerOnly_() || webPerkSave_(body));
+      case 'perk_delete':                return jsonOut_(peopleOwnerOnly_() || webPerkDelete_(body));
+      case 'perk_log':                   return jsonOut_(webPerkLog_(body));
+      case 'perk_log_delete':            return jsonOut_(webPerkLogDelete_(body));
       case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
       case 'bills_schedule_account':     return jsonOut_(webSaveBillAccount_(body));
       case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));
