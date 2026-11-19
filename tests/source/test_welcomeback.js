@@ -171,11 +171,12 @@ console.log('\nThe morning briefing');
   const mn = fnSrc(CODE, 'morningNudge');
   const iClose = mn.indexOf("if (typeof awayCloseIfEnded_ === 'function') awayCloseIfEnded_();"), iAway = mn.indexOf('sendAwayEditionEmail_();');
   check('a switch whose date passed is closed before the away check', iClose !== -1 && iAway !== -1 && iClose < iAway);
-  check('both no-flags mornings send the catch-up on its own', (mn.match(/if \(typeof sendAwayBackAlone_ === 'function'\) sendAwayBackAlone_\(\);\s*\/\/ #244\s*return;/g) || []).length === 2);
+  check('a morning with nothing to say sends the catch-up on its own', (mn.match(/if \(typeof sendAwayBackAlone_ === 'function'\) sendAwayBackAlone_\(\);\s*return;/g) || []).length === 1 && mn.indexOf('sendAwayBackAlone_()') > mn.indexOf('if (meIsEmpty_('));
   const iTasks = mn.indexOf("nightlyStep_(ctx, 'getOpenTasks'"), iSec = mn.indexOf("welcomeBack = awayBackSection_(openTasks);");
   check('the section is built from the open tasks this run already read', iTasks !== -1 && iSec > iTasks);
-  check('it sits at the top of the email, under the greeting', /Good morning, Ahmed\.<\/p>' \+\s*\(welcomeBack \? '<p[^']*>Welcome home\. Here’s what piled up\.<\/p>' \+ welcomeBack\.html : ''\) \+\s*'<p[^']*>VERA flagged/.test(mn));
-  check('…and in the plain text', /'Good morning, Ahmed\.',\s*'',\s*welcomeBack \? welcomeBack\.text \+ '\\n' : false,/.test(mn));
+  const MEJS = read('MorningEmail.js');
+  check('it sits at the top of the email, under the greeting', /welcomeHtml: welcomeBack \? welcomeBack\.html : '', welcomeText:/.test(mn) && /if \(d\.welcomeHtml\) body \+= '<p[^']*>Welcome home\. Here’s what piled up\.<\/p>' \+ d\.welcomeHtml;\s*if \(needs\.length\) body \+= head\('Needs you today'\)/.test(MEJS));
+  check('…and in the plain text', /welcomeText: welcomeBack \? welcomeBack\.text : ''/.test(mn) && /if \(d\.welcomeText\) lines\.push\('', d\.welcomeText\);\s*var sect/.test(MEJS));
   const iSend = mn.indexOf("Logger.log('Morning nudge sent (Slack/'"), iClear = mn.indexOf('if (welcomeBack && typeof awayBackClear_ === \'function\') awayBackClear_();');
   check('cleared only after the briefing went out', iSend !== -1 && iClear > iSend);
 }

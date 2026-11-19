@@ -260,7 +260,7 @@ console.log('\nthe wiring');
   check('its own notification row: sent if due while away', /\{ key: 'pto_strategy',[^\n]*whileAway: 'due' \}/.test(CODE));
   check('the nightly step, right after the PTO year turns over', /nightlyStep_\(ctx, 'checkPTOYearRollover_', checkPTOYearRollover_\);\n[^\n]*\n\s*nightlyStep_\(ctx, 'checkPTOStrategy_', checkPTOStrategy_\);/.test(CODE));
   check('its flags are automatic, with what clears them', /prefix: 'PTOPLAN\|REQ\|',\s+clears: 'Clears once the PTO shows on the work calendar\.'/.test(FT) && /prefix: 'PTOPLAN\|',/.test(FT));
-  check('the morning email’s Time off section', /ptoPlanSection = ptsEmailSection_\(\)/.test(CODE) && /\(ptoPlanSection \? ptoPlanSection\.html : ''\)/.test(CODE));
+  check('the morning email’s Time off section', /ptoPlanSection = ptsEmailSection_\(\)/.test(CODE) && /ptoHtml: ptoPlanSection \? ptoPlanSection\.html : ''/.test(CODE));
   check('fix: the monthly review reads threeToOneStatus', /ptoStats\.threeToOneStatus \|\| ptoStats\['3-2-1'\]/.test(MR));
   check('fix: the Config seeder writes pto_-prefixed keys', /\['pto_gap_calendars',/.test(CODE) && !/\['gap_calendars',/.test(CODE) && /\['pto_holiday_keywords',/.test(CODE));
 }

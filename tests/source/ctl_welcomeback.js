@@ -34,8 +34,8 @@ const CONTROLS = [
   ['the trip ending records nothing', b => ({ 'Pacing.js': swap(b['Pacing.js'], "    if (wasActiveEnd && typeof awayCloseIfEnded_ === 'function') awayCloseIfEnded_('', endedTrip);\n", "") })],
   ['the record not in the pacing state', b => ({ 'Settings.js': swap(b['Settings.js'], "'AWAY_HELD', 'AWAY_BACK'],", "'AWAY_HELD'],") })],
   ['the morning run never closes an expired switch', b => ({ [C]: swap(b[C], "    if (typeof awayCloseIfEnded_ === 'function') awayCloseIfEnded_();\n", "") })],
-  ['a no-flags morning drops it', b => ({ [C]: swap(b[C], "      Logger.log('Morning nudge: no flags found, skipping email.');\n      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();   // #244\n", "      Logger.log('Morning nudge: no flags found, skipping email.');\n") })],
-  ['not in the email', b => ({ [C]: swap(b[C], " + welcomeBack.html : '') +", " : '') +") })],
+  ['an empty morning drops it', b => ({ [C]: swap(b[C], "      if (typeof sendAwayBackAlone_ === 'function') sendAwayBackAlone_();\n      return;", "      return;") })],
+  ['not in the email', b => ({ [C]: swap(b[C], "welcomeHtml: welcomeBack ? welcomeBack.html : '', welcomeText:", "welcomeHtml: '', welcomeText:") })],
   ['cleared before it was sent', b => ({ [C]: swap(b[C], "    // Shown once: the catch-up is cleared only after the briefing went out (#244).\n    if (welcomeBack && typeof awayBackClear_ === 'function') awayBackClear_();\n", "").replace("    var welcomeBack = null;\n", "    var welcomeBack = null; if (typeof awayBackClear_ === 'function') awayBackClear_();\n") })],
 ];
 let allBit = true;

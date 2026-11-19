@@ -100,10 +100,11 @@ Object.assign(S, { getSuppressedKeyPatterns_: () => [], wasRecentlySent_: () => 
 run('checkBillsDue_(new Date(), 8, {})');
 check('the nudge: tracker amounts, unpaid only, never income', sent.some(x => /Internet/.test(x) && /\$60\.00/.test(x)) && !sent.some(x => /Rent|paycheck/i.test(x)), J(sent));
 const morning = between(CODE, "  sub_('bills', function() {", "  // ---- Expiring coupons");
-Object.assign(S, { focusRows: [], tz: 'UTC', today: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })(), dayOfMon: DAY, ss_: () => S.getSpreadsheet(), sub_: (n, fn) => fn(), escapeHtml_: x => String(x) });
+Object.assign(S, { out: { needs: [], week: [] }, meDay: () => 'Thu', focusRows: [], tz: 'UTC', today: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })(), dayOfMon: DAY, ss_: () => S.getSpreadsheet(), sub_: (n, fn) => fn(), escapeHtml_: x => String(x) });
 block(morning);
 const mo = S.focusRows.join('\n');
 check('the morning email: due soon from the tracker', /Internet \(\$60\.00\)/.test(mo) && /DUE TODAY/.test(mo) && !/Rent/.test(mo), mo.replace(/<[^>]*>/g, ''));
+check('…and in the new email’s Needs you today', S.out.needs.some(x => x.chip === 'Due' && /^Internet bill, \$60\.00, due today$/.test(x.text) && x.area === 'Bills') && !J(S.out).match(/Rent/), J(S.out));
 
 console.log('\nClaude, Chat and the weekly snapshot');
 const cl = between(CL, '    var tz_b     = Session.getScriptTimeZone();', '  } catch (billErr) {');
