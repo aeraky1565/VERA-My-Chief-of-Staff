@@ -56,7 +56,7 @@ const CONTROLS = {
                                               '  setApiHealthState_(state);\n  if (removed.length) {'),
   }),
   'the prune is not wired into the nightly run': b => ({
-    'Code.js': b['Code.js'].replace(/\n *nightlyStep_\(ctx, 'pruneApiHealthState_', pruneApiHealthState_\);/, ''),
+    'NightlyRunner.js': b['NightlyRunner.js'].replace(/\n *S\('pruneApiHealthState_', \d, function\(\) \{ pruneApiHealthState_\(\); \}\),/, ''),
   }),
   'the clock cannot be injected (the test can only pass by waiting 14 days)': b => ({
     'ApiHealth.js': b['ApiHealth.js'].replace('  var now     = nowMs || Date.now();',

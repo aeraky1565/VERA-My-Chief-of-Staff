@@ -9,6 +9,7 @@ const FILES = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
+const swapNR_ = (s, a, b) => { if (s.indexOf(a) === -1) throw new Error('anchor moved: ' + a.slice(0, 60)); return s.replace(a, b); };
 const CONTROLS = {
   // These two went VACUOUS when the start-marker logic moved into
   // jobStartedAndDied_ — they matched text that no longer existed, so the mutation
@@ -93,15 +94,14 @@ const CONTROLS = {
       '    var lastRun  = 0;'),
   }),
   'nightlyRun stops writing the start marker': b => ({
-    'Code.js': b['Code.js'].replace(/\n    try \{\n      PropertiesService\.getScriptProperties\(\)\n        \.setProperty\('LAST_NIGHTLY_START'[\s\S]*?\n    \} catch \(startErr\) \{[^\n]*\}/, ''),
+    'NightlyRunner.js': swapNR_(b['NightlyRunner.js'], "  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n", ''),
   }),
-  'the start marker moves after the first step': b => {
-    const s = b['Code.js'];
-    const m = /\n    try \{\n      PropertiesService\.getScriptProperties\(\)\n        \.setProperty\('LAST_NIGHTLY_START'[\s\S]*?\n    \} catch \(startErr\) \{[^\n]*\}/.exec(s)[0];
-    return { 'Code.js': s.replace(m, '').replace('    // Step 1b: Suggest due dates', m + '\n    // Step 1b: Suggest due dates') };
+  'the start marker moves after the first part': b => {
+    const s = swapNR_(b['NightlyRunner.js'], "  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n", '');
+    return { 'NightlyRunner.js': swapNR_(s, '  nightlyRunPart_(st);\n}\n\n/** A one-off trigger', '  nightlyRunPart_(st);\n  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_START', new Date(now).toISOString()); } catch (e) {}\n}\n\n/** A one-off trigger') };
   },
   'the completion marker is removed': b => ({
-    'Code.js': b['Code.js'].replace(/\n    try \{\n      PropertiesService\.getScriptProperties\(\)\n        \.setProperty\('LAST_NIGHTLY_RUN'[\s\S]*?\n    \} catch \(lnrErr\) \{\}/, ''),
+    'NightlyRunner.js': swapNR_(b['NightlyRunner.js'], "  try { PropertiesService.getScriptProperties().setProperty('LAST_NIGHTLY_RUN', new Date().toISOString()); } catch (e) {}\n", ''),
   }),
   // The guard is no longer at the prune's call site — it is in nightlyStep_, where
   // every step gets it. So this reverts the thing that actually matters now.

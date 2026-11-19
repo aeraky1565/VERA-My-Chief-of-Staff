@@ -409,7 +409,7 @@ const CONTROLS = {
       '  keys.forEach(function(key) {\n    var m;\n    if (!/^(day_plan_|TDB_SENT_|PERK_NOTIFY_)/.test(key)) { removed.push(key); return; }'),
   }),
   'the prune is not wired into the nightly run': b => ({
-    'Code.js': b['Code.js'].replace(/\n *nightlyStep_\(ctx, 'pruneScriptProperties_', pruneScriptProperties_\);/, ''),
+    'NightlyRunner.js': b['NightlyRunner.js'].replace(/\n *S\('pruneScriptProperties_', \d, function\(\) \{ pruneScriptProperties_\(\); \}\),/, ''),
   }),
   'the clock cannot be injected': b => ({
     'AddressBook.js': b['AddressBook.js'].replace('  var now   = nowMs || Date.now();',

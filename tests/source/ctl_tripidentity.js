@@ -103,14 +103,14 @@ const CONTROLS = {
                'if (k === targetId) b = r;'),
   }),
   'adoption is not wired into the nightly pass': b => ({
-    'Code.js': fs.readFileSync(SRC_DIR + '/Code.js', 'utf8').replace(
-      /    nightlyStep_\(ctx, 'adoptLegacyTripKeys_', function\(\) \{\n[\s\S]*?\n    \}\);\n/,
+    'NightlyRunner.js': fs.readFileSync(SRC_DIR + '/NightlyRunner.js', 'utf8').replace(
+      /    S\('adoptLegacyTripKeys_'[^\n]*\n/,
       ''),
   }),
   'adoption runs AFTER pre-trip instead of before': b => ({
-    'Code.js': (() => {
-      const c = fs.readFileSync(SRC_DIR + '/Code.js', 'utf8');
-      const step = /    nightlyStep_\(ctx, 'adoptLegacyTripKeys_', function\(\) \{\n[\s\S]*?\n    \}\);\n/.exec(c)[0];
+    'NightlyRunner.js': (() => {
+      const c = fs.readFileSync(SRC_DIR + '/NightlyRunner.js', 'utf8');
+      const step = /    S\('adoptLegacyTripKeys_'[^\n]*\n/.exec(c)[0];
       const after = "    S('checkPostTripCapture_', 1, function() { checkPostTripCapture_(); }),\n";
       return c.replace(step, '').replace(after, after + step);
     })(),

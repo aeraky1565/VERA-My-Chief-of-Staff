@@ -9,8 +9,8 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 
 const CONTROLS = {
   'the whole pass is gone (today\'s behaviour: flags never close)': b => ({
-    'Code.js': b['Code.js'].replace(
-      /    nightlyStep_\(ctx, 'closeExpiredPerkFlags_'[^\n]*\n/, ''),
+    'NightlyRunner.js': b['NightlyRunner.js'].replace(
+      /    S\('closeExpiredPerkFlags_'[^\n]*\n/, ''),
   }),
   'it writes TRUE instead of \'Yes\'': b => ({
     'Code.js': b['Code.js'].replace(

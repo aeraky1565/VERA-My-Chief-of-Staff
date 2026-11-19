@@ -12,6 +12,7 @@ const FILES = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
+const swapR_ = (s, a, b) => { if (s.indexOf(a) === -1) throw new Error('anchor moved: ' + a.slice(0, 60)); return s.replace(a, b); };
 const CONTROLS = {
   // ---- what gets deleted --------------------------------------------------
   'the marker check is removed (it deletes everything in the window)': b => ({
@@ -102,28 +103,19 @@ const CONTROLS = {
   }),
 
   // ---- the wiring ---------------------------------------------------------
-  'the nightly sweep moves into the head': b => {
-    const s = b['Code.js'];
-    const m = /    \/\/ Step 0r: Clear VERA's own perk reminder events[\s\S]*?\n    \}\);\n/.exec(s)[0];
-    return { 'Code.js': s.replace(m, '').replace(
-      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),",
-      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),\n" + m) };
-  },
-  'it runs in BOTH halves': b => {
-    const s = b['Code.js'];
-    const m = /    \/\/ Step 0r: Clear VERA's own perk reminder events[\s\S]*?\n    \}\);\n/.exec(s)[0];
-    return { 'Code.js': s.replace(
-      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),",
-      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),\n" + m) };
-  },
+  'the nightly sweep moves up among the flag writers': b => ({
+    'NightlyRunner.js': swapR_(b['NightlyRunner.js'], "S('purgePastPerkReminderEvents_', 5,", "S('purgePastPerkReminderEvents_', 3,"),
+  }),
+  'it runs twice a night': b => ({
+    'NightlyRunner.js': swapR_(b['NightlyRunner.js'], "    S('purgePastPerkReminderEvents_', 5, function() { purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false); }),\n", "    S('purgePastPerkReminderEvents_', 5, function() { purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false); }),\n    S('purgePastPerkReminderEvents2_', 5, function() { purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false); }),\n"),
+  }),
   'the nightly sweep uses the 400-day backlog window every night': b => ({
-    'Code.js': b['Code.js'].replace(
+    'NightlyRunner.js': swapR_(b['NightlyRunner.js'],
       'purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false);',
       'purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, false);'),
   }),
   'the nightly sweep is removed': b => ({
-    'Code.js': b['Code.js'].replace(
-      /    \/\/ Step 0r: Clear VERA's own perk reminder events[\s\S]*?\n    \}\);\n/, ''),
+    'NightlyRunner.js': swapR_(b['NightlyRunner.js'], "    S('purgePastPerkReminderEvents_', 5, function() { purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false); }),\n", ''),
   }),
   'the dashboard actions are unregistered': b => ({
     'WebApp.js': b['WebApp.js']

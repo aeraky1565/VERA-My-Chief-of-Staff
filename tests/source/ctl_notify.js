@@ -38,7 +38,7 @@ const CONTROLS = [
   ['sendNudge_ skips the gate', on('Reminders.js', "if (notifKey && typeof notifGate_ === 'function') {", "if (false) {"), SRV],
   ['"Reminder sent" is back', on('Reminders.js', "  if (!delivered) {\n    try { sendSlackLog_(", "  {\n    try { sendSlackLog_(delivered ? '\\u23f0 Reminder sent' : "), SRV],
   ['the email never shows what was held', on('Code.js', "var meHeld = meHeldSplit_(typeof notifHeldList_ === 'function' ? notifHeldList_() : []);", "var meHeld = meHeldSplit_([]);"), SRV],
-  ['no count line', on('Code.js', "try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + notifCountLine_(notifCounts_().yesterday)); } catch (ncErr) {}", ''), SRV],
+  ['no count line', on('NightlyRunner.js', "    try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + nightlyCountLine_(", "    try { if (false) sendSlackLog_('📊 ' + nightlyCountLine_("), SRV],
   ['the weekend memo pings Slack again', on('WeekendPlanner.js', "  if (typeof notifGate_ !== 'function' || notifGate_('weekend_memo', 'Weekend memo')) {", "  sendSlack_('vera-notifications', '🗓️ Weekend memo is ready — check your email.');\n  if (true) {"), SRV],
   ['no sleep row', on('Slack.js', "  if (sleepHours === null || sleepHours === undefined) row('hours',", "  if (false) row('hours',"), SRV],
   ['the old rules run again', on('Reminders.js', "    function() { checkMovement_(now, cfg); },", "    function() { checkMovement_(now, cfg); },\n    function() { checkErgonomicBreak_(hour, isWeekday, cfg); },"), SRV],

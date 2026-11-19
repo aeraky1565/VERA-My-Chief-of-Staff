@@ -101,8 +101,8 @@ const CONTROLS = {
   // One per site. A revert at any one of them costs a full scan and changes no output,
   // which is exactly why each needs its own control.
   'the nightly collect step goes back to the live scan': b => ({
-    'Code.js': swap(b['Code.js'],
-      '      events    = getUpcomingEventsCached_();', '      events    = getUpcomingEvents();'),
+    'NightlyRunner.js': swap(b['NightlyRunner.js'],
+      '      var events = getUpcomingEventsCached_(),', '      var events = getUpcomingEvents(),'),
   }),
   'buildCalendarMetrics_ goes back to the live scan': b => ({
     'Summaries.js': swap(b['Summaries.js'],

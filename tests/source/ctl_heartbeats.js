@@ -29,8 +29,7 @@ const CONTROLS = {
   }),
 
   // The same mistake in every other tracked job.
-  'nightlyRun gains an escaping return':      b => ({ 'Code.js': escapeReturn(b['Code.js'], 'nightlyRun') }),
-  'nightlyRunTail gains an escaping return':  b => ({ 'Code.js': escapeReturn(b['Code.js'], 'nightlyRunTail') }),
+  'the finished night gains an escaping return': b => ({ 'NightlyRunner.js': escapeReturn(b['NightlyRunner.js'], 'nightlyFinish_') }),
   'hourlyCheck gains an escaping return':     b => ({ 'Reminders.js': escapeReturn(b['Reminders.js'], 'hourlyCheck') }),
   'checkFlightStatuses_ gains one':           b => ({ 'FlightStatus.js': escapeReturn(b['FlightStatus.js'], 'checkFlightStatuses_') }),
   'runEmailScan_ gains one':                  b => ({ 'EmailParser.js': escapeReturn(b['EmailParser.js'], 'runEmailScan_') }),
@@ -38,12 +37,8 @@ const CONTROLS = {
   'scanHoaWebsite_ gains one':                b => ({ 'NeighborhoodWatcher.js': escapeReturn(b['NeighborhoodWatcher.js'], 'scanHoaWebsite_') }),
 
   // Recorded on the happy path instead of in a finally: a thrown run records nothing.
-  'the nightly heartbeat moves out of the finally': b => ({
-    'Code.js': b['Code.js']
-      .replace("    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}\n", '')
-      .replace("    Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');",
-               "    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}\n" +
-               "    Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');"),
+  'the finished night stops recording its heartbeat': b => ({
+    'NightlyRunner.js': b['NightlyRunner.js'].replace("  try { recordHeartbeat_('nightlyRun'); } catch (e) {}\n", ''),
   }),
   'the morning heartbeat moves out of the finally': b => ({
     'Code.js': b['Code.js']

@@ -20,9 +20,10 @@ const CONTROLS = [
   ['the grace week setting not kept within 0–60', swapIn(['Code.js'], 'return isNaN(v) ? 7 : Math.max(0, Math.min(60, v));', 'return isNaN(v) ? 7 : v;')],
   ['the route sends coupons past their grace week', swapIn(['WebApp.js'], '    if (st.gone && !used) return;\n', '')],
   ['the route leaves a US date as it is', swapIn(['WebApp.js'], '    if (st.iso) obj.Expires = st.iso;\n', '')],
-  ['the purge back as the night’s last step', b => { if (b['Code.js'].indexOf(EARLY) === -1) throw new Error('anchor moved: early coupon steps');
-    const s = b['NightlyRunner.js'].replace(EARLY, ''); const t = "    S('checkTaxDocuments_', 3, function() { checkTaxDocuments_(); }),\n"; if (s.indexOf(t) === -1) throw new Error('anchor moved: tax step');
-    return { 'NightlyRunner.js': s.replace(t, t + "    S('checkExpiringCoupons_', 1, function() { checkExpiringCoupons_(); }),\n") }; }],
+  ['the purge runs before the expiring-coupon check', b => {
+    const s = b['NightlyRunner.js'], p = "    S('purgeExpiredCoupons_', 5, function() { purgeExpiredCoupons_(); }),\n", c = "    S('checkExpiringCoupons_', 1, function() { checkExpiringCoupons_(); }),\n";
+    if (s.indexOf(p) === -1 || s.indexOf(c) === -1) throw new Error('anchor moved: coupon steps');
+    return { 'NightlyRunner.js': s.replace(p, '').replace(c, p + c) }; }],
   ['expired coupons stay in the live list (full)', swapIn(FULL, 'if(cpUsed_(c)||cpExpired_(c))return false;', 'if(cpUsed_(c))return false;')],
   ['expired coupons stay in the live list (lite)', swapIn(LITE, 'live = sorted.filter(c => !cpExpired_(c))', 'live = sorted')],
   ['not scratched off', swapIn(ALL, "strike={textDecoration:'line-through',textDecorationColor:'#9aa6c4aa',color:'#6b7590'}", "strike={color:'#6b7590'}")],

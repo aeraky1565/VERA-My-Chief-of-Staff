@@ -31,7 +31,7 @@ const CONTROLS = [
   ['renew writes outside the lock', b => ({ [R]: swap(b[R], "  return veraLocked_(function() {\n    var sheet = getSpreadsheet().getSheetByName(TABS.VEHICLES);\n    var f = {}; f[col] = date;", "  return (function(fn) { return fn(); })(function() {\n    var sheet = getSpreadsheet().getSheetByName(TABS.VEHICLES);\n    var f = {}; f[col] = date;") }), NODE],
   ['miles not stamped', b => ({ [W]: swap(b[W], "  if (fields['Current Mileage'] !== undefined && fields['Current Mileage'] !== '' && fields['Mileage Updated'] === undefined) {", "  if (false) {") }), NODE],
   ['an older tab gets no new column', b => ({ [W]: swap(b[W], "  if (sheet.getMaxColumns && need > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());\n", "") }), NODE],
-  ['not in the nightly run', b => ({ [C]: swap(b[C], "    S('checkVehicleRenewals_', 3, function() { checkVehicleRenewals_(); }),\n", "") }), NODE],
+  ['not in the nightly run', b => ({ ['NightlyRunner.js']: swap(b['NightlyRunner.js'], "    S('checkVehicleRenewals_', 3, function() { checkVehicleRenewals_(); }),\n", "") }), NODE],
   ['held while away', b => ({ [C]: swap(b[C], "stale miles once a month', locked: false, whileAway: 'due' }", "stale miles once a month', locked: false, whileAway: 'hold' }") }), NODE],
   ['the reminder button on every flag', b => ({ [APP]: swap(b[APP], "var m=/^vehicle_renewal_(.+)_(registration|insurance|service|emission|safety|warranty_b2b|warranty_pt)_(\\d{4}-\\d{2}-\\d{2})$/.exec(String(key||''));", "var m=/^(.+)_(.+)_(.+)$/.exec(String(key||''));") }), NODE],
   ['Renewed… offers today, not a year on', card("setVals(act==='renew'?{date:vhPlusYear_(it.date)}", "setVals(act==='renew'?{date:vhToday_()}"), UI],

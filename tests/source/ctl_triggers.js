@@ -20,17 +20,16 @@ const CONTROLS = {
   // made the tail duplicate on every run.
   'the delete guard misses one handler (the original bug)': b => ({
     'Code.js': b['Code.js'].replace(
-      '    if (handlers.indexOf(trigger.getHandlerFunction()) !== -1) {',
-      "    if (handlers.indexOf(trigger.getHandlerFunction()) !== -1 &&\n" +
-      "        trigger.getHandlerFunction() !== 'nightlyRunTail') {"),
+      '    if (handlers.indexOf(h) !== -1 || retired.indexOf(h) !== -1) {',
+      "    if ((handlers.indexOf(h) !== -1 || retired.indexOf(h) !== -1) && h !== 'morningNudge') {"),
   }),
   'nothing is deleted at all': b => ({
     'Code.js': b['Code.js'].replace(
-      /  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, ''),
+      /  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    var h = [^\n]*\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, ''),
   }),
   'the deletes are interleaved with the creates': b => ({
     'Code.js': b['Code.js']
-      .replace(/  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, '')
+      .replace(/  ScriptApp\.getProjectTriggers\(\)\.forEach\(function\(trigger\) \{\n    var h = [^\n]*\n    if \(handlers\.indexOf[\s\S]*?\n  \}\);\n/, '')
       .replace('    s.build(ScriptApp.newTrigger(s.handler).timeBased()).create();',
                "    ScriptApp.getProjectTriggers().forEach(function(t) {\n" +
                "      if (t.getHandlerFunction() === s.handler) ScriptApp.deleteTrigger(t);\n" +
@@ -39,7 +38,7 @@ const CONTROLS = {
   }),
   'it deletes every trigger in the project, including other modules\'': b => ({
     'Code.js': b['Code.js'].replace(
-      '    if (handlers.indexOf(trigger.getHandlerFunction()) !== -1) {',
+      '    if (handlers.indexOf(h) !== -1 || retired.indexOf(h) !== -1) {',
       '    if (true) {'),
   }),
   'a handler is created without being in the spec list': b => ({
@@ -68,15 +67,11 @@ const CONTROLS = {
       '        return t.atHour(NIGHT).everyDays(1).inTimezone(tz);',
       '        return t.atHour(NIGHT).inTimezone(tz);'),
   }),
-  'the tail no longer wraps past midnight': b => ({
-    'Code.js': b['Code.js'].replace(
-      '        return t.atHour((NIGHT + 1) % 24).everyDays(1).inTimezone(tz);',
-      '        return t.atHour(NIGHT + 1).everyDays(1).inTimezone(tz);'),
+  'the retired second-half trigger is left in place': b => ({
+    'Code.js': b['Code.js'].replace('    if (handlers.indexOf(h) !== -1 || retired.indexOf(h) !== -1) {', '    if (handlers.indexOf(h) !== -1) {'),
   }),
-  'the tail hardcodes midnight instead of following the head': b => ({
-    'Code.js': b['Code.js'].replace(
-      '        return t.atHour((NIGHT + 1) % 24).everyDays(1).inTimezone(tz);',
-      '        return t.atHour(0).everyDays(1).inTimezone(tz);'),
+  'setup also deletes a night in progress': b => ({
+    'Code.js': b['Code.js'].replace("  var retired = ['nightlyRunTail'];", "  var retired = ['nightlyRunTail', 'nightlyContinue'];"),
   }),
   'the flight poller is given a timezone': b => ({
     'Code.js': b['Code.js'].replace(

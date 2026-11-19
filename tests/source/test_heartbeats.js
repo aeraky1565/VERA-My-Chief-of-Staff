@@ -128,9 +128,20 @@ check('the registry was parsed and has jobs', jobs.length >= 8, JSON.stringify(j
 // A delivery marker is recorded after an action, not by a trigger entry point.
 const entryPoints = jobs.filter(j => j.indexOf(':') === -1);
 check('…and most of them are trigger entry points',
-      entryPoints.length >= 8, JSON.stringify(entryPoints));
+      entryPoints.length >= 7, JSON.stringify(entryPoints));
 
-entryPoints.forEach(job => {
+// The night continues itself in parts (NightlyRunner.js, #256): a part that hands off must
+// NOT record (the night isn't done), so its heartbeat is recorded once, in nightlyFinish_,
+// which every finished night goes through and which has no early return.
+{
+  const fin = findFunction('nightlyFinish_');
+  let rets = 0;
+  if (fin) walkOwn(fin.node.body, n => { if (n.type === 'ReturnStatement') rets++; });
+  check('nightlyRun: the finished night records its heartbeat, on its only path (nightlyFinish_)',
+        !!fin && containsHeartbeat(fin.node, 'nightlyRun') && rets === 0, fin ? rets + ' return(s)' : 'no nightlyFinish_');
+}
+
+entryPoints.filter(job => job !== 'nightlyRun').forEach(job => {
   const f = findFunction(job);
   if (!f) { check(job + ': the function exists', false, 'no top-level declaration found'); return; }
 

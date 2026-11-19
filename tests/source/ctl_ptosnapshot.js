@@ -112,9 +112,9 @@ const CONTROLS = {
     'PTO.js': b['PTO.js'].replace('  stats.subTimings = ptoSubs;\n', ''),
   }),
   'the breakdown gets its own inline formatter': b => ({
-    'Code.js': b['Code.js'].replace(
-      'var ptoSub = slowestNightlySteps_(ptoStats && ptoStats.subTimings, 11);',
-      'var ptoSub = ((ptoStats && ptoStats.subTimings) || []).map(function(t) { ' +
+    'NightlyRunner.js': b['NightlyRunner.js'].replace(
+      'st.vars.ptoSub = slowestNightlySteps_(stats && stats.subTimings, 11);',
+      'st.vars.ptoSub = ((stats && stats.subTimings) || []).map(function(t) { ' +
       "return t.name + ' ' + (t.ms / 1000).toFixed(1) + 's'; });"),
   }),
   'one block is left untimed': b => ({

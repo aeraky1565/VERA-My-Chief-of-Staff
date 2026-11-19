@@ -34,7 +34,7 @@ const CONTROLS = [
   ['a done job leaves its task open', b => ({ [H]: swap(b[H], "    else sheet.getRange(i + 2, 5).setValue('Done');", "") })],
   ['off still flags', b => ({ [H]: swap(b[H], "return v === 'task' || v === 'off' ? v : 'flag';", "return v === 'task' ? v : 'flag';") })],
   ['the nightly reset clears quarterly chores again', b => ({ [K]: swap(b[K], "  if (isLastDayOfMonth)  toReset.push('Monthly');\n", "  if (isLastDayOfMonth)  toReset.push('Monthly');\n  if (isLastDayOfMonth)  toReset.push('Quarterly');\n") })],
-  ['no nightly reminders', b => ({ [K]: swap(b[K], "    S('hfSyncUpkeepReminders_', 3, function() { hfSyncUpkeepReminders_(); }),\n", "") })],
+  ['no nightly reminders', b => ({ ['NightlyRunner.js']: swap(b['NightlyRunner.js'], "    S('hfSyncUpkeepReminders_', 3, function() { hfSyncUpkeepReminders_(); }),\n", "") })],
   ['the chores read drops upkeep state', b => ({ [W]: swap(b[W], "      if (up) obj.upkeep = up;\n", "") })],
   ['the done route is missing', b => ({ [W]: swap(b[W], "      case 'chore_upkeep_done':     return jsonOut_(webUpkeepDone_(e));\n", "") })],
   ['Plan it again copies the guests too', b => ({ [H]: swap(b[H], "return { id: '', title: c.title, type: c.type, date: '', start: c.start, end: c.end, place: c.place, guests: [],", "return { id: '', title: c.title, type: c.type, date: '', start: c.start, end: c.end, place: c.place, guests: c.guests,") })],
