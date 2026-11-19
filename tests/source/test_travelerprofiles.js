@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Travel › Travelers › Profiles (TravelerProfiles.js, issue #227 Profiles A): the last-4 rule,
 // cleaning, the one-time copy of the old Traveler Profiles tab, the passports the visa checks
 // read, visas held covering a country, the reminders, the child gate, the routes over an
@@ -163,7 +164,7 @@ console.log('\nthe wiring');
 {
   check('Traveler Items is declared, with its headers', /TRAVELER_ITEMS:\s+'Traveler Items'/.test(CODE) && HEAD && HEAD.length === 13 && HEAD[6] === 'Last 4');
   check('no header asks for a full number', !HEAD.some(h => /number|ktn/i.test(h)));
-  check('the Travel Documents notification and the nightly step', /key: 'travel_docs'/.test(CODE) && /nightlyStep_\(ctx, 'tpNightly_', tpNightly_\)/.test(CODE));
+  check('the Travel Documents notification and the nightly step', /key: 'travel_docs'/.test(CODE) && /S\('tpNightly_', \d, function\(\) \{ tpNightly_\(\); \}\)/.test(NR__));
   check('routes: tp_get, tp_save, tp_delete; the old profile routes still answer', /case 'tp_get':\s+return jsonOut_\(webTpGet_\(\)\)/.test(WEB) && /case 'tp_save':\s+return jsonOut_\(webTpSave_\(body\)\)/.test(WEB) && /case 'tp_delete':\s+return jsonOut_\(webTpDelete_\(body\)\)/.test(WEB) && /case 'get_profiles':/.test(WEB));
   check('WebApp.js no longer reads the old tab itself', !/function webGetProfiles_\(/.test(WEB) && !/function webSaveProfile_\(/.test(WEB));
 }

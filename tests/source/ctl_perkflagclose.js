@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_pfc');
-const FILES = ['Code.js', 'WebApp.js'];
+const FILES = ['NightlyRunner.js', 'Code.js', 'WebApp.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 

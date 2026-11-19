@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Life tab server rules (Life.js, issue #222) on invented data. Explore: which view an interest
 // lands in, the trip a debrief came from, duplicates merged, lessons found for a trip, Giving's
 // cleaning, totals and the Tax offer, weekend wishes, and the one-time Wish List move. Every
@@ -227,7 +228,7 @@ console.log('\nGrowth wiring');
 check('practice is the Habits log: one habit per goal, made on first log', /var res = addHabit_\(g\.title/.test(extractFn(LG, 'lgEnsureHabit_')) && /logHabitCompletion_\(hid, d,/.test(extractFn(LG, 'lgLogPractice_')));
 check('a second log the same day adds minutes, it is not a second row', /var total = lgMinutes_\(existing\.notes\) \+ m/.test(extractFn(LG, 'lgLogPractice_')));
 check('focus keeps the old status in step', /updateGoal_\(goalId, \{ status: fields\.focus === 'now' \? 'Doing' : fields\.focus === 'done' \? 'Done' : 'To Do' \}\)/.test(LG));
-check('the nudge is in Notifications and runs nightly', /\{ key: 'growth_nudge',/.test(CODE) && /nightlyStep_\(ctx, 'lgNightly_', lgNightly_\);/.test(CODE) && /sendNudge_\(d\.key, 'Growth: ' \+ d\.title, msg, 'growth_nudge'\)/.test(LG));
+check('the nudge is in Notifications and runs nightly', /\{ key: 'growth_nudge',/.test(CODE) && /S\('lgNightly_', \d, function\(\) \{ lgNightly_\(\); \}\)/.test(NR__) && /sendNudge_\(d\.key, 'Growth: ' \+ d\.title, msg, 'growth_nudge'\)/.test(LG));
 check('…at most once a week per goal', /wasRecentlySent_\(d\.key, 60 \* 24 \* 8\)/.test(LG));
 check('VERA writes no calendar', !/createEvent|createAllDayEvent|setTitle|deleteEvent/.test(LG + LIFE));
 

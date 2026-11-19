@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // The family Christmas lists, read by STRUCTURE (WishLists.js).
 //
 // The old reader took getParagraphs(), which returns every table cell as its own
@@ -242,7 +243,7 @@ console.log('\nflags: our unbought gifts, Dec 1–25');
 console.log('\nwiring');
 check('get_wish_lists is served by the new reader', /case 'get_wish_lists':\s+return jsonOut_\(webGetFamilyWishLists_\(\)\);/.test(WEB) && !/function webGetFamilyWishLists_/.test(WEB));
 check('the old paragraph reader is gone', !/\.getParagraphs\(/.test(WL));
-check('the nightly steps run', /nightlyStep_\(ctx, 'seedWishListInitialsConfig_', seedWishListInitialsConfig_\);/.test(CODE) && /nightlyStep_\(ctx, 'checkWishListGifts_', checkWishListGifts_\);/.test(CODE));
+check('the nightly steps run', /S\('seedWishListInitialsConfig_', \d, function\(\) \{ seedWishListInitialsConfig_\(\); \}\)/.test(NR__) && /S\('checkWishListGifts_', \d, function\(\) \{ checkWishListGifts_\(\); \}\)/.test(NR__));
 check('the docs are never written to', !/\.(setText|appendParagraph|insert\w+|replaceText|clear)\(/.test(WL));
 check('tbWishLists is in the README', /tbWishLists/.test(README));
 

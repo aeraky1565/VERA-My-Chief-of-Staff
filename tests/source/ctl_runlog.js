@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_runlog_out');
 
-const FILES = ['RunLog.js', 'Code.js', 'Watchdog.js', 'VERALog.js', 'WebApp.js', 'Reminders.js', 'GymTracker.js', 'FlightStatus.js', 'EmailParser.js',
+const FILES = ['NightlyRunner.js', 'RunLog.js', 'Code.js', 'Watchdog.js', 'VERALog.js', 'WebApp.js', 'Reminders.js', 'GymTracker.js', 'FlightStatus.js', 'EmailParser.js',
   'MailCounter.js', 'NeighborhoodWatcher.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
@@ -39,7 +39,9 @@ const CONTROLS = [
   ['the prune drops recent rows', rl('if (isNaN(t) || t >= cutoff) break;', 'if (isNaN(t)) break;'), SRV],
   ['the heartbeat doesn’t complete the row', on('Watchdog.js', '  try { runLogFinish_(job); } catch (rlErr) {}\n', ''), SRV],
   ['the hourly watchdog doesn’t sweep', on('Watchdog.js', '  try { runLogSweep_(null, null, Date.now()); }', '  try { 0; }'), SRV],
-  ['the nightly run isn’t logged', on('Code.js', "  try { runLogStart_('nightlyRun', arguments[0]); } catch (rlErr) {}", ''), SRV],
+  ['the nightly run isn’t logged', on('NightlyRunner.js', "  try { runLogStart_('nightlyRun', arguments[0]); } catch (rlErr) {}\n  var now = Date.now();", '  var now = Date.now();'), SRV],
+  ['a continued part isn’t logged', on('NightlyRunner.js', "  try { runLogStart_('nightlyRun', arguments[0]); } catch (rlErr) {}\n  var crumb", '  var crumb'), SRV],
+  ['a handoff isn’t marked Continued', on('RunLog.js', "  if (r.status === 'Continued') return 'Continued';", ''), SRV],
   ['the flight check isn’t logged', on('FlightStatus.js', "  try { runLogStart_('checkFlightStatuses_', forceRefresh); } catch (rlErr) {}", ''), SRV],
   ['steps aren’t reported', on('Code.js', '  try { runLogStep_(ctx, name); } catch (rlErr) {}\n', ''), SRV],
   ['veraLog_ doesn’t pass on the verdict', on('VERALog.js', '  try { runLogNote_(routine, status, summary, error); } catch (rlErr) {}', ''), SRV],

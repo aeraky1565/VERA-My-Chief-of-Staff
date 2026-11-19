@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Meal Plan "on hand" (OnHand.js, with MealPlan.js, Pantry.js and the WebApp/Code wiring):
 // on hand fills itself from this week's food purchases, keeps what you add, carries last
 // week's over once, and marks what a past dinner used; Suggest plans only open days
@@ -257,7 +258,7 @@ check('the routes', ["case 'suggest_week':          return jsonOut_(webSuggestWe
   "case 'made_extra':            return jsonOut_(webMadeExtra_(e));", "case 'onhand_add':            return jsonOut_(webOnHandAdd_(e));", "case 'onhand_set':            return jsonOut_(webOnHandSet_(e));",
   "case 'meal_apply':                 return jsonOut_(webMealApply_(body));"].every(x => WEB.indexOf(x) !== -1));
 check('the planner\'s read brings this week\'s on hand, and survives it failing', /try \{ weeks\[0\]\.onHand = ohWeek_\(weeks\[0\]\.weekStart\); \} catch \(err\) \{ res\.onHandError = err\.message; \}/.test(WEB));
-check('the tab is created; the nightly step runs', /ensureSheet\(ss, TABS\.ON_HAND,\s+ON_HAND_HEADERS\);/.test(CODE) && /nightlyStep_\(ctx, 'mpSyncNudges_', mpSyncNudges_\);/.test(CODE));
+check('the tab is created; the nightly step runs', /ensureSheet\(ss, TABS\.ON_HAND,\s+ON_HAND_HEADERS\);/.test(CODE) && /S\('mpSyncNudges_', \d, function\(\) \{ mpSyncNudges_\(\); \}\)/.test(NR__));
 check('a moved dinner takes what it uses with it', /mpSetExtras_\(toWeekStart, toDay, source\.uses \|\| \[\], source\.rating \|\| ''\);/.test(MP));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

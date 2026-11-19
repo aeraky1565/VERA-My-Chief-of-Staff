@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl2');
-const FILES = ['Trips.js', 'PostTripCapture.js', 'PreTripBriefing.js', 'Chat.js',
+const FILES = ['NightlyRunner.js', 'Trips.js', 'PostTripCapture.js', 'PreTripBriefing.js', 'Chat.js',
                'TravelDayBriefing.js', 'TestBench.js', 'Code.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
@@ -111,7 +111,7 @@ const CONTROLS = {
     'Code.js': (() => {
       const c = fs.readFileSync(SRC_DIR + '/Code.js', 'utf8');
       const step = /    nightlyStep_\(ctx, 'adoptLegacyTripKeys_', function\(\) \{\n[\s\S]*?\n    \}\);\n/.exec(c)[0];
-      const after = "    nightlyStep_(ctx, 'checkPostTripCapture_', checkPostTripCapture_);\n";
+      const after = "    S('checkPostTripCapture_', 1, function() { checkPostTripCapture_(); }),\n";
       return c.replace(step, '').replace(after, after + step);
     })(),
   }),

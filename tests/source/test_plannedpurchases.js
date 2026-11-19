@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Planned Purchases (Finances): the comparison, the money, the timing, and what
 // "bought" changes elsewhere. PlannedPurchases.js runs in a vm over fake sheets.
 // Today is fixed at Nov 1, 2026. Every item, store, card and figure is invented.
@@ -177,7 +178,7 @@ console.log('\nflags and Coming up');
   check('a delivery tomorrow is flagged, with the old item still to plan', w['PPURCH|delivery|PP-1'] && /arrives tomorrow/.test(w['PPURCH|delivery|PP-1'].flag) && /old couch still needs a plan/.test(w['PPURCH|delivery|PP-1'].reason), J(w));
   check('a return window closing in 3 days is flagged', w['PPURCH|return|PP-2'] && /2026-11-03/.test(w['PPURCH|return|PP-2'].reason), J(Object.keys(w)));
   check('an order-by within a week is flagged', w['PPURCH|order|PP-3'] && /Order Rug by 2026-11-05/.test(w['PPURCH|order|PP-3'].flag), J(Object.keys(w)));
-  check('nightly step is registered', /nightlyStep_\(ctx, 'ppSyncFlags_', ppSyncFlags_\)/.test(CODE));
+  check('nightly step is registered', /S\('ppSyncFlags_', \d, function\(\) \{ ppSyncFlags_\(\); \}\)/.test(NR__));
   check('Coming up reads deliveries and return windows', /purchases: hfTry_\('purchases', function\(\) \{ return ppComingUp_\(today\); \}, missing\)/.test(HF) &&
         /\(src\.purchases \|\| \[\]\)\.forEach/.test(HF));
 }

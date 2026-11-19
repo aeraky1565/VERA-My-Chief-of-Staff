@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Card Hub, the server and the maths. Pins:
 //  - the value maths (CardValue.js) is copied verbatim into both dashboards;
 //  - a point is worth your ¢, else the program's typical, else VERA's typical, else 1¢;
@@ -151,7 +152,7 @@ console.log('\nnightly');
   check('the fee 30 days out, against what the perks paid back', !!w['CARDFEE|CC-1|2027-03'] && /\$240 this year, \$85 short of the fee/.test(w['CARDFEE|CC-1|2027-03'].reason) && w['CARDFEE|CC-1|2027-03'].urgency === 'Medium');
   check('…a fee month from the notes still counts, and a card that paid its way is Low', !!w['CARDFEE|CC-2|2027-03'] && w['CARDFEE|CC-2|2027-03'].urgency === 'Low' && !w['CARDFEE|CC-3|2027-08']);
   check('the month reader', N.chMonthOf_('March') === 3 && N.chMonthOf_('3') === 3 && N.chMonthOf_('2027-11') === 11 && N.chMonthOf_('') === 0);
-  check('the nightly run calls them, and the flags clear themselves', /nightlyStep_\(ctx, 'seedPerkUses_', seedPerkUses_\);\n\s*nightlyStep_\(ctx, 'checkCardHub_', checkCardHub_\);/.test(CODE)
+  check('the nightly run calls them, and the flags clear themselves', (NR__.indexOf("S('seedPerkUses_', ") !== -1 && NR__.indexOf("S('seedPerkUses_', ") < NR__.indexOf("S('checkCardHub_', "))
         && /prefix: 'POINTS\|'/.test(FT) && /prefix: 'CARDFEE\|'/.test(FT));
   const F = { String, Number }; vm.createContext(F); vm.runInContext("var FS_MONTHS_ = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}; function fsText_(v){ return String(v == null ? '' : v).trim(); }" + fnSrc(FS, 'fsCardFeeMonth_') + fnSrc(FS, 'fsCardFeeMonthOf_'), F);
   check('the Finance summary: Fee Month first, then the notes', F.fsCardFeeMonthOf_({ feeMonth: 'June', notes: 'fee in March' }) === 6 && F.fsCardFeeMonthOf_({ notes: 'fee in March' }) === 3 && /fsCardFeeMonthOf_\(c\)/.test(FS));

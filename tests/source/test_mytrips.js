@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // My Trips (issue #220): calendar trips, pencilled-in trips, past trips.
 //
 // MyTrips.js and the Trip Ideas columns it adds run in a vm over a fake sheet.
@@ -179,7 +180,7 @@ console.log('\nflags');
   check('…worded with the months', /Pick dates for Family Visit to Egypt/.test(later['MYTRIP|pick|I-EGYPT'].flag) &&
         /April 2027 or November 2027/.test(later['MYTRIP|pick|I-EGYPT'].reason), J(later['MYTRIP|pick|I-EGYPT']));
   check('known dates and "any time" raise none', !later['MYTRIP|pick|I-WED'] && !later['MYTRIP|pick|I-ANY']);
-  check('nightly step is registered', /nightlyStep_\(ctx, 'myTripsSyncFlags_', myTripsSyncFlags_\)/.test(CODE));
+  check('nightly step is registered', /S\('myTripsSyncFlags_', \d, function\(\) \{ myTripsSyncFlags_\(\); \}\)/.test(NR__));
 }
 
 console.log('\nmoving a trip on a year');

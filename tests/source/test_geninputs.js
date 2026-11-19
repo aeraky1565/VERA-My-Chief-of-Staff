@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // What a packing list or a Discover run was actually built from.
 //
 // The failure this exists to make visible had been live for as long as dashboard-lite
@@ -673,7 +674,7 @@ console.log('\nwiring');
         /briefing:\s+briefing,/.test(pack) && /briefing:\s+briefing,/.test(recs));
   check('…and both prompts still get them', /context, traveler, destination, season,[\s\S]*?briefing,/.test(pack) && /gapSummary, briefing,[\s\S]{0,200}?recsLessons/.test(recs));
   check('generation_inputs is a doGet action', /case 'generation_inputs':\s+return jsonOut_\(webGetGenerationInputs_\(e\)\);/.test(WEB));
-  check('the nightly check runs', /nightlyStep_\(ctx, 'checkGenerationInputs_', checkGenerationInputs_\);/.test(CODE));
+  check('the nightly check runs', /S\('checkGenerationInputs_', \d, function\(\) \{ checkGenerationInputs_\(\); \}\)/.test(NR__));
 
   // THE LITE BUG, fixed at the source.
   check('dashboard-lite now sends the end date', /action:'generate_packing',tripKey,startDate,endDate\}/.test(LITE));

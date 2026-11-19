@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // #245 Renewals + the Vehicles card. Pins:
 //  - the ladder: day 30 flags and day 31 doesn't; 30–15 Low, 14–8 Medium, 7 or fewer High;
 //    passed is High, "renewed? update the tab"; warranties stay Low (30 days either side of
@@ -169,7 +170,7 @@ console.log('\nThe icon');
 
 console.log('\nWiring');
 {
-  check('the nightly run checks the vehicles', /nightlyStep_\(ctx, 'checkVehicleRenewals_', checkVehicleRenewals_\);/.test(CODE));
+  check('the nightly run checks the vehicles', /S\('checkVehicleRenewals_', \d, function\(\) \{ checkVehicleRenewals_\(\); \}\)/.test(NR__));
   check('its own notification row: send if due while away', /\{ key: 'vehicle_renewals',[^\n]*whileAway: 'due' \}/.test(CODE));
   check('…and switched off, it does nothing', /if \(typeof isNotifEnabled_ === 'function' && !isNotifEnabled_\('vehicle_renewals'\)\) return 'off';/.test(fnSrc(REN, 'checkVehicleRenewals_')));
   check('the routes', /case 'vehicle_renew':\s+return jsonOut_\(webVehicleRenew_\(e\.parameter \|\| \{\}\)\);/.test(WEB) && /case 'vehicle_renewal_ics':\s+return jsonOut_\(webVehicleRenewalIcs_\(e\.parameter \|\| \{\}\)\);/.test(WEB));

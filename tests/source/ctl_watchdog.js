@@ -111,7 +111,7 @@ const CONTROLS = {
   }),
   'a step hand-rolls its own budget check again': b => ({
     'Code.js': b['Code.js'].replace(
-      "    nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_);",
+      "    S('pruneMemoryLog_', 5, function() { pruneMemoryLog_(); }),",
       "    if (Date.now() < DEADLINE) { nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_); }"),
   }),
 };

@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Family Planning › Trying › Cycle (Cycle.js): the stats, today's view (period with the mood
 // words, fertile window and peak, before and after, late), the reminders (only while Trying,
 // each once), the routes against an in-memory sheet, and the wiring. Invented dates.
@@ -112,7 +113,7 @@ console.log('\nthe routes');
 
 console.log('\nthe wiring');
 check('the sheet, its headers and the notification are declared', /CYCLE_LOG:\s*'Cycle Log'/.test(CODE) && HEAD.join() === 'ID,Start,End,Logged By,Logged At,Notes' && /\{ key: 'cycle_reminders',/.test(CODE));
-check('the nightly step runs it', /nightlyStep_\(ctx, 'cySyncReminders_', cySyncReminders_\);/.test(CODE));
+check('the nightly step runs it', /S\('cySyncReminders_', \d, function\(\) \{ cySyncReminders_\(\); \}\)/.test(NR__));
 check('the routes', ["case 'cycle_get':             return jsonOut_(webCycleGet_());", "case 'cycle_log':                  return jsonOut_(webCycleLog_(body));", "case 'cycle_edit':                 return jsonOut_(webCycleEdit_(body));",
   "case 'cycle_end':                  return jsonOut_(webCycleEnd_(body));", "case 'cycle_delete':               return jsonOut_(webCycleDelete_(body));"].every(x => WEB.indexOf(x) !== -1));
 check('it never writes a calendar or a flag', !/CalendarApp|upsertKeyedFlags_|TABS\.FLAGS/.test(SRC));

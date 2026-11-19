@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // writePTOSnapshot_ was 4m 06s of a 6-minute ceiling, and the nightly run was killed.
 //
 // Ten getEvents calls for the shipped config, four of them redundant. The worst pair:
@@ -318,8 +319,8 @@ console.log('\nThe snapshot reports where its own time went');
         /stats\.subTimings = ptoSubs;/.test(body),
         'posting Slack from inside this function would put a network call on the hot path');
   check('…and are rendered by the same formatter as the step line',
-        /slowestNightlySteps_\(ptoStats && ptoStats\.subTimings, 11\)/
-          .test(fs.readFileSync(ROOT + '/Code.js', 'utf8')),
+        /slowestNightlySteps_\(stats && stats\.subTimings, 11\)/
+          .test(NR__),
         'so the breakdown and the step total can never be computed differently');
   check('a block that throws still records its time',
         /finally \{ ptoSubs\.push/.test(body),

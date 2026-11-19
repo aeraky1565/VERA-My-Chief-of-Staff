@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Travel › Places (issue #228), the server side in Places.js: Occasion on Countries (and the
 // one-time move out of Notes), occasion picks and grouping, trip notes per country, upcoming
 // trips for Planned, and the places endpoint against an in-memory sheet. Invented places.
@@ -319,7 +320,7 @@ console.log('\nvisits from a trip read like hand-added ones');
   check('past trips catch up, oldest first, a few per call; one that can’t be read is left for later', s.plCloseEndedTrips_(3) === 2 && s.__sheets.Countries.rows.slice(1).map(v => v[5]).join() === '2025-01-01|Trip 1,2025-03-01|Trip 3', J(s.__sheets.Countries.rows));
   s.__o.unreadable = [];
   check('…the next call picks up the rest', s.plCloseEndedTrips_(3) === 2 && s.__sheets.Countries.rows.length === 5);
-  check('the nightly run closes finished trips too', /nightlyStep_\(ctx, 'plCloseEndedTrips_', function\(\) \{ return plCloseEndedTrips_\(10\); \}\);/.test(CODE));
+  check('the nightly run closes finished trips too', /S\('plCloseEndedTrips_', \d, function\(\) \{ plCloseEndedTrips_\(10\); \}\)/.test(NR__));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

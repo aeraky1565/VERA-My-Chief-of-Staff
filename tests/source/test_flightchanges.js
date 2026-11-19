@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // A stored flight the calendar has since moved or rebooked.
 //
 // The stored row used to be paired with its calendar copy only by date +
@@ -209,7 +210,7 @@ console.log('\nthe nightly flag');
   check('the nightly step reads dates only', /skipEventTz: true/.test(sync));
   check('…for trips within 30 days', /30 \* 86400000/.test(sync));
   check('…and closes flags no longer wanted', /upsertKeyedFlags_\(flags, FLIGHT_CHANGE_FLAG_PREFIX_/.test(sync));
-  check('it runs every night', /nightlyStep_\(ctx, 'flightChangesSyncFlags_', flightChangesSyncFlags_\)/.test(CODE));
+  check('it runs every night', /S\('flightChangesSyncFlags_', \d, function\(\) \{ flightChangesSyncFlags_\(\); \}\)/.test(NR__));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

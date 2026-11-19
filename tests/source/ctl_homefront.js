@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_hfront');
 
-const FILES = ['HomeFront.js', 'Code.js', 'WebApp.js', 'TripIdeas.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['NightlyRunner.js', 'HomeFront.js', 'Code.js', 'WebApp.js', 'TripIdeas.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -34,7 +34,7 @@ const CONTROLS = [
   ['a done job leaves its task open', b => ({ [H]: swap(b[H], "    else sheet.getRange(i + 2, 5).setValue('Done');", "") })],
   ['off still flags', b => ({ [H]: swap(b[H], "return v === 'task' || v === 'off' ? v : 'flag';", "return v === 'task' ? v : 'flag';") })],
   ['the nightly reset clears quarterly chores again', b => ({ [K]: swap(b[K], "  if (isLastDayOfMonth)  toReset.push('Monthly');\n", "  if (isLastDayOfMonth)  toReset.push('Monthly');\n  if (isLastDayOfMonth)  toReset.push('Quarterly');\n") })],
-  ['no nightly reminders', b => ({ [K]: swap(b[K], "    nightlyStep_(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_);\n", "") })],
+  ['no nightly reminders', b => ({ [K]: swap(b[K], "    S('hfSyncUpkeepReminders_', 3, function() { hfSyncUpkeepReminders_(); }),\n", "") })],
   ['the chores read drops upkeep state', b => ({ [W]: swap(b[W], "      if (up) obj.upkeep = up;\n", "") })],
   ['the done route is missing', b => ({ [W]: swap(b[W], "      case 'chore_upkeep_done':     return jsonOut_(webUpkeepDone_(e));\n", "") })],
   ['Plan it again copies the guests too', b => ({ [H]: swap(b[H], "return { id: '', title: c.title, type: c.type, date: '', start: c.start, end: c.end, place: c.place, guests: [],", "return { id: '', title: c.title, type: c.type, date: '', start: c.start, end: c.end, place: c.place, guests: c.guests,") })],

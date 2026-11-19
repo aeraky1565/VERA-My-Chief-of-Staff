@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Notifications, one home per kind (#250, Notify.js): where each kind goes, quiet hours, the
 // daily cap, the morning email's "Held for this email", the count line that replaced
 // "Reminder sent", movement on a schedule, check-in times to the minute, act-now caps and
@@ -254,7 +255,7 @@ console.log('\nWiring');
   check('…and no longer logs "Reminder sent", only a failure', !/'\\u23f0 Reminder sent/.test(REM) && !/sendSlackLog_\(delivered/.test(REM) && /Reminder FAILED to send/.test(REM));
   check('isNotifEnabled_ means "not off"', /return notifDeliveryFrom_\(key, cfg\) !== 'off';/.test(CODE));
   check('the morning email shows what was held, and clears it only after it goes', /meHeldSplit_\(typeof notifHeldList_ === 'function' \? notifHeldList_\(\) : \[\]\)/.test(CODE) && CODE.indexOf('notifHeldClear_()') > CODE.indexOf("sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');"));
-  check('the nightly tail posts the count line', /sendSlackLog_\('📊 ' \+ notifCountLine_\(notifCounts_\(\)\.yesterday\)\)/.test(CODE));
+  check('the night posts the count line for its own day, once, when it finishes', /sendSlackLog_\('📊 ' \+ nightlyCountLine_\(notifCounts_\(\), st\.id, /.test(NR__) && NR__.split("sendSlackLog_('📊 '").length === 2);
   check('the weekend memo: email only, no Slack ping', !/Weekend memo is ready/.test(read('WeekendPlanner.js')) && /notifGate_\('weekend_memo'/.test(read('WeekendPlanner.js')));
   check('Settings: a Where route; any Slack channel by name', /case 'set_notif_delivery':\s+return jsonOut_\((peopleOwnerOnly_\(\) \|\| )?webSetNotifDelivery_\(e\)\);/.test(WEB) && /\^\[a-z0-9\]\[a-z0-9_-\]\{0,79\}\$/.test(WEB) && /id = '#' \+ name;/.test(SLACK));
   check('the map reports each kind’s Where and what it is', /delivery: notifDeliveryFrom_\(n\.key, config\), kind: notifKind_\(n\.key\)/.test(WEB));

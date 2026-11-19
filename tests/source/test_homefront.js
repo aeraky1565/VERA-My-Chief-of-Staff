@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Home Front additions (HomeFront.js), over fake sheets: upkeep in Chores (the
 // date maths, Done, edits, the starter list, flag/task/off reminders), and the
 // wiring into Code.js and WebApp.js. Every chore and date here is invented.
@@ -244,7 +245,7 @@ check('the chores read carries each upkeep chore\'s state', /var up = hfUpkeepSt
 check('adding a chore can set its due-by date', /sheet\.appendRow\(\[id, chore, cadence, sort, false, '', added, '', dueBy\]\);/.test(extract(WEB, 'webAddChore_')));
 const reset = extract(CODE, 'resetChoresByCadence_');
 check('the nightly reset no longer clears quarterly or yearly chores', !/push\('Quarterly'\)|push\('Annually'\)|push\('Seasonal'\)|push\('Semiannually'\)/.test(reset) && /push\('Monthly'\)/.test(reset));
-check('the nightly run raises upkeep reminders', /nightlyStep_\(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_\);/.test(CODE));
+check('the nightly run raises upkeep reminders', /S\('hfSyncUpkeepReminders_', \d, function\(\) \{ hfSyncUpkeepReminders_\(\); \}\)/.test(NR__));
 check('the gathering routes', /case 'gatherings':\s+return jsonOut_\(webGetGatherings_\(\)\);/.test(WEB) && /case 'gathering_save':\s+return jsonOut_\(webSaveGathering_\(body\)\);/.test(WEB)
   && /case 'gathering_delete':\s+return jsonOut_\(webDeleteGathering_\(body\)\);/.test(WEB) && /case 'gathering_to_shopping':\s+return jsonOut_\(webGatheringToShopping_\(body\)\);/.test(WEB));
 check('nothing in Home Front writes to a calendar', !/CalendarApp|Calendar\.Events/.test(SRC));

@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_nfix');
 
-const FILES = ['VERALog.js', 'Code.js', 'FlightStatus.js', 'ApiHealth.js', 'Slack.js', 'Watchdog.js', 'WebApp.js',
+const FILES = ['NightlyRunner.js', 'VERALog.js', 'Code.js', 'FlightStatus.js', 'ApiHealth.js', 'Slack.js', 'Watchdog.js', 'WebApp.js',
                'docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
@@ -36,13 +36,13 @@ const CONTROLS = [
   })],
 
   // ---- the nightly run -------------------------------------------------------
-  ['writeSummarySnapshot goes back into the first half', FIX, b => ({
-    'Code.js': swap(b['Code.js'], "    // Step 0 (writeSummarySnapshot) moved to the second half",
-                                  "    nightlyStep_(ctx, 'writeSummarySnapshot', writeSummarySnapshot);\n    // Step 0 (writeSummarySnapshot) moved to the second half"),
-  })],
-  ['the slowest steps go back into the duration slot', FIX, b => ({
-    'Code.js': swap(b['Code.js'], "          (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : '') +\n",
-                                  "          (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : ''),\n"),
+  ['writeSummarySnapshot moves ahead of runExplorer_', FIX, b => {
+    const s = b['NightlyRunner.js'], line = "    S('writeSummarySnapshot', 5, function() { writeSummarySnapshot(); }),\n";
+    const without = swap(s, line, ''), at = without.indexOf("    S('runExplorer_'");
+    return { 'NightlyRunner.js': without.slice(0, at) + line + without.slice(at) };
+  }],
+  ['the slowest steps drop out of the System Log summary', FIX, b => ({
+    'NightlyRunner.js': swap(b['NightlyRunner.js'], "(slowest.length ? ' · slowest: ' + slowest.join(', ') : '')", "''"),
   })],
 
   // ---- the flight poll -------------------------------------------------------

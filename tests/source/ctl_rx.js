@@ -16,7 +16,7 @@ const CONTROLS = [
   ['paused ones flagged', swapIn(S, "return String(r.active || 'Yes') === 'Yes'; }).map(", "return true; }).map(")],
   ['flag 14 days ahead', swapIn(S, "var RX_AHEAD_DAYS_ = 7;", "var RX_AHEAD_DAYS_ = 14;")],
   ['overdue is Medium', swapIn(S, "urgency: r.days < 0 ? 'High' : 'Medium' };", "urgency: 'Medium' };")],
-  ['no nightly step', swapIn(['Code.js'], "    nightlyStep_(ctx, 'checkRefills_', checkRefills_);   // Rx.js: a refill due within 7 days\n", "")],
+  ['no nightly step', swapIn(['NightlyRunner.js'], "    S('checkRefills_', 1, function() { checkRefills_(); }),\n", "")],
   ['dates sent raw', swapIn(['WebApp.js'], "      refillDate: rxYmd_(r[9], tzRx) || (r[9] || ''),", "      refillDate: r[9] || '',")],
   ['Ahmed’s on her Today', swapIn(ALL, "|| String(x.person || '') !== String(d.who || 'Victoria')) return;", ") return;")],
   ['lite doesn’t pass rx', swapIn(['docs/dashboard-lite.html'], "chores: data.chores, rx: data.rx, trip:", "chores: data.chores, trip:")],

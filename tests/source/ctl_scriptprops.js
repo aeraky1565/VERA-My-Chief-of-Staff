@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_scriptprops');
-const FILES = ['Settings.js', 'ScriptProps.js', 'People.js', 'WebApp.js', 'Code.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['NightlyRunner.js', 'Settings.js', 'ScriptProps.js', 'People.js', 'WebApp.js', 'Code.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70)); return src.split(from).join(to); };
@@ -37,7 +37,7 @@ const CONTROLS = [
   ['the list is re-saved every time', one('People.js', "if (JSON.stringify(cat) !== JSON.stringify(accessCatalogRead_())) veraStoreSet_", "veraStoreSet_"), PPL],
   ['the nightly fill does nothing', one('People.js', "  return accessSyncWith_(cat, 'nightly');", "  return { ok: true, addedRows: 0, addedCols: [] };"), PPL],
   ['a failed write is swallowed', one('People.js', "      try { veraLog_('accessSync', 'System', 'Warning',", "      try { void ('accessSync', 'System', 'Warning',"), PPL],
-  ['the nightly run doesn\'t call it', one('Code.js', "    nightlyStep_(ctx, 'accessNightlySync_', accessNightlySync_);\n", ''), PPL],
+  ['the nightly run doesn\'t call it', one('NightlyRunner.js', "    S('accessNightlySync_', 5, function() { accessNightlySync_(); }),\n", ''), PPL],
   ['the People panel isn\'t told the tab is empty', one('People.js', "access: { rows: accessCounts_(v, '').total, listSaved: accessCatalogRead_().length > 0 } };", "};"), PPL],
   // the dashboard
   ['"propertys"', ui("pl(d.total,'property','properties')", "pl(d.total,'property')"), SPUI],

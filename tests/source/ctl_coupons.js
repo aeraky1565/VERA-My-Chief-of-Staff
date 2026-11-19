@@ -21,8 +21,8 @@ const CONTROLS = [
   ['the route sends coupons past their grace week', swapIn(['WebApp.js'], '    if (st.gone && !used) return;\n', '')],
   ['the route leaves a US date as it is', swapIn(['WebApp.js'], '    if (st.iso) obj.Expires = st.iso;\n', '')],
   ['the purge back as the night’s last step', b => { if (b['Code.js'].indexOf(EARLY) === -1) throw new Error('anchor moved: early coupon steps');
-    const s = b['Code.js'].replace(EARLY, ''); const t = "    nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);\n"; if (s.indexOf(t) === -1) throw new Error('anchor moved: tax step');
-    return { 'Code.js': s.replace(t, t + "    nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);\n    nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);\n") }; }],
+    const s = b['NightlyRunner.js'].replace(EARLY, ''); const t = "    S('checkTaxDocuments_', 3, function() { checkTaxDocuments_(); }),\n"; if (s.indexOf(t) === -1) throw new Error('anchor moved: tax step');
+    return { 'NightlyRunner.js': s.replace(t, t + "    S('checkExpiringCoupons_', 1, function() { checkExpiringCoupons_(); }),\n") }; }],
   ['expired coupons stay in the live list (full)', swapIn(FULL, 'if(cpUsed_(c)||cpExpired_(c))return false;', 'if(cpUsed_(c))return false;')],
   ['expired coupons stay in the live list (lite)', swapIn(LITE, 'live = sorted.filter(c => !cpExpired_(c))', 'live = sorted')],
   ['not scratched off', swapIn(ALL, "strike={textDecoration:'line-through',textDecorationColor:'#9aa6c4aa',color:'#6b7590'}", "strike={color:'#6b7590'}")],

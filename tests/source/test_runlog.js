@@ -64,6 +64,7 @@ console.log('\nWhere it writes');
   check('…every job in it', d.__names.every(n => n === 'Run Log') && d.__sheet.rows.length === 2);
 }
 
+const J6 = r => JSON.stringify([r[C.STATUS], r[C.SUM]]);
 console.log('\nA run that finishes');
 {
   const c = ctx();
@@ -94,6 +95,8 @@ console.log('\nA run that finishes');
   const c5 = ctx(); c5.runLogStart_('nightlyRunTail'); c5.runLogStep_({ failures: [], skipped: ['runExplorer_'], blocked: [], timings: [] }, 'writeSummarySnapshot');
   c5.runLogNote_('nightlyRunTail', 'Success', '', ''); c5.runLogFinish_('nightlyRunTail');
   check('a run where the time budget skipped a step reads Partial, naming it', c5.__sheet.rows[0][C.STATUS] === 'Partial' && c5.__sheet.rows[0][C.SKIP] === 'runExplorer_', c5.__sheet.rows[0][C.STATUS]);
+  const c6 = ctx(); c6.runLogStart_('nightlyRun'); c6.runLogHandoff_({ failures: [], skipped: [], blocked: [], timings: [] }, 'night 2026-11-19 · part 1 · continues at collect');
+  check('a nightly part that hands off reads Continued, with where the next part picks up', c6.__sheet.rows[0][C.STATUS] === 'Continued' && /continues at collect/.test(c6.__sheet.rows[0][C.SUM]), J6(c6.__sheet.rows[0]));
   const c3 = ctx(); c3.runLogStart_('hourlyCheck'); c3.runLogFinish_('hourlyCheck');
   check('a clean run reads Done', c3.__sheet.rows[0][C.STATUS] === 'Done');
   const c4 = ctx(); c4.runLogStart_('morningNudge'); c4.runLogNote_('morningNudge', 'Failed', '', 'Drive down'); c4.runLogFinish_('morningNudge');

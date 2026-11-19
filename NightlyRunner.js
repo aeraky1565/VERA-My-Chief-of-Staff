@@ -348,6 +348,13 @@ function nightlyRepeatOffenders_(prev, tonight, today, yesterday) {
   return { repeat: repeat, keep: keep };
 }
 
+/** Pure: the notifications count line for the night's day (nightId), given notifCounts_() and today's date. */
+function nightlyCountLine_(nc, nightId, today) {
+  nc = nc || {};
+  if (nightId === today) return notifCountLine_(nc.counts || {}).replace(/^Yesterday/, 'Today');
+  return notifCountLine_(nc.yesterday || {});
+}
+
 function nightlyFinish_(st) {
   var elapsed = Math.round((Date.now() - st.started) / 1000);
   Logger.log('=== VERA nightly run complete: ' + new Date() + ' (' + st.part + ' part(s)) ===');
@@ -359,7 +366,8 @@ function nightlyFinish_(st) {
     var slowest = slowestNightlySteps_(st.timings, 5), slow = nightlySlowSteps_(st.timings, NIGHT_SLOW_MS_);
     if (slowest.length) sendSlackLog_('⏱️ Slowest steps: ' + slowest.join(' · ') + (slow.length ? '\n⚠️ Over 90 s: ' + slow.join(' · ') : ''));
     if ((st.vars.ptoSub || []).length) sendSlackLog_('⏱️ writePTOSnapshot_ breakdown: ' + st.vars.ptoSub.join(' · '));
-    try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + notifCountLine_(notifCounts_().counts).replace(/^Yesterday/, 'Today')); } catch (ncErr) {}
+    // The night's own day: today's counts before midnight, yesterday's if the last part ran past it.
+    try { if (typeof notifCountLine_ === 'function') sendSlackLog_('📊 ' + nightlyCountLine_(notifCounts_(), st.id, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'))); } catch (ncErr) {}
     veraLog_('nightlyRun', 'Nightly', st.failures.length || st.killed.length || st.skipped.length || st.blocked.length ? 'Partial' : 'Success',
       nightlySummaryLine_(st, elapsed).replace(/^\S+ /, '') + (slowest.length ? ' · slowest: ' + slowest.join(', ') : ''), elapsed * 1000,
       st.failures.join('; '));

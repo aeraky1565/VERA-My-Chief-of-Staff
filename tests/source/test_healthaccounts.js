@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // FSA & HSA (HealthAccounts.js): reading the FSA claims sheet by header, the household
 // FSA balance (sheet or typed, whichever is newer), the use-by date and what would be lost,
 // every HSA added into one card against one limit, the Health Accounts tab, the routes and
@@ -179,7 +180,7 @@ console.log('\nnightly flags');
   const s = load({ rows: [['HA-2', 'FSA', 2026, '', 3400, '', '', '', '', 640, '2026-09-02', 'grace', '2027-03-15', '', '']] });
   run(s, 'haSyncFlags_()');
   check('a typed balance not updated in 45 days raises a Low reminder', s._flags._rows.length === 2 && s._flags._rows[1][9] === 'HSAFSA|HA-2|stale' && s._flags._rows[1][5] === 'Low');
-  check('the nightly step is wired', /nightlyStep_\(ctx, 'haSyncFlags_', haSyncFlags_\);/.test(CODE));
+  check('the nightly step is wired', /S\('haSyncFlags_', \d, function\(\) \{ haSyncFlags_\(\); \}\)/.test(NR__));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

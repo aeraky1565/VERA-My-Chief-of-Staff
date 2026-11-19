@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Finances › Summary (FinSummary.js, issue #224) on invented figures: the planner's Outputs read by
 // label, quarters, Needs attention (each source, soonest first, one source failing on its own),
 // every Suggested-to-discuss rule (saved Budget scenarios included), what changed since the
@@ -151,7 +152,7 @@ rem = run('fsRemindersDue_("2026-11-28", 7, [], X)', { X: [{ id: 'D1', status: '
 check('a decision 3 days before its due date, to its owner', rem.length === 1 && /Victoria: “Call the bank” is due in 3 days/.test(rem[0].message));
 check('…and on the day', run('fsRemindersDue_("2026-12-01", 7, [], X)', { X: [{ id: 'D1', status: 'open', due: '2026-12-01', text: 'Call the bank', owner: 'Victoria' }] }).length === 1);
 check('the notification is registered', /key: 'quarterly_checkin',/.test(CODE));
-check('the nightly run takes the snapshot and sends the reminders', /nightlyStep_\(ctx, 'fsNightly_', fsNightly_\)/.test(CODE));
+check('the nightly run takes the snapshot and sends the reminders', /S\('fsNightly_', \d, function\(\) \{ fsNightly_\(\); \}\)/.test(NR__));
 check('the routes are wired', /case 'checkin':\s+return jsonOut_\(webGetCheckin_\(\)\)/.test(WEB) && /case 'checkin_decision_save':\s+return jsonOut_\(webSaveCheckinDecision_\(body\)\)/.test(WEB)
   && /case 'checkin_decision_toggle':\s+return jsonOut_\(webToggleCheckinDecision_\(body\)\)/.test(WEB) && /case 'checkin_notes_save':\s+return jsonOut_\(webSaveCheckinNotes_\(body\)\)/.test(WEB));
 check('the planner and the tracker are never written', !writes.some(w => !/^(Finance Snapshots|Check-in Decisions|Check-in Notes)$/.test(w)), J(writes));

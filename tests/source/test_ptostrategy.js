@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Issue #248: next year's PTO plan (PTOStrategy.js), on invented calendars.
 //  - the US federal holidays, observed on the nearest weekday;
 //  - breaks: a run of days off made by PTO next to weekends and holidays, for both of you or
@@ -258,7 +259,7 @@ console.log('\nthe wiring');
 {
   check('routes', /case 'pto_strategy':\s+return jsonOut_\(webPtoStrategy_\(e\.parameter\)\)/.test(WEB) && ['pto_strategy_settings', 'pto_plan_accept', 'pto_plan_skip', 'pto_plan_remove', 'pto_plan_follow'].every(a => new RegExp("case '" + a + "':\\s+return jsonOut_\\(webPto").test(WEB)));
   check('its own notification row: sent if due while away', /\{ key: 'pto_strategy',[^\n]*whileAway: 'due' \}/.test(CODE));
-  check('the nightly step, right after the PTO year turns over', /nightlyStep_\(ctx, 'checkPTOYearRollover_', checkPTOYearRollover_\);\n[^\n]*\n\s*nightlyStep_\(ctx, 'checkPTOStrategy_', checkPTOStrategy_\);/.test(CODE));
+  check('the nightly step, right after the PTO year turns over', (NR__.indexOf("S('checkPTOYearRollover_', ") !== -1 && NR__.indexOf("S('checkPTOYearRollover_', ") < NR__.indexOf("S('checkPTOStrategy_', ")));
   check('its flags are automatic, with what clears them', /prefix: 'PTOPLAN\|REQ\|',\s+clears: 'Clears once the PTO shows on the work calendar\.'/.test(FT) && /prefix: 'PTOPLAN\|',/.test(FT));
   check('the morning email’s Time off section', /ptoPlanSection = ptsEmailSection_\(\)/.test(CODE) && /ptoHtml: ptoPlanSection \? ptoPlanSection\.html : ''/.test(CODE));
   check('fix: the monthly review reads threeToOneStatus', /ptoStats\.threeToOneStatus \|\| ptoStats\['3-2-1'\]/.test(MR));

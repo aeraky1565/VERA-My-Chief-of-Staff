@@ -21,7 +21,7 @@ const CONTROLS = [
   ['a date cell comes back as a timestamp', swapIn(['WebApp.js'], "obj[h] = h === 'Date' ? nbYmd_(x.r[i], tzF) : x.r[i] instanceof Date", "obj[h] = x.r[i] instanceof Date")],
   ['RSVP doesn’t touch the calendar', swapIn(['WebApp.js'], "    try { cal = nbSyncRsvp_(sheet, row, status); }", "    try { }")],
   ['Add to calendar uses the default one', swapIn(['WebApp.js'], "    var cal = nbJointCal_() || CalendarApp.getDefaultCalendar();", "    var cal = CalendarApp.getDefaultCalendar();")],
-  ['the nightly clean-up isn’t run', swapIn(['Code.js'], "    nightlyStep_(ctx, 'purgeOldFlyers_', purgeOldFlyers_);   // Neighborhood.js: more than 30 days past\n", "")],
+  ['the nightly clean-up isn’t run', swapIn(['NightlyRunner.js'], "    S('purgeOldFlyers_', 5, function() { purgeOldFlyers_(); }),\n", "")],
   ['this week is 3 days', swapIn(FULL, "if(n>=0&&n<=6)return 'week';", "if(n>=0&&n<=2)return 'week';")],
   ['tapping your answer doesn’t clear it', swapIn(FULL, "var next=f.Status===status?'':status;", "var next=status;")],
   ['no thumbnail zoom', swapIn(FULL, "onClick:function(){setZoom(f.Photo);}", "onClick:function(){}")],

@@ -18,7 +18,7 @@ const CONTROLS = [
   ['flag at 7 days', swapIn(S, "var TX_LATE_DAYS_ = 14;", "var TX_LATE_DAYS_ = 7;")],
   ['send before all are verified', swapIn(S, "var all = docs.every(function(d) { return TX_DONE_[d.status]; })", "var all = true")],
   ['send after filing', swapIn(S, "  if (prep && /^(filed|complete)$/i.test(String(prep.filingStatus || ''))) return null;\n", "")],
-  ['no nightly step', swapIn(['Code.js'], "    nightlyStep_(ctx, 'checkTaxLate_', checkTaxLate_);   // Tax.js: two weeks later than last year\n", "")],
+  ['no nightly step', swapIn(['NightlyRunner.js'], "    S('checkTaxLate_', 3, function() { checkTaxLate_(); }),\n", "")],
   ['the update never stamps', swapIn(['WebApp.js'], "txStampReceived_(sh, row, String(sh.getRange(row, 7).getValue() || 'not_received'), p.status); ", "")],
   ['the deadline in the tax year', swapIn(FULL, "var d=new Date(Number(year)+1,3,15)", "var d=new Date(Number(year),3,15)")],
   ['late not first', swapIn(FULL, "return lb-la||st(a)-st(b)||", "return st(a)-st(b)||")],

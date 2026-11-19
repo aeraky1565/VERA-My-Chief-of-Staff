@@ -106,15 +106,15 @@ const CONTROLS = {
     const s = b['Code.js'];
     const m = /    \/\/ Step 0r: Clear VERA's own perk reminder events[\s\S]*?\n    \}\);\n/.exec(s)[0];
     return { 'Code.js': s.replace(m, '').replace(
-      "    nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);",
-      "    nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);\n" + m) };
+      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),",
+      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),\n" + m) };
   },
   'it runs in BOTH halves': b => {
     const s = b['Code.js'];
     const m = /    \/\/ Step 0r: Clear VERA's own perk reminder events[\s\S]*?\n    \}\);\n/.exec(s)[0];
     return { 'Code.js': s.replace(
-      "    nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);",
-      "    nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);\n" + m) };
+      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),",
+      "    S('checkCardPerksActive_', 3, function() { checkCardPerksActive_(); }),\n" + m) };
   },
   'the nightly sweep uses the 400-day backlog window every night': b => ({
     'Code.js': b['Code.js'].replace(

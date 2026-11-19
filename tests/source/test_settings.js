@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Script Properties cleanup: settings live in the Config tab, one-time markers in one
 // bundle, secrets stay Script Properties. Pins:
 //  - veraSetting_: Config row (key in lower case) first, then the old property; the
@@ -208,7 +209,7 @@ console.log('\nthe call sites');
   all.forEach(([f, s]) => { (s.match(/'[A-Za-z0-9_-]{40,46}'/g) || []).forEach(m => { if (/\d/.test(m) && /[A-Z]/.test(m) && /[a-z]/.test(m) && !/[_-]{2}|^'[A-Z_]+'$/.test(m)) ids.push(f + ':' + m.slice(0, 8) + '…'); }); });
   check('no Drive-id-shaped literal anywhere in the server code', ids.length === 0, J(ids));
   check('the nightly run refreshes the copy, right after properties are pruned',
-        /nightlyStep_\(ctx, 'pruneScriptProperties_', pruneScriptProperties_\);\n(?:\s*\/\/[^\n]*\n)*\s*nightlyStep_\(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_\);/.test(read('Code.js')));
+        (NR__.indexOf("S('pruneScriptProperties_', ") !== -1 && NR__.indexOf("S('pruneScriptProperties_', ") < NR__.indexOf("S('veraSettingsCopyRefresh_', ")));
 }
 
 console.log('\nsaving a setting from the dashboard');

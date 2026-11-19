@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Issue #239, phase 1: a Trip ID column on every trip-keyed tab, kept filled.
 // Pins:
 //  - each of the ten tabs' header constants ends in "Trip ID" and has a "Trip Key";
@@ -147,7 +148,7 @@ console.log('\nthe fill pass on the sheet');
 
 console.log('\nwhen it runs');
 {
-  const i = CODE.indexOf("nightlyStep_(ctx, 'adoptLegacyTripKeys_'"), k = CODE.indexOf("nightlyStep_(ctx, 'tripIdStampAll_', tripIdStampAll_);");
+  const i = NR__.indexOf("S('adoptLegacyTripKeys_', "), k = NR__.indexOf("S('tripIdStampAll_', ");
   check('every night, right after legacy keys are adopted', i !== -1 && k > i && k - i < 400);
   check('backfillTripIds() runs the same pass by hand', /function backfillTripIds\(\) \{\s*return tripIdStampAll_\(\);\s*\}/.test(TID));
 }

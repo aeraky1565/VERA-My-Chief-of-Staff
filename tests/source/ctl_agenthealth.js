@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_agenthealth');
-const FILES = ['AgentHealth.js', 'Code.js', 'WebApp.js', 'Career.js', 'docs/app.js', 'docs/dashboard-lite.html'];
+const FILES = ['NightlyRunner.js', 'AgentHealth.js', 'Code.js', 'WebApp.js', 'Career.js', 'docs/app.js', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70)); return src.replace(from, () => to); };
@@ -31,7 +31,7 @@ const CONTROLS = [
   ['TESS flagged twice before its Run Log', b => ({ [A]: swap(b[A], "        tess.flaggable = false;   // carCheckAgentHealth_ flags this case, as before\n", "") })],
   ['a sheet VERA can’t open not marked', b => ({ [A]: swap(b[A], "level: 'none', cantOpen: true,", "level: 'none',") })],
   ['VERA writes to an agent’s sheet', b => ({ [A]: swap(b[A], "  if (!sh || sh.getLastRow() < 1) return null;", "  if (!sh || sh.getLastRow() < 1) return null;\n  sh.getRange(1, 1).setValue('seen by VERA');") })],
-  ['not in the nightly run', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'checkAgentHealth_', checkAgentHealth_);\n", "") })],
+  ['not in the nightly run', b => ({ 'NightlyRunner.js': swap(b['NightlyRunner.js'], "    S('checkAgentHealth_', 3, function() { checkAgentHealth_(); }),\n", "") })],
   ['Check again reads the cache', b => ({ 'WebApp.js': swap(b['WebApp.js'], "webAgentHealth_({ refresh: (e.parameter || {}).refresh === '1' })", "webAgentHealth_({})") })],
   ['TESS’s guess keeps flagging', b => ({ 'Career.js': swap(b['Career.js'], "  if (typeof agentTessHasRunLog_ === 'function' && agentTessHasRunLog_(sheetId)) {", "  if (false) {") })],
   ['the panel not shown', b => ({ [APP]: swap(b[APP], "cur==='agent_health'&&h(SysAgentHealth,{apiUrl:apiUrl,apiToken:apiToken}),", "") })],

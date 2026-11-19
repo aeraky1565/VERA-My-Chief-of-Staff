@@ -13,7 +13,7 @@ const CONTROLS = [
   ['given ideas count', swapIn(S, "if (String(i['Given On'] || '').trim()) return; var p", "var p")],
   ['every date, not just occasions', swapIn(S, "return d.ID && p && gnIsOccasion_(d.Label) && d.daysUntil", "return d.ID && p && d.daysUntil")],
   ['30 days ahead', swapIn(S, "var GN_DAYS_ = 14;", "var GN_DAYS_ = 30;")],
-  ['no nightly step', swapIn(['Code.js'], "    nightlyStep_(ctx, 'checkNoGiftIdea_', checkNoGiftIdea_);   // GiftNudge.js: an occasion in 14 days, no gift idea\n", "")],
+  ['no nightly step', swapIn(['NightlyRunner.js'], "    S('checkNoGiftIdea_', 1, function() { checkNoGiftIdea_(); }),\n", "")],
   ['no age', swapIn(FULL, "/birthday|b-?day/i.test(String(d.Label||''))?{n:n,word:'turns '+n}:null;}", "null;}")],
   ['not soonest first', swapIn(FULL, "return d.daysUntil!=null&&d.daysUntil>=0&&d.daysUntil<=days;}).sort(function(a,b){return a.daysUntil-b.daysUntil;})", "return d.daysUntil!=null&&d.daysUntil>=0&&d.daysUntil<=days;})")],
   ['the note shows with an idea', swapIn(FULL, "&&d.daysUntil<=14&&!dhHasIdea_(ideas,d.Person);", "&&d.daysUntil<=14;")],

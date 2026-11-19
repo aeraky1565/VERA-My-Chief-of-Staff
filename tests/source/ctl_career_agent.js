@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_cara');
 
-const FILES = ['Career.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/index.html'];
+const FILES = ['NightlyRunner.js', 'Career.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -59,7 +59,7 @@ const CONTROLS = [
   ['the stale flag never clears', b => ({ [C]: swap(b[C], "  if (!h.stale) { resolveFlagsWithPrefix_(flagSheet, CAR_AGENT_STALE_KEY_); return 'healthy'; }", "  if (!h.stale) { return 'healthy'; }") })],
   ['suggestions run every night', b => ({ [C]: swap(b[C], "  if (last.quarter === quarter) return 'done this quarter';\n", '') })],
   ['a suggestion can repeat an existing criterion', b => ({ [C]: swap(b[C], " || have.indexOf(carNorm_(x.name)) !== -1", '') })],
-  ['the health check is dropped from the nightly run', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);\n", '') })],
+  ['the health check is dropped from the nightly run', b => ({ 'NightlyRunner.js': swap(b['NightlyRunner.js'], "    S('carCheckAgentHealth_', 3, function() { carCheckAgentHealth_(); }),\n", '') })],
   // ---- the dashboard -------------------------------------------------------------------
   ['any tab can be deep-linked', b => ({ [APP]: swap(b[APP], "if(q.get('tab')!=='career')return null;", '') })],
   ['the deep link stays in the address bar', b => ({ [APP]: swap(b[APP], "if(!careerDeepLink)return;try{window.history.replaceState(null,'',window.location.pathname+window.location.hash);}catch(e){}", "if(!careerDeepLink)return;") })],

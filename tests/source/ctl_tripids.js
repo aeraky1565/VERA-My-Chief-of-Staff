@@ -22,7 +22,7 @@ const CONTROLS = [
   ['the fill overwrites an existing ID', in_('TripIds.js', "    if (!id) {\n      if (want) { filled++; withId++; return [want]; }", "    if (true) {\n      if (want) { filled++; withId++; return [want]; }")],
   ['the fill writes a moved column', in_('TripIds.js', "    if (head && head !== 'Trip ID') {", "    if (false) {")],
   ['the fill writes when nothing changed', in_('TripIds.js', "    if (write && r.filled) sh.getRange(2, width, r.ids.length, 1).setValues(r.ids);", "    if (write) sh.getRange(2, width, r.ids.length, 1).setValues(r.ids);")],
-  ['the nightly run stops filling', in_('Code.js', "    nightlyStep_(ctx, 'tripIdStampAll_', tripIdStampAll_);\n", "")],
+  ['the nightly run stops filling', in_('NightlyRunner.js', "    S('tripIdStampAll_', 1, function() { tripIdStampAll_(); }),\n", "")],
   ['tripIdCell_ can throw', in_('Trips.js', "  try { return tripIdForKey_(tripKey) || ''; } catch (e) { return ''; }", "  return tripIdForKey_(tripKey) || '';")],
 ];
 

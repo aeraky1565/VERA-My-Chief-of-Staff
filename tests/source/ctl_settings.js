@@ -25,7 +25,7 @@ const CONTROLS = [
   ['a setting read straight from Script Properties again', b => ({ 'Budget.js': swap(b['Budget.js'], "veraSettingId_('SAT_SHEET_ID')", "PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID')") })],
   ['the morning email fixed at load time', b => ({ 'Code.js': swap(b['Code.js'], "  get MORNING_NUDGE_EMAIL() { return veraSetting_('MORNING_NUDGE_EMAIL'); },", "  MORNING_NUDGE_EMAIL: veraSetting_('MORNING_NUDGE_EMAIL'),") })],
   ['a doc id written back into code', b => ({ 'FinancialGoals.js': swap(b['FinancialGoals.js'], "function readLifePlanDoc_() {", "var LIFE_PLAN_FALLBACK_ = 'InventedDocIdAbc0123456789Defghijklmnopqrs';\nfunction readLifePlanDoc_() {") })],
-  ['the nightly refresh dropped', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'veraSettingsCopyRefresh_', veraSettingsCopyRefresh_);\n", "") })],
+  ['the nightly refresh dropped', b => ({ 'NightlyRunner.js': swap(b['NightlyRunner.js'], "    S('veraSettingsCopyRefresh_', 5, function() { veraSettingsCopyRefresh_(); }),\n", "") })],
   ['saving a setting keeps the old property', b => ({ [S]: swap(b[S], "  try { var props = PropertiesService.getScriptProperties(); if (props.getProperty(k) != null) props.deleteProperty(k); } catch (e) {}\n  return true;", "  return true;") })],
   ['the HOA link saved to Script Properties again', b => ({ 'WebApp.js': swap(b['WebApp.js'], "    if (!veraSetSetting_(NEIGHBORHOOD_HOA_URL_KEY, url)) return { ok: false, error: 'Config sheet not found' };", "    PropertiesService.getScriptProperties().setProperty(NEIGHBORHOOD_HOA_URL_KEY, url);") })],
 ];

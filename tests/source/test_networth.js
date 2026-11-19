@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Issue #126 — the Net Worth tab, read live from the work-optional planner's sheet.
 //
 // That sheet belongs to another system: it feeds that system's tracker and VERA at
@@ -513,9 +514,9 @@ console.log('\nthe slicer adds up, every way round');
 console.log('\nwiring');
 {
   check('net_worth is a doGet action', /case 'net_worth':\s+return jsonOut_\(webGetNetWorth_\(\)\);/.test(WEB));
-  check('the CD check runs nightly', /nightlyStep_\(ctx, 'checkPlannerCdMaturity_', checkPlannerCdMaturity_\);/.test(CODE));
+  check('the CD check runs nightly', /S\('checkPlannerCdMaturity_', \d, function\(\) \{ checkPlannerCdMaturity_\(\); \}\)/.test(NR__));
   check('the mapping seed runs nightly (a no-op after its first run)',
-        /nightlyStep_\(ctx, 'seedNetWorthMappingConfig_', seedNetWorthMappingConfig_\);/.test(CODE));
+        /S\('seedNetWorthMappingConfig_', \d, function\(\) \{ seedNetWorthMappingConfig_\(\); \}\)/.test(NR__));
   // The planner sheet's id belongs in the Config tab, never in the repo — and so not
   // in this test either. Only its SHA-256 is here: every id-shaped token in the
   // shipped files is hashed and compared.

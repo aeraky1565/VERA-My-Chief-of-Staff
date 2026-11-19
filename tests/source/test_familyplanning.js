@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Family Planning (Health): the dates, the leave plan, the policy checks, the
 // reminders and the hand-offs. FamilyPlanning.js runs in a vm over fake sheets.
 // Today is Nov 1, 2026; the due date is Jun 1, 2027. Every employer, policy
@@ -162,7 +163,7 @@ console.log('\nreminders');
   S.TL = addDays(waitDay, 5);
   check('overdue: still flagged, as High', run('fpFlagsWanted_(ritems, s, blocks, TL)')['FAMPLAN|w'].urgency === 'High');
   check('done and undated items never flag', !w['FAMPLAN|p'] && !w['FAMPLAN|u']);
-  check('nightly step is registered', /nightlyStep_\(ctx, 'fpSyncFlags_', fpSyncFlags_\)/.test(CODE));
+  check('nightly step is registered', /S\('fpSyncFlags_', \d, function\(\) \{ fpSyncFlags_\(\); \}\)/.test(NR__));
 }
 
 console.log('\nthe sheets: setup, blocks, policy, items, gear');

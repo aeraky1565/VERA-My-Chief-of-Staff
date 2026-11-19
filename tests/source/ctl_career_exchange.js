@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_carx');
 
-const FILES = ['Career.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/index.html'];
+const FILES = ['NightlyRunner.js', 'Career.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -56,7 +56,7 @@ const CONTROLS = [
   ['intents nag from the quarter’s first day', b => ({ [C]: swap(b[C], '(now - qStart) / 86400000 >= 14', 'true') })],
   // ---- wiring and the dashboard ----------------------------------------------------
   ['the import route is missing', b => ({ 'WebApp.js': swap(b['WebApp.js'], "      case 'career_exchange_import':     return jsonOut_(webCareerExchangeImport_(body));\n", '') })],
-  ['the flags are dropped from the nightly run', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'carCareerFlags_', carCareerFlags_);\n", '') })],
+  ['the flags are dropped from the nightly run', b => ({ 'NightlyRunner.js': swap(b['NightlyRunner.js'], "    S('carCareerFlags_', 3, function() { carCareerFlags_(); }),\n", '') })],
   ['a crossing drops out of How it connects', b => ({ [APP]: swap(b[APP], "{from:'Claude',to:'VERA',what:'ROLE-MATCH v1',", "{from:'Claude',to:'VERA',what:'A role match',") })],
   ['a link gets into How it connects', b => ({ [APP]: swap(b[APP], "['Wins bank doc','Job agent (VERA appends tabs)'", "['Wins bank doc https://docs.example/x','Job agent (VERA appends tabs)'") })],
   ['the import skips the checkbox', b => ({ [APP]: swap(b[APP], 'disabled:b||!checked,onClick:doImport', 'disabled:b,onClick:doImport') })],

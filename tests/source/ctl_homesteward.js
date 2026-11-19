@@ -21,7 +21,7 @@ const CONTROLS = [
   ['a Low flag', swapIn(S, "      urgency: 'Medium' };", "      urgency: 'Low' };")],
   ['due today counts as overdue', swapIn(S, "if (!item || !next || next >= todayIso) return;", "if (!item || !next || next > todayIso) return;")],
   ['recording doesn’t close the Task', swapIn(['WebApp.js'], "  try { hsSyncTask_(String(sheet.getRange(rowNum, 1).getValue() || ''), '', true); } catch (err) { Logger.log('record service task: ' + err.message); }\n", "")],
-  ['the nightly step isn’t run', swapIn(['Code.js'], "    nightlyStep_(ctx, 'checkHomeServiceOverdue_', checkHomeServiceOverdue_);   // HomeSteward.js: flag + Task\n", "")],
+  ['the nightly step isn’t run', swapIn(['NightlyRunner.js'], "    S('checkHomeServiceOverdue_', 3, function() { checkHomeServiceOverdue_(); }),\n", "")],
   ['a warranty ending outranks an overdue service', swapIn(FULL, "if(s!=null&&s<0)return {rank:0,days:s};", "if(s!=null&&s<0)return {rank:2,days:s};")],
   ['Snooze offered on everything', swapIn(FULL, "u.rank<=1&&onSnooze&&h('button',{type:'button',className:'btn hs-snooze'", "onSnooze&&h('button',{type:'button',className:'btn hs-snooze'")],
   ['Later isn’t folded', swapIn(FULL, "    later&&rest.map(card));}", "    rest.map(card));}")],

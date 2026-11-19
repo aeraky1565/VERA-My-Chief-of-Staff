@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Career › Credentials (CareerCredentials.js, issue #223) on invented credentials: the agent's
 // line parsed, the line VERA writes (degrees, active, expired; years; never an ID), status and
 // reminder dates (90/30/7 from Config, keyed by expiry), credits pace, the one-time import guard,
@@ -115,7 +116,7 @@ check('Chat context: names and state, never an ID', run('carCredContextLines_()'
 
 console.log('\nwiring');
 check('“Credentials held” is an owned label', /'Credentials held'\];/.test(CAR));
-check('the nightly run runs it, before the step that reads tonight’s flags', CODE.indexOf("nightlyStep_(ctx, 'carCredNightly_', carCredNightly_)") !== -1 && CODE.indexOf("nightlyStep_(ctx, 'carCredNightly_', carCredNightly_)") < CODE.indexOf("nightlyStep_(ctx, 'checkCrossPatternFlags_'"));
+check('the nightly run runs it, before the step that reads tonight’s flags', NR__.indexOf("S('carCredNightly_', ") !== -1 && NR__.indexOf("S('carCredNightly_', ") < NR__.indexOf("S('checkCrossPatternFlags_', "));
 check('the routes', /case 'career_credentials':\s+return jsonOut_\(webCareerCredentials_\(\)\)/.test(WEB) && /case 'career_credential_save':\s+return jsonOut_\(webCareerSaveCredential_\(body\)\)/.test(WEB)
   && /case 'career_credential_delete':\s+return jsonOut_\(webCareerDeleteCredential_\(body\)\)/.test(WEB) && /case 'career_credential_log_credits': return jsonOut_\(webCareerLogCredits_\(body\)\)/.test(WEB));
 check('the notification', /key: 'career_cert_expiry',/.test(CODE));

@@ -143,6 +143,14 @@ console.log('\nSlow and killed steps, two nights running');
   check('steps over 90 s are named in the summary', J(W.nightlySlowSteps_([{ name: 'a', ms: 91000 }, { name: 'b', ms: 5000 }, { name: 'c', ms: 120000 }], 90000)) === J(['c 120.0s', 'a 91.0s']));
 }
 
+console.log('\nThe count line is for the night’s own day');
+{
+  const N = world(); N.notifCountLine_ = c => 'Yesterday: ' + J(c);
+  const nc = { counts: { push: 2 }, yesterday: { push: 5 } };
+  check('finished before midnight: today’s counts, called Today', N.nightlyCountLine_(nc, '2026-11-19', '2026-11-19') === 'Today: {"push":2}');
+  check('finished after midnight: yesterday’s, which is the night’s day', N.nightlyCountLine_(nc, '2026-11-19', '2026-11-20') === 'Yesterday: {"push":5}');
+}
+
 console.log('\nThe list itself');
 {
   const R = world();

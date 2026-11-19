@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Trip identity, phases 2-4: making the rest of the system use the event-ID anchor.
 //
 // The anchor itself already worked — resolveTripId_ checks reg.byEventId before
@@ -564,14 +565,14 @@ console.log('\nAdoption runs before anything depends on it');
   const CODE = fs.readFileSync(ROOT + '/Code.js', 'utf8');
   // Each step is now registered with nightlyStep_, so the ORDER is the order of
   // those registrations — which is still exactly what this is asserting.
-  const adopt    = CODE.indexOf("nightlyStep_(ctx, 'adoptLegacyTripKeys_'");
-  const preTrip  = CODE.indexOf("nightlyStep_(ctx, 'checkPreTripBriefings_'");
-  const postTrip = CODE.indexOf("nightlyStep_(ctx, 'checkPostTripCapture_'");
+  const adopt    = NR__.indexOf("S('adoptLegacyTripKeys_', ");
+  const preTrip  = NR__.indexOf("S('checkPreTripBriefings_', ");
+  const postTrip = NR__.indexOf("S('checkPostTripCapture_', ");
   check('the nightly pass adopts', adopt !== -1);
   check('…before pre-trip', adopt !== -1 && preTrip !== -1 && adopt < preTrip, adopt + ' vs ' + preTrip);
   check('…and before post-trip', adopt !== -1 && postTrip !== -1 && adopt < postTrip);
   check('…non-fatally, like its neighbours',
-        /nightlyStep_\(ctx, 'adoptLegacyTripKeys_', function\(\) \{/.test(CODE),
+        /S\('adoptLegacyTripKeys_', 1, function\(\) \{ adoptLegacyTripKeys_\(\{ dryRun: false \}\); \}\)/.test(NR__),
         'the per-step try/catch moved into nightlyStep_, which every step goes through');
   check('TestBench previews it', /function tbAdoptTripKeys\(\)/.test(SRC.TestBench));
   check('…as a dry run', /adoptLegacyTripKeysDryRun\(\)/.test(SRC.TestBench));

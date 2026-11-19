@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Projects phase 1 — the derived model and the health verdict.
 //
 // The load-bearing rule is the one about stalled: a project may not be called
@@ -683,7 +684,7 @@ console.log('\nthe nightly flag: a project with overdue tasks');
   ctx.__p = [many];
   check('a long list is cut short', / and 2 more\. /.test(vm.runInContext('projOverdueFlagsWanted_(__p)', ctx)['PROJECT|PROJ-C'].reason));
   check('the nightly step is wired after the meal nudges',
-        /nightlyStep_\(ctx, 'mpSyncNudges_', mpSyncNudges_\);[^]*?nightlyStep_\(ctx, 'projSyncOverdueFlags_', projSyncOverdueFlags_\);/.test(CODE));
+        (NR__.indexOf("S('mpSyncNudges_', ") !== -1 && NR__.indexOf("S('mpSyncNudges_', ") < NR__.indexOf("S('projSyncOverdueFlags_', ")));
   check('…and syncs through the shared keyed upsert', /upsertKeyedFlags_\(flags, PROJECT_FLAG_PREFIX_, 'Projects', wanted,/.test(extractFn(PROJ, 'projSyncOverdueFlags_')));
 }
 

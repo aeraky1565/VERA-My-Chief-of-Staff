@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Settings › Feature Flags, Config and Feature map, server side (#254, Features.js): one feature list
 // drives the switches, "off until", needs, the step / notification / screen gates, the routes, the
 // retired-row purge, and the new settings read in code. Invented data.
@@ -28,7 +29,7 @@ console.log('\nThe list');
   const keys = c.FEATURES_.map(f => f.k);
   check('50 features, each key once, each in a known area and kind', keys.length === 50 && new Set(keys).size === 50 && c.FEATURES_.every(f => c.FEATURE_AREAS_.includes(f.a) && c.FEATURE_KINDS_.includes(f.kind)));
   check('every "needs" names a feature', c.FEATURES_.every(f => !f.needs || keys.includes(f.needs)));
-  const steps = Object.keys(c.featureStepMap_()), missing = steps.filter(s => !new RegExp("nightlyStep_\\((ctx|c), '" + s + "'").test(CODE));
+  const steps = Object.keys(c.featureStepMap_()), missing = steps.filter(s => !new RegExp("nightlyStep_\\((ctx|c), '" + s + "'").test(CODE) && !new RegExp("S\\('" + s + "', \\d").test(NR__));
   check('every step it owns is a real nightly or morning step', steps.length > 40 && !missing.length, J(missing));
   const notif = Object.keys(c.featureNotifMap_()), gone = notif.filter(n => !new RegExp("key: '" + n + "'").test(CODE));
   check('every notification it owns is in the registry', notif.length > 20 && !gone.length, J(gone));
@@ -57,7 +58,7 @@ console.log('\nSteps, and when they last ran');
   const f = c.featureByKey_('usps_scan');
   check('last activity: the latest of its steps and its jobs’ heartbeats', c.featureLastMs_(f, {}, { scanUSPSMail_: { lastRun: '2026-11-19T10:00:00Z' } }) === Date.parse('2026-11-19T10:00:00Z') && c.featureLastMs_(c.featureByKey_('takeouts'), {}, {}) === 0);
   check('nightlyStep_ asks before the clock, and says why it skipped', /var offBy = typeof featureOffStep_ === 'function' \? featureOffStep_\(name\) : '';/.test(CODE) && CODE.indexOf('featureOffStep_(name)') < CODE.indexOf('if (Date.now() + NIGHTLY_STEP_RESERVE_MS_ >= ctx.deadline)'));
-  check('the nightly halves and the morning email note their steps', (CODE.match(/featureNoteSteps_\(ctx\.timings\)/g) || []).length === 3);
+  check('the night (once, when it finishes) and the morning email note their steps', (CODE.match(/featureNoteSteps_\(ctx\.timings\)/g) || []).length === 1 && /  try \{ featureNoteSteps_\(st\.timings\); \} catch \(e\) \{\}/.test(NR__));
 }
 
 console.log('\nRoutes');
@@ -96,7 +97,7 @@ console.log('\nConfig helpers and the purge');
   const d = ctx({}); d.getSpreadsheet = () => ({ getSheetByName: () => ({ getLastRow: () => rows.length + 1, getRange: () => ({ getValues: () => rows }), deleteRow: n => deleted.push(n) }) });
   d.TABS = { CONFIG: 'Config' }; d.veraLocked_ = fn => fn();
   check('the purge deletes them bottom-up', d.purgeRetiredConfig_() === 2 && J(deleted) === J([5, 3]));
-  check('…as a nightly housekeeping step', /nightlyStep_\(ctx, 'purgeRetiredConfig_', purgeRetiredConfig_\)/.test(CODE));
+  check('…as a nightly housekeeping step', /S\('purgeRetiredConfig_', 5, function\(\) \{ purgeRetiredConfig_\(\); \}\)/.test(NR__));
   check('gym check-in hours: "18-23", and nothing odd', J(c.gymCheckinRange_('18-23')) === J({ from: 18, to: 23 }) && c.gymCheckinRange_('23-18') === null && c.gymCheckinRange_('soon') === null);
 }
 

@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // #218 People & access. Pins:
 //  - sign-in: the owner's shared token still works; a person's code works by its
 //    fingerprint (typed in any case, with spaces), the code itself is never stored;
@@ -197,7 +198,7 @@ console.log('\nThe Access tab fills without the dashboard');
   check('a write that fails is reported, and logged as a Warning', f.ok === false && /couldn’t be written: protected range/.test(f.error) && logs.some(x => x[0] === 'accessSync' && x[1] === 'Warning'), J(f));
   check('the People panel is told whether the tab is empty and whether a list is saved', J(run(a, 'webPeopleList_()').access) === J({ rows: 3, listSaved: true }) && J(run(ctx({ props: owner, extra: { veraStoreGet_: () => null } }), 'veraIdentify_("tok"), webPeopleList_()').access) === J({ rows: 0, listSaved: false }));
   check('not the owner: no sync', (() => { const p = ctx({ props: Object.assign({}, owner, { VERA_USER_TOKENS: J({ people: [{ name: 'Sam', owner: true, hashes: [] }, { name: 'Robin', view: 'lite', hashes: [sha('ROBN-ROBN-ROBN-ROBN')] }] }) }), extra }); p.veraIdentify_('ROBN-ROBN-ROBN-ROBN'); return run(p, 'webAccessSync_({ catalog: [] })').ok === false; })());
-  check('the nightly run calls it', /nightlyStep_\(ctx, 'accessNightlySync_', accessNightlySync_\);/.test(read('Code.js')));
+  check('the nightly run calls it', /S\('accessNightlySync_', \d, function\(\) \{ accessNightlySync_\(\); \}\)/.test(NR__));
   check('the People panel syncs when it opens, and offers “Fill it now” on an empty tab', /React\.useEffect\(function\(\)\{apiPost\(apiUrl,apiToken,syncBody\(\)\)\.catch\(function\(\)\{\}\)\.then\(load\);\},\[apiUrl,apiToken\]\);/.test(APP) && /className:"pp-access-empty"/.test(APP) && /'Fill it now'/.test(APP));
 }
 

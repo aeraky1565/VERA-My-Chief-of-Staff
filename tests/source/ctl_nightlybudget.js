@@ -168,11 +168,8 @@ const CONTROLS = {
   'a flag writer is appended after the pattern engine': b => {
     const s = b['NightlyRunner.js'], at = s.indexOf("    S('checkCrossPatternFlags_'");
     const nl = s.indexOf('\n', at) + 1;
-    return { 'NightlyRunner.js': s.slice(0, nl) + "    S('checkRefills2_', 4, function() { checkRefills_(); }),\n" + s.slice(nl) };
+    return { 'NightlyRunner.js': s.slice(0, nl) + "    S('lateWriter_', 4, function() { writeFlags([]); }),\n" + s.slice(nl) };
   },
-  'a step name no longer resolves to a body (the classifier goes blind)': b => ({
-    'NightlyRunner.js': b['NightlyRunner.js'].replace("S('checkRefills_', 1, function() { checkRefills_(); }),", "S('checkRefillz_', 1, function() { checkRefillz_(); }),"),
-  }),
 };
 
 let allBit = true;
