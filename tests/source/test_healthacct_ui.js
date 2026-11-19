@@ -31,6 +31,7 @@ const FSA = { id: 'HA-1', type: 'FSA', year: 2026, provider: '', election: 3400,
     { date: '2026-09-10', provider: 'DR SAMPLE', recipient: 'Ahmed', status: 'Paid', amount: 159, counted: true },
     { date: '2026-07-29', provider: 'OPTICAL SHOP', recipient: 'Victoria', status: 'Denied', amount: 692.8, counted: false }] } };
 const HSA = { type: 'HSA', year: 2026, ids: ['HA-2'], accounts: 1, coverage: 'family', limit: 8750, balance: 2500, you: 3000, employer: 750, employerName: 'Verizon',
+  plan: 3750, soFar: 3029, youSoFar: 2423, employerSoFar: 606, toCome: 721, paid: 21, perYear: 26, perPaycheck: 115.38, started: true,
   room: 5000, over: 0, balanceAsOf: '2026-10-20', stale: false, edits: [{ id: 'HA-2', type: 'HSA', year: 2026, coverage: 'family', contributed: 3000, employer: 750, employerName: 'Verizon' }] };
 const VIEW = { ok: true, today: '2026-10-28', fsa: [FSA], hsa: HSA, sheetLinked: true, limits: { fsa: 3400, carry: 680, hsaSelf: 4400, hsaFamily: 8750 } };
 
@@ -89,7 +90,8 @@ const VIEW = { ok: true, today: '2026-10-28', fsa: [FSA], hsa: HSA, sheetLinked:
       check(L + ': the latest claims show date, provider, who it was for and amount; a denied one isn\'t counted',
         claims.length === 3 && claims[0] === 'Sep 12 NEIGHBORHOOD PHARMACY Ahmed $435.94' && claims[2] === 'Jul 29 OPTICAL SHOP Victoria · Denied, not counted $692.80', JSON.stringify(claims));
       check(L + ': the HSA card adds everything into one balance against one limit',
-        (await q('.ha-hsa-balance'))[0] === '$2,500' && (await q('.ha-hsa-split'))[0] === 'You $3,000 Verizon $750' && (await q('.ha-room'))[0] === '$5,000 of room left under the $8,750 limit', JSON.stringify([await q('.ha-hsa-split'), await q('.ha-room')]));
+        (await q('.ha-hsa-balance'))[0] === '$2,500' && (await q('.ha-hsa-split'))[0] === 'You $2,423 of $3,000 Verizon $606 of $750' && (await q('.ha-hsa-sofar'))[0] === '$3,029 of $3,750 planned' && (await q('.ha-hsa-pace'))[0] === '21 of 26 paychecks so far · $721 still to come'
+        && (await q('.ha-room'))[0] === 'Planned $3,750 · $5,000 of room left under the $8,750 limit', JSON.stringify([await q('.ha-hsa-split'), await q('.ha-hsa-pace'), await q('.ha-room')]));
 
       await click('.ha-fsa .ha-update-btn');
       await page.fill('#haprobe .ha-update input', '650.5');
@@ -98,9 +100,12 @@ const VIEW = { ok: true, today: '2026-10-28', fsa: [FSA], hsa: HSA, sheetLinked:
         JSON.stringify(await writes()) === '[{"action":"health_account_save","id":"HA-1","balance":"650.5"}]' && (await page.evaluate(() => window.__calls.filter(c => c.action === 'health_accounts').length)) === 2, JSON.stringify(await writes()));
       await click('.ha-hsa .ha-update-btn');
       const fields = await page.$$('#haprobe .ha-update input');
-      await fields[0].fill('2600'); await fields[1].fill('3200');
+      await fields[0].fill('2600');
       await page.$eval('#haprobe .ha-update', f => f.requestSubmit()); await wait(200);
-      check(L + ': on the HSA it also takes what you\'ve put in', JSON.stringify((await writes())[1]) === '{"action":"health_account_save","id":"HA-2","balance":"2600","contributed":"3200"}', JSON.stringify((await writes())[1]));
+      check(L + ': on the HSA it updates only the balance (the year’s plan stays as it is)', fields.length === 1 && JSON.stringify((await writes())[1]) === '{"action":"health_account_save","id":"HA-2","balance":"2600"}', JSON.stringify((await writes())[1]));
+      await mount(Object.assign({}, VIEW, { hsa: Object.assign({}, HSA, { year: 2027, limit: 9000, plan: 9000, you: 7600, employer: 1400, soFar: 0, youSoFar: 0, employerSoFar: 0, toCome: 9000, paid: 0, perPaycheck: 292.31, started: false, room: 0 }) }));
+      check(L + ': next year’s plan: nothing in yet, when it starts, and no room left to add', (await q('.ha-hsa-sofar'))[0] === '$0 of $9,000 planned' && (await q('.ha-hsa-pace'))[0] === 'Starts January 2027 · about $292.31 a paycheck from you'
+        && (await q('.ha-room'))[0] === 'Planned $9,000, the full $9,000 limit for 2027', JSON.stringify([await q('.ha-hsa-sofar'), await q('.ha-hsa-pace'), await q('.ha-room')]));
 
       await mount(VIEW);
       await click('.ha-add');

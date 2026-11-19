@@ -303,7 +303,8 @@ function webGetCheckin_() {
       goals: S.goals && !S.goals.error && S.goals.summary ? S.goals.summary : null },
     attention: att,
     health: { fsa: (health.fsa || []).map(function(f) { return { year: f.year, balance: f.balance, useBy: f.useBy, daysLeft: f.daysLeft, atRisk: f.atRisk }; }),
-      hsa: health.hsa ? { year: health.hsa.year, balance: health.hsa.balance, limit: health.hsa.limit, room: health.hsa.room, put: fsRound_((health.hsa.you || 0) + (health.hsa.employer || 0)) } : null },
+      hsa: health.hsa ? { year: health.hsa.year, balance: health.hsa.balance, limit: health.hsa.limit, room: health.hsa.room, plan: health.hsa.plan, put: health.hsa.soFar, toCome: health.hsa.toCome,
+        paid: health.hsa.paid, perYear: health.hsa.perYear, started: health.hsa.started, employerName: health.hsa.employerName } : null },
     checkin: {
       since: prev ? prev.quarter + ' snapshot, taken ' + prev.taken : '', changes: fsChanges_(now, prev),
       spending: quarterSpend,

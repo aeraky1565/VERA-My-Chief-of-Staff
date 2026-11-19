@@ -34,7 +34,7 @@ const CHECKIN = { ok: true, today: '2026-11-02', quarter: '2026-Q4', month: '202
   tiles: { netWorth: 800000, planStatus: 'Green: holds even in a weak market', cash: 90000, cashLow: 41500, cashLowWhen: 'Jun 27', floor: 20000,
     spend: { source: 'expected', plan: 3150, actual: null }, goals: { count: 3, done: 1, setAside: 40000, toGo: 25000 } },
   attention: { items: [{ kind: 'bill', title: 'Internet $60', detail: 'due in 2 days', date: '2026-11-04', tab: 'billscash' }, { kind: 'cd', title: 'CD A matures', detail: 'decide whether to roll it over', date: '2026-11-20', tab: 'networth' }], unavailable: ['cards'] },
-  health: { fsa: [{ year: 2026, balance: 300, useBy: '2026-12-31', daysLeft: 59, atRisk: 300 }], hsa: { year: 2026, balance: 9000, limit: 8550, room: 1200, put: 7350 } },
+  health: { fsa: [{ year: 2026, balance: 300, useBy: '2026-12-31', daysLeft: 59, atRisk: 300 }], hsa: { year: 2026, balance: 9000, limit: 8550, room: 1200, plan: 7350, put: 5650, toCome: 1700, paid: 20, perYear: 26, started: true } },
   checkin: { since: '2026-Q4 snapshot, taken 2026-10-01',
     changes: [{ key: 'netWorth', label: 'Net worth', now: 800000, prev: 780000, delta: 20000 }, { key: 'cash', label: 'Cash & CDs', now: 90000, prev: 95000, delta: -5000 }, { key: 'planStatus', label: 'Plan status', now: 'Green: holds', prev: 'Green: holds', delta: null }],
     spending: { source: 'expected', categories: [{ name: 'Housing', plan: 4000, actual: null }, { name: 'Utilities', plan: 600, actual: null }] },
@@ -114,7 +114,7 @@ const OLD_TB = { ok: true, configured: true, sharedFixed: [{ name: 'Rent', amoun
       check(L + ': …and only that card (no bills strip, no budget health)', !/due soon/i.test(full.join(' ')) && (kind === 'full' || !/Based on Tracker/.test(full.join(' '))));
       const att = await page.$$eval('#fsprobe .fsu-att', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': Needs attention, soonest first, and what couldn’t be checked', att.length === 2 && /Internet \$60 due in 2 days Nov 4/.test(att[0]) && /CD A matures/.test(att[1]) && /Couldn’t check: card fees\./.test(await txt('.fsu-att-missing')), JSON.stringify(att));
-      check(L + ': FSA & HSA', /FSA 2026: \$300 left use by Dec 31 · 59 days/.test(await txt('.fsu-health')) && /HSA 2026: \$7,350 of \$8,550 \$1,200 room left/.test(await txt('.fsu-health')));
+      check(L + ': FSA & HSA', /FSA 2026: \$300 left use by Dec 31 · 59 days/.test(await txt('.fsu-health')) && /HSA 2026: \$5,650 so far of \$7,350 planned \$1,700 still to come · 20 of 26 paychecks \$1,200 of room left under the \$8,550 limit/.test(await txt('.fsu-health')));
       await click('.fsu-tile-networth'); await wait(200);
       if (kind === 'lite') check(L + ': a tile opens its tab', (await page.evaluate(() => window.__opened)).join() === 'fin_networth');
       else { check(L + ': a tile opens its tab', /Net Worth/.test(await page.$eval('#fsprobe .fin-tabs .subtab-btn.active', n => n.textContent).catch(() => ''))); await page.evaluate(() => Array.from(document.querySelectorAll('#fsprobe .fin-group')).find(b => /Overview/.test(b.textContent)).click()); await wait(300); }

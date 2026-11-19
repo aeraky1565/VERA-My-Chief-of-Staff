@@ -138,6 +138,12 @@ console.log('\nevery HSA in one household card');
   check('two HSAs: one balance, one family limit, never per person', two.accounts === 2 && two.balance === 3000 && two.limit === 8750 && two.room === 0 && two.over === 500, JSON.stringify([two.balance, two.room, two.over]));
   check('the oldest balance date decides whether it\'s stale', two.balanceAsOf === '2026-08-01' && two.stale === true);
   check('no HSA, no card', run(c, 'haHsaView_')([], TODAY, lim) === null);
+  { const plan = run(c, 'haHsaView_')([{ id: 'H9', year: 2027, coverage: 'family', balance: '', contributed: 7600, employer: 1400 }], '2026-11-19', { hsaFamily: 9000, hsaSelf: 4400 });
+    check('next year’s plan: nothing in yet, $9,000 planned, no room left, about $292.31 a paycheck', plan.plan === 9000 && plan.soFar === 0 && plan.paid === 0 && plan.started === false && plan.room === 0 && plan.over === 0 && plan.perPaycheck === 292.31, JSON.stringify(plan)); }
+  { const mid = run(c, 'haHsaView_')([{ id: 'H9', year: 2027, coverage: 'family', balance: '', contributed: 7600, employer: 1400 }], '2027-07-03', { hsaFamily: 9000, hsaSelf: 4400 });
+    check('mid-year it builds up a paycheck at a time (13 of 26 by July 3)', mid.paid === 13 && mid.youSoFar === 3800 && mid.employerSoFar === 700 && mid.soFar === 4500 && mid.toCome === 4500 && mid.started === true, JSON.stringify(mid)); }
+  { const done = run(c, 'haHsaView_')([{ id: 'H9', year: 2026, coverage: 'family', contributed: 3300, employer: 1400 }], '2027-02-01', { hsaFamily: 8750, hsaSelf: 4400, paychecks: 24 });
+    check('after the year, all of it; paychecks a year from Config', done.paid === 24 && done.soFar === 4700 && done.toCome === 0 && done.perYear === 24); }
 }
 
 console.log('\nthe tab, the routes and the sheet');

@@ -3920,6 +3920,10 @@ The month at a glance on top: four summary figures in whole dollars (take-home t
 
 **Add a bill** and **✎** on a bill open a form (name, monthly, category, Type, For, Paid by, Kept as) with **What changes** worked out before saving; **✎** on a figure opens **Change a value**. Figures the sheet works out (taxes, take-home, totals) have no ✎. **What if** turns the inputs into fields (a paycheck line typed per paycheck), reruns every sum, and can **Save as a scenario** or **Write these to the sheet** (listed first, then written per paycheck or per month).
 
+### FSA & HSA: the HSA is a plan, put in a paycheck at a time (`HealthAccounts.js` `haHsaView_`)
+
+On an HSA row, **You** and **Employer** are the plan for the year. The money goes in a paycheck at a time, so what's in **so far** is the plan × the paychecks paid this year ÷ paychecks a year (26, or Config `hsa_paychecks_per_year`): nothing before the plan year starts, all of it after it ends. The card (and the Finance overview's FSA & HSA line) shows what's in so far of what's planned, the paychecks so far and what's still to come, and the room the plan leaves under the yearly limit. **Update balance** on an HSA changes only the balance; the plan is changed with **Edit**.
+
 ### Bills Tab
 
 The `Bills` tab tracks recurring bills: bill name, amount, due day, frequency, category, account, paid status. VERA flags unpaid bills approaching their due date via the Anticipator. The chat interface can mark bills paid, add new bills, and delete bills by row number.

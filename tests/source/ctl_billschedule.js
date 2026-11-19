@@ -22,7 +22,7 @@ const TEST = 'test_billschedule.js', UI = 'test_billscash_ui.js';
 const srv = (from, to) => b => ({ [S]: swap(b[S], from, to) });
 
 const CONTROLS = [
-  ['budget lines show as bills', srv("    if (x.category === 'Household') { budgetLines.push(x.name); return; }\n", "")],
+  ['budget lines show as bills', srv("    if (x.spend || x.category === 'Household') { budgetLines.push(x.name); return; }\n", "")],
   ['a credit stays a line of its own', srv("    var into = bills.filter(function(b) { return bsStem_(b.line) === bsStem_(c.name); })[0];", "    var into = null;")],
   ['a set due day doesn’t win', srv("var due = s.dueDay || x.dueDay || null;", "var due = x.dueDay || s.dueDay || null;")],
   ['card payments count as bills', srv("    if (s.kind === 'card payment') return;\n", "")],

@@ -37,7 +37,9 @@ const CONTROLS = [
   // the screen
   ['a balance with cents can\'t be saved', both("type: 'number', step: 'any', inputMode", "type: 'number', inputMode"), UI],
   ['Update balance forgets which account', both("var p = { id: props.id, balance: v };", "var p = { balance: v };"), UI],
-  ['the employer\'s money isn\'t shown', both("(v.employerName || 'Employer') + ' ' + haUsd_(v.employer)", "(v.employerName || 'Employer')"), UI],
+  ['the employer\'s money isn\'t shown', both("(v.employerName || 'Employer') + ' ' + haUsd_(v.employerSoFar || 0) + ' of ' + haUsd_(v.employer)", "(v.employerName || 'Employer')"), UI],
+  ['the plan counts as already put in', b => ({ [S]: swap(b[S], "var youSoFar = r2(sum('contributed') * paid / perYear), empSoFar = r2(sum('employer') * paid / perYear);", "var youSoFar = sum('contributed'), empSoFar = sum('employer');") })],
+  ['before the year starts, it counts as half in', b => ({ [S]: swap(b[S], "if (tYear < year) paid = 0;", "if (tYear < year) paid = perYear / 2;") })],
 ];
 
 let allBit = true;

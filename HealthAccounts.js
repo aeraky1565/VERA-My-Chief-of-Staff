@@ -30,6 +30,7 @@ var HA_WARN_DAYS_  = 90;   // money that would be lost: flagged from this many d
 var HA_STALE_DAYS_ = 45;   // a typed balance this old is worth checking
 var HA_RECENT_     = 8;    // claims listed on the card
 var HA_FLAG_PREFIX_ = 'HSAFSA|';
+var HA_PAYCHECKS_ = 26;   // HSA money goes in a paycheck at a time; Config hsa_paychecks_per_year overrides
 
 // Claim statuses. Counted: money paid out or on its way. Not counted: claims that won't be
 // paid. Anything else is counted (safer to under-state what's left) and listed.
@@ -71,7 +72,7 @@ function haLimits_(year, cfg) {
     for (var i = upTo.length - 1; i >= 0; i--) { if (HA_LIMITS_[upTo[i]][k] != null) { out[k] = HA_LIMITS_[upTo[i]][k]; return; } }
   });
   var o = function(key, field) { var n = haMoney_((cfg || {})[key + '_' + year]); if (!isNaN(n) && n > 0) out[field] = n; };
-  o('fsa_limit', 'fsa'); o('fsa_carryover', 'carry'); o('hsa_limit_self', 'hsaSelf'); o('hsa_limit_family', 'hsaFamily');
+  o('fsa_limit', 'fsa'); o('fsa_carryover', 'carry'); o('hsa_limit_self', 'hsaSelf'); o('hsa_limit_family', 'hsaFamily'); o('hsa_paychecks_per_year', 'paychecks');
   return out;
 }
 
@@ -137,19 +138,33 @@ function haFsaView_(a, claims, today, lim) {
   };
 }
 
-/** Pure: every HSA listed, as one household card against one yearly limit. */
+/**
+ * Pure: every HSA listed, as one household card against one yearly limit. You and Employer on a row
+ * are the PLAN for the year; the money goes in a paycheck at a time, so what's in so far is the plan ×
+ * the paychecks paid this year ÷ paychecks a year (lim.paychecks, else HA_PAYCHECKS_). Before the plan
+ * year starts nothing is in yet; after it ends, all of it. Room is what the plan leaves under the limit.
+ */
 function haHsaView_(rows, today, lim) {
   if (!rows || !rows.length) return null;
   var sum = function(k) { return Math.round(rows.reduce(function(s, r) { return s + (Number(r[k]) || 0); }, 0) * 100) / 100; };
   var family = rows.length > 1 || rows.some(function(r) { return r.coverage === 'family'; });
   var limit = family ? lim.hsaFamily : lim.hsaSelf;
   var put = sum('contributed') + sum('employer');
+  var year = Number(rows[0].year) || Number(String(today).slice(0, 4)), perYear = Number(lim.paychecks) || HA_PAYCHECKS_;
+  var tYear = Number(String(today).slice(0, 4)), paid;
+  if (tYear < year) paid = 0;
+  else if (tYear > year) paid = perYear;
+  else { var days = haDays_(year + '-01-01', today), inYear = haDays_(year + '-01-01', (year + 1) + '-01-01'); paid = Math.min(perYear, Math.floor(days * perYear / inYear)); }
+  var r2 = function(n) { return Math.round(n * 100) / 100; };
+  var youSoFar = r2(sum('contributed') * paid / perYear), empSoFar = r2(sum('employer') * paid / perYear);
   var asOf = rows.map(function(r) { return r.balanceAsOf || ''; }).sort()[0] || '';
   return {
     type: 'HSA', year: rows[0].year, ids: rows.map(function(r) { return r.id; }), accounts: rows.length,
     coverage: family ? 'family' : 'self', limit: limit,
     balance: sum('balance'), you: sum('contributed'), employer: sum('employer'),
     employerName: rows.map(function(r) { return r.employerName; }).filter(Boolean)[0] || '',
+    plan: r2(put), soFar: r2(youSoFar + empSoFar), youSoFar: youSoFar, employerSoFar: empSoFar, toCome: r2(put - youSoFar - empSoFar),
+    paid: paid, perYear: perYear, perPaycheck: r2(sum('contributed') / perYear), started: tYear >= year,
     room: Math.max(0, Math.round((limit - put) * 100) / 100), over: Math.max(0, Math.round((put - limit) * 100) / 100),
     balanceAsOf: asOf, stale: !!asOf && haDays_(asOf, today) >= HA_STALE_DAYS_,
     edits: rows,

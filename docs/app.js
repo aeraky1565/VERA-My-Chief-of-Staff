@@ -11623,10 +11623,10 @@ function HaForm(props) { var h = React.createElement, a = props.account || {};
       h('span', { style: { fontSize: 12, fontWeight: 700, color: HA_C_.muted } }, 'Health plan coverage (sets the yearly limit)'),
       h(HaSeg, { label: 'Coverage', className: 'ha-coverage', value: f.coverage, onChange: set('coverage'), options: [['self', 'Self-only'], ['family', 'Family']] }),
       h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-        h(HaField, { label: 'You, this year' }, h('input', { type: 'number', step: 'any', className: 'ha-you', value: f.contributed, onChange: set('contributed'), style: HA_INPUT_ })),
-        h(HaField, { label: 'Employer, this year' }, h('input', { type: 'number', step: 'any', className: 'ha-employer', value: f.employer, onChange: set('employer'), style: HA_INPUT_ }))),
+        h(HaField, { label: 'You, planned this year' }, h('input', { type: 'number', step: 'any', className: 'ha-you', value: f.contributed, onChange: set('contributed'), style: HA_INPUT_ })),
+        h(HaField, { label: 'Employer, planned this year' }, h('input', { type: 'number', step: 'any', className: 'ha-employer', value: f.employer, onChange: set('employer'), style: HA_INPUT_ }))),
       h(HaField, { label: 'Employer’s name' }, h('input', { type: 'text', className: 'ha-employer-name', value: f.employerName, placeholder: 'e.g. Verizon', onChange: set('employerName'), style: HA_INPUT_ })),
-      h('span', { style: { fontSize: 12, color: '#6f7fa6' } }, 'Your employer’s money counts toward the same yearly limit. More than one HSA? Add each; VERA adds them into one card.')),
+      h('span', { style: { fontSize: 12, color: '#6f7fa6' } }, 'The year’s plan: VERA counts it in a paycheck at a time. Your employer’s money counts toward the same yearly limit. More than one HSA? Add each; VERA adds them into one card.')),
     h(HaField, { label: isFsa ? 'Balance today, from the provider’s site (optional when the FSA sheet is linked)' : 'Balance today' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', className: 'ha-balance', value: f.balance, onChange: set('balance'), style: HA_INPUT_ })),
     h('div', { style: { display: 'flex', gap: 8 } },
       h('button', { type: 'submit', style: Object.assign({}, HA_BTN_, { flex: 1, background: HA_C_.gold, border: 0, color: '#1a1405', fontWeight: 700 }) }, 'Save'),
@@ -11638,7 +11638,6 @@ function HaUpdate(props) { var h = React.createElement; var _v = React.useState(
   return h('form', { className: 'ha-update', onSubmit: function(e) { e.preventDefault(); if (v === '') return; var p = { id: props.id, balance: v }; if (props.hsa && you !== '') p.contributed = you; props.onSave(p); },
     style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 10, background: '#0b1630', border: '1px solid #2a3f6a' } },
     h(HaField, { label: 'Balance today, from the provider’s site' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', autoFocus: true, value: v, onChange: function(e) { setV(e.target.value); }, style: HA_INPUT_ })),
-    props.hsa ? h(HaField, { label: 'Put in this year (you, so far)' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', value: you, onChange: function(e) { setYou(e.target.value); }, style: HA_INPUT_ })) : null,
     h('div', { style: { display: 'flex', gap: 8 } },
       h('button', { type: 'submit', disabled: v === '', style: Object.assign({}, HA_BTN_, { flex: 1, background: HA_C_.gold, border: 0, color: '#1a1405', fontWeight: 700 }) }, 'Save'),
       h('button', { type: 'button', onClick: props.onCancel, style: HA_BTN_ }, 'Cancel'))); }
@@ -11681,7 +11680,7 @@ function HaFsaCard(props) { var h = React.createElement, f = props.view, today =
       h('button', { type: 'button', className: 'ha-edit', onClick: props.onEdit, style: HA_BTN_ }, 'Edit'))); }
 
 function HaHsaCard(props) { var h = React.createElement, v = props.view, today = props.today;
-  var you = Math.min(100, v.you / Math.max(1, v.limit) * 100), emp = Math.min(100 - you, v.employer / Math.max(1, v.limit) * 100);
+  var L = Math.max(1, v.limit), you = Math.min(100, (v.youSoFar || 0) / L * 100), emp = Math.min(100 - you, (v.employerSoFar || 0) / L * 100), rest = Math.max(0, Math.min(100 - you - emp, ((v.plan || 0) - (v.soFar || 0)) / L * 100));
   return h('div', { className: 'ha-card ha-hsa', style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 14, background: HA_C_.card, border: '1px solid ' + HA_C_.line } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
       h('span', { style: { display: 'flex', gap: 8, alignItems: 'center' } }, h('span', { style: { fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: '#0f2a26', color: '#7fd8c6' } }, 'HSA'), h('span', { style: { fontSize: 15, fontWeight: 700, color: HA_C_.ink } }, 'Household')),
@@ -11691,11 +11690,14 @@ function HaHsaCard(props) { var h = React.createElement, v = props.view, today =
       h('span', { className: 'ha-hsa-balance', style: { fontSize: 30, fontWeight: 700, color: HA_C_.ink, fontVariantNumeric: 'tabular-nums' } }, haUsd_(v.balance)),
       v.balanceAsOf ? h('span', { style: { fontSize: 12, color: v.stale ? '#ffb74d' : HA_C_.faint } }, 'Updated ' + haAgo_(v.balanceAsOf, today) + (v.stale ? ' · check it' : '')) : null),
     h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-      h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: HA_C_.faint } }, 'PUT IN THIS YEAR'),
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' } },
+        h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: HA_C_.faint } }, 'PUT IN SO FAR'),
+        h('span', { className: 'ha-hsa-sofar', style: { fontSize: 13, color: HA_C_.ink, fontVariantNumeric: 'tabular-nums' } }, haUsd_(v.soFar || 0) + ' of ' + haUsd_(v.plan || 0) + ' planned')),
       h('div', { 'aria-hidden': 'true', style: { position: 'relative', height: 10, borderRadius: 999, background: '#16223c', overflow: 'hidden' } },
-        h('span', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: you + '%', background: HA_C_.gold } }), h('span', { style: { position: 'absolute', top: 0, bottom: 0, left: you + '%', width: emp + '%', background: '#7fd8c6' } })),
-      h('div', { className: 'ha-hsa-split', style: { display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: HA_C_.muted } }, h('span', null, 'You ' + haUsd_(v.you)), h('span', null, (v.employerName || 'Employer') + ' ' + haUsd_(v.employer))),
-      h('span', { className: 'ha-room', style: { fontSize: 13, fontWeight: 600, color: v.over ? '#ffb0b0' : '#8fe0a8' } }, v.over ? haUsd_(v.over) + ' over the ' + haUsd_(v.limit) + ' limit for ' + v.year : v.room ? haUsd_(v.room) + ' of room left under the ' + haUsd_(v.limit) + ' limit' : 'At the ' + haUsd_(v.limit) + ' limit for ' + v.year),
+        h('span', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: you + '%', background: HA_C_.gold } }), h('span', { style: { position: 'absolute', top: 0, bottom: 0, left: you + '%', width: emp + '%', background: '#7fd8c6' } }), h('span', { className: 'ha-hsa-tocome', style: { position: 'absolute', top: 0, bottom: 0, left: (you + emp) + '%', width: rest + '%', background: 'rgba(212,179,90,.28)' } })),
+      h('div', { className: 'ha-hsa-split', style: { display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: HA_C_.muted } }, h('span', null, 'You ' + haUsd_(v.youSoFar || 0) + ' of ' + haUsd_(v.you)), h('span', null, (v.employerName || 'Employer') + ' ' + haUsd_(v.employerSoFar || 0) + ' of ' + haUsd_(v.employer))),
+      h('span', { className: 'ha-hsa-pace', style: { fontSize: 12, color: HA_C_.muted } }, !v.started ? 'Starts January ' + v.year + ' · about ' + haUsd_(v.perPaycheck) + ' a paycheck from you' : v.paid >= v.perYear ? 'All ' + v.perYear + ' paychecks in' : v.paid + ' of ' + v.perYear + ' paychecks so far · ' + haUsd_(v.toCome) + ' still to come'),
+      h('span', { className: 'ha-room', style: { fontSize: 13, fontWeight: 600, color: v.over ? '#ffb0b0' : '#8fe0a8' } }, v.over ? 'The plan is ' + haUsd_(v.over) + ' over the ' + haUsd_(v.limit) + ' limit for ' + v.year : v.room ? 'Planned ' + haUsd_(v.plan) + ' · ' + haUsd_(v.room) + ' of room left under the ' + haUsd_(v.limit) + ' limit' : 'Planned ' + haUsd_(v.plan) + ', the full ' + haUsd_(v.limit) + ' limit for ' + v.year),
       h('span', { style: { fontSize: 12, color: '#6f7fa6' } }, 'One limit for the household; HSA money never expires.')),
     props.updating ? h(HaUpdate, { id: v.ids[0], hsa: true, onSave: props.onSave, onCancel: props.onCancel }) :
     h('div', { style: { display: 'flex', gap: 8 } },
@@ -12920,8 +12922,11 @@ function FinSummary(props){var h=React.createElement;var C=BGC;
   var health=card('fsu-health',[head('FSA & HSA'),
     (H.fsa||[]).length?(H.fsa||[]).map(function(f){return h('div',{key:f.year,className:'fsu-fsa',style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:14}},h('span',null,'FSA '+f.year+': '+fsuMoney_(f.balance)+' left'),h('span',{style:{color:f.atRisk>0&&f.daysLeft<=90?C.warn:C.mute,fontSize:12}},'use by '+fsuDay_(f.useBy)+(f.daysLeft!=null&&f.daysLeft>=0?' · '+f.daysLeft+' days':'')));}):h('span',{style:{fontSize:13,color:C.mute}},'No FSA this year.'),
     H.hsa?h('div',{className:'fsu-hsa',style:{display:'flex',flexDirection:'column',gap:6}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:14}},h('span',null,'HSA '+H.hsa.year+': '+fsuMoney_(H.hsa.put)+' of '+fsuMoney_(H.hsa.limit)),h('span',{style:{color:C.ok,fontSize:12}},fsuMoney_(H.hsa.room)+' room left')),
-      h('div',{'aria-hidden':'true',style:{height:6,borderRadius:3,background:C.deep,overflow:'hidden'}},h('div',{style:{height:6,width:Math.min(100,H.hsa.limit?H.hsa.put/H.hsa.limit*100:0)+'%',background:C.acc}}))):null,
+      h('div',{className:'fsu-hsa-line',style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',fontSize:14}},h('span',null,'HSA '+H.hsa.year+': '+fsuMoney_(H.hsa.put)+' so far of '+fsuMoney_(H.hsa.plan!=null?H.hsa.plan:H.hsa.put)+' planned'),
+        h('span',{className:'fsu-hsa-pace',style:{color:C.mute,fontSize:12}},H.hsa.started===false?'starts January, a paycheck at a time':H.hsa.toCome>0?fsuMoney_(H.hsa.toCome)+' still to come · '+H.hsa.paid+' of '+H.hsa.perYear+' paychecks':'all in')),
+      h('div',{'aria-hidden':'true',style:{height:6,borderRadius:3,background:C.deep,overflow:'hidden',display:'flex'}},h('div',{style:{height:6,width:Math.min(100,H.hsa.limit?H.hsa.put/H.hsa.limit*100:0)+'%',background:C.acc}}),
+        h('div',{style:{height:6,width:Math.max(0,Math.min(100,H.hsa.limit?((H.hsa.plan||0)-H.hsa.put)/H.hsa.limit*100:0))+'%',background:'rgba(138,180,248,.3)'}})),
+      h('span',{className:'fsu-hsa-room',style:{fontSize:12,color:H.hsa.room>0?C.ok:C.mute}},H.hsa.room>0?fsuMoney_(H.hsa.room)+' of room left under the '+fsuMoney_(H.hsa.limit)+' limit':'the plan uses the full '+fsuMoney_(H.hsa.limit)+' limit')):null,
     h('button',{type:'button',className:'fsu-to-hsafsa',onClick:function(){go('hsafsa');},style:{alignSelf:'flex-start',minHeight:36,background:'transparent',border:0,color:C.acc,cursor:'pointer',padding:0,fontSize:13}},'Open FSA & HSA')]);
   var monthView=h('div',{className:'fsu-month',style:{display:'flex',flexDirection:'column',gap:12}},tiles,lines,attention,health);
   // ---- Quarter check-in ----

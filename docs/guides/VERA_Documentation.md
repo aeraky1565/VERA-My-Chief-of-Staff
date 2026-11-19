@@ -1088,6 +1088,7 @@ Change only column B. The full list of keys is in the appendix (§22).
   - **What if:** change any figure and every sum reruns; nothing is written until **Write these to the sheet**, which lists each change first. Or **Save as a scenario** for the quarterly check-in.
   - **Set-aside** is separate from how often a bill is paid: it means you save that much each month toward it.
   - **The HSA:** the sheet's HSA/FSA line is used. Under Paychecks, **HSA plan by year** keeps what you plan for this year and next (Config `hsa_annual_<year>`); when a year's plan differs from the sheet, Checks offers to put it in the sheet.
+- **FSA & HSA: the HSA is a plan.** On the HSA, **You** and **Employer** (e.g. Verizon) are what you plan to put in this year. VERA counts it in a paycheck at a time: the card and the Finance overview show what's in **so far** of what's planned, how many paychecks so far, and what's still to come. Before the year starts it says when it starts and about how much a paycheck. The room line is what your plan leaves under the yearly limit. **Update balance** changes only the balance.
 - **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
   - **How often each bill is due:** Edit a bill and choose **How often**: Monthly, Every 2 weeks, Quarterly, Twice a year or Yearly.
     - For Quarterly, Twice a year and Yearly, also pick the **First due** month.
