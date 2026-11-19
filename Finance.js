@@ -45,202 +45,32 @@ function getFinanceSummaries() {
 }
 
 // ============================================================
-// SIMPLE ASS TRACKER — budget metrics
+// BUDGET TRACKER (Household Split) — budget metrics
 // ============================================================
 
 /**
- * Reads the "Tracker" tab in the Simple Ass Tracker sheet.
- *
- * Handles two common layouts automatically:
- *
- *   HORIZONTAL (column-per-person):
- *     Row N:   [Label col]  [Ahmed]      [Victoria]
- *     Row N+1: Net Income   $5,000       $4,000
- *     → Ahmed and Victoria appear as column headers in the SAME row.
- *     → Values are read from each person's column for every metric row.
- *
- *   VERTICAL (section-per-person):
- *     Row 5:  Ahmed          ← section header row
- *     Row 6:  Net Income  $5,000
- *     Row 12: Victoria       ← section header row
- *     Row 13: Net Income  $4,000
- *     → Each person's header appears alone in its own row above their metrics.
- *
- * Returns one summary row per (person × metric) combination found.
+ * The budget figures for the Summaries tab, from the Household Split tab through the Budget engine
+ * (Budget.js), so they are the same numbers Finances › Budget shows. One row per person × metric,
+ * plus the household totals. [] when the sheet isn't connected or can't be read.
  */
 function getSATSummaries_() {
-  var id = veraSettingId_('SAT_SHEET_ID');
-  if (!id) {
-    Logger.log('Finance: SAT_SHEET_ID not set in Script Properties — skipping');
-    return [];
-  }
-
-  var sheet = SpreadsheetApp.openById(id).getSheetByName('Tracker');
-  if (!sheet) {
-    Logger.log('Finance: SAT tab "Tracker" not found');
-    return [];
-  }
-
-  var data  = sheet.getDataRange().getValues();
-  var today = todayStr_();
-
-  // Labels to find inside Ahmed's / Victoria's column ranges
-  var personalTargets = {
-    'net expenses':      true,
-    'disposable income': true,
-  };
-
-  // Labels to find inside the Shared column range
-  // (Shared columns are attributed to "Shared" regardless of which detected section they fall in)
-  var sharedTargets = {
-    'total shared expenses':           true,
-    'total shared savings':            true,
-    'total shared net income':         true,
-    'total shared disposable income':  true,
-  };
-
-  // Combined lookup for quick "is this a target?" checks
-  var allTargets = {};
-  Object.keys(personalTargets).forEach(function(k) { allTargets[k] = 'personal'; });
-  Object.keys(sharedTargets).forEach(function(k)   { allTargets[k] = 'shared';   });
-
-  var results  = [];
-  var usedKeys = {}; // "section|metric" → true, prevents duplicates
-
-  // ---- Detect layout: horizontal (column headers) vs vertical (row headers) ----
-  // Horizontal is detected when 2+ section names appear in the SAME row.
-  var sectionCols  = {}; // { 'Ahmed': colIdx, 'Victoria': colIdx } — horizontal only
-  var headerRowIdx = -1;
-
-  for (var r = 0; r < data.length; r++) {
-    var rowSections = {};
-    for (var c = 0; c < data[r].length; c++) {
-      var v = String(data[r][c] || '').trim().toLowerCase();
-      if      (v === 'ahmed')                                          rowSections['Ahmed']    = c;
-      else if (v === 'victoria')                                       rowSections['Victoria'] = c;
-      else if (v === 'shared' || v === 'household' || v === 'joint')  rowSections['Shared']   = c;
-    }
-    if (Object.keys(rowSections).length >= 2) {
-      sectionCols  = rowSections;
-      headerRowIdx = r;
-      break;
-    }
-  }
-
-  if (headerRowIdx !== -1) {
-    // ======================================================
-    // HORIZONTAL LAYOUT — sections are column headers
-    // ======================================================
-    // Each section (Ahmed, Victoria, Shared) may span multiple columns
-    // (e.g. Ahmed = B–C, Shared = E–G, Victoria = I–J).
-    // We compute each section's column RANGE as [startCol, nextSectionStartCol).
-    // For each metric row we scan the full range and take the first non-zero value.
-
-    var sectionColIndices = Object.keys(sectionCols).map(function(s) { return sectionCols[s]; });
-    var minSectionCol     = Math.min.apply(null, sectionColIndices);
-    var labelCol          = minSectionCol > 0 ? minSectionCol - 1 : 0;
-
-    // Build ranges: sort sections by their start column, then each range ends
-    // where the next section begins (or at the last column of the sheet).
-    var sortedSections = Object.keys(sectionCols).sort(function(a, b) {
-      return sectionCols[a] - sectionCols[b];
-    });
-    var sectionRanges = {}; // { 'Ahmed': { start: 1, end: 4 }, ... }
-    for (var i = 0; i < sortedSections.length; i++) {
-      var sec   = sortedSections[i];
-      var start = sectionCols[sec];
-      var end   = (i + 1 < sortedSections.length)
-        ? sectionCols[sortedSections[i + 1]]
-        : (data[headerRowIdx] ? data[headerRowIdx].length : start + 3);
-      sectionRanges[sec] = { start: start, end: end };
-    }
-
-    Logger.log('Finance: SAT horizontal layout — ranges: ' + JSON.stringify(sectionRanges));
-
-    // Scan every cell in every row after the header.
-    // Labels (e.g. "Net Expenses") sit INSIDE each section's column range;
-    // the value is in the first non-zero numeric cell to their right in the same row.
-    // - Personal labels (Net Expenses, Disposable Income) → attributed to whichever
-    //   detected section column range the label cell falls in (Ahmed or Victoria).
-    // - Shared labels (Total Shared …) → always attributed to "Shared", regardless
-    //   of which detected section range they fall in.
-    for (var r = headerRowIdx + 1; r < data.length; r++) {
-      for (var c = 0; c < data[r].length; c++) {
-        var cellLabel = String(data[r][c] || '').trim();
-        var cellLow   = cellLabel.toLowerCase();
-        var targetType = allTargets[cellLow]; // 'personal' | 'shared' | undefined
-        if (!targetType) continue;
-
-        // Value = first non-zero numeric cell to the right of this label in the same row
-        var n = null;
-        for (var vc = c + 1; vc < data[r].length; vc++) {
-          var raw    = data[r][vc];
-          var parsed = typeof raw === 'number'
-            ? raw
-            : parseFloat(String(raw || '').replace(/[$,\s]/g, '').replace(/\(([^)]+)\)/, '-$1'));
-          if (!isNaN(parsed) && parsed !== 0) { n = parsed; break; }
-        }
-        if (n === null) continue;
-
-        var section;
-        if (targetType === 'shared') {
-          section = 'Shared';
-        } else {
-          // Identify which detected section owns column c
-          section = null;
-          var sKeys = Object.keys(sectionRanges);
-          for (var si = 0; si < sKeys.length; si++) {
-            var range = sectionRanges[sKeys[si]];
-            if (c >= range.start && c < range.end) { section = sKeys[si]; break; }
-          }
-          if (!section) continue; // label is outside all known section ranges — skip
-        }
-
-        var key = section + '|' + cellLow;
-        if (usedKeys[key]) continue;
-        usedKeys[key] = true;
-
-        results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker',
-          section + ' — ' + toTitleCase_(cellLabel), fmtCurrency_(n), today));
-      }
-    }
-
-  } else {
-    // ======================================================
-    // VERTICAL LAYOUT — each section header in its own row
-    // ======================================================
-    Logger.log('Finance: SAT vertical layout detected — scanning row by row');
-
-    var currentSection = '';
-
-    for (var r = 0; r < data.length; r++) {
-      for (var c = 0; c < data[r].length; c++) {
-        var cell    = String(data[r][c] || '').trim();
-        var cellLow = cell.toLowerCase();
-
-        if      (cellLow === 'ahmed')                                          { currentSection = 'Ahmed';    continue; }
-        else if (cellLow === 'victoria')                                       { currentSection = 'Victoria'; continue; }
-        else if (cellLow === 'shared' || cellLow === 'household' || cellLow === 'joint') { currentSection = 'Shared'; continue; }
-
-        if (!allTargets[cellLow]) continue;
-
-        var key = currentSection + '|' + cellLow;
-        if (usedKeys[key]) continue;
-
-        var value = findFirstNumericInRow_(data[r], c + 1);
-        if (value === null) continue;
-
-        usedKeys[key] = true;
-        var metricLabel = currentSection
-          ? currentSection + ' — ' + toTitleCase_(cell)
-          : toTitleCase_(cell);
-        results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker', metricLabel, fmtCurrency_(value), today));
-      }
-    }
-  }
-
-  Logger.log('Finance: SAT found ' + results.length + ' metrics');
-  return results;
+  var t = bgReadTracker_();
+  if (t.error) { Logger.log('Finance: ' + t.error); return []; }
+  var model = bgModel_(t.grid);
+  if (!model.ok) { Logger.log('Finance: ' + model.error); return []; }
+  var c = budgetCompute_(model, {}, bgCategoryMap_());
+  var today = todayStr_(), src = AUTO_PREFIX + ' Budget Tracker', out = [];
+  c.people.forEach(function(p) {
+    out.push(row_(src, p.name + ' — Take-Home', fmtCurrency_(p.takeHome), today));
+    out.push(row_(src, p.name + ' — Transfer To Joint', fmtCurrency_(p.checking), today));
+    out.push(row_(src, p.name + ' — Personal Bills', fmtCurrency_(p.personalBills), today));
+    out.push(row_(src, p.name + ' — Left Over', fmtCurrency_(p.disposable), today));
+  });
+  out.push(row_(src, 'Shared — Total Shared Expenses', fmtCurrency_(c.shared.total), today));
+  out.push(row_(src, 'Shared — Total Shared Savings', fmtCurrency_(c.shared.savings), today));
+  out.push(row_(src, 'Shared — Total Take-Home', fmtCurrency_(c.totalTakeHome), today));
+  out.push(row_(src, 'Shared — Total Left Over', fmtCurrency_(c.totalDisposable), today));
+  return out;
 }
 
 // ============================================================
@@ -528,50 +358,10 @@ function logSATData() {
  * object inside getSATSummaries_() (all lowercase).
  */
 function debugSATLabels() {
-  var id = veraSettingId_('SAT_SHEET_ID');
-  if (!id) { Logger.log('SAT_SHEET_ID not set.'); return; }
-
-  var sheet = SpreadsheetApp.openById(id).getSheetByName('Tracker');
-  if (!sheet) { Logger.log('Tab "Tracker" not found.'); return; }
-
-  var data = sheet.getDataRange().getValues();
-
-  // Find header row (where Ahmed/Victoria appear in same row)
-  var headerRowIdx = -1;
-  var sectionCols  = {};
-  for (var r = 0; r < data.length; r++) {
-    var rowSections = {};
-    for (var c = 0; c < data[r].length; c++) {
-      var v = String(data[r][c] || '').trim().toLowerCase();
-      if      (v === 'ahmed')                                         rowSections['Ahmed']    = c;
-      else if (v === 'victoria')                                      rowSections['Victoria'] = c;
-      else if (v === 'shared' || v === 'household' || v === 'joint') rowSections['Shared']   = c;
-    }
-    if (Object.keys(rowSections).length >= 2) { sectionCols = rowSections; headerRowIdx = r; break; }
-  }
-
-  if (headerRowIdx === -1) {
-    Logger.log('Could not detect a header row with 2+ section names (Ahmed/Victoria/Shared).');
-    Logger.log('Dumping all non-empty column A values:');
-    for (var r = 0; r < data.length; r++) {
-      var v = String(data[r][0] || '').trim();
-      if (v) Logger.log('  Row ' + (r + 1) + ': "' + v + '"');
-    }
-    return;
-  }
-
-  // Determine label column (left of the first section column)
-  var minSectionCol = Math.min.apply(null, Object.keys(sectionCols).map(function(s) { return sectionCols[s]; }));
-  var labelCol = minSectionCol > 0 ? minSectionCol - 1 : 0;
-
-  Logger.log('Header row: ' + (headerRowIdx + 1) + ' | Sections: ' + JSON.stringify(sectionCols) + ' | Label col: ' + labelCol);
-  Logger.log('--- Labels found after header row (col ' + labelCol + ') ---');
-  for (var r = headerRowIdx + 1; r < data.length; r++) {
-    var label = String(data[r][labelCol] || '').trim();
-    if (label) Logger.log('  Row ' + (r + 1) + ': "' + label + '"  (lowercase: "' + label.toLowerCase() + '")');
-  }
-  Logger.log('--- End of labels ---');
-  Logger.log('Add the ones you want to the targets{} object in getSATSummaries_() (all lowercase).');
+  var t = bgReadTracker_();
+  if (t.error) { Logger.log(t.error); return; }
+  var m = budgetModel_(t.grid);
+  Logger.log(m.ok ? 'Household Split reads: ' + m.people.map(function(p) { return p.name; }).join(' and ') + ', ' + m.bills.length + ' bills' + (m.missing.length ? '. Missing: ' + m.missing.join(', ') : '') : m.error);
 }
 
 function logTransactionData() {

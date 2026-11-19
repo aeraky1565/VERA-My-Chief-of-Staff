@@ -1080,14 +1080,14 @@ Change only column B. The full list of keys is in the appendix (§22).
 
 ## 17. Finances (November 2026)
 
-- **Budget (`Budget.js`):** reads the budget tracker's Tracker tab live and by label; works out plan vs actual and a What-if overlay without writing the tracker.
-  - **Taken from pay.** Some lines come out of a paycheck before it's paid: medical, vision and dental premiums, disability, AD&D and life cover, identity/legal plans, HSA and FSA.
-    - **On a person's own list,** they count as theirs.
-    - **On the shared list,** they count as from pay when their account names that person. A premium on Joint is left as a bill, because VERA can't tell whose pay it comes from.
-  - **They aren't bills,** so there's no due day, reminder, Accounts minimum or reconcile for them. Bills & cashflow names them.
-  - **Each person's Budget card** shows them under **Taken from pay**, then **Take-home pay** (net income minus those lines). The split, the transfers and disposable income don't change: a shared premium on your pay still counts in the split, so the other person's share comes through their transfer.
-  - **To change one,** add a Config row `from_pay:<line>` set to `yes` or `no`.
-  - **The HSA:** the card's **HSA for the year** sets this year's and next year's total (Config `hsa_annual_<year>`). VERA uses the total ÷ 12 as the monthly deduction in place of the tracker's figure, and switches to the new year's on January 1.
+- **Budget (`Budget.js`):** reads the budget tracker's **Household Split** tab live and by label. The old Tracker tab is retired: Bills, Accounts, reminders, the morning email, Chat and the Finance overview all read Household Split now.
+  - **At a glance:** take-home, shared costs, what goes into Joint, and what's left over, in whole dollars; where each paycheck goes; pie charts of the household's take-home and of shared costs by category; shared costs by type with the set-asides; and the checks (Joint balances, bills missing a field, the settle-up, whether VERA's figures match the sheet's).
+  - **The sheet, section by section:** Paychecks, Bills, Split, Summary, Emergency fund and Bonuses, in the sheet's order. Tap one to open or close it; VERA remembers. On a phone the tables become lists and each bill a card.
+  - **From pay:** a deduction marked **Shared cost? Yes** in Paychecks (medical, vision) is a shared cost taken from that person's pay. It counts in the split and comes off that person's Joint transfer. It isn't a bill, so there's no reminder for it.
+  - **Writing to the sheet (owner only):** **Add a bill** fills a row in the bills list and shows what changes first. **✎** on a bill or on a figure you type in the sheet changes that one cell. Figures the sheet works out (taxes, take-home, totals) can't be typed over; VERA refuses a cell that holds a formula.
+  - **What if:** change any figure and every sum reruns; nothing is written until **Write these to the sheet**, which lists each change first. Or **Save as a scenario** for the quarterly check-in.
+  - **Set-aside** is separate from how often a bill is paid: it means you save that much each month toward it.
+  - **The HSA:** the sheet's HSA/FSA line is used. Under Paychecks, **HSA plan by year** keeps what you plan for this year and next (Config `hsa_annual_<year>`); when a year's plan differs from the sheet, Checks offers to put it in the sheet.
 - **Bills & cashflow (`BillSchedule.js`):** the Bill Schedule tab (due day, account override, autopay, card) joined to the tracker's bills, and a joint-account timeline with the opening balance and transfer day.
   - **How often each bill is due:** Edit a bill and choose **How often**: Monthly, Every 2 weeks, Quarterly, Twice a year or Yearly.
     - For Quarterly, Twice a year and Yearly, also pick the **First due** month.

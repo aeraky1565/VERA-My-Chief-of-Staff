@@ -42,7 +42,7 @@ const ss = (store, owner, title) => ({ getName: () => title || 'Sheet', getSheet
 const CONFIG = { phone_plan_sheet_id: 'phone-test' };
 const S = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SAT_SHEET_ID' ? 'sat-test' : null }) },
-  SpreadsheetApp: { openById: id => id === 'sat-test' ? ss({ Tracker: TRACKER }, 'tracker') : id === 'phone-test' ? ss({ Sheet1: PHONE }, 'phone', 'Example Family Plan') : (() => { throw new Error('no such sheet'); })() },
+  SpreadsheetApp: { openById: id => id === 'sat-test' ? ss({ 'Household Split': TRACKER }, 'tracker') : id === 'phone-test' ? ss({ Sheet1: PHONE }, 'phone', 'Example Family Plan') : (() => { throw new Error('no such sheet'); })() },
   Utilities: { getUuid: () => 'abcdef12-3456-7890-0000', formatDate: () => '2026-11-02' },
   Session: { getScriptTimeZone: () => 'UTC' }, LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Logger: { log() {} },
   getSpreadsheet: () => ss(VERA, 'vera'), getConfigValues: () => CONFIG,

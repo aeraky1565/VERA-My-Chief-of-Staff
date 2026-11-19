@@ -1,9 +1,12 @@
 // Finances › Budget (Budget.js and the BudgetEngine block it shares with both dashboards,
-// issue #226): the tracker read by label, every formula in the map, net income from
-// gross − deductions, the own-card transfers, required leaving out credits, categories
-// summing to the total with an unmapped line under Other, the match check naming the
-// expected difference and catching a moved row, What if overrides, scenarios saved to
-// VERA's own sheet, and the tracker never written. Every name and figure is invented.
+// issue #226): the budget tracker's Household Split tab read by label — paychecks (per paycheck ×
+// paychecks in a regular month, a "Shared cost? Yes" deduction joining the shared costs from that
+// person's pay), bills by Type / For / Paid by / Actual or set-aside / Category, the split — and every
+// figure the sheet shows worked out to match it: shares, Joint transfers, left over, settle-up,
+// set-asides, the emergency fund. Then writing back: only input cells, found by label, a formula
+// refused, every change checked before any is made; adding a bill in the first empty row or a new
+// one inside the list; owner only. What if, scenarios, the HSA plan, and the old Tracker tab never
+// read. Every name and figure is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
@@ -32,25 +35,32 @@ function fakeSheet(name, grid, tracked) {
     getRange: (r, c, nr, nc) => ({
       getValues: () => Array.from({ length: nr || 1 }, (_, i) => Array.from({ length: nc || 1 }, (_, j) => ((grid[r - 1 + i] || [])[c - 1 + j]) ?? '')),
       setValues: v => { if (tracked) writes.push(name); v.forEach((row, i) => row.forEach((x, j) => { while (grid.length < r + i) grid.push([]); grid[r - 1 + i][c - 1 + j] = x; })); return sh; },
-      setValue: x => { if (tracked) writes.push(name); grid[r - 1][c - 1] = x; return sh; },
+      setValue: x => { if (tracked) writes.push(name + '!' + r + ':' + c); while (grid.length < r) grid.push([]); grid[r - 1][c - 1] = x; return sh; },
+      getFormula: () => FORMULAS[r + ':' + c] || '',
       setFontWeight() { return this; }, setBackground() { return this; }, setFontColor() { return this; } }),
     appendRow: row => { if (tracked) writes.push(name); grid.push(row.slice()); },
+    insertRowAfter: r => { if (tracked) INSERTED.push(r); grid.splice(r, 0, []); },
     deleteRow: r => { if (tracked) writes.push(name); grid.splice(r - 1, 1); },
     setFrozenRows() {} };
   return sh;
 }
 let TRACKER = tracker();
-const trackerSs = () => ({ getSheetByName: n => n === 'Tracker' ? fakeSheet('Tracker', TRACKER, true) : null, getSheets: () => [fakeSheet('Tracker', TRACKER, true)] });
+const FORMULAS = {};   // 'row:col' → a formula, for the cells the sheet works out
+const OLD = [['2026'], ['', 'Pat', '', '', 'Shared Expenses']];
+let INSERTED = [];
+const trackerSs = () => ({ getSheetByName: n => n === 'Household Split' ? fakeSheet('Household Split', TRACKER, true) : n === 'Tracker' ? fakeSheet('Tracker', OLD, true) : null,
+  getSheets: () => [fakeSheet('Tracker', OLD, true), fakeSheet('Household Split', TRACKER, true)] });
 const VERA = {}, CONFIG = {};
 const veraSs = { getSheetByName: n => VERA[n] ? fakeSheet(n, VERA[n], false) : null, insertSheet: n => { VERA[n] = []; return fakeSheet(n, VERA[n], false); } };
 let uid = 0;
 const S = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SAT_SHEET_ID' ? 'sat-test' : null }) },
   SpreadsheetApp: { openById: id => { if (id !== 'sat-test') throw new Error('no such sheet'); return trackerSs(); } },
-  Utilities: { getUuid: () => 'abcdef12-3456-7890-' + String(++uid).padStart(4, '0') },
+  Utilities: { getUuid: () => 'abcdef12-3456-7890-' + String(++uid).padStart(4, '0'), formatDate: (d, tz, f) => f === 'yyyy' ? '2026' : '2026-11' },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   Logger: { log() {} },
-  getSpreadsheet: () => veraSs, getConfigValues: () => CONFIG,
+  getSpreadsheet: () => veraSs, getConfigValues: () => CONFIG, veraLog_: () => {}, _veraWho_: { owner: true },
+  Session: { getScriptTimeZone: () => 'UTC' }, 
 };
 vm.createContext(S); loadSettings_(S);
 function extractFn(src, name) {
@@ -69,127 +79,137 @@ vm.runInContext(extractFn(CODE, 'ensureSheet'), S);
 vm.runInContext(BG, S);
 const run = (expr, vars) => { Object.assign(S, vars || {}); return vm.runInContext(expr, S); };
 
-console.log('\nreading the tracker by label');
+console.log('\nreading Household Split by label');
 let m = run('budgetModel_(G)', { G: tracker() });
-check('it reads', m.ok === true && m.missing.length === 0, J(m.missing || m.error));
-check('the two people come from the heading row', m.people.map(p => p.key + '/' + p.name).join() === 'pat/Pat,sam/Sam');
-check('gross, deductions (a blank one as 0) and the typed net', m.people[0].gross === 10000 && m.people[0].deductions.map(x => x.amount).join() === '1000,1500,500'
-  && m.people[1].deductions.map(x => x.name + '=' + x.amount).join() === '401K Deductions=500,Federal Withholding=900,Federal MED/EE=0' && m.people[0].netTyped === 7200, J(m.people[1].deductions));
-check('fixed and nice to have, per person', m.people[0].fixed.map(x => x.name).join() === 'Car Insurance - Pat,Phone - Pat' && m.people[0].nice.map(x => x.amount).join() === '40,10'
-  && m.people[1].fixed.length === 1 && m.people[1].nice[0].name === 'Books');
-check('shared lines: name without the due day, account, due day', J(m.shared.fixed[0]) === J({ key: 'shared.fixed:Rent', name: 'Rent', amount: 2000, account: 'Joint', dueDay: 1 })
-  && m.shared.fixed.length === 7 && m.shared.nice.length === 3, J(m.shared.fixed[0]));
-check('the tracker’s What If rows are kept apart', m.shared.whatif.length === 1 && m.shared.whatif[0].name === 'New Rent Delta');
-check('split from the first person’s contribution %, shared savings from its total', m.split === 0.6 && m.sharedSavings === 1000);
-check('the tracker’s own summary figures', m.tracker.totalShared === 3150 && m.tracker.required === 3050 && m.tracker.checking.pat === 1690 && m.tracker.ownCards.sam === 610 && m.tracker.totalDisposable === 6850, J(m.tracker));
-check('a moved column still reads (labels, not positions)', (() => { const g = tracker().map(r => [''].concat(r)); const mm = run('budgetModel_(G)', { G: g }); return mm.ok && mm.shared.fixed.length === 7 && mm.people[0].gross === 10000; })());
-check('no Shared Expenses heading: unavailable, with why', (() => { const mm = run('budgetModel_(G)', { G: [['a', 'b'], ['c']] }); return mm.ok === false && /Shared Expenses/.test(mm.error); })());
-check('a missing split is listed, not guessed silently', (() => { const mm = run('budgetModel_(G)', { G: tracker({ pctLabel: 'Pat contribution' }) }); return mm.missing.some(x => /Contribution %/.test(x)); })());
-check('a split typed as a number reads as a share', run('budgetModel_(G).split', { G: tracker({ split: 60 }) }) === 0.6);
+check('it reads, nothing missing', m.ok === true && m.missing.length === 0, J(m.missing || m.error));
+check('the two people come from the Paychecks heading', m.people.map(p => p.key + '/' + p.name).join() === 'pat/Pat,sam/Sam');
+check('a paycheck: cadence, gross, net deposit, paychecks a year and in a regular month', (() => { const p = m.people[0];
+  return p.cadence === 'Monthly' && p.grossPer === 10000 && p.netPer === 6900 && p.perYear === 12 && p.perMonth === 1 && p.gross === 10000; })());
+check('deductions per paycheck and a month; taxes are one; a blank one is left out', J(m.people[0].deductions.map(x => x.name + '=' + x.per + '/' + x.amount)) === J(['401(k)=1000/1000', 'Taxes=2000/2000'])
+  && m.people[1].deductions.length === 2, J(m.people[0].deductions.map(x => x.name)));
+check('a “Shared cost? Yes” deduction is a shared cost taken from that person’s pay', J(m.shared.pay.map(x => [x.key, x.amount, x.account, x.fromPay])) === J([['shared.pay:Health Insurance - Medical', 100, 'Pat', 'pat']]));
+check('each input keeps its cell', m.people[0].cells.gross.row === 6 && m.people[0].cells.gross.col === 2 && m.people[1].cells.gross.col === 3 && m.shared.pay[0].cell.row === 9);
+check('bills: name without the due day, Type, For, Paid by, Kept as, Category, and its row', (() => { const r = m.shared.fixed[0];
+  return r.key === 'shared.fixed:Rent' && r.name === 'Rent' && r.dueDay === 1 && r.account === 'Joint' && r.keptAs === 'Actual' && r.row === 21 && r.cells.amount.col === 2; })(), J(m.shared.fixed[0]));
+check('shared by Type; a person’s own bills under them', m.shared.fixed.length === 6 && m.shared.nice.length === 3 && m.people[0].fixed.map(x => x.name).join() === 'Car Insurance - Pat,Phone - Pat' && m.people[1].nice[0].name === 'Books');
+check('a shared bill paid by a person is on their account', m.shared.fixed.find(x => x.name === 'Groceries').account === 'Sam');
+check('the split, shared and personal savings', m.split === 0.6 && m.sharedSavings === 1000 && m.people[0].psave === 300 && m.people[1].psave === 200);
+check('the bills list’s empty rows and its Total bills row', J(m.cells.bills.blanks) === J([36, 37]) && m.cells.bills.total === 38 && m.cells.bills.first === 21, J(m.cells.bills));
+check('a percent typed as a number reads as a share', run('budgetModel_(G).split', { G: tracker({ split: 60 }) }) === 0.6);
+check('a sheet without the sections says which', /Paychecks/.test(run('budgetModel_(G).error', { G: [['Household split'], ['2. Bills']] })));
+check('the old Tracker layout isn’t read', run('budgetModel_(G).ok', { G: OLD }) === false);
+check('the bonuses section', m.bonus.usually.pat === 'March' && m.bonus.sharePct.sam === 0.5);
 
-console.log('\nthe formula map');
+console.log('\nthe figures, as the sheet works them out');
 let c = run('budgetCompute_(budgetModel_(G), {}, {})', { G: tracker() });
-const pat = c.people[0], sam = c.people[1];
-check('shared total = every shared line, What If rows left out', c.shared.total === 3150, c.shared.total);
-check('required = the fixed lines, the credit left out', c.shared.required === 3050, c.shared.required);
-check('contribution = total × share (60/40)', pat.contribution === 1890 && sam.contribution === 1260);
-check('own cards = the shared lines on that person’s account', pat.ownCards === 200 && sam.ownCards === 610, pat.ownCards + ' ' + sam.ownCards);
-check('→ AMEX Checking = contribution − own cards', pat.checking === 1690 && sam.checking === 650);
-check('→ AMEX Savings = shared savings × share', pat.savings === 600 && sam.savings === 400);
-check('net income = gross − deductions, for both', pat.net === 7000 && sam.net === 4600, pat.net);
-check('net expenses = fixed + nice + personal savings + contribution + shared savings', pat.netExpenses === 2990 && sam.netExpenses === 1960, pat.netExpenses + ' ' + sam.netExpenses);
-check('disposable = net income − net expenses', pat.disposable === 4010 && sam.disposable === 2640);
-check('groups: fixed, nice to have, contributions', pat.fixedTotal === 150 && pat.niceTotal === 50 && pat.contributions === 2790);
-check('emergency fund: required × 3 / 6 / 9, by share and half each', J(c.emergency.map(e => [e.months, e.total, e.byShare.map(s => s.amount).join('/'), e.half])) === J([[3, 9150, '5490/3660', 4575], [6, 18300, '10980/7320', 9150], [9, 27450, '16470/10980', 13725]]), J(c.emergency));
-check('totals across both people', c.totalNet === 11600 && c.totalDisposable === 6650);
+const [Pt, Sm] = c.people;
+check('shared total: the shared bills and the shared cost from pay', c.shared.total === 3150 && c.shared.fixed === 3000 && c.shared.nice === 150 && c.shared.variable === 0);
+check('take-home: gross − deductions − taxes − what comes from pay', Pt.net === 7000 && Pt.takeHome === 6900 && Sm.takeHome === 4600 && c.totalTakeHome === 11500);
+check('each share, split 60 / 40', Pt.contribution === 1890 && Sm.contribution === 1260);
+check('→ Joint: the share less shared costs on their own card or pay', Pt.ownCard === 100 && Pt.fromPay === 100 && Pt.checking === 1690 && Sm.checking === 650);
+check('personal bills, left over', Pt.personalBills === 200 && Sm.personalBills === 100 && Pt.disposable === 4010 && Sm.disposable === 2640 && c.totalDisposable === 6650);
+check('settle-up: what Pat covers of Sam’s share', c.settleUp === 286);
+check('Joint pays out exactly what comes in', c.shared.joint === 2340 && c.jointCheck === 0);
+check('set-asides, by who pays them', Pt.setAside === 100 && Sm.setAside === 0 && c.setAside === 100);
+check('required: shared fixed and variable (the credit counts), × 3, 6, 9', c.shared.required === 3000 && c.emergency.map(e => e.total).join() === '9000,18000,27000' && c.emergency[0].byShare[0].amount === 5400);
+check('share of take-home', Math.abs(Pt.takeHomeShare - 0.6) < 0.001);
+check('two paychecks in a regular month: gross, deductions and take-home × 2', (() => { const g = tracker(); g.find(r => r[0] === 'Paychecks in a regular month')[1] = '2';
+  const v = run('budgetCompute_(budgetModel_(G), {}, {})', { G: g }); return v.people[0].gross === 20000 && v.people[0].takeHome === 13800 && v.people[0].fromPay === 200 && v.shared.total === 3250; })());
+check('a shared bill kept as set-aside counts for the person who pays it', (() => { const v = run('budgetCompute_(budgetModel_(G), {}, {})', { G: tracker({ bills: [['Jewellery cover', 12, 'Fixed', 'Shared', 'Pat', 'Set-aside', 'Insurance']] }) });
+  return v.people[0].setAside === 112 && v.people[1].setAside === 0; })());
+check('a variable bill is its own type, and counts as required', (() => { const v = run('budgetCompute_(budgetModel_(G), {}, {})', { G: tracker({ bills: [['Water', '$30.00', 'Variable', 'Shared', 'Joint', 'Actual', 'Utilities']] }) });
+  return v.shared.variable === 30 && v.shared.required === 3030 && v.shared.lines.find(x => x.name === 'Water').kind === 'variable'; })());
+check('the sheet’s Category wins over the rules; Config wins over both', (() => {
+  const v = run('budgetCompute_(budgetModel_(G), {}, { water: "Bills" })', { G: tracker({ bills: [['Water', '$30.00', 'Variable', 'Shared', 'Joint', 'Actual', 'Utilities'], ['Fish food', 5, 'Fixed', 'Shared', 'Joint', 'Actual', 'Pets']] }) });
+  return v.shared.lines.find(x => x.name === 'Water').category === 'Bills' && v.shared.lines.find(x => x.name === 'Fish food').category === 'Pets' && v.shared.lines.find(x => x.name === 'Rent').category === 'Housing'; })());
+check('categories sum to the total', Math.abs(c.shared.categories.reduce((s, x) => s + x.total, 0) - c.shared.total) < 0.01);
+check('groceries and cleaning are spending, not bills', c.shared.lines.filter(x => x.spend).map(x => x.name).join() === 'Groceries,Home Cleaning');
+check('a bill missing Type, For or Paid by is counted', run('budgetCompute_(budgetModel_(G), {}, {}).incomplete', { G: tracker({ bills: [['Mystery', 9, '', 'Shared', 'Joint', 'Actual', '']] }) }) === 1);
 
-console.log('\ncategories');
-const cats = c.shared.categories;
-check('the shared lines grouped, in order, with Other last', cats.map(x => x.name + '=' + x.total).join(' | ') === 'Housing=2000 | Utilities=300 | Health=100 | Household=700 | Insurance & subscriptions=10 | Other=40', cats.map(x => x.name + '=' + x.total).join(' | '));
-check('categories sum to the shared total', Math.abs(cats.reduce((s, x) => s + x.total, 0) - c.shared.total) < 0.005);
-check('each category keeps its account mix', J(cats.find(x => x.name === 'Household').accounts) === J({ Sam: 600, Pat: 100 }));
-check('an unmapped line lands in Other, and is named', J(c.shared.other) === J(['Dog Walker']));
-check('a Config mapping places it', run('budgetCompute_(budgetModel_(G), {}, { "dog walker": "Household" })', { G: tracker() }).shared.categories.find(x => x.name === 'Household').total === 740);
-
-console.log('\nthe match check');
-let mt = run('budgetMatch_(M, budgetCompute_(M, {}, {}))', { M: run('budgetModel_(G)', { G: tracker() }) });
-const bad = mt.filter(r => !r.ok);
-check('everything matches but the typed net income and what follows it', bad.map(r => r.id).join() === 'pat.net,pat.disposable,totalNet,totalDisposable', bad.map(r => r.id).join());
-check('…the net income difference is named', /gross − deductions; the tracker types it/.test(bad[0].because) && bad[0].diff === -200 && bad[0].tracker === 7200);
-check('…and the ones that follow from it say so', bad.slice(1).every(r => r.because === 'follows net income'), J(bad.map(r => r.because)));
-check('a moved row shows as a difference, unexplained', (() => {
-  const g = tracker(); const r = g.findIndex(x => x[4] === 'Utilities - Electric (15th)'); g[r][4] = ''; g[r][5] = '';   // the electric row went missing
-  const mm = run('budgetModel_(G)', { G: g }); const rows = run('budgetMatch_(M, budgetCompute_(M, {}, {}))', { M: mm });
-  const t = rows.find(x => x.id === 'totalShared'); return t && !t.ok && t.diff === -90 && t.because === ''; })());
-check('a rounding cent is not a difference', (() => { const g = tracker(); g.find(x => x[4] === 'Total Shared Expenses')[5] = '$3,150.01';
-  return run('budgetMatch_(M, budgetCompute_(M, {}, {}))', { M: run('budgetModel_(G)', { G: g }) }).find(x => x.id === 'totalShared').ok; })());
+console.log('\nVERA beside the sheet');
+let match = run('budgetMatch_(M, budgetCompute_(M, {}, {}))', { M: m });
+check('every figure matches the sheet', match.length >= 12 && match.every(r => r.ok), J(match.filter(r => !r.ok)));
+check('a typed figure that’s wrong is named', (() => { const g = tracker(); g.find(r => r[0] === 'Transfer to Joint Checking')[1] = '$1,700.00';
+  const rr = run('budgetMatch_(budgetModel_(G), budgetCompute_(budgetModel_(G), {}, {}))', { G: g }).filter(r => !r.ok); return rr.length === 1 && rr[0].id === 'pat.checking' && rr[0].diff === -10; })());
+check('a net deposit that doesn’t follow from the deductions says so', (() => { const g = tracker(); g.find(r => r[0] === 'Net deposit per paycheck')[1] = '$7,000.00'; g.find(r => /^Take-home income/.test(r[0]))[1] = '$7,000.00';
+  const rr = run('budgetMatch_(budgetModel_(G), budgetCompute_(budgetModel_(G), {}, {}))', { G: g }).find(r => r.id === 'pat.takeHome'); return rr && !rr.ok && /net deposit/.test(rr.because); })());
 
 console.log('\nWhat if');
-const M0 = run('budgetModel_(G)', { G: tracker() });
-let w = run('budgetCompute_(M, { "shared.fixed:Rent": 2500 }, {})', { M: M0 });
-check('a shared line changed: total, contributions and transfers rerun', w.shared.total === 3650 && w.people[0].checking === 1990 && w.people[1].checking === 850 && w.shared.required === 3550);
-w = run('budgetCompute_(M, { split: 0.5 }, {})', { M: M0 });
-check('the split changed', w.people[0].contribution === 1575 && w.people[1].savings === 500);
-w = run('budgetCompute_(M, { "pat.gross": 11000, "pat.ded:Federal Withholding": 1700 }, {})', { M: M0 });
-check('gross and a deduction changed: net and disposable', w.people[0].net === 7800 && w.people[0].disposable === 4810);
-w = run('budgetCompute_(M, { "pat.psave": "", "shared.savings": "abc" }, {})', { M: M0 });
-check('an empty or bad input falls back to the plan', w.people[0].psave === 300 && w.shared.savings === 1000);
-check('the model itself is untouched', M0.shared.fixed[0].amount === 2000 && M0.split === 0.6);
+c = run('budgetCompute_(budgetModel_(G), { "shared.fixed:Rent": 2500, split: 0.5, "pat.gross": 11000 }, {})', { G: tracker() });
+check('a bill, the split and gross pay rerun every sum', c.shared.total === 3650 && c.people[0].contribution === 1825 && c.people[0].takeHome === 7900);
+check('a shared cost from pay can change too', run('budgetCompute_(budgetModel_(G), { "shared.pay:Health Insurance - Medical": 150 }, {}).people[0].fromPay', { G: tracker() }) === 150);
+check('only known keys, as numbers, are kept for a scenario', J(run('bgCleanChanges_(budgetModel_(G), { "shared.fixed:Rent": "2500", "shared.pay:Health Insurance - Medical": 120, bogus: 5, "pat.gross": "x", split: 3 })', { G: tracker() }))
+  === J({ 'shared.fixed:Rent': 2500, 'shared.pay:Health Insurance - Medical': 120, split: 1 }));
 
-console.log('\nthe phone plan, from its own tracker');
-const MP = run('bgWithPhone_(budgetModel_(G), { ok: true, month: "2026-11", total: 180, credit: 40, ours: 140, dueDay: 12 })', { G: tracker() });
-const fp = MP.shared.fixed.find(x => x.name === 'Family Plan Payment'), fc = MP.shared.fixed.find(x => x.name === 'Family Plan Credit');
-check('the plan’s total and money back replace the two family plan lines, keeping the tracker’s', fp.amount === 180 && fp.trackerAmount === 200 && fc.amount === -40 && fc.trackerAmount === -50 && MP.phone.ours === 140, J([fp, fc]));
-S.MP = MP;
-const cp = run('budgetCompute_(MP, {}, {})'), cr = run('budgetCompute_(MP, {}, {}, true)');
-check('the sums use the phone plan; raw uses the tracker’s figures', cp.shared.total === 3150 - 20 + 10 && cr.shared.total === 3150, cp.shared.total + ' ' + cr.shared.total);
-check('required still leaves the money back out', cp.shared.required === 3050 - 20);
-const mm = run('budgetMatch_(MP, budgetCompute_(MP, {}, {}), budgetCompute_(MP, {}, {}, true))');
-const ts = mm.find(r => r.id === 'totalShared'), pd = mm.find(r => r.id === 'pat.disposable');
-check('the match check names the phone plan as the cause', !ts.ok && ts.diff === -10 && ts.because === 'the phone plan, from the phone tracker', J(ts));
-check('…and both causes when net income differs too', pd.because === 'follows net income, and the phone plan', J(pd));
-check('no plan, or a plan that didn’t read: the model is untouched', run('bgWithPhone_(budgetModel_(G), null).phone', { G: tracker() }) === undefined && run('bgWithPhone_(budgetModel_(G), { ok: false }).shared.fixed.find(x => x.name === "Family Plan Payment").amount', { G: tracker() }) === 200);
+console.log('\nwriting back: which cells');
+m = run('budgetModel_(G)', { G: tracker() }); S.M = m;
+const plan = e => run('bgWritePlan_(M, E)', { E: e });
+let w = plan([{ key: 'pat.gross', value: '10500' }]);
+check('gross pay per paycheck: its cell, as a number', w.ok && J(w.writes.map(x => [x.row, x.col, x.value])) === J([[6, 2, 10500]]), J(w));
+w = plan([{ key: 'shared.fixed:Rent', value: '2100' }, { key: 'shared.fixed:Rent', field: 'paidBy', value: 'sam' }, { key: 'pat.fixed:Phone - Pat', field: 'keptAs', value: 'set aside' }]);
+check('a bill’s amount, Paid by (named as the sheet names people) and Kept as', w.ok && J(w.writes.map(x => [x.row, x.col, x.value])) === J([[21, 2, 2100], [21, 5, 'Sam'], [31, 6, 'Set-aside']]), J(w));
+w = plan([{ key: 'split', value: 55 }, { key: 'sam.psave', value: 250 }, { key: 'pat.ssave', value: 700 }, { key: 'shared.pay:Health Insurance - Medical', value: 110 }, { key: 'sam.cadence', value: 'biweekly' }]);
+check('the split (a percent), savings, a shared cost on a paycheck, and the pay cadence', w.ok && J(w.writes.map(x => [x.row, x.col, x.value])) === J([[41, 2, 0.55], [48, 3, 250], [46, 2, 700], [9, 2, 110], [5, 3, 'Biweekly']]), J(w));
+check('a Type that isn’t one is refused', /Fixed, Variable or Nice to have/.test(plan([{ key: 'shared.fixed:Rent', field: 'type', value: 'Sometimes' }]).error));
+check('For and Paid by only name the household', /For is one of: Shared, Pat, Sam/.test(plan([{ key: 'shared.fixed:Rent', field: 'forWho', value: 'Robin' }]).error));
+check('taxes are refused (the sheet works them out)', /net deposit instead/.test(plan([{ key: 'pat.ded:Taxes', value: 1 }]).error));
+check('a line the sheet no longer has is refused', /no longer has/.test(plan([{ key: 'shared.fixed:Boat', value: 1 }]).error));
+check('the same cell twice is refused', /twice/.test(plan([{ key: 'pat.gross', value: 1 }, { key: 'pat.gross', value: 2 }]).error));
+check('a name can’t start a formula', /can’t start/.test(plan([{ key: 'shared.fixed:Rent', field: 'name', value: '=IMPORTXML("x")' }]).error));
+check('an amount must be a number', /Enter an amount/.test(plan([{ key: 'pat.gross', value: 'lots' }]).error));
 
-console.log('\nthe server');
-TRACKER = tracker(); writes.length = 0;
-let r = run('webGetBudgetModel_()');
-check('budget_model: model, computed, match and quarter', r.ok && r.configured && r.model.people.length === 2 && r.computed.shared.total === 3150 && r.match.length > 10 && /^\d{4}-Q[1-4]$/.test(r.quarter), J(Object.keys(r)));
-CONFIG['budget_category:Dog Walker'] = 'Household'; S._configCache_ = null;
-r = run('webGetBudgetModel_()');
-check('Config budget_category:<line> rows are the map', r.categoryMap['dog walker'] === 'Household' && r.computed.shared.other.length === 0);
-delete CONFIG['budget_category:Dog Walker'];
-r = run('webSaveBudgetScenario_({ name: "  Bigger flat ", changes: { "shared.fixed:Rent": 2500, "nope": 5, split: 7, "pat.gross": "x" } })');
-check('a scenario saves the known changes only, with results worked out on the server', r.ok && J(r.scenario.changes) === J({ 'shared.fixed:Rent': 2500, split: 1 }) && r.scenario.name === 'Bigger flat'
-  && r.scenario.results.totalShared === 3650 && r.scenario.results.pat.checking === 3650 - 200, J(r.scenario));
-check('…to VERA’s Budget Scenarios tab', VERA['Budget Scenarios'] && J(VERA['Budget Scenarios'][0]) === J(['ID', 'Name', 'Changes JSON', 'Results JSON', 'Created', 'Quarter']) && VERA['Budget Scenarios'].length === 2);
-check('nothing changed: refused', /Nothing is changed/.test(run('webSaveBudgetScenario_({ name: "x", changes: { nope: 1 } })').error));
-check('no name: refused', run('webSaveBudgetScenario_({ name: " ", changes: { split: 0.5 } })').ok === false);
-const id = r.scenario.id;
-check('the list reads it back', run('webGetBudgetModel_()').scenarios.map(s => s.id + ':' + s.changes['shared.fixed:Rent']).join() === id + ':2500');
-check('delete removes it', run('webDeleteBudgetScenario_({ id: ID })', { ID: id }).ok && run('webGetBudgetModel_()').scenarios.length === 0);
-check('a gone one says so', run('webDeleteBudgetScenario_({ id: ID })', { ID: id }).ok === false);
-check('the tracker was never written', writes.length === 0, J(writes));
-check('Budget.js never calls a write on the tracker', !/openById[\s\S]{0,400}?(setValue|appendRow|deleteRow|insertSheet)/.test(extractFn(BG, 'bgReadTracker_')));
-check('the routes are wired', /case 'budget_model':\s+return jsonOut_\(webGetBudgetModel_\(\)\)/.test(WEB) && /case 'budget_scenario_save':\s+return jsonOut_\(webSaveBudgetScenario_\(body\)\)/.test(WEB)
-  && /case 'budget_scenario_delete':\s+return jsonOut_\(webDeleteBudgetScenario_\(body\)\)/.test(WEB));
-const FLAGS = [], everKeys = {};
-S.writeFlags = fl => fl.forEach(f => { if (!everKeys[f.key]) { everKeys[f.key] = 1; FLAGS.push(f); } });
-run('webGetBudgetModel_()'); run('webGetBudgetModel_()');
-check('a line with no category is flagged once, with how to place it', FLAGS.length === 1 && FLAGS[0].key === 'budget_uncategorized_dog_walker' && /budget_category:Dog Walker/.test(FLAGS[0].reason) && FLAGS[0].source === 'Budget', JSON.stringify(FLAGS));
-CONFIG['budget_category:Dog Walker'] = 'Household'; FLAGS.length = 0; delete everKeys.budget_uncategorized_dog_walker;
-run('webGetBudgetModel_()');
-check('…and not once it has one', FLAGS.length === 0);
-delete CONFIG['budget_category:Dog Walker']; delete S.writeFlags;
-S.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
-r = run('webGetBudgetModel_()');
-check('no tracker connected: says so', r.ok && r.configured === false && /SAT_SHEET_ID/.test(r.error));
+console.log('\nwriting back: to the sheet');
+const RESET = () => { TRACKER = tracker(); writes.length = 0; INSERTED = []; Object.keys(FORMULAS).forEach(k => delete FORMULAS[k]); };
+RESET();
+let r = run('webBudgetWrite_(B)', { B: { edits: [{ key: 'shared.fixed:Rent', value: 2100 }, { key: 'pat.gross', value: 10500 }] } });
+check('it writes those cells of Household Split, and nothing else', r.ok && J(writes) === J(['Household Split!21:2', 'Household Split!6:2']) && TRACKER[20][1] === 2100 && TRACKER[5][1] === 10500, J(r) + J(writes));
+RESET(); FORMULAS['13:2'] = '=B6-B8-B9-B14';
+r = run('webBudgetWrite_(B)', { B: { edits: [{ key: 'pat.gross', value: 10500 }, { key: 'pat.net', value: 7000 }] } });
+check('a cell holding a formula is refused, and then nothing at all is written', !r.ok && /worked out by the sheet/.test(r.error) && writes.length === 0, J(r));
+RESET();
+check('the old Tracker tab is never written', (run('webBudgetWrite_(B)', { B: { edits: [{ key: 'split', value: 0.5 }] } }), writes.every(x => /^Household Split!/.test(x))));
+check('the budget_model route reads Household Split', /^\s*case 'budget_model':\s*return jsonOut_\(webGetBudgetModel_\(\)\);/m.test(WEB));
+check('only the owner may write', /^\s*case 'budget_write':\s*return jsonOut_\(peopleOwnerOnly_\(\) \|\| webBudgetWrite_\(body\)\);/m.test(WEB) && /^\s*case 'budget_add_bill':\s*return jsonOut_\(peopleOwnerOnly_\(\) \|\| webBudgetAddBill_\(body\)\);/m.test(WEB));
+
+console.log('\nadding a bill');
+RESET();
+r = run('webBudgetAddBill_(B)', { B: { name: 'Window Cleaner', amount: '25', type: 'nice to have', forWho: 'shared', paidBy: 'sam', keptAs: 'Set-aside', category: 'Home' } });
+check('it goes in the first empty row of the list, every column filled', r.ok && r.row === 36 && J(TRACKER[35].slice(0, 7)) === J(['Window Cleaner', 25, 'Nice to have', 'Shared', 'Sam', 'Set-aside', 'Home']) && INSERTED.length === 0, J(r) + J(TRACKER[35]));
+check('…and the model then reads it as a shared bill paid by Sam', (() => { const mm = run('budgetModel_(G)', { G: TRACKER }); const b = mm.shared.nice.find(x => x.name === 'Window Cleaner'); return b && b.account === 'Sam' && b.keptAs === 'Set-aside'; })());
+RESET(); TRACKER = tracker({ noBlank: true });
+r = run('webBudgetAddBill_(B)', { B: { name: 'Window Cleaner', amount: 25, type: 'Fixed', forWho: 'Pat', paidBy: 'Pat', keptAs: 'Actual' } });
+check('with no empty row, a new row inside the list (so Total bills takes it in)', r.ok && J(INSERTED) === J([35]) && r.row === 36 && TRACKER[35][0] === 'Window Cleaner' && TRACKER[36][0] === 'Total bills', J(r) + J(INSERTED));
+RESET();
+check('a duplicate (same name, same For) is refused', /already a bill/.test(run('webBudgetAddBill_(B)', { B: { name: 'rent (1st)', amount: 1, forWho: 'Shared' } }).error) && /already a bill/.test(run('webBudgetAddBill_(B)', { B: { name: 'Rent', amount: 1, forWho: 'Shared' } }).error) && writes.length === 0);
+check('a bill needs a name and an amount', /name/.test(run('webBudgetAddBill_(B)', { B: { amount: 5 } }).error) && /amount/.test(run('webBudgetAddBill_(B)', { B: { name: 'X' } }).error) && writes.length === 0);
+
+console.log('\nthe HSA plan');
+CONFIG.hsa_annual_2026 = '3300'; CONFIG.hsa_annual_2027 = '7600';
+let hm = run('bgWithHsa_(budgetModel_(G), CFG, "2026").hsa', { G: tracker({ payDeductions: [['Health Savings (HSA)', '$275.00', '', 'No']] }), CFG: CONFIG });
+check('the HSA line, its year from the sheet, and the plan for this year and next', hm && hm.key === 'pat.ded:Health Savings (HSA)' && hm.sheetAnnual === 3300 && hm.plan === 3300 && hm.next === 7600 && hm.nextYear === '2027', J(hm));
+check('the plan never replaces the sheet’s figure', run('budgetCompute_(bgWithHsa_(budgetModel_(G), CFG, "2027"), {}, {}).people[0].deductions.find(x => /HSA/.test(x.name)).amount', { G: tracker({ payDeductions: [['Health Savings (HSA)', '$275.00', '', 'No']] }), CFG: CONFIG }) === 275);
+delete CONFIG.hsa_annual_2026; delete CONFIG.hsa_annual_2027;
+
+console.log('\nthe phone plan');
+m = run('bgWithPhone_(budgetModel_(G), P)', { G: tracker(), P: { ok: true, total: 230, credit: 60, month: '2026-11', ours: 120, dueDay: 12 } });
+check('the plan and its credit come from the phone tracker, the sheet’s kept', (() => { const a = m.shared.fixed.find(x => x.name === 'Family Plan Payment'), b = m.shared.fixed.find(x => x.name === 'Family Plan Credit');
+  return a.amount === 230 && a.trackerAmount === 200 && b.amount === -60 && b.trackerAmount === -50 && m.phone.total === 230; })());
+check('the real sheet’s names are swapped too', run('BG_PHONE_RX_.test("Phone family plan") && BG_PHONE_CREDIT_RX_.test("Phone plan credit") && !BG_PHONE_RX_.test("Phone plan credit")'));
+
+console.log('\nscenarios, in VERA’s own sheet');
+RESET();
+r = run('webSaveBudgetScenario_(B)', { B: { name: 'Bigger flat', changes: { 'shared.fixed:Rent': 2500 } } });
+check('saved with its results, the sheet untouched', r.ok && r.scenario.results.totalShared === 3650 && writes.length === 0 && VERA['Budget Scenarios'].length === 2);
+check('listed back', run('bgListScenarios_()')[0].name === 'Bigger flat');
+check('nothing changed → not saved', /Nothing is changed/.test(run('webSaveBudgetScenario_(B)', { B: { name: 'x', changes: { bogus: 1 } } }).error));
+
+console.log('\nthe tab');
+check('Household Split is the tab read; the old Tracker isn’t', run('bgReadTracker_().grid.length') === TRACKER.length && /getSheetByName\(BG_TAB_\)/.test(BG) && !/getSheetByName\('Tracker'\)/.test(BG));
+check('no other server file reads the old Tracker tab of the budget tracker', !/SAT_SHEET_ID[\s\S]{0,400}getSheetByName\('Tracker'\)/.test(WEB) && !/getSheetByName\('Tracker'\)/.test((() => { try { return read('Finance.js'); } catch (e) { return fs.readFileSync(path.join(REPO, 'Finance.js'), 'utf8'); } })()));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
 
-
-// Settings.js (veraSetting_, veraOnceGet_ …) into a test context: from VERA_ROOT when a
-// control copied it there, else from the repo.
 function loadSettings_(c) {
   const fs_ = require('fs'), p_ = require('path');
   const repo = p_.join(__dirname, '..', '..'), at = p_.join(process.env.VERA_ROOT || repo, 'Settings.js');

@@ -14195,23 +14195,27 @@ const FIN_GROUPS_LITE = [
   { id: 'cards',  label: 'Cards',      icon: '💳', hint: 'perks and rewards', items: ['cards'] }];
 
 // ---- BudgetEngine (Finances › Budget, issue #226) — SHARED VERBATIM by Budget.js, docs/app.js and docs/dashboard-lite.html ----
-// Reads the budget tracker's Tracker tab BY LABEL (never by cell position) and works the summary out
-// from the lines, the way the tracker does, so What if can run in the browser with no round trips:
-//   shared total      = every shared line (the What If Scenarios rows are left out)
-//   split             = the first person's share; the second gets the rest (60/40 today)
-//   contribution      = shared total × that person's share
-//   required          = the shared fixed lines, credits left out
-//   shared savings    = the tracker's total, split by the same shares
-//   → AMEX Checking   = contribution − the shared lines charged to that person's own cards
-//   → AMEX Savings    = that person's shared savings
-//   net income        = gross − deductions (for both people; the tracker types one of them)
-//   net expenses      = fixed + nice to have + personal savings + contribution + shared savings
-//   disposable        = net income − net expenses
-//   emergency fund    = required × 3, 6 and 9 months, by share and half each
-// Overrides (What if) are { key: amount }: '<person>.gross', '<person>.ded:<line>',
+// Reads the budget tracker's Household Split tab BY LABEL (never by cell position) and works the figures
+// out from its inputs, the way the sheet does, so What if can run in the browser with no round trips:
+//   1. Paychecks   one paycheck per person: gross, pre- and after-tax deductions, taxes, net deposit, and
+//                  how many in a regular month. A deduction marked "Shared cost? Yes" (medical, vision)
+//                  is a shared cost taken from that person's pay, so it joins the shared lines.
+//   2. Bills       only what is paid from take-home: Monthly, Type (Fixed / Variable / Nice to have),
+//                  For (Shared or a person), Paid by (Joint or a person), Actual or set-aside, Category.
+//   3. Split       the first person's share of shared costs (60/40 today), shared and personal savings.
+//   shared total      = the shared bills + the shared costs taken from pay
+//   share             = shared total × that person's share
+//   → Joint Checking  = share − the shared costs on their own card or paycheck
+//   take-home         = net deposit × paychecks in a regular month
+//   left over         = take-home − Joint − shared savings − shared bills on own card − personal bills − personal savings
+//   settle-up         = what the first person covers of the second's share (their cards and pay, crossed)
+//   set-asides        = the set-aside bills, by who pays them
+//   required          = the shared fixed and variable costs; the emergency fund is that × 3, 6 and 9 months
+// Amounts are a month throughout; a paycheck line keeps `per` (one paycheck) and `perMonth` for the sheet.
+// Overrides (What if) are { key: amount a month }: '<person>.gross', '<person>.ded:<line>',
 // '<person>.fixed:<line>', '<person>.nice:<line>', '<person>.psave', 'shared.fixed:<line>',
-// 'shared.nice:<line>', 'split' (0–1) and 'shared.savings'.
-// A line another tracker replaces (the phone plan) keeps the budget tracker's figure as trackerAmount;
+// 'shared.variable:<line>', 'shared.nice:<line>', 'shared.pay:<line>', 'split' (0–1) and 'shared.savings'.
+// A line another tracker replaces (the phone plan) keeps the sheet's figure as trackerAmount;
 // budgetCompute_(…, raw) uses those, and budgetMatch_(model, c, raw) then names that cause.
 var BG_CATS=[
   ['Housing',/\brent\b|renter/i],
@@ -14219,329 +14223,563 @@ var BG_CATS=[
   ['Health',/health|medical|vision|dental/i],
   ['Household',/grocer|costco|cleaning|\btips?\b/i],
   ['Insurance & subscriptions',/insurance|subscription|membership/i]];
+// Spending budgets rather than bills (groceries, Costco, cleaning): Bills leaves them out.
+var BG_SPEND_RX=/grocer|costco|cleaning|\btips?\b/i;
+var BG_TYPES={'fixed':'fixed','variable':'variable','nice to have':'nice','nice':'nice'};
 function bgText_(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
 function bgLow_(v){return bgText_(v).toLowerCase().replace(/:$/,'');}
-function bgNum_(v){if(typeof v==='number')return isFinite(v)?v:null;var s=bgText_(v).replace(/[$,\s]/g,'');if(!s)return null;
+function bgNum_(v){if(typeof v==='number')return isFinite(v)?v:null;var s=bgText_(v).replace(/[$,\s]/g,'');if(!s||s==='-')return null;
   var neg=/^\(.*\)$/.test(s);s=s.replace(/[()]/g,'');var pct=/%$/.test(s);var n=parseFloat(s.replace(/%$/,''));if(isNaN(n))return null;if(pct)n=n/100;return neg?-n:n;}
 function bgPct_(v){var n=bgNum_(v);if(n==null)return null;if(typeof v==='number'&&n>1)n=n/100;return n;}
 function bgRound_(n){return Math.round((Number(n)||0)*100)/100;}
 function bgDueDay_(label){var m=bgText_(label).match(/\((\d{1,2})(?:st|nd|rd|th)\)/i);return m?Number(m[1]):null;}
 function bgName_(label){return bgText_(label).replace(/\s*\((\d{1,2})(?:st|nd|rd|th)\)\s*/i,' ').trim();}
-// Pure: the category of a shared line: the Config map first (budget_category:<line>), then the rules, else Other.
-function bgCategory_(name,catMap){var k=bgLow_(name);if(catMap&&catMap[k])return catMap[k];
+// Pure: a line's category: the Config map first (budget_category:<line>), then the sheet's Category, then the rules, else Other.
+function bgCategory_(name,catMap,sheetCat){var k=bgLow_(name);if(catMap&&catMap[k])return catMap[k];if(bgText_(sheetCat))return bgText_(sheetCat);
   for(var i=0;i<BG_CATS.length;i++)if(BG_CATS[i][1].test(name))return BG_CATS[i][0];return 'Other';}
-// Pure: the Tracker tab (rows of cells) → the model. { ok:false, error } when the layout can't be read.
+// Pure: the Household Split tab (rows of cells) → the model. { ok:false, error } when the layout can't be read.
+// Every input keeps its cell ({row, col}, 1-based) so VERA can write it back; `section` names where it sits.
 function budgetModel_(grid){
-  grid=grid||[];var head=-1,sc=-1;
-  for(var r=0;r<grid.length&&head===-1;r++){var row=grid[r]||[];for(var c=0;c<row.length;c++)if(bgLow_(row[c])==='shared expenses'){head=r;sc=c;break;}}
-  if(head===-1)return {ok:false,error:'The tracker has no “Shared Expenses” heading.'};
-  var people=[];(grid[head]||[]).forEach(function(cell,c){var t=bgText_(cell);if(t&&c!==sc&&!/^\d{4}$/.test(t)&&!/^what if$/i.test(t))people.push({key:t.toLowerCase(),name:t,col:c});});
-  if(people.length!==2)return {ok:false,error:'The tracker should name two people beside “Shared Expenses”; it names '+people.length+'.'};
-  var missing=[],seen={};
+  grid=grid||[];var at=function(r,c){return (grid[r]||[])[c];};
+  var find=function(rx,from){for(var r=from||0;r<grid.length;r++)if(rx.test(bgLow_(at(r,0))))return r;return -1;};
+  var hp=find(/^1\.\s*paychecks/),hb=find(/^2\.\s*bills/),hs=find(/^3\.\s*split/);
+  if(hp===-1)return {ok:false,error:'The budget tracker’s Household Split tab has no “1. Paychecks” section.'};
+  if(hb===-1)return {ok:false,error:'The budget tracker’s Household Split tab has no “2. Bills” section.'};
+  if(hs===-1)return {ok:false,error:'The budget tracker’s Household Split tab has no “3. Split” section.'};
+  var people=[],sharedCol=-1;(grid[hp]||[]).forEach(function(cell,c){var t=bgText_(cell);if(!c||!t)return;if(/shared/i.test(t)){sharedCol=c;return;}people.push({key:t.toLowerCase(),name:t,col:c});});
+  if(people.length!==2)return {ok:false,error:'The Paychecks section should name two people; it names '+people.length+'.'};
+  var missing=[],seen={},byKey={};people.forEach(function(p){byKey[p.key]=p;});
   var keyFor=function(prefix,name){var k=prefix+':'+name,n=2;while(seen[k])k=prefix+':'+name+' #'+(n++);seen[k]=1;return k;};
-  var at=function(r,c){return (grid[r]||[])[c];};
-  // each person's column: income, deductions, expenses, then the contributions
-  var model={ok:true,people:[],shared:{fixed:[],nice:[],whatif:[]},split:null,sharedSavings:null,
-    tracker:{contribution:{},checking:{},savings:{},ownCards:{}},missing:missing};
-  people.forEach(function(p){
-    var P={key:p.key,name:p.name,gross:null,deductions:[],netTyped:null,fixed:[],nice:[],psave:null,typed:{}},state='';
-    for(var r=head+1;r<grid.length;r++){var l=bgLow_(at(r,p.col)),v=at(r,p.col+1),name=bgText_(at(r,p.col));if(!l)continue;
-      if(l==='monthly income'){state='income';continue;}
-      if(l==='gross income'&&state==='income'){P.gross=bgNum_(v)||0;state='ded';continue;}
-      if(l==='net income'){P.netTyped=bgNum_(v);state='';continue;}
-      if(l==='monthly expenses'){state='exp';continue;}
-      if(l==='fixed expenses'&&state){state='fixed';continue;}
-      if(l==='nice to have expenses'){state='nice';continue;}
-      if(l==='personal savings contribution'){P.psave=bgNum_(v)||0;state='sum';continue;}
-      if(l==='shared expense contribution'){P.typed.contribution=bgNum_(v);continue;}
-      if(l==='shared savings contribution'){P.typed.sharedSavings=bgNum_(v);continue;}
-      if(l==='net expenses'){P.typed.netExpenses=bgNum_(v);continue;}
-      if(l==='disposable income'){P.typed.disposable=bgNum_(v);break;}
-      if(state==='ded')P.deductions.push({key:keyFor(p.key+'.ded',name),name:name,amount:bgNum_(v)||0});
-      else if(state==='fixed'||state==='nice')P[state].push({key:keyFor(p.key+'.'+state,name),name:name,amount:bgNum_(v)||0});}
-    if(P.gross==null)missing.push(p.name+' · Gross Income');
-    if(P.psave==null){missing.push(p.name+' · Personal Savings Contribution');P.psave=0;}
-    model.people.push(P);});
-  // the shared column: fixed, nice to have, what-if rows, then the summary
-  var state='',byName={};people.forEach(function(p){byName[p.key]=p;});
-  for(var r2=head+1;r2<grid.length;r2++){var lab=bgText_(at(r2,sc)),l2=bgLow_(lab),amt=at(r2,sc+1),third=at(r2,sc+2);if(!l2)continue;
-    if(l2==='monthly expenses'||l2==='account')continue;
-    if(l2==='fixed expenses'){state='fixed';continue;}
-    if(l2==='nice to have expenses'){state='nice';continue;}
-    if(l2==='what if scenarios'){state='whatif';continue;}
-    var m;
-    if(l2==='total shared expenses'){model.tracker.totalShared=bgNum_(amt);state='sum';continue;}
-    if((m=l2.match(/^(.+?)'s contribution$/))&&byName[m[1]]){model.tracker.contribution[m[1]]=bgNum_(amt);var pc=bgPct_(third);if(m[1]===people[0].key&&pc!=null)model.split=pc;state='sum';continue;}
-    if(l2==='total required expenses'){model.tracker.required=bgNum_(amt);continue;}
-    if(l2==='total shared savings'){model.tracker.sharedSavings=bgNum_(amt);model.sharedSavings=bgNum_(amt)||0;continue;}
-    if((m=l2.match(/^(.+?)'s transfer to .*checking/))&&byName[m[1]]){model.tracker.checking[m[1]]=bgNum_(amt);model.tracker.ownCards[m[1]]=bgNum_(third);continue;}
-    if((m=l2.match(/^(.+?)'s transfer to .*savings/))&&byName[m[1]]){model.tracker.savings[m[1]]=bgNum_(amt);continue;}
-    if(l2==='total shared net income'){model.tracker.totalNet=bgNum_(amt);continue;}
-    if(l2==='total shared disposable income'){model.tracker.totalDisposable=bgNum_(amt);continue;}
-    if(state==='fixed'||state==='nice'||state==='whatif'){var nm=bgName_(lab);
-      model.shared[state].push({key:keyFor('shared.'+state,nm),name:nm,amount:bgNum_(amt)||0,account:bgText_(third)||'Joint',dueDay:bgDueDay_(lab)});}}
-  if(!model.shared.fixed.length)missing.push('Shared · Fixed Expenses');
-  if(model.split==null){missing.push(people[0].name+'’s Contribution %');model.split=0.6;}
-  if(model.sharedSavings==null){missing.push('Total Shared Savings');model.sharedSavings=0;}
+  var cell=function(r,c){return {row:r+1,col:c+1};};
+  var model={ok:true,layout:'household split',people:[],shared:{fixed:[],variable:[],nice:[],pay:[]},bills:[],split:null,sharedSavings:null,
+    tracker:{share:{},checking:{},savings:{},ownCards:{},fromPay:{},personal:{},left:{},takeHome:{},setAside:{}},cells:{},missing:missing};
+  // 1. Paychecks
+  var P=people.map(function(p){return {key:p.key,name:p.name,cadence:'',grossPer:null,perYear:null,perMonth:null,deductions:[],taxesPer:null,netPer:null,
+    netTyped:null,avgMonth:null,extraTyped:null,fixed:[],nice:[],psave:null,typed:{},cells:{}};});
+  var state='';
+  for(var r=hp+1;r<hb;r++){var lab=bgText_(at(r,0)),l=bgLow_(lab);if(!l)continue;
+    if(/^pre-tax deductions?$/.test(l)){state='pre';continue;}
+    if(/^after-tax deductions?$/.test(l)){state='post';continue;}
+    var f=function(i){return at(r,people[i].col);};
+    if(/^pay cadence/.test(l)){P.forEach(function(x,i){x.cadence=bgText_(f(i));x.cells.cadence=cell(r,people[i].col);});continue;}
+    if(/^gross pay/.test(l)){P.forEach(function(x,i){x.grossPer=bgNum_(f(i));x.cells.gross=cell(r,people[i].col);});state='';continue;}
+    if(/^taxes/.test(l)){P.forEach(function(x,i){x.taxesPer=bgNum_(f(i))||0;x.cells.taxes=cell(r,people[i].col);});state='';continue;}
+    if(/^net deposit/.test(l)){P.forEach(function(x,i){x.netPer=bgNum_(f(i));x.cells.net=cell(r,people[i].col);});continue;}
+    if(/^paychecks a year/.test(l)){P.forEach(function(x,i){x.perYear=bgNum_(f(i));x.cells.perYear=cell(r,people[i].col);});continue;}
+    if(/^paychecks in a (regular )?month/.test(l)){P.forEach(function(x,i){x.perMonth=bgNum_(f(i));x.cells.perMonth=cell(r,people[i].col);});continue;}
+    if(/^take-home/.test(l)){P.forEach(function(x,i){x.netTyped=bgNum_(f(i));});continue;}
+    if(/^average month/.test(l)){P.forEach(function(x,i){x.avgMonth=bgNum_(f(i));});continue;}
+    if(/^extra paychecks/.test(l)){P.forEach(function(x,i){x.extraTyped=bgNum_(f(i));});continue;}
+    if(state==='pre'||state==='post'){var shared=sharedCol>-1&&/^y/i.test(bgText_(at(r,sharedCol)));
+      P.forEach(function(x,i){var v=bgNum_(f(i));if(v==null||!v)return;
+        x.deductions.push({key:keyFor(x.key+'.ded',lab),name:lab,per:v,when:state,shared:shared,cell:cell(r,people[i].col),sharedCell:sharedCol>-1?cell(r,sharedCol):null});});}}
+  P.forEach(function(x){if(x.grossPer==null)missing.push(x.name+' · Gross pay per paycheck');if(x.perMonth==null){missing.push(x.name+' · Paychecks in a regular month');x.perMonth=1;}
+    var n=x.perMonth;x.gross=bgRound_((x.grossPer||0)*n);
+    // a shared deduction becomes a shared line taken from this person's pay; the rest (and the taxes) stay deductions
+    var own=[];x.deductions.forEach(function(d){d.perMonth=n;d.amount=bgRound_(d.per*n);
+      if(d.shared){var k=keyFor('shared.pay',d.name);model.shared.pay.push({key:k,name:d.name,amount:d.amount,per:d.per,perMonth:n,type:'fixed',account:x.name,fromPay:x.key,
+        keptAs:'Actual',category:'Health',cell:d.cell,section:'paychecks'});}else own.push(d);});
+    if(x.taxesPer!=null)own.push({key:keyFor(x.key+'.ded','Taxes'),name:'Taxes',per:x.taxesPer,perMonth:n,amount:bgRound_(x.taxesPer*n),when:'tax',taxes:true,cell:x.cells.taxes});
+    x.deductions=own;});
+  // 2. Bills
+  var head=grid[hb]||[],col={};head.forEach(function(h,c){var t=bgLow_(h);if(!c)return;
+    if(/^monthly/.test(t))col.amount=c;else if(/^type/.test(t))col.type=c;else if(/^for$/.test(t))col.forWho=c;else if(/^paid by/.test(t))col.paidBy=c;
+    else if(/actual|set-aside|set aside/.test(t))col.keptAs=c;else if(/^categor/.test(t))col.category=c;});
+  ['amount','type','forWho','paidBy'].forEach(function(k){if(col[k]==null)missing.push('Bills · '+({amount:'Monthly',type:'Type',forWho:'For',paidBy:'Paid by'})[k]+' column');});
+  var totalRow=-1,blanks=[];
+  for(var r2=hb+1;r2<hs;r2++){var lab2=bgText_(at(r2,0)),l2=bgLow_(lab2);
+    if(/^total bills/.test(l2)){totalRow=r2;model.tracker.totalBills=bgNum_(at(r2,col.amount==null?1:col.amount));break;}
+    if(!l2){blanks.push(r2+1);continue;}
+    var nm=bgName_(lab2),amt=bgNum_(at(r2,col.amount))||0,type=BG_TYPES[bgLow_(at(r2,col.type))]||'',forWho=bgText_(at(r2,col.forWho)),paidBy=bgText_(at(r2,col.paidBy))||'Joint',
+      kept=/set/i.test(bgText_(at(r2,col.keptAs)))?'Set-aside':'Actual',cat=bgText_(at(r2,col.category));
+    var b={name:nm,label:lab2,amount:amt,type:type||'fixed',forWho:forWho,paidBy:paidBy,keptAs:kept,category:cat,dueDay:bgDueDay_(lab2),row:r2+1,
+      cells:{amount:cell(r2,col.amount),type:cell(r2,col.type),forWho:cell(r2,col.forWho),paidBy:cell(r2,col.paidBy),keptAs:col.keptAs==null?null:cell(r2,col.keptAs),category:col.category==null?null:cell(r2,col.category),name:cell(r2,0)}};
+    if(!type||!forWho||!bgText_(at(r2,col.paidBy)))b.incomplete=true;
+    var fw=bgLow_(forWho),pb=bgLow_(paidBy);
+    if(fw==='shared'){b.key=keyFor('shared.'+b.type,nm);b.account=pb==='joint'?'Joint':(byKey[pb]?byKey[pb].name:paidBy);b.section='bills';model.shared[b.type].push(b);}
+    else if(byKey[fw]){var who=P[people.indexOf(byKey[fw])];b.key=keyFor(who.key+'.'+(b.type==='nice'?'nice':'fixed'),nm);b.section='bills';b.person=who.key;who[b.type==='nice'?'nice':'fixed'].push(b);}
+    else{b.key=keyFor('other',nm);b.incomplete=true;}
+    model.bills.push(b);}
+  model.cells.bills={first:hb+2,total:totalRow===-1?null:totalRow+1,blanks:blanks,columns:{name:1,amount:col.amount==null?null:col.amount+1,type:col.type==null?null:col.type+1,
+    forWho:col.forWho==null?null:col.forWho+1,paidBy:col.paidBy==null?null:col.paidBy+1,keptAs:col.keptAs==null?null:col.keptAs+1,category:col.category==null?null:col.category+1}};
+  if(totalRow===-1)missing.push('Bills · Total bills');
+  // 3. Split (and the sheet's own figures in 3–6, for the check)
+  var scol={},sh=grid[hs]||[];sh.forEach(function(hh,c){var t=bgLow_(hh);if(!c)return;if(t==='total')scol.total=c;else if(byKey[t])scol[t]=c;});
+  var sec='split',T=model.tracker;
+  for(var r3=hs+1;r3<grid.length;r3++){var l3=bgLow_(at(r3,0));if(!l3)continue;
+    var pv=function(p){return bgNum_(at(r3,scol[p.key]==null?people.indexOf(p)+1:scol[p.key]));},tot=bgNum_(at(r3,scol.total==null?3:scol.total));
+    var each=function(o){people.forEach(function(p){o[p.key]=pv(p);});};
+    if(/^4\.\s*summary/.test(l3)){sec='summary';continue;}if(/^5\.\s*emergency/.test(l3)){sec='emergency';continue;}if(/^6\.\s*bonus/.test(l3)){sec='bonus';continue;}
+    if(sec==='split'){
+      if(/^share of shared/.test(l3)){var s0=bgPct_(at(r3,scol[people[0].key]==null?1:scol[people[0].key]));if(s0!=null)model.split=s0;model.cells.split=cell(r3,scol[people[0].key]==null?1:scol[people[0].key]);continue;}
+      if(/your share$/.test(l3)||/^shared expenses, your share/.test(l3)){each(T.share);T.totalShared=tot;continue;}
+      if(/taken from your pay/.test(l3)){each(T.fromPay);continue;}
+      if(/your own card/.test(l3)){each(T.ownCards);continue;}
+      if(/^transfer to joint/.test(l3)){each(T.checking);T.joint=tot;continue;}
+      if(/^transfer to shared savings/.test(l3)){each(T.savings);T.sharedSavings=tot;model.sharedSavings=tot!=null?tot:people.reduce(function(s,p){return s+(pv(p)||0);},0);
+        model.cells.sharedSavings=people.map(function(p,i){return cell(r3,scol[p.key]==null?i+1:scol[p.key]);});continue;}
+      if(/^personal bills/.test(l3)){each(T.personal);continue;}
+      if(/^personal savings/.test(l3)){people.forEach(function(p,i){P[i].psave=pv(p);P[i].cells.psave=cell(r3,scol[p.key]==null?i+1:scol[p.key]);});continue;}
+      if(/^left over/.test(l3)){each(T.left);T.totalLeft=tot;continue;}
+      if(/^settle-up/.test(l3)){T.settleUp=bgNum_(at(r3,1));continue;}
+      if(/^joint checking: bills/.test(l3)){T.jointCheck=bgNum_(at(r3,1));continue;}
+      if(/^bills missing/.test(l3)){T.missingFields=bgNum_(at(r3,1));continue;}}
+    if(sec==='summary'){
+      if(/^fixed$/.test(l3)){T.fixed=tot;continue;}if(/^variable$/.test(l3)){T.variable=tot;continue;}if(/^nice to have$/.test(l3)){T.nice=tot;continue;}
+      if(/^take-home income/.test(l3)){each(T.takeHome);continue;}
+      if(/^set-asides/.test(l3)){each(T.setAside);T.totalSetAside=tot;continue;}}
+    if(sec==='emergency'&&/^required/.test(l3)){T.required=tot;continue;}
+    if(sec==='bonus'){var bv=function(i){return at(r3,scol[people[i].key]==null?i+1:scol[people[i].key]);};
+      var B=model.bonus||(model.bonus={usually:{},bonus:{},extra:{},sharePct:{},toShared:{},kept:{}});
+      var put=function(k,num){people.forEach(function(p,i){B[k][p.key]=num?bgNum_(bv(i)):bgText_(bv(i));});};
+      if(/^usually/.test(l3))put('usually');else if(/bonus deposit/.test(l3)){put('bonus',1);B.bonusCells=people.map(function(p,i){return cell(r3,scol[p.key]==null?i+1:scol[p.key]);});}
+      else if(/^extra paychecks/.test(l3))put('extra',1);else if(/^share to shared/.test(l3)){people.forEach(function(p,i){B.sharePct[p.key]=bgPct_(bv(i));});}
+      else if(/^to shared goals/.test(l3))put('toShared',1);else if(/^kept personally/.test(l3))put('kept',1);}}
+  P.forEach(function(x){if(x.psave==null){missing.push(x.name+' · Personal savings');x.psave=0;}model.people.push(x);});
+  if(model.split==null){missing.push('Split · Share of shared costs');model.split=0.6;}
+  if(model.sharedSavings==null){missing.push('Split · Transfer to shared savings');model.sharedSavings=0;}
   return model;}
 // Pure: the model with What if overrides → every figure the Budget tab shows.
 function budgetCompute_(model,ov,catMap,raw){ov=ov||{};var own=function(x){return raw&&x.trackerAmount!=null?x.trackerAmount:x.amount;};
   var val=function(k,base){return Object.prototype.hasOwnProperty.call(ov,k)&&ov[k]!==''&&ov[k]!=null&&isFinite(Number(ov[k]))?Number(ov[k]):(Number(base)||0);};
   var split=Math.min(1,Math.max(0,val('split',model.split)));
   var shares={};shares[model.people[0].key]=split;shares[model.people[1].key]=1-split;
-  var lines=model.shared.fixed.map(function(x){return {key:x.key,name:x.name,kind:'fixed',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount,fromPay:x.fromPay||''};})
-    .concat(model.shared.nice.map(function(x){return {key:x.key,name:x.name,kind:'nice',account:x.account,dueDay:x.dueDay,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount,fromPay:x.fromPay||''};}));
-  var sum=function(a){return a.reduce(function(s,x){return s+x.amount;},0);};
-  var total=sum(lines),required=sum(lines.filter(function(x){return x.kind==='fixed'&&x.amount>0;}));
+  var keyOf={};model.people.forEach(function(p){keyOf[p.name.toLowerCase()]=p.key;});
+  var mk=function(x,kind){return {key:x.key,name:x.name,kind:kind,type:kind,account:x.account,dueDay:x.dueDay||null,amount:val(x.key,own(x)),trackerAmount:x.trackerAmount,
+    fromPay:x.fromPay||'',keptAs:x.keptAs||'Actual',sheetCategory:x.category||'',spend:BG_SPEND_RX.test(x.name),incomplete:!!x.incomplete};};
+  var S=model.shared,lines=(S.fixed||[]).map(function(x){return mk(x,'fixed');}).concat((S.pay||[]).map(function(x){return mk(x,'fixed');}),
+    (S.variable||[]).map(function(x){return mk(x,'variable');}),(S.nice||[]).map(function(x){return mk(x,'nice');}));
+  var sum=function(a){return a.reduce(function(s,x){return s+x.amount;},0);},ofKind=function(k){return lines.filter(function(x){return x.kind===k;});};
+  var total=sum(lines),required=sum(lines.filter(function(x){return x.kind!=='nice';}));
   var savings=val('shared.savings',model.sharedSavings);
-  var cats={},order=BG_CATS.map(function(c){return c[0];}).concat(['Other']),other=[];
-  lines.forEach(function(x){var c=bgCategory_(x.name,catMap);x.category=c;if(c==='Other')other.push(x.name);if(order.indexOf(c)===-1)order.push(c);
+  var cats={},order=[],other=[];
+  lines.forEach(function(x){var c=bgCategory_(x.name,catMap,x.sheetCategory);x.category=c;if(c==='Other')other.push(x.name);if(order.indexOf(c)===-1)order.push(c);
     var C=cats[c]||(cats[c]={name:c,total:0,accounts:{},keys:[]});C.total+=x.amount;C.accounts[x.account]=(C.accounts[x.account]||0)+x.amount;C.keys.push(x.key);});
-  var categories=order.filter(function(c){return cats[c];}).map(function(c){var C=cats[c];var acc={};Object.keys(C.accounts).forEach(function(a){acc[a]=bgRound_(C.accounts[a]);});
-    return {name:c,total:bgRound_(C.total),accounts:acc,keys:C.keys};});
+  var categories=order.map(function(c){var C=cats[c];var acc={};Object.keys(C.accounts).forEach(function(a){acc[a]=bgRound_(C.accounts[a]);});
+    return {name:c,total:bgRound_(C.total),accounts:acc,keys:C.keys};}).sort(function(a,b){return b.total-a.total;});
   var people=model.people.map(function(p){var share=shares[p.key];
-    var pick=function(list){return list.map(function(x){return {key:x.key,name:x.name,amount:val(x.key,x.amount),fromPay:!!x.fromPay};});};
-    var ded=pick(p.deductions),fixed=pick(p.fixed),nice=pick(p.nice);
+    var pick=function(list,kind){return list.map(function(x){return {key:x.key,name:x.name,amount:val(x.key,x.amount),type:x.type||kind,keptAs:x.keptAs||'Actual',
+      category:bgCategory_(x.name,catMap,x.category),per:x.per,perMonth:x.perMonth,taxes:!!x.taxes,when:x.when||''};});};
+    var ded=pick(p.deductions,'deduction'),fixed=pick(p.fixed,'fixed'),nice=pick(p.nice,'nice');
     var gross=val(p.key+'.gross',p.gross),psave=val(p.key+'.psave',p.psave);
     var net=gross-sum(ded),contribution=total*share,ssave=savings*share;
-    var own=sum(lines.filter(function(x){return x.account.toLowerCase()===p.key;}));
+    var mine=lines.filter(function(x){return keyOf[String(x.account).toLowerCase()]===p.key;});
+    var ownAll=sum(mine),fromPayLines=mine.filter(function(x){return x.fromPay;}),fromPay=sum(fromPayLines),ownCard=ownAll-fromPay;
     var fx=sum(fixed),nc=sum(nice),netExp=fx+nc+psave+contribution+ssave;
-    // Taken from pay (marked on the model, Budget.js bgWithPay_): this person's own lines and the shared
-    // lines on their paycheck. Take-home = net income − these; the split and disposable are unchanged.
-    var payLines=fixed.concat(nice).filter(function(x){return x.fromPay;}).concat(lines.filter(function(x){return x.fromPay===p.key;}))
-      .map(function(x){return {name:x.name,amount:bgRound_(x.amount)};}),fromPay=sum(payLines);
+    var setAside=sum(fixed.concat(nice).filter(function(x){return x.keptAs==='Set-aside';}))+sum(mine.filter(function(x){return x.keptAs==='Set-aside';}));
     return {key:p.key,name:p.name,share:share,gross:bgRound_(gross),deductions:ded,net:bgRound_(net),fixed:fixed,nice:nice,
-      fixedTotal:bgRound_(fx),niceTotal:bgRound_(nc),psave:bgRound_(psave),contribution:bgRound_(contribution),sharedSavings:bgRound_(ssave),
-      contributions:bgRound_(psave+contribution+ssave),ownCards:bgRound_(own),checking:bgRound_(contribution-own),savings:bgRound_(ssave),
-      netExpenses:bgRound_(netExp),disposable:bgRound_(net-netExp),fromPay:bgRound_(fromPay),fromPayLines:payLines,takeHome:bgRound_(net-fromPay)};});
+      fixedTotal:bgRound_(fx),niceTotal:bgRound_(nc),personalBills:bgRound_(fx+nc),psave:bgRound_(psave),contribution:bgRound_(contribution),sharedSavings:bgRound_(ssave),
+      contributions:bgRound_(psave+contribution+ssave),ownCards:bgRound_(ownAll),ownCard:bgRound_(ownCard),checking:bgRound_(contribution-ownAll),savings:bgRound_(ssave),
+      netExpenses:bgRound_(netExp),disposable:bgRound_(net-netExp),fromPay:bgRound_(fromPay),fromPayLines:fromPayLines.map(function(x){return {name:x.name,amount:bgRound_(x.amount)};}),
+      takeHome:bgRound_(net-fromPay),setAside:bgRound_(setAside),perMonth:p.perMonth,cadence:p.cadence,grossPer:p.grossPer,netPer:p.netPer};});
+  var A=people[0],V=people[1],takeAll=A.takeHome+V.takeHome;
+  people.forEach(function(p){p.takeHomeShare=takeAll?p.takeHome/takeAll:0;});
   var emergency=[3,6,9].map(function(n){var t=required*n;return {months:n,total:bgRound_(t),half:bgRound_(t/2),
     byShare:people.map(function(p){return {key:p.key,amount:bgRound_(t*p.share)};})};});
-  return {split:split,shared:{lines:lines,total:bgRound_(total),fixed:bgRound_(sum(lines.filter(function(x){return x.kind==='fixed';}))),
-      nice:bgRound_(sum(lines.filter(function(x){return x.kind==='nice';}))),required:bgRound_(required),savings:bgRound_(savings),categories:categories,other:other},
-    people:people,emergency:emergency,totalNet:bgRound_(people[0].net+people[1].net),totalDisposable:bgRound_(people[0].disposable+people[1].disposable)};}
-// Pure: VERA's figures beside the tracker's. ok within 5¢ (the tracker rounds as it goes). A disposable or
-// total that is off by exactly the net-income difference says so, rather than reading as a second problem.
-function budgetMatch_(model,c,raw){var rows=[],T=model.tracker;
+  var joint=sum(lines.filter(function(x){return String(x.account).toLowerCase()==='joint';}));
+  return {split:split,shared:{lines:lines,total:bgRound_(total),fixed:bgRound_(sum(ofKind('fixed'))),variable:bgRound_(sum(ofKind('variable'))),
+      nice:bgRound_(sum(ofKind('nice'))),required:bgRound_(required),savings:bgRound_(savings),categories:categories,other:other,joint:bgRound_(joint)},
+    people:people,emergency:emergency,totalNet:bgRound_(A.net+V.net),totalTakeHome:bgRound_(takeAll),totalDisposable:bgRound_(A.disposable+V.disposable),
+    settleUp:bgRound_(V.ownCards*A.share-A.ownCards*V.share),jointCheck:bgRound_(joint-A.checking-V.checking),
+    setAside:bgRound_(A.setAside+V.setAside),incomplete:(model.bills||[]).filter(function(b){return b.incomplete;}).length};}
+// Pure: VERA's figures beside the sheet's. ok within 5¢ (the sheet rounds as it goes).
+function budgetMatch_(model,c,raw){var rows=[],T=model.tracker||{};
   var add=function(id,label,vera,trk,because){if(trk==null||trk==='')return;var d=bgRound_(vera-trk);rows.push({id:id,label:label,vera:bgRound_(vera),tracker:bgRound_(trk),diff:d,ok:Math.abs(d)<=0.05,because:because||''});};
-  var netDiff={};c.people.forEach(function(p,i){var P=model.people[i];netDiff[p.key]=P.netTyped==null?0:bgRound_(p.net-P.netTyped);});
-  var follows=function(d,nd){return Math.abs(d)>0.05&&Math.abs(d-nd)<=0.05?'follows net income':'';};
-  add('totalShared','Total shared',c.shared.total,T.totalShared);
+  add('totalShared','Shared costs',c.shared.total,T.totalShared);
   add('required','Required each month',c.shared.required,T.required);
   add('savings','Shared savings',c.shared.savings,T.sharedSavings);
-  c.people.forEach(function(p,i){var P=model.people[i];
-    add(p.key+'.contribution',p.name+'’s contribution',p.contribution,T.contribution[p.key]);
-    add(p.key+'.checking',p.name+' → AMEX Checking',p.checking,T.checking[p.key]);
-    add(p.key+'.savings',p.name+' → AMEX Savings',p.savings,T.savings[p.key]);
-    add(p.key+'.net',p.name+'’s net income',p.net,P.netTyped,P.netTyped!=null&&Math.abs(netDiff[p.key])>0.05?'gross − deductions; the tracker types it':'');
-    add(p.key+'.netExpenses',p.name+'’s net expenses',p.netExpenses,P.typed.netExpenses);
-    var dd=P.typed.disposable==null?0:bgRound_(p.disposable-P.typed.disposable);
-    add(p.key+'.disposable',p.name+'’s disposable income',p.disposable,P.typed.disposable,follows(dd,netDiff[p.key]));});
-  var nd=bgRound_(netDiff[c.people[0].key]+netDiff[c.people[1].key]);
-  add('totalNet','Total net income',c.totalNet,T.totalNet,follows(bgRound_(c.totalNet-(T.totalNet||0)),nd));
-  add('totalDisposable','Total disposable income',c.totalDisposable,T.totalDisposable,follows(bgRound_(c.totalDisposable-(T.totalDisposable||0)),nd));
+  add('joint','Into Joint Checking',c.people[0].checking+c.people[1].checking,T.joint);
+  c.people.forEach(function(p){var P=model.people.filter(function(x){return x.key===p.key;})[0]||{};
+    add(p.key+'.takeHome',p.name+'’s take-home',p.takeHome,(T.takeHome||{})[p.key]!=null?T.takeHome[p.key]:P.netTyped,
+      P.netPer!=null&&Math.abs(p.takeHome-P.netPer*(P.perMonth||1))>0.05?'gross − deductions − taxes isn’t the net deposit':'');
+    add(p.key+'.checking',p.name+' → Joint Checking',p.checking,(T.checking||{})[p.key]);
+    add(p.key+'.personal',p.name+'’s personal bills',p.personalBills,(T.personal||{})[p.key]);
+    add(p.key+'.setAside',p.name+'’s set-asides',p.setAside,(T.setAside||{})[p.key]);
+    add(p.key+'.left',p.name+'’s left over',p.disposable,(T.left||{})[p.key]);});
+  add('totalLeft','Left over, together',c.totalDisposable,T.totalLeft);
+  add('settleUp','Settle-up',c.settleUp,T.settleUp);
   if(raw){var plain={};budgetMatch_(model,raw).forEach(function(r){plain[r.id]=r;});
     rows.forEach(function(r){var p=plain[r.id];if(r.ok||!p||Math.abs(p.diff-r.diff)<=0.05)return;r.because=p.ok?'the phone plan, from the phone tracker':(p.because||'a difference')+', and the phone plan';});}
   return rows;}
 // ---- /BudgetEngine ----
 // ---- BudgetTab (Finances › Day to day › Budget, issue #226) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
-// Four cards from the budget tracker (read only): each person's, the shared expenses, and the summary
-// VERA works out (BudgetEngine) beside the tracker's own figures. The person and shared cards open
-// collapsed to a summary (groups for a person, categories for shared); each remembers open or closed
-// in this browser (vera_budget_open). The family phone plan's two lines come from the phone tracker
-// when it's connected (model.phone), and the match check names that as the cause. What if turns every amount into an input, reruns the sums live,
-// marks what changed even in a collapsed card, and can save the changes as a scenario in VERA.
-var BGC={card:'#0d1b3e',br:'#1e3060',deep:'#0a1220',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',acc:'#8ab4f8',ok:'#8fe3c4',warn:'#f6d27a',bad:'#ffb4a9',
-  who:['#5c9eff','#c97ef2'],joint:'#2bb5a0',grp:{fixed:'#5c7cbf',nice:'#8a6fc0',contrib:'#2bb5a0',left:'#3a4a6a'}};
+// The month at a glance on top (take-home, shared costs, Joint, left over; where each paycheck goes; the
+// household's take-home, shared costs by category and by type; the checks), then the Household Split
+// tab's six sections in its order, each a row that opens and closes and remembers it (vera_budget_open).
+// Writing: Add a bill, ✎ on a bill, or ✎ on any input figure writes that cell of Household Split
+// (budget_write / budget_add_bill); a figure the sheet works out has no ✎. What if turns the inputs into
+// fields, reruns every sum live, and can save the changes as a scenario or write them to the sheet.
+var BGC={card:'#0d1b3e',br:'#1e3060',deep:'#0a1220',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',acc:'#8ab4f8',gold:'#d4b35a',ok:'#8fe3c4',warn:'#f6d27a',bad:'#ffb4a9',
+  who:['#5c9eff','#c97ef2'],joint:'#5c9eff',ssave:'#2bb5a0',own:'#c97ef2',pers:'#f0a35e',psave:'#7ad27f',left:'#d4b35a',
+  cats:['#5c9eff','#f0a35e','#2bb5a0','#c97ef2','#7ad27f','#d4b35a','#e87d9b','#8a9abf'],type:{fixed:'#5c9eff',variable:'#2bb5a0',nice:'#f0a35e'}};
+var BG_TYPE_NAME={fixed:'Fixed',variable:'Variable',nice:'Nice to have'};
+var BG_SECTIONS=[['paychecks','Paychecks'],['bills','Bills'],['split','Split'],['summary','Summary'],['emergency','Emergency fund'],['bonus','Bonuses and extra paychecks']];
 function bgMoney_(n,cents){if(n==null||isNaN(n))return '—';var a=Math.abs(Number(n));
   return (n<0?'−':'')+'$'+a.toLocaleString('en-US',{minimumFractionDigits:cents?2:0,maximumFractionDigits:cents?2:0});}
-function bgDelta_(n){if(!n||Math.abs(n)<0.005)return '';return (n>0?'+':'−')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function bgOrd_(d){if(!d)return '';var s=['th','st','nd','rd'],v=d%100;return d+(s[(v-20)%10]||s[v]||s[0]);}
-function bgOpenRead_(){try{var v=JSON.parse(localStorage.getItem('vera_budget_open')||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}}
+function bgPctTxt_(n){return n==null||isNaN(n)?'—':(Math.round(n*1000)/10)+'%';}
+function bgOpenRead_(){try{var v=JSON.parse(localStorage.getItem('vera_budget_open')||'null');return v&&typeof v==='object'?v:{bills:true,split:true};}catch(e){return {bills:true,split:true};}}
 function bgOpenWrite_(v){try{localStorage.setItem('vera_budget_open',JSON.stringify(v));}catch(e){}}
-// Pure: the keys What if has really changed (a value typed back to the plan doesn't count).
-function bgChanged_(model,ov){var base={split:model.split,'shared.savings':model.sharedSavings};
-  model.people.forEach(function(p){base[p.key+'.gross']=p.gross;base[p.key+'.psave']=p.psave;p.deductions.concat(p.fixed,p.nice).forEach(function(x){base[x.key]=x.amount;});});
-  model.shared.fixed.concat(model.shared.nice).forEach(function(x){base[x.key]=x.amount;});
-  var out={};Object.keys(ov||{}).forEach(function(k){var v=ov[k];if(v===''||v==null||!isFinite(Number(v))||!(k in base))return;if(Math.abs(Number(v)-(Number(base[k])||0))>0.004)out[k]=Number(v);});return out;}
-// The HSA for this year and next (Config hsa_annual_<year>); VERA takes ÷ 12 as the monthly deduction.
-function bgHsaYears_(h,props,d,edit,setEdit,setD){var ys=(d&&d.hsaYears)||[];if(!ys.length)return null;
-  var save=function(y,v){var n=String(v).replace(/[$,\s]/g,'');
-    apiGet(props.apiUrl,props.apiToken,{action:'set_config_value',key:'hsa_annual_'+y,value:n}).then(function(){setEdit(null);
-      return apiGet(props.apiUrl,props.apiToken,{action:'budget_model'}).then(function(r){if(r&&r.ok)setD(r);});}).catch(function(){setEdit(null);});};
-  return h('div',{key:'hsa',className:'bg-hsa',style:{display:'flex',flexDirection:'column',gap:6,padding:'10px 0',borderBottom:'1px solid '+BGC.line}},
-    h('span',{style:{fontSize:12,color:BGC.mute}},'HSA for the year (VERA takes ÷ 12 each month)'),
-    ys.map(function(x){var on=edit&&edit.year===x.year;
-      return h('div',{key:x.year,className:'bg-hsa-year',style:{display:'flex',alignItems:'center',gap:8,minHeight:40,flexWrap:'wrap'}},
-        h('span',{style:{fontSize:14,minWidth:44}},x.year),
-        on?h('input',{type:'number',min:0,step:'any',className:'bg-hsa-input','aria-label':'HSA for '+x.year,value:edit.value,onChange:function(ev){setEdit({year:x.year,value:ev.target.value});},
-          style:{minHeight:40,width:120,padding:'0 10px',borderRadius:8,background:BGC.deep,border:'1px solid '+BGC.br,color:BGC.txt,fontSize:14}}):
-          h('span',{style:{fontSize:14,fontVariantNumeric:'tabular-nums'}},x.annual!=null?bgMoney_(x.annual)+' · '+bgMoney_(x.annual/12,true)+'/mo':'not set'),
-        on?h('button',{type:'button',className:'bg-hsa-save',onClick:function(){save(x.year,edit.value);},style:{minHeight:40,padding:'0 14px',borderRadius:10,border:0,background:BGC.acc,color:'#0b1430',fontWeight:600,cursor:'pointer'}},'Save'):
-          h('button',{type:'button',className:'bg-hsa-edit','aria-label':'Edit HSA for '+x.year,onClick:function(){setEdit({year:x.year,value:x.annual!=null?String(x.annual):''});},style:{minHeight:40,padding:'0 12px',borderRadius:10,border:'1px solid '+BGC.line,background:'transparent',color:BGC.soft,cursor:'pointer'}},'Edit'));}));}
+// Pure: every input What if can change → { key: { base, mult, label } }. A paycheck line is typed per
+// paycheck and counts × paychecks in a regular month; everything else is typed a month.
+function bgUnits_(model){var u={split:{base:model.split,mult:1,label:'Split'},'shared.savings':{base:model.sharedSavings,mult:1,label:'Shared savings'}};
+  model.people.forEach(function(p){var n=p.perMonth||1;u[p.key+'.gross']={base:p.grossPer,mult:n,label:p.name+' · gross pay',per:true};u[p.key+'.psave']={base:p.psave,mult:1,label:p.name+' · personal savings'};
+    p.deductions.forEach(function(x){u[x.key]={base:x.per,mult:n,label:p.name+' · '+x.name,per:true,taxes:!!x.taxes};});
+    p.fixed.concat(p.nice).forEach(function(x){u[x.key]={base:x.amount,mult:1,label:x.name};});});
+  ['fixed','variable','nice'].forEach(function(k){(model.shared[k]||[]).forEach(function(x){u[x.key]={base:x.amount,mult:1,label:x.name};});});
+  (model.shared.pay||[]).forEach(function(x){u[x.key]={base:x.per,mult:x.perMonth||1,label:x.account+' · '+x.name,per:true};});
+  return u;}
+// Pure: the keys What if has really changed, as amounts a month (a value typed back to the sheet's doesn't count).
+function bgChanged_(model,ov){var u=bgUnits_(model),out={};Object.keys(ov||{}).forEach(function(k){var v=ov[k],U=u[k];
+  if(v===''||v==null||!U||!isFinite(Number(v)))return;if(Math.abs(Number(v)-(Number(U.base)||0))>0.004)out[k]=Math.round(Number(v)*U.mult*10000)/10000;});return out;}
+// Pure: What if's changes → the edits budget_write takes (sheet units: per paycheck or a month).
+function bgEditsFrom_(model,changed,split){var u=bgUnits_(model),edits=[];Object.keys(changed).forEach(function(k){var U=u[k];if(!U)return;
+  if(k==='shared.savings'){model.people.forEach(function(p,i){var s=i===0?split:1-split;edits.push({key:p.key+'.ssave',value:Math.round(changed[k]*s*100)/100});});return;}
+  edits.push({key:k,value:k==='split'?changed[k]:Math.round(changed[k]/U.mult*100)/100});});return edits;}
+// Pure: the model with one bill added or changed (for the form's "What changes").
+function bgWithBill_(model,b,replaceKey){var m=JSON.parse(JSON.stringify(model));
+  if(replaceKey){['fixed','variable','nice'].forEach(function(k){m.shared[k]=(m.shared[k]||[]).filter(function(x){return x.key!==replaceKey;});});
+    m.people.forEach(function(p){p.fixed=p.fixed.filter(function(x){return x.key!==replaceKey;});p.nice=p.nice.filter(function(x){return x.key!==replaceKey;});});}
+  var type={'Fixed':'fixed','Variable':'variable','Nice to have':'nice'}[b.type]||'fixed',amt=Number(String(b.amount).replace(/[$,\s]/g,''))||0;
+  var x={key:'new:'+b.name,name:b.name||'New bill',amount:amt,type:type,keptAs:b.keptAs,category:b.category,account:b.paidBy||'Joint'};
+  if(b.forWho==='Shared')m.shared[type].push(x);else{var p=m.people.filter(function(q){return q.name===b.forWho;})[0];if(p)p[type==='nice'?'nice':'fixed'].push(x);}
+  return m;}
+function bgDonut_(h,parts,center,sub,label){var off=0,tot=parts.reduce(function(s,p){return s+Math.max(0,p.v);},0)||1;
+  return h('svg',{width:140,height:140,viewBox:'0 0 150 150',role:'img','aria-label':label,style:{flex:'none'}},
+    h('g',{transform:'rotate(-90 75 75)',fill:'none',strokeWidth:22},parts.map(function(p,i){var len=Math.max(0,p.v)/tot*100;var el=h('circle',{key:i,cx:75,cy:75,r:56,pathLength:100,stroke:p.c,strokeDasharray:len+' '+(100-len),strokeDashoffset:-off});off+=len;return el;})),
+    h('text',{x:75,y:72,textAnchor:'middle',fill:BGC.txt,style:{font:"600 17px 'Space Grotesk',Inter,sans-serif"}},center),
+    h('text',{x:75,y:90,textAnchor:'middle',fill:BGC.mute,style:{font:'500 11px Inter,sans-serif'}},sub));}
 function BudgetTab(props){var h=React.createElement;
   var _d=React.useState(null),d=_d[0],setD=_d[1];
   var _w=React.useState(false),whatIf=_w[0],setWhatIf=_w[1];
   var _o=React.useState({}),ov=_o[0],setOv=_o[1];
   var _op=React.useState(bgOpenRead_),open=_op[0],setOpen=_op[1];
+  var _f=React.useState('shared'),forBills=_f[0],setForBills=_f[1];
   var _n=React.useState(''),scName=_n[0],setScName=_n[1];
   var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
   var _e=React.useState(''),msg=_e[0],setMsg=_e[1];
   var _x=React.useState(''),confirmDel=_x[0],setConfirmDel=_x[1];
   var _a=React.useState(null),acts=_a[0],setActs=_a[1];
+  var _bf=React.useState(null),form=_bf[0],setForm=_bf[1];       // { key?, values:{name,amount,type,forWho,paidBy,keptAs,category}, err }
+  var _ve=React.useState(null),vedit=_ve[0],setVedit=_ve[1];     // { key, field, label, value, was, note, err }
+  var _cw=React.useState(false),confirmWrite=_cw[0],setConfirmWrite=_cw[1];
   var _hs=React.useState(null),hsaEdit=_hs[0],setHsaEdit=_hs[1];
-  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;apiGet(props.apiUrl,props.apiToken,{action:'budget_actuals'}).then(function(r){setActs(r&&r.ok&&r.lines&&r.uploads?r:null);}).catch(function(){setActs(null);});},[props.apiUrl,props.apiToken]);
-  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;apiGet(props.apiUrl,props.apiToken,{action:'budget_model'}).then(function(r){setD(r||{ok:false});}).catch(function(e){setD({ok:false,error:e.message});});},[props.apiUrl,props.apiToken]);
-  if(!d)return h('div',{className:'bg-tab',style:{color:BGC.mute,fontSize:13,padding:'12px 0'}},'Reading the budget tracker…');
+  var _nw=React.useState(function(){return typeof window!=='undefined'&&window.innerWidth<640;}),narrow=_nw[0],setNarrow=_nw[1];
+  React.useEffect(function(){var on=function(){setNarrow(window.innerWidth<640);};window.addEventListener('resize',on);return function(){window.removeEventListener('resize',on);};},[]);
+  var load=function(){return apiGet(props.apiUrl,props.apiToken,{action:'budget_model'}).then(function(r){setD(r||{ok:false});return r;}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;apiGet(props.apiUrl,props.apiToken,{action:'budget_actuals'}).then(function(r){setActs(r&&r.ok&&r.lines?r:null);}).catch(function(){setActs(null);});},[props.apiUrl,props.apiToken]);
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;load();},[props.apiUrl,props.apiToken]);
+  if(!d)return h('div',{className:'bg-tab',style:{color:BGC.mute,fontSize:13,padding:'12px 0'}},'Reading Household Split…');
   if(!d.ok||d.configured===false||d.unavailable||!d.model)return h('div',{className:'bg-tab bg-unavailable',style:{padding:14,borderRadius:12,background:BGC.card,border:'1px solid '+BGC.br,color:BGC.soft,fontSize:13,lineHeight:1.5}},
     d.error||'The budget tracker couldn’t be read.');
-  var model=d.model,catMap=d.categoryMap||{};
+  var model=d.model,catMap=d.categoryMap||{},P=model.people;
   var changed=whatIf?bgChanged_(model,ov):{};var nChanged=Object.keys(changed).length;
   var base=budgetCompute_(model,{},catMap),c=whatIf?budgetCompute_(model,changed,catMap):base;
-  var match=budgetMatch_(model,base,model.phone?budgetCompute_(model,{},catMap,true):null);
+  var match=d.match||budgetMatch_(model,base);
+  var A=c.people[0],V=c.people[1];
   var toggle=function(id){setOpen(function(p){var n=Object.assign({},p);n[id]=!p[id];bgOpenWrite_(n);return n;});};
   var setVal=function(k,v){setOv(function(p){var n=Object.assign({},p);n[k]=v;return n;});};
-  var shown=function(k,b){return Object.prototype.hasOwnProperty.call(ov,k)?ov[k]:b;};
   var isCh=function(k){return Object.prototype.hasOwnProperty.call(changed,k);};
-  var anyCh=function(keys){return keys.some(isCh);};
-  // plan vs actual (monthly averages over the last full quarter's uploads); null when none
-  var act=function(key){var a=acts&&acts.lines[key];return a&&a.actual!=null?a.actual:null;};
-  // a group's actual, and the plan of just the lines that have uploads (so it compares like with like)
-  var actSum=function(keys){var hit=false,t=0,pl=0;keys.forEach(function(k){var a=act(k);if(a!=null){hit=true;t+=a;pl+=acts.lines[k].plan||0;}});return hit?{actual:Math.round(t*100)/100,plan:Math.round(pl*100)/100}:null;};
-  var actTag=function(x){if(!x)return null;var over=x.actual>x.plan*1.02+1;return h('span',{className:'bg-actual'+(over?' over':''),title:'Lines with uploads: '+bgMoney_(x.plan,true)+' planned a month',style:{fontSize:11,color:over?BGC.warn:BGC.ok,marginLeft:6,whiteSpace:'nowrap'}},'actual '+bgMoney_(x.actual));};
-  var amount=function(key,label,b,opts){opts=opts||{};
-    if(whatIf&&!opts.fixed)return h('input',{type:'number',step:'0.01',inputMode:'decimal',className:'bg-input'+(isCh(key)?' bg-changed':''),'aria-label':label,value:shown(key,b),
-      onChange:function(e){setVal(key,e.target.value);},style:{width:110,minHeight:36,padding:'0 8px',borderRadius:8,textAlign:'right',fontSize:14,background:BGC.deep,color:BGC.txt,
-        border:'1px solid '+(isCh(key)?BGC.warn:BGC.br),boxSizing:'border-box',fontVariantNumeric:'tabular-nums'}});
-    return h('span',{style:{fontSize:14,fontVariantNumeric:'tabular-nums',color:opts.color||BGC.txt,fontWeight:opts.bold?700:400}},(opts.minus?'−':'')+bgMoney_(b,true));};
-  var line=function(key,name,meta,b,opts){var a=key?act(key):null;if(a!=null&&!whatIf)meta=[meta,'actual '+bgMoney_(a,true)+'/mo'].filter(Boolean).join(' · ');return h('div',{key:key||name,className:'bg-line'+(key&&isCh(key)?' bg-changed':''),style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:40,padding:'4px 0',borderBottom:'1px solid '+BGC.line}},
-    h('span',{style:{display:'flex',flexDirection:'column',gap:1,minWidth:0}},h('span',{style:{fontSize:14,color:BGC.txt}},name),meta?h('span',{style:{fontSize:12,color:BGC.mute}},meta):null),amount(key,name,b,opts));};
-  var head=function(t){return h('div',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:BGC.mute,marginTop:12,marginBottom:2}},t);};
-  var card=function(id,title,color,figure,collapsed,expanded,hasChange){var on=!!open[id];
-    return h('section',{key:id,className:'bg-card bg-card-'+id+(on?' open':''),style:{background:BGC.card,border:'1px solid '+(hasChange?BGC.warn:BGC.br),borderRadius:14,overflow:'hidden'}},
-      h('button',{type:'button',className:'bg-card-head','aria-expanded':on,onClick:function(){toggle(id);},style:{display:'flex',width:'100%',alignItems:'center',justifyContent:'space-between',gap:10,minHeight:52,padding:'10px 14px',
-        background:'transparent',border:0,color:BGC.txt,cursor:'pointer',textAlign:'left'}},
-        h('span',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{'aria-hidden':'true',style:{width:10,height:10,borderRadius:5,background:color}}),h('span',{style:{fontSize:15,fontWeight:700}},title),
-          hasChange?h('span',{className:'bg-chip-changed',style:{fontSize:11,fontWeight:700,color:BGC.warn}},'changed'):null),
-        h('span',{style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},figure),h('span',{'aria-hidden':'true',style:{color:BGC.mute,fontSize:13}},on?'▾':'▸'))),
-      h('div',{className:on?'bg-full':'bg-summary',style:{padding:'0 14px 14px'}},on?expanded:collapsed));};
-  // ---- a person's card --------------------------------------------------------------------------
-  var personCard=function(p,i){var P=model.people[i];var ded=P.deductions.map(function(x){return x.key;}),fx=P.fixed.map(function(x){return x.key;}),nc=P.nice.map(function(x){return x.key;});
-    var gCh={income:anyCh([p.key+'.gross'].concat(ded)),fixed:anyCh(fx),nice:anyCh(nc),contrib:anyCh([p.key+'.psave','split','shared.savings'])||anyCh(Object.keys(changed).filter(function(k){return /^shared\./.test(k);}))};
-    var groups=[['income','Net income',p.net],['fixed','Fixed',p.fixedTotal],['nice','Nice to have',p.niceTotal],['contrib','Contributions',p.contributions]];
-    var basePerson=base.people[i];
-    var row=function(g){var ch=gCh[g[0]];return h('div',{key:g[0],className:'bg-group bg-group-'+g[0]+(ch?' bg-changed':''),style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:36,
-      padding:'2px 8px',marginLeft:-8,marginRight:-8,borderRadius:8,background:ch?'rgba(246,210,122,.08)':'transparent'}},
-      h('span',{style:{display:'flex',alignItems:'center',gap:8,fontSize:14,color:BGC.soft}},g[0]!=='income'?h('span',{'aria-hidden':'true',style:{width:8,height:8,borderRadius:2,background:BGC.grp[g[0]]}}):null,g[1]),
-      h('span',{style:{fontSize:14,fontVariantNumeric:'tabular-nums',color:BGC.txt}},bgMoney_(g[2]),!whatIf&&(g[0]==='fixed'||g[0]==='nice')?(actSum(g[0]==='fixed'?fx:nc)==null?(acts?h('span',{className:'bg-actual none',style:{fontSize:11,color:BGC.mute,marginLeft:6}},'no actuals'):null):actTag(actSum(g[0]==='fixed'?fx:nc))):null,ch?h('span',{style:{fontSize:12,color:BGC.warn,marginLeft:6}},bgDelta_(g[2]-(g[0]==='income'?basePerson.net:g[0]==='fixed'?basePerson.fixedTotal:g[0]==='nice'?basePerson.niceTotal:basePerson.contributions))):null));};
-    var net=Math.max(p.net,1),seg=function(k,v){return h('span',{key:k,title:k,style:{width:Math.max(0,Math.min(100,v/net*100))+'%',background:BGC.grp[k]}});};
-    var collapsed=h('div',{style:{display:'flex',flexDirection:'column',gap:2}},
-      h('div',{className:'bg-bar','aria-hidden':'true',style:{display:'flex',height:6,borderRadius:3,overflow:'hidden',background:BGC.deep,marginBottom:6}},seg('fixed',p.fixedTotal),seg('nice',p.niceTotal),seg('contrib',p.contributions)),
-      groups.map(row),
-      h('div',{className:'bg-disposable',style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:40,borderTop:'1px solid '+BGC.line,marginTop:4}},
-        h('span',{style:{fontSize:14,fontWeight:700}},'Disposable'),h('span',{style:{fontSize:15,fontWeight:700,fontVariantNumeric:'tabular-nums',color:p.disposable<0?BGC.bad:BGC.ok}},bgMoney_(p.disposable),
-          whatIf&&Math.abs(p.disposable-basePerson.disposable)>0.004?h('span',{style:{fontSize:12,color:BGC.warn,marginLeft:6}},bgDelta_(p.disposable-basePerson.disposable)):null)));
-    var expanded=h('div',null,
-      head('INCOME'),line(p.key+'.gross','Gross income','',P.gross),
-      P.deductions.map(function(x){var hs=model.hsa&&model.hsa.person===p.key&&model.hsa.line===x.name?model.hsa:null;
-        return line(x.key,x.name,hs?'deduction · '+bgMoney_(hs.annual)+' for '+hs.year+' ÷ 12'+(Math.abs((hs.tracker||0)-hs.monthly)>0.05?' (the tracker says '+bgMoney_(hs.tracker,true)+'/mo)':''):'deduction',x.amount,{minus:true});}),
-      line('','Net income',P.netTyped!=null&&Math.abs(P.netTyped-basePerson.net)>0.05?'gross − deductions; the tracker types '+bgMoney_(P.netTyped,true):'gross − deductions',p.net,{fixed:true,bold:true}),
-      // What comes out of the paycheck before it's paid (Budget.js bgWithPay_): shown, then take-home.
-      (p.fromPayLines||[]).length?h('div',{key:'frompay',className:'bg-frompay'},head('TAKEN FROM PAY'),
-        p.fromPayLines.map(function(x){return line('',x.name,'from your paycheck, before it reaches you',x.amount,{fixed:true,minus:true});}),
-        line('','Take-home pay','net income − what comes from pay',p.takeHome,{fixed:true,bold:true})):null,
-      P.deductions.some(function(x){return /\bhsa\b|health savings/i.test(x.name);})?bgHsaYears_(h,props,d,hsaEdit,setHsaEdit,setD):null,
-      head('FIXED'),P.fixed.map(function(x,j){return line(x.key,x.name,'',x.amount);}),
-      head('NICE TO HAVE'),P.nice.map(function(x){return line(x.key,x.name,'',x.amount);}),
-      head('CONTRIBUTIONS'),line(p.key+'.psave','Personal savings','',P.psave),
-      line('','Shared expenses',Math.round(p.share*100)+'% of '+bgMoney_(c.shared.total,true),p.contribution,{fixed:true}),
-      line('','Shared savings',Math.round(p.share*100)+'% of '+bgMoney_(c.shared.savings,true),p.sharedSavings,{fixed:true}),
-      head('LEFT OVER'),line('','Net expenses','',p.netExpenses,{fixed:true}),line('','Disposable','',p.disposable,{fixed:true,bold:true,color:p.disposable<0?BGC.bad:BGC.ok}));
-    var any=gCh.income||gCh.fixed||gCh.nice||anyCh([p.key+'.psave']);
-    return card(p.key,p.name+' personal',BGC.who[i]||BGC.acc,bgMoney_(p.net)+' net',collapsed,expanded,any);};
-  // ---- the shared card -------------------------------------------------------------------------
-  var whoColor=function(a){var k=String(a).toLowerCase();var i=model.people.map(function(p){return p.key;}).indexOf(k);return i===-1?BGC.joint:BGC.who[i];};
-  var sharedCard=function(){var cats=c.shared.categories;
-    var catRow=function(C){var ch=anyCh(C.keys);var accs=Object.keys(C.accounts).filter(function(a){return Math.abs(C.accounts[a])>0.004;});
-      return h('div',{key:C.name,className:'bg-cat'+(ch?' bg-changed':''),style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:44,padding:'4px 8px',margin:'0 -8px',borderRadius:8,background:ch?'rgba(246,210,122,.08)':'transparent'}},
-        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:BGC.txt}},C.name,C.name==='Other'?h('span',{style:{fontSize:11,color:BGC.warn,marginLeft:6}},'no category yet'):null),
-          h('span',{className:'bg-accounts',style:{fontSize:12,color:BGC.mute,display:'flex',flexWrap:'wrap',gap:'2px 8px'}},accs.map(function(a){return h('span',{key:a},h('span',{'aria-hidden':'true',style:{display:'inline-block',width:6,height:6,borderRadius:3,background:whoColor(a),marginRight:4}}),a+' '+bgMoney_(C.accounts[a]));}))),
-        h('span',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end'}},h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},bgMoney_(C.total)),whatIf?null:actTag(actSum(C.keys))));};
-    var splitCtl=whatIf?h('div',{className:'bg-split',style:{display:'flex',flexDirection:'column',gap:6,padding:'10px 0',borderBottom:'1px solid '+BGC.line,marginBottom:6}},
-      h('label',{style:{display:'flex',justifyContent:'space-between',fontSize:13,color:BGC.soft}},h('span',null,'Split'),h('span',{style:{color:isCh('split')?BGC.warn:BGC.txt}},model.people[0].name+' '+Math.round(c.split*100)+'% · '+model.people[1].name+' '+Math.round((1-c.split)*100)+'%')),
-      h('input',{type:'range',min:0,max:100,step:1,className:'bg-split-range','aria-label':'Split: '+model.people[0].name+'’s share, percent',value:Math.round(Number(shown('split',model.split))*100),onChange:function(e){setVal('split',Number(e.target.value)/100);},style:{width:'100%',minHeight:32}}),
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},h('span',{style:{fontSize:13,color:BGC.soft}},'Shared savings'),amount('shared.savings','Shared savings',model.sharedSavings))):null;
-    var collapsed=h('div',null,splitCtl,cats.map(catRow),
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:40,borderTop:'1px solid '+BGC.line,marginTop:4}},h('span',{style:{fontSize:14,fontWeight:700}},'Total shared'),
-        h('span',{style:{fontSize:15,fontWeight:700,fontVariantNumeric:'tabular-nums'}},bgMoney_(c.shared.total,true),whatIf&&Math.abs(c.shared.total-base.shared.total)>0.004?h('span',{style:{fontSize:12,color:BGC.warn,marginLeft:6}},bgDelta_(c.shared.total-base.shared.total)):null)),
-      c.shared.other.length?h('div',{className:'bg-other-note',style:{fontSize:12,color:BGC.mute,lineHeight:1.5,marginTop:6}},'Not in a category yet: '+c.shared.other.join(', ')+'. Add a Config row budget_category:<line> to place it.'):null);
-    var expanded=h('div',null,splitCtl,cats.map(function(C){return h('div',{key:C.name},head(C.name.toUpperCase()+' · '+bgMoney_(C.total)),
-      c.shared.lines.filter(function(x){return x.category===C.name;}).map(function(x){var src=model.shared[x.kind].filter(function(y){return y.key===x.key;})[0];
-        return line(x.key,x.name,[x.account,x.dueDay?'due '+bgOrd_(x.dueDay):'',x.kind==='nice'?'nice to have':'',src.trackerAmount!=null?'phone tracker, '+(model.phone&&model.phone.month||'')+' (budget tracker: '+bgMoney_(src.trackerAmount,true)+')':''].filter(Boolean).join(' · '),whatIf?src.amount:x.amount,{color:x.amount<0?BGC.ok:undefined});}));}),
-      h('div',{style:{display:'flex',justifyContent:'space-between',minHeight:40,alignItems:'center',borderTop:'1px solid '+BGC.line,marginTop:8}},h('span',{style:{fontSize:14,fontWeight:700}},'Total shared'),h('span',{style:{fontSize:15,fontWeight:700}},bgMoney_(c.shared.total,true))),
-      model.shared.whatif.length?h('div',{style:{fontSize:12,color:BGC.mute,marginTop:4}},'The tracker’s own What If rows are left out of the totals.'):null);
-    return card('shared','Shared expenses',BGC.joint,bgMoney_(c.shared.total),collapsed,expanded,anyCh(Object.keys(changed).filter(function(k){return /^shared\.|^split$/.test(k);})));};
-  // ---- the summary -----------------------------------------------------------------------------
-  var transfers=c.people.map(function(p,i){var b=base.people[i];return h('div',{key:p.key,className:'bg-transfer',style:{display:'flex',flexDirection:'column',gap:4,padding:12,borderRadius:12,background:BGC.deep,border:'1px solid '+BGC.line}},
-    h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:BGC.who[i]}},p.name.toUpperCase()+' · '+Math.round(p.share*100)+'%'),
-    h('span',{style:{fontSize:13,color:BGC.soft}},'→ AMEX Checking ',h('b',{style:{color:BGC.txt,fontVariantNumeric:'tabular-nums'}},bgMoney_(p.checking,true)),whatIf?h('span',{style:{color:BGC.warn,marginLeft:4}},bgDelta_(p.checking-b.checking)):null),
-    h('span',{style:{fontSize:12,color:BGC.mute}},bgMoney_(p.contribution,true)+' share − '+bgMoney_(p.ownCards,true)+' on own cards'),
-    h('span',{style:{fontSize:13,color:BGC.soft}},'→ AMEX Savings ',h('b',{style:{color:BGC.txt}},bgMoney_(p.savings,true)),whatIf?h('span',{style:{color:BGC.warn,marginLeft:4}},bgDelta_(p.savings-b.savings)):null));});
-  var matchRows=h('div',{className:'bg-match',style:{display:'flex',flexDirection:'column'}},match.map(function(m){
-    return h('div',{key:m.id,className:'bg-match-row '+(m.ok?'ok':'diff'),style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:'2px 10px',padding:'8px 0',borderBottom:'1px solid '+BGC.line}},
-      h('span',{style:{fontSize:13,color:BGC.txt}},m.label),h('span',{style:{fontSize:13,fontWeight:600,fontVariantNumeric:'tabular-nums',textAlign:'right'}},bgMoney_(m.vera,true)),
-      h('span',{style:{gridColumn:'1 / -1',fontSize:12,color:m.ok?BGC.ok:(m.because?BGC.soft:BGC.warn)}},m.ok?'✓ tracker':'tracker '+bgMoney_(m.tracker,true)+' · '+bgDelta_(m.diff)+(m.because?' · '+m.because:'')));}));
-  var emerg=h('div',{className:'bg-emergency',style:{display:'grid',gridTemplateColumns:'auto 1fr 1fr 1fr',gap:'6px 10px',fontSize:13,fontVariantNumeric:'tabular-nums',overflowX:'auto'}},
-    [h('span',{key:'h0',style:{color:BGC.mute}},'Months'),h('span',{key:'h1',style:{color:BGC.mute,textAlign:'right'}},'Total'),h('span',{key:'h2',style:{color:BGC.mute,textAlign:'right'}},'By share'),h('span',{key:'h3',style:{color:BGC.mute,textAlign:'right'}},'Half each')]
-      .concat([].concat.apply([],c.emergency.map(function(e){return [h('span',{key:e.months+'m'},e.months),h('span',{key:e.months+'t',style:{textAlign:'right'}},bgMoney_(e.total)),
-        h('span',{key:e.months+'s',style:{textAlign:'right'}},e.byShare.map(function(s){return bgMoney_(s.amount);}).join(' / ')),h('span',{key:e.months+'h',style:{textAlign:'right'}},bgMoney_(e.half))];}))));
-  var scenarios=(d.scenarios||[]);
-  var post=function(body,then){setBusy(true);setMsg('');apiPost(props.apiUrl,props.apiToken,body).then(function(r){setBusy(false);if(!r||r.ok===false){setMsg((r&&r.error)||'That didn’t save.');return;}then(r);})
-    .catch(function(e){setBusy(false);setMsg(e.message||'That didn’t save.');});};
-  var save=function(){var name=scName.trim();if(!name){setMsg('Give the scenario a name.');return;}
-    post({action:'budget_scenario_save',name:name,changes:changed},function(r){setD(Object.assign({},d,{scenarios:[r.scenario].concat(scenarios)}));setScName('');setMsg('Saved “'+r.scenario.name+'”.');});};
-  var del=function(id){post({action:'budget_scenario_delete',id:id},function(){setConfirmDel('');setD(Object.assign({},d,{scenarios:scenarios.filter(function(s){return s.id!==id;})}));});};
-  var btn=function(primary){return {minHeight:40,padding:'0 14px',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:600,background:primary?BGC.acc:'transparent',color:primary?'#0b1430':BGC.txt,border:primary?0:'1px solid #3a5bab'};};
-  var summary=h('section',{key:'summary',className:'bg-card bg-card-summary',style:{display:'flex',flexDirection:'column',gap:12,background:BGC.card,border:'1px solid '+BGC.br,borderRadius:14,padding:14}},
-    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:15,fontWeight:700}},'Summary'),h('span',{style:{fontSize:12,color:BGC.mute}},'worked out by VERA from the lines')),
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:8}},transfers),
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:8}},
-      [['Total shared',c.shared.total,base.shared.total],['Required each month',c.shared.required,base.shared.required],['Shared savings',c.shared.savings,base.shared.savings],['Disposable, both',c.totalDisposable,base.totalDisposable]].map(function(t){
-        return h('div',{key:t[0],className:'bg-tile',style:{display:'flex',flexDirection:'column',gap:2,padding:'10px 12px',borderRadius:10,background:BGC.deep,border:'1px solid '+BGC.line}},
-          h('span',{style:{fontSize:11,color:BGC.mute}},t[0]),h('span',{style:{fontSize:16,fontWeight:700,fontVariantNumeric:'tabular-nums'}},bgMoney_(t[1])),whatIf&&Math.abs(t[1]-t[2])>0.004?h('span',{style:{fontSize:12,color:BGC.warn}},bgDelta_(t[1]-t[2])):null);})),
-    head('AGAINST THE TRACKER'),
-    h('span',{style:{fontSize:12,color:BGC.mute,lineHeight:1.5}},whatIf?'These compare the plan as it is in the tracker; What if changes aren’t in them.':'Each figure beside the tracker’s own. A difference means a moved row or a formula to check.'),
-    matchRows,
-    head('EMERGENCY FUND'),emerg,
-    head('SCENARIOS'),
-    scenarios.length?h('div',{className:'bg-scenarios',style:{display:'flex',flexDirection:'column'}},scenarios.map(function(s){var r=s.results||{};
-      return h('div',{key:s.id,className:'bg-scenario',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 0',borderBottom:'1px solid '+BGC.line}},
-        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14}},s.name),h('span',{style:{fontSize:12,color:BGC.mute}},[s.quarter,r.totalShared!=null?'shared '+bgMoney_(r.totalShared):'',r.totalDisposable!=null?'disposable '+bgMoney_(r.totalDisposable):''].filter(Boolean).join(' · '))),
-        h('span',{style:{display:'flex',gap:6}},
-          h('button',{type:'button',className:'bg-scenario-open',style:btn(false),onClick:function(){var ch=s.changes||{};setOv(Object.assign({},ch));setWhatIf(true);setMsg('Opened “'+s.name+'” in What if.');var o=Object.assign({},open);Object.keys(ch).forEach(function(k){var w=k.split(/[.:]/)[0];o[w==='split'?'shared':w]=true;});setOpen(o);}},'Open in What if'),
-          confirmDel===s.id?h('button',{type:'button',className:'bg-scenario-del-yes',style:Object.assign(btn(false),{borderColor:BGC.bad,color:BGC.bad}),disabled:busy,onClick:function(){del(s.id);}},'Delete it'):
-            h('button',{type:'button',className:'bg-scenario-del',style:btn(false),onClick:function(){setConfirmDel(s.id);}},'Delete')));})):
-      h('span',{style:{fontSize:12,color:BGC.mute}},'None saved. Turn on What if, change some amounts, then save them as a scenario for the quarterly check-in.'));
-  // ---- the What if bar -------------------------------------------------------------------------
-  var bar=whatIf?h('div',{className:'bg-whatif-bar',role:'region','aria-label':'What if',style:{position:'sticky',top:0,zIndex:5,display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:12,background:'#14213f',border:'1px solid '+BGC.warn}},
-    h('div',{className:'bg-deltas',style:{display:'flex',flexWrap:'wrap',gap:'4px 14px',fontSize:13,color:BGC.soft}},
-      nChanged?c.people.map(function(p,i){var b=base.people[i];return h('span',{key:p.key},p.name+' → Checking ',h('b',{style:{color:BGC.txt}},bgMoney_(p.checking)),' ',h('span',{style:{color:BGC.warn}},bgDelta_(p.checking-b.checking)||'±$0'),
-          ' · disposable ',h('b',{style:{color:BGC.txt}},bgMoney_(p.disposable)),' ',h('span',{style:{color:BGC.warn}},bgDelta_(p.disposable-b.disposable)||'±$0'));})
-        .concat([h('span',{key:'t'},'Shared ',h('b',{style:{color:BGC.txt}},bgMoney_(c.shared.total)),' ',h('span',{style:{color:BGC.warn}},bgDelta_(c.shared.total-base.shared.total)||'±$0'))])
-      :h('span',null,'Change any amount below; every sum reruns as you type. The tracker isn’t changed.')),
-    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},
-      h('input',{type:'text',className:'bg-scenario-name','aria-label':'Scenario name',placeholder:'Name this scenario',value:scName,onChange:function(e){setScName(e.target.value);},
-        style:{flex:'1 1 160px',minHeight:40,padding:'0 10px',borderRadius:8,background:BGC.deep,border:'1px solid '+BGC.br,color:BGC.txt,fontSize:14,boxSizing:'border-box'}}),
-      h('button',{type:'button',className:'bg-save',style:btn(true),disabled:busy||!nChanged,onClick:save},'Save as scenario'),
-      h('button',{type:'button',className:'bg-reset',style:btn(false),onClick:function(){setOv({});setMsg('');}},'Reset'))):null;
-  return h('div',{className:'bg-tab',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760}},
-    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}},
-      h('span',{style:{display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:16,fontWeight:700,color:BGC.txt}},'Monthly plan'),h('span',{className:'bg-sub',style:{fontSize:12,color:BGC.mute}},'From the budget tracker, read only · '+(acts?'actuals: '+acts.quarter+', a month on average':'plan only until a quarter’s transactions are uploaded'))),
-      h('button',{type:'button',className:'bg-whatif-toggle','aria-pressed':whatIf,onClick:function(){setWhatIf(!whatIf);if(whatIf)setOv({});setMsg('');},
-        style:{minHeight:40,padding:'0 14px',borderRadius:20,cursor:'pointer',fontSize:13,fontWeight:600,background:whatIf?'#3a2f10':BGC.deep,color:whatIf?BGC.warn:BGC.soft,border:'1px solid '+(whatIf?BGC.warn:BGC.line)}},whatIf?'What if: on':'What if')),
-    msg?h('div',{className:'bg-msg',role:'status',style:{fontSize:13,color:BGC.soft}},msg):null,
-    bar,
-    model.missing&&model.missing.length?h('div',{className:'bg-missing',style:{fontSize:12,color:BGC.warn}},'Not found in the tracker: '+model.missing.join(', ')+'.'):null,
-    c.people.map(personCard),sharedCard(),summary);}
+  var flash=function(t){setMsg(t);setTimeout(function(){setMsg('');},6000);};
+  var write=function(edits,done){setBusy(true);apiPost(props.apiUrl,props.apiToken,{action:'budget_write',edits:edits}).then(function(r){setBusy(false);done&&done();
+      flash(r.written===1?'Saved to Household Split: '+r.what[0]+'.':'Saved '+r.written+' changes to Household Split.');return load();})
+    .catch(function(e){setBusy(false);if(vedit)setVedit(Object.assign({},vedit,{err:e.message}));else flash(e.message);});};
+  var card={background:BGC.card,border:'1px solid '+BGC.br,borderRadius:14,padding:16,boxSizing:'border-box',minWidth:0};
+  var lbl={fontSize:11,letterSpacing:'.06em',textTransform:'uppercase',color:BGC.mute,fontWeight:600};
+  var num={fontVariantNumeric:'tabular-nums'};
+  var btn=function(primary){return {minHeight:44,padding:'0 16px',borderRadius:12,border:primary?0:'1px solid '+BGC.br,background:primary?BGC.gold:'transparent',color:primary?'#0b1430':BGC.txt,fontWeight:primary?700:600,fontSize:14,cursor:busy?'wait':'pointer'};};
+  var pencil=function(aria,onClick){return h('button',{type:'button',className:'bg-pencil','aria-label':aria,onClick:onClick,disabled:busy,
+    style:{minWidth:narrow?36:40,minHeight:40,padding:0,borderRadius:10,border:'1px solid '+BGC.br,background:'transparent',color:BGC.soft,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',flex:'none'}},
+    h('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,'aria-hidden':'true'},h('path',{d:'M4 20h4L19 9l-4-4L4 16v4z'})));};
+  var input=function(k,shownV,aria,w){return h('input',{type:'number',step:'any',className:'bg-input'+(isCh(k)?' bg-changed':''),'aria-label':aria,value:shownV,
+    onChange:function(ev){setVal(k,ev.target.value);},style:Object.assign({minHeight:40,width:w||110,padding:'0 8px',borderRadius:8,background:BGC.deep,border:'1px solid '+(isCh(k)?BGC.warn:BGC.br),color:BGC.txt,fontSize:14,textAlign:'right',boxSizing:'border-box'},num)});};
+  var shownOf=function(k,b){return Object.prototype.hasOwnProperty.call(ov,k)?ov[k]:(b==null?'':b);};
+  // a figure: an input in What if, else the value with ✎ that writes its cell
+  var fig=function(k,baseV,shownMoney,label,opts){opts=opts||{};
+    if(whatIf&&!opts.noWhatIf)return input(k,shownOf(k,baseV),label,opts.w);
+    return h('span',{style:{display:'inline-flex',alignItems:'center',gap:narrow?4:6,justifyContent:'flex-end',flexWrap:'nowrap'}},h('span',{style:Object.assign({whiteSpace:'nowrap'},num)},shownMoney),
+      opts.noEdit?null:pencil('Change '+label,function(){setVedit({key:opts.key||k,field:opts.field||'amount',label:label,value:opts.raw!=null?String(opts.raw):String(baseV==null?'':baseV),was:shownMoney,note:opts.note||''});}));};
+  var section=function(id,n,title,summary,body){var on=!!open[id];
+    return h('section',{key:id,id:'bg-s-'+id,className:'bg-sec bg-sec-'+id,style:Object.assign({},card,{padding:0})},
+      h('button',{type:'button',className:'bg-sec-head','aria-expanded':on?'true':'false','aria-controls':'bg-sb-'+id,onClick:function(){toggle(id);},
+        style:{width:'100%',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',minHeight:56,padding:'8px 16px',background:'transparent',border:0,color:BGC.txt,cursor:'pointer',textAlign:'left',boxSizing:'border-box'}},
+        h('span',{'aria-hidden':'true',style:{color:BGC.mute,display:'inline-block',transform:on?'rotate(90deg)':'none'}},'›'),
+        h('span',{style:{font:"600 12px 'Space Grotesk',Inter,sans-serif",color:'#0b1430',background:BGC.gold,borderRadius:6,padding:'2px 8px'}},n),
+        h('span',{style:{font:"600 17px 'Space Grotesk',Inter,sans-serif"}},title),
+        h('span',{className:'bg-sec-sum',style:Object.assign(narrow?{flexBasis:'100%',fontSize:13,color:BGC.mute,lineHeight:1.4}:{marginLeft:'auto',fontSize:13,color:BGC.mute},num)},summary)),
+      on?h('div',{id:'bg-sb-'+id,className:'bg-sec-body',style:{padding:'4px 16px 16px',borderTop:'1px solid '+BGC.line,display:'flex',flexDirection:'column',gap:10}},body):null);};
+  // On a phone a table is a list: each row's label on its own line, its figures lined up under the column names.
+  var tblNarrow=function(head,rows,foot,cls){var n=head.length-1,grid={display:'grid',gridTemplateColumns:'repeat('+n+',minmax(0,1fr))',gap:8};
+    var vals=function(cells,bold,mute){return h('div',{style:grid},cells.slice(1).map(function(x,j){return h('span',{key:j,style:Object.assign({textAlign:'right',fontSize:n>2?14:15,fontWeight:bold?700:500,color:mute?BGC.mute:BGC.txt,minWidth:0,overflowWrap:'anywhere'},num)},x);}));};
+    return h('div',{className:cls||''},
+      h('div',{style:Object.assign({},grid,{position:'sticky',top:0,background:BGC.card,padding:'6px 0',borderBottom:'1px solid '+BGC.br,zIndex:1})},head.slice(1).map(function(x,j){return h('span',{key:j,style:{textAlign:'right',fontSize:12,color:BGC.mute,fontWeight:600}},x);})),
+      rows.map(function(r,i){return h('div',{key:i,className:'bg-tr '+(r.cls||''),style:{display:'flex',flexDirection:'column',gap:4,padding:'9px 0',borderBottom:'1px solid '+BGC.line}},
+        h('span',{style:{fontSize:13,color:r.mute?BGC.mute:BGC.soft,fontWeight:r.bold?700:400}},r.cells[0]),vals(r.cells,r.bold,r.mute));}),
+      foot?h('div',{className:'bg-tr',style:{display:'flex',flexDirection:'column',gap:4,padding:'9px 0'}},h('span',{style:{fontSize:13,fontWeight:700}},foot[0]),vals(foot,true)):null);};
+  var tbl=function(head,rows,foot,cls){if(narrow)return tblNarrow(head,rows,foot,cls);return h('div',{style:{overflowX:'auto'}},h('table',{className:cls||'',style:{width:'100%',borderCollapse:'collapse',fontSize:14}},
+    h('thead',null,h('tr',null,head.map(function(x,i){return h('th',{key:i,style:{textAlign:i?'right':'left',fontSize:12,color:BGC.mute,fontWeight:600,padding:'8px',borderBottom:'1px solid '+BGC.br,whiteSpace:'nowrap'}},x);}))),
+    h('tbody',null,rows.map(function(r,i){return h('tr',{key:i,className:'bg-tr '+(r.cls||'')},r.cells.map(function(x,j){return h('td',{key:j,colSpan:r.span&&j===0?r.span:undefined,style:Object.assign({textAlign:j?'right':'left',padding:'7px 8px',borderBottom:'1px solid '+BGC.line,whiteSpace:'nowrap',fontWeight:r.bold?700:400,color:r.mute?BGC.mute:BGC.txt},num)},x);}));})),
+    foot?h('tfoot',null,h('tr',null,foot.map(function(x,i){return h('td',{key:i,style:Object.assign({textAlign:i?'right':'left',padding:'8px',fontWeight:700},num)},x);}))):null));};
+  // ---- the glance ----
+  var tile=function(cls,label,value,sub,gold){return h('div',{className:'bg-kpi '+cls,style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:4},narrow?{padding:12}:{})},
+    h('span',{style:lbl},label),h('span',{style:Object.assign({font:"600 "+(narrow?'21px':'26px')+" 'Space Grotesk',Inter,sans-serif",color:gold?BGC.gold:BGC.txt},num)},value),h('span',{style:{fontSize:12,color:BGC.mute,lineHeight:1.35}},sub));};
+  var jointOk=Math.abs(c.jointCheck)<0.05;
+  var kpis=h('div',{className:'bg-kpis',style:{display:'grid',gridTemplateColumns:narrow?'repeat(2,minmax(0,1fr))':'repeat(auto-fit,minmax(min(100%,200px),1fr))',gap:narrow?8:12}},
+    tile('bg-kpi-take','Take-home, together',bgMoney_(c.totalTakeHome),A.name+' '+bgMoney_(A.takeHome)+' · '+V.name+' '+bgMoney_(V.takeHome)),
+    tile('bg-kpi-shared','Shared costs',bgMoney_(c.shared.total),'split '+Math.round(c.split*100)+' / '+Math.round((1-c.split)*100)+' · you earn '+bgPctTxt_(A.takeHomeShare).replace('%','')+' / '+bgPctTxt_(V.takeHomeShare).replace('%','')),
+    tile('bg-kpi-joint','Into Joint Checking',bgMoney_(A.checking+V.checking),jointOk?'matches what Joint pays out ✓':'Joint pays '+bgMoney_(c.shared.joint)+' · off by '+bgMoney_(c.jointCheck)),
+    tile('bg-kpi-left','Left over',bgMoney_(c.totalDisposable),A.name+' '+bgMoney_(A.disposable)+' · '+V.name+' '+bgMoney_(V.disposable),true));
+  var segs=function(p){var ownShared=p.ownCard;return [['Joint Checking',p.checking,BGC.joint],['Shared savings',p.savings,BGC.ssave],['Shared bills on own card',ownShared,BGC.own],['Personal bills',p.personalBills,BGC.pers],['Personal savings',p.psave,BGC.psave],['Left over',p.disposable,BGC.left]];};
+  var flowRow=function(p,i){var s=segs(p),tot=s.reduce(function(a,x){return a+Math.max(0,x[1]);},0)||1,mp=P[i];
+    return h('div',{key:p.key,className:'bg-flow-row',style:{display:'flex',flexDirection:'column',gap:6}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',fontSize:14}},h('b',null,p.name),
+        h('span',{style:Object.assign({color:BGC.mute},num)},'take-home '+bgMoney_(p.takeHome,true)+(mp.netPer!=null?' · '+mp.perMonth+' paycheck'+(mp.perMonth===1?'':'s')+' of '+bgMoney_(mp.netPer):''))),
+      h('div',{role:'img','aria-label':p.name+': '+s.map(function(x){return x[0]+' '+bgMoney_(x[1]);}).join(', '),style:{display:'flex',height:20,borderRadius:6,overflow:'hidden',background:BGC.deep}},
+        s.map(function(x,j){return h('span',{key:j,style:{width:(Math.max(0,x[1])/tot*100)+'%',background:x[2]}});})),
+      h('div',{style:Object.assign({display:'flex',flexWrap:'wrap',gap:'4px 14px',fontSize:12,color:BGC.soft},num)},s.map(function(x,j){return h('span',{key:j,style:{display:'inline-flex',alignItems:'center',gap:5}},
+        h('span',{style:{width:9,height:9,borderRadius:3,background:x[2]}}),x[0]+' '+bgMoney_(x[1],j===5));})));};
+  var flow=h('div',{className:'bg-flow',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:14})},
+    h('h3',{style:{margin:0,font:"600 18px 'Space Grotesk',Inter,sans-serif"}},'Where each paycheck goes'),
+    c.people.map(flowRow),
+    h('span',{className:'bg-settle',style:{fontSize:13,color:BGC.mute}},'Settle-up built into the transfers: '+(c.settleUp>=0?A.name+' covers '+bgMoney_(c.settleUp,true)+' of '+V.name+'’s share, because '+V.name+' puts '+bgMoney_(V.ownCards,true)+' of shared costs on a personal card or paycheck.':
+      V.name+' covers '+bgMoney_(-c.settleUp,true)+' of '+A.name+'’s share, because '+A.name+' puts '+bgMoney_(A.ownCards,true)+' of shared costs on a personal card or paycheck.')));
+  var hhParts=[['Left over',c.totalDisposable,BGC.left],['Joint Checking',A.checking+V.checking,BGC.joint],['Personal bills',A.personalBills+V.personalBills,BGC.pers],['Shared savings',c.shared.savings,BGC.ssave],['Shared, own cards',A.ownCard+V.ownCard,BGC.own],['Personal savings',A.psave+V.psave,BGC.psave]];
+  var catParts=c.shared.categories.map(function(x,i){return [x.name,x.total,BGC.cats[i%BGC.cats.length]];});
+  var legend=function(parts,pct,tot){return h('div',{style:Object.assign({display:'flex',flexDirection:'column',gap:4,fontSize:13,flex:1,minWidth:150},num)},parts.map(function(x,i){
+    return h('span',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8}},h('span',{style:{display:'inline-flex',alignItems:'center',gap:6}},h('span',{style:{width:9,height:9,borderRadius:3,background:x[2]}}),x[0]),
+      h('span',null,pct?bgPctTxt_(x[1]/tot):bgMoney_(x[1],true)));}));};
+  var typeBar=function(k){var v=c.shared[k],t=c.shared.total||1;return h('div',{key:k,className:'bg-type-'+k,style:{display:'flex',flexDirection:'column',gap:4}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:13}},h('span',null,BG_TYPE_NAME[k]),h('span',{style:num},bgMoney_(v,true)+' · '+Math.round(v/t*100)+'%')),
+    h('div',{style:{height:9,borderRadius:5,background:BGC.deep}},h('div',{style:{width:Math.max(0,Math.min(100,v/t*100))+'%',height:9,borderRadius:5,background:BGC.type[k]}})));};
+  var charts=h('div',{className:'bg-charts',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,300px),1fr))',gap:12}},
+    h('div',{className:'bg-chart-home',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:12})},h('h3',{style:{margin:0,fontSize:15}},'The household’s take-home'),
+      h('div',{style:{display:'flex',gap:14,alignItems:'center',flexWrap:'wrap'}},bgDonut_(h,hhParts.map(function(x){return {v:x[1],c:x[2]};}),bgMoney_(c.totalTakeHome),'a month','Household take-home: '+hhParts.map(function(x){return x[0]+' '+bgPctTxt_(x[1]/(c.totalTakeHome||1));}).join(', ')),legend(hhParts,true,c.totalTakeHome||1))),
+    h('div',{className:'bg-chart-cats',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:12})},h('h3',{style:{margin:0,fontSize:15}},'Shared costs by category'),
+      h('div',{style:{display:'flex',gap:14,alignItems:'center',flexWrap:'wrap'}},bgDonut_(h,catParts.map(function(x){return {v:x[1],c:x[2]};}),bgMoney_(c.shared.total),'shared','Shared costs: '+catParts.map(function(x){return x[0]+' '+bgMoney_(x[1]);}).join(', ')),legend(catParts))),
+    h('div',{className:'bg-chart-type',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:10})},h('h3',{style:{margin:0,fontSize:15}},'Shared costs by type'),
+      ['fixed','variable','nice'].map(typeBar),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:3,paddingTop:8,borderTop:'1px solid '+BGC.line}},h('span',{style:lbl},'Set-asides to keep in savings'),
+        h('span',{className:'bg-setaside',style:Object.assign({fontSize:14},num)},A.name+' '+bgMoney_(A.setAside,true)+' · '+V.name+' '+bgMoney_(V.setAside,true)+' · ',h('b',null,bgMoney_(c.setAside,true)),' a month'),
+        h('span',{style:{fontSize:12,color:BGC.mute}},'for bills kept as set-aside: paid less often than monthly, or saved toward'))));
+  // ---- the checks ----
+  var off=match.filter(function(r){return !r.ok;});
+  var hsa=model.hsa,hsaLine=null;
+  if(hsa&&hsa.plan!=null&&Math.abs(hsa.plan-hsa.sheetAnnual)>1){var perNew=Math.round(hsa.plan/hsa.perYear*100)/100;
+    hsaLine=h('span',{className:'bg-check bg-check-hsa',style:{display:'inline-flex',alignItems:'center',gap:8,flexWrap:'wrap',color:BGC.warn}},'Your '+hsa.year+' HSA plan is '+bgMoney_(hsa.plan)+'; the sheet has '+bgMoney_(hsa.sheetAnnual)+' ('+bgMoney_(hsa.per,true)+' a paycheck).',
+      h('button',{type:'button',className:'bg-hsa-apply',disabled:busy,onClick:function(){write([{key:hsa.key,value:perNew}]);},style:Object.assign(btn(false),{minHeight:40})},'Put '+bgMoney_(perNew,true)+' a paycheck in the sheet'));}
+  var checks=h('div',{className:'bg-checks',style:Object.assign({},card,{display:'flex',flexWrap:'wrap',gap:'8px 22px',alignItems:'center',fontSize:14})},
+    h('span',{style:lbl},'Checks'),
+    h('span',{className:'bg-check'},'Joint in − out ',h('b',{style:Object.assign({color:jointOk?BGC.ok:BGC.warn},num)},bgMoney_(-c.jointCheck,true)+(jointOk?' ✓':''))),
+    h('span',{className:'bg-check'},'Bills missing Type, For or Paid by ',h('b',{style:{color:c.incomplete?BGC.warn:BGC.ok}},c.incomplete+(c.incomplete?'':' ✓'))),
+    h('span',{className:'bg-check'},'Settle-up ',h('b',{style:num},bgMoney_(Math.abs(c.settleUp),true))),
+    off.length?h('span',{className:'bg-check bg-check-off',style:{color:BGC.warn}},'VERA and the sheet differ on '+off.map(function(r){return r.label+' ('+bgMoney_(r.vera,true)+' vs '+bgMoney_(r.tracker,true)+(r.because?', '+r.because:'')+')';}).join('; ')):
+      h('span',{className:'bg-check bg-check-match',style:{color:BGC.ok}},'VERA’s figures match the sheet ✓'),
+    (model.missing||[]).length?h('span',{className:'bg-check',style:{color:BGC.warn}},'Not found in the sheet: '+model.missing.join(', ')):null,
+    hsaLine);
+  // ---- 1. Paychecks ----
+  var payRows=[{cells:['Pay cadence'].concat(P.map(function(p){return whatIf?p.cadence:fig(p.key+'.cadence',p.cadence,p.cadence||'—','Pay cadence for '+p.name,{field:'cadence',raw:p.cadence,noWhatIf:true});}))},
+    {cells:['Gross pay per paycheck'].concat(P.map(function(p){return fig(p.key+'.gross',p.grossPer,bgMoney_(p.grossPer,true),p.name+'’s gross pay per paycheck');}))}];
+  var dedNames=[];P.forEach(function(p){p.deductions.forEach(function(x){if(!x.taxes&&dedNames.indexOf(x.name)===-1)dedNames.push(x.name);});});
+  (model.shared.pay||[]).forEach(function(x){if(dedNames.indexOf(x.name)===-1)dedNames.push(x.name);});
+  dedNames.forEach(function(nm){var shared=(model.shared.pay||[]).filter(function(x){return x.name===nm;});
+    payRows.push({cells:[h('span',null,nm,shared.length?' ':null,shared.length?h('span',{style:{fontSize:11,padding:'1px 7px',borderRadius:9,border:'1px solid '+BGC.br,color:BGC.soft}},'shared'):null)].concat(P.map(function(p){
+      var x=p.deductions.filter(function(y){return y.name===nm;})[0]||shared.filter(function(y){return y.fromPay===p.key;})[0];
+      return x?fig(x.key,x.per,bgMoney_(x.per,true),p.name+' · '+nm+' per paycheck'):h('span',{style:{color:BGC.mute}},'—');}))});});
+  payRows.push({cells:['Taxes (worked out from the deposit)'].concat(P.map(function(p){var t=p.deductions.filter(function(x){return x.taxes;})[0];return t?(whatIf?input(t.key,shownOf(t.key,t.per),p.name+' · taxes per paycheck'):h('span',{style:num},bgMoney_(t.per,true))):'—';})),mute:true});
+  payRows.push({cells:['Net deposit per paycheck'].concat(P.map(function(p){return whatIf?h('span',{style:num},bgMoney_(p.netPer,true)):fig(p.key+'.net',p.netPer,bgMoney_(p.netPer,true),p.name+'’s net deposit per paycheck',{noWhatIf:true});})),bold:true});
+  payRows.push({cells:['Paychecks a year · in a regular month'].concat(P.map(function(p){return whatIf?(p.perYear+' · '+p.perMonth):h('span',{style:{display:'inline-flex',gap:6,alignItems:'center'}},
+    h('span',{style:num},(p.perYear==null?'—':p.perYear)+' · '+p.perMonth),pencil('Change '+p.name+'’s paychecks in a regular month',function(){setVedit({key:p.key+'.perMonth',field:'perMonth',label:p.name+'’s paychecks in a regular month',value:String(p.perMonth),was:String(p.perMonth),note:'Paychecks a year stays '+(p.perYear==null?'as it is':p.perYear)+'.'});}));}))});
+  payRows.push({cells:['Take-home, regular month'].concat(c.people.map(function(p){return h('span',{style:Object.assign({color:BGC.gold},num)},bgMoney_(p.takeHome,true));})),bold:true});
+  payRows.push({cells:['Average month, for reference'].concat(P.map(function(p){return bgMoney_(p.avgMonth,true);})),mute:true});
+  var hsaYears=(d.hsaYears||[]);
+  var hsaEditor=hsaYears.length?h('div',{className:'bg-hsa',style:{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid '+BGC.line}},
+    h('span',{style:{fontSize:12,color:BGC.mute}},'HSA plan by year'+(hsa?' (the sheet’s '+hsa.line+' is '+bgMoney_(hsa.sheetAnnual)+' a year)':'')+'. When a year’s plan differs from the sheet, Checks offers to update it.'),
+    hsaYears.map(function(x){var on=hsaEdit&&hsaEdit.year===x.year;
+      var save=function(){var n=String(hsaEdit.value).replace(/[$,\s]/g,'');setBusy(true);
+        apiGet(props.apiUrl,props.apiToken,{action:'set_config_value',key:'hsa_annual_'+x.year,value:n}).then(function(){setBusy(false);setHsaEdit(null);return load();}).catch(function(e){setBusy(false);flash(e.message);});};
+      return h('div',{key:x.year,className:'bg-hsa-year',style:{display:'flex',alignItems:'center',gap:8,minHeight:40,flexWrap:'wrap'}},h('span',{style:{fontSize:14,minWidth:44}},x.year),
+        on?h('input',{type:'number',min:0,step:'any',className:'bg-hsa-input','aria-label':'HSA plan for '+x.year,value:hsaEdit.value,onChange:function(ev){setHsaEdit({year:x.year,value:ev.target.value});},style:Object.assign({minHeight:40,width:120,padding:'0 10px',borderRadius:8,background:BGC.deep,border:'1px solid '+BGC.br,color:BGC.txt,fontSize:14},num)}):
+          h('span',{style:Object.assign({fontSize:14},num)},x.annual!=null?bgMoney_(x.annual)+' a year':'not set'),
+        on?h('button',{type:'button',className:'bg-hsa-save',onClick:save,disabled:busy,style:Object.assign(btn(true),{minHeight:40})},'Save'):
+          h('button',{type:'button',className:'bg-hsa-edit','aria-label':'Edit HSA plan for '+x.year,onClick:function(){setHsaEdit({year:x.year,value:x.annual!=null?String(x.annual):''});},style:Object.assign(btn(false),{minHeight:40})},'Edit'));})):null;
+  var sPay=section('paychecks','1','Paychecks',P.map(function(p){return p.name+' '+bgMoney_(p.netPer)+' × '+p.perMonth;}).join(' · ')+((model.shared.pay||[]).length?' · '+bgMoney_(c.people.reduce(function(s,p){return s+p.fromPay;},0),true)+' shared from pay':''),
+    [tbl(['Per paycheck'].concat(P.map(function(p){return p.name;})),payRows,null,'bg-pay'),hsaEditor]);
+  // ---- 2. Bills ----
+  var bills=model.bills||[],lineOf={};c.shared.lines.forEach(function(x){lineOf[x.key]=x;});
+  var personOf={};c.people.forEach(function(p){p.fixed.concat(p.nice).forEach(function(x){personOf[x.key]=x;});});
+  var shownBills=bills.filter(function(b){return forBills==='all'||(forBills==='shared'?/^shared$/i.test(b.forWho):b.forWho.toLowerCase()===forBills);});
+  var count=function(f){return bills.filter(function(b){return f==='all'||(f==='shared'?/^shared$/i.test(b.forWho):b.forWho.toLowerCase()===f);}).length;};
+  var chip=function(t,gold){return h('span',{style:{fontSize:11,padding:'1px 8px',borderRadius:9,border:'1px solid '+(gold?'#8a7330':BGC.br),color:gold?'#e8cc7a':BGC.soft,whiteSpace:'nowrap'}},t);};
+  var openForm=function(b){setForm(b?{key:b.key,orig:b,values:{name:b.name,amount:String(b.amount),type:BG_TYPE_NAME[b.type]||'Fixed',forWho:b.forWho,paidBy:b.paidBy,keptAs:b.keptAs,category:b.category}}:
+    {values:{name:'',amount:'',type:'Fixed',forWho:'Shared',paidBy:'Joint',keptAs:'Actual',category:''}});};
+  var billCard=function(o){return h('div',{key:o.key,className:'bg-tr bg-bill'+(o.cls||''),style:{display:'flex',flexDirection:'column',gap:6,padding:'10px 0',borderBottom:'1px solid '+BGC.line}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{flex:1,minWidth:0,fontSize:15,fontWeight:600,color:o.mute?BGC.soft:BGC.txt}},o.name),
+        h('span',{style:Object.assign({fontSize:15,fontWeight:600},num)},o.amount),o.edit||null),
+      h('div',{style:{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center',fontSize:12,color:BGC.soft}},o.chips),
+      o.shares?h('div',{style:Object.assign({display:'flex',flexWrap:'wrap',gap:'4px 14px',fontSize:13,color:BGC.mute},num)},o.shares):null);};
+  var cardOf=function(b,L,amtEl,a,isShared,editBtn){var shares=[];if(isShared)shares=[A.name+' '+bgMoney_(L.amount*c.split,true),V.name+' '+bgMoney_(L.amount*(1-c.split),true)];
+    if(a!=null)shares.push(h('span',{key:'a',className:'bg-actual'+(a>L.amount*1.1?' over':''),style:{color:a>L.amount*1.1?BGC.warn:BGC.soft}},'actual '+bgMoney_(a)));
+    return billCard({key:b.key,cls:isCh(b.key)?' bg-changed':'',name:h('span',{style:{display:'inline-flex',gap:6,alignItems:'center',flexWrap:'wrap'}},b.name,b.incomplete?chip('needs Type, For or Paid by',true):null),amount:amtEl,edit:editBtn,
+      chips:[chip(BG_TYPE_NAME[b.type]||'—'),chip(isShared?'Shared':'For '+b.forWho),chip('Paid by '+b.paidBy),chip(b.keptAs,b.keptAs==='Set-aside'),chip(L.category||b.category||'Other')],shares:shares.length?shares.map(function(s,i){return typeof s==='string'?h('span',{key:i},s):s;}):null});};
+  var billRows=shownBills.map(function(b){var L=lineOf[b.key]||personOf[b.key]||b,amt=L.amount,isShared=/^shared$/i.test(b.forWho),a=act(b.key);
+    return {cls:'bg-bill'+(isCh(b.key)?' bg-changed':''),cells:[h('span',{style:{display:'inline-flex',gap:6,alignItems:'center',flexWrap:'wrap'}},b.name,b.incomplete?chip('needs Type, For or Paid by',true):null),
+      whatIf?input(b.key,shownOf(b.key,b.amount),b.name):h('span',{style:num},bgMoney_(amt,true)),BG_TYPE_NAME[b.type]||'—',b.forWho,b.paidBy,chip(b.keptAs,b.keptAs==='Set-aside'),L.category||b.category||'—',
+      isShared?bgMoney_(amt*c.split,true):'—',isShared?bgMoney_(amt*(1-c.split),true):'—',
+      a!=null?h('span',{className:'bg-actual'+(a>amt*1.1?' over':''),style:Object.assign({color:a>amt*1.1?BGC.warn:BGC.soft},num)},bgMoney_(a)):h('span',{style:{color:BGC.mute}},'—'),
+      whatIf?'':pencil('Edit '+b.name,function(){openForm(b);})]};});
+  (model.shared.pay||[]).forEach(function(x){if(forBills!=='shared'&&forBills!=='all')return;var L=lineOf[x.key]||x;
+    billRows.push({cls:'bg-bill bg-bill-pay',mute:true,cells:[h('span',null,x.name,' ',chip('from '+x.account+'’s pay')),bgMoney_(L.amount,true),'Fixed','Shared',x.account+'’s pay',chip('Actual'),x.category,bgMoney_(L.amount*c.split,true),bgMoney_(L.amount*(1-c.split),true),'—','']});});
+  function act(key){var a=acts&&acts.lines&&acts.lines[key];return a&&a.actual!=null?a.actual:null;}
+  var filt=h('div',{role:'group','aria-label':'Show bills for',style:{display:'flex',gap:6,flexWrap:'wrap'}},[['shared','Shared']].concat(P.map(function(p){return [p.key,p.name];}),[['all','All']]).map(function(f){var on=forBills===f[0];
+    return h('button',{key:f[0],type:'button',className:'bg-for bg-for-'+f[0],'aria-pressed':on?'true':'false',onClick:function(){setForBills(f[0]);},
+      style:{minHeight:40,padding:'0 14px',borderRadius:10,border:'1px solid '+(on?'#5c7cc4':BGC.br),background:on?'#1d2d57':'transparent',color:on?BGC.txt:BGC.soft,fontWeight:on?600:500,fontSize:13,cursor:'pointer'}},f[1]+' · '+count(f[0]));}));
+  var billTotal=bills.reduce(function(s,b){var L=lineOf[b.key]||personOf[b.key]||b;return s+(L.amount||0);},0);
+  var sBills=section('bills','2','Bills',bills.length+' bills · '+bgMoney_(billTotal,true)+' a month · shared '+bgMoney_(c.shared.total,true),
+    [h('div',{key:'bar',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}},filt,
+       h('button',{type:'button',className:'bg-add',disabled:busy||whatIf,onClick:function(){openForm(null);},style:Object.assign(btn(true),narrow?{width:'100%'}:{})},'Add a bill')),
+     narrow&&acts&&acts.quarter?h('span',{key:'aq',style:{fontSize:12,color:BGC.mute}},'Actual, '+acts.quarter+': a month on average, from your uploads'):null,
+     narrow?h('div',{key:'cards',className:'bg-bills'},shownBills.map(function(b){var L=lineOf[b.key]||personOf[b.key]||b,isShared=/^shared$/i.test(b.forWho);
+         return cardOf(b,L,whatIf?input(b.key,shownOf(b.key,b.amount),b.name,100):bgMoney_(L.amount,true),act(b.key),isShared,whatIf?null:pencil('Edit '+b.name,function(){openForm(b);}));}).concat(
+         (forBills==='shared'||forBills==='all')?(model.shared.pay||[]).map(function(x){var L=lineOf[x.key]||x;return billCard({key:x.key,cls:' bg-bill-pay',mute:true,name:x.name,amount:bgMoney_(L.amount,true),
+           chips:[chip('Fixed'),chip('Shared'),chip('from '+x.account+'’s pay'),chip(L.category||'Health')],shares:[h('span',{key:0},A.name+' '+bgMoney_(L.amount*c.split,true)),h('span',{key:1},V.name+' '+bgMoney_(L.amount*(1-c.split),true))]});}):[])):
+     tbl(['Bill','Monthly','Type','For','Paid by','Kept as','Category',A.name+' '+Math.round(c.split*100)+'%',V.name+' '+Math.round((1-c.split)*100)+'%',acts&&acts.quarter?'Actual, '+acts.quarter:'Actual',''],billRows,
+       ['Shown',bgMoney_(shownBills.reduce(function(s,b){var L=lineOf[b.key]||personOf[b.key]||b;return s+(L.amount||0);},0)+((forBills==='shared'||forBills==='all')?(model.shared.pay||[]).reduce(function(s,x){return s+((lineOf[x.key]||x).amount||0);},0):0),true),'','','','','','','','',''],'bg-bills')]);
+  // ---- 3. Split ----
+  var two=function(f,money){return c.people.map(function(p){return money===false?f(p):bgMoney_(f(p),true);});};
+  var splitCell=whatIf?h('span',{style:{display:'inline-flex',alignItems:'center',gap:8}},h('input',{type:'range',min:0,max:100,step:1,className:'bg-split-range','aria-label':'Split, '+A.name+'’s share',
+      value:Math.round(Number(shownOf('split',model.split))*100),onChange:function(ev){setVal('split',Number(ev.target.value)/100);}}),h('span',{style:num},Math.round(c.split*100)+'%')):
+    fig('split',model.split,Math.round(model.split*100)+'%',A.name+'’s share of shared costs',{field:'split',raw:Math.round(model.split*100),note:'Type a percent; '+V.name+' gets the rest.'});
+  var sSplit=section('split','3','Split',Math.round(c.split*100)+' / '+Math.round((1-c.split)*100)+' · Joint '+bgMoney_(A.checking,true)+' + '+bgMoney_(V.checking,true)+' · left over '+bgMoney_(c.totalDisposable,true),
+    [tbl(['A month',A.name,V.name,'Total'],[
+      {cells:['Share of shared costs',splitCell,Math.round((1-c.split)*100)+'%','100%']},
+      {cells:['Shared expenses, your share'].concat(two(function(p){return p.contribution;}),[bgMoney_(c.shared.total,true)])},
+      {cells:['Less: shared costs taken from your pay'].concat(two(function(p){return -p.fromPay;}),[bgMoney_(-(A.fromPay+V.fromPay),true)])},
+      {cells:['Less: shared bills on your own card'].concat(two(function(p){return -p.ownCard;}),[bgMoney_(-(A.ownCard+V.ownCard),true)])},
+      {cells:['Transfer to Joint Checking'].concat(two(function(p){return p.checking;}),[bgMoney_(A.checking+V.checking,true)]),bold:true,cls:'bg-row-joint'},
+      {cells:['Transfer to shared savings'].concat(two(function(p){return p.savings;}),[whatIf?input('shared.savings',shownOf('shared.savings',model.sharedSavings),'Shared savings, a month'):bgMoney_(c.shared.savings,true)])},
+      {cells:['Personal bills'].concat(two(function(p){return p.personalBills;}),[bgMoney_(A.personalBills+V.personalBills,true)])},
+      {cells:['Personal savings'].concat(P.map(function(p,i){return fig(p.key+'.psave',p.psave,bgMoney_(c.people[i].psave,true),p.name+'’s personal savings');}),[bgMoney_(A.psave+V.psave,true)])},
+      {cells:['Left over each month'].concat(c.people.map(function(p){return h('span',{style:{color:BGC.gold}},bgMoney_(p.disposable,true));}),[h('span',{style:{color:BGC.gold}},bgMoney_(c.totalDisposable,true))]),bold:true,cls:'bg-row-left'}],null,'bg-split')]);
+  // ---- 4. Summary, 5. Emergency fund, 6. Bonuses ----
+  var sSum=section('summary','4','Summary','Fixed '+bgMoney_(c.shared.fixed,true)+' · Variable '+bgMoney_(c.shared.variable)+' · Nice to have '+bgMoney_(c.shared.nice)+' · set-asides '+bgMoney_(c.setAside,true),
+    [tbl(['',A.name,V.name,'Total'],[
+      {cells:['Fixed'].concat(two(function(p){return c.shared.fixed*p.share;}),[bgMoney_(c.shared.fixed,true)])},
+      {cells:['Variable'].concat(two(function(p){return c.shared.variable*p.share;}),[bgMoney_(c.shared.variable,true)])},
+      {cells:['Nice to have'].concat(two(function(p){return c.shared.nice*p.share;}),[bgMoney_(c.shared.nice,true)])},
+      {cells:['Total transfers'].concat(two(function(p){return p.checking+p.savings;}),[bgMoney_(A.checking+V.checking+c.shared.savings,true)]),bold:true},
+      {cells:['Take-home'].concat(two(function(p){return p.takeHome;}),[bgMoney_(c.totalTakeHome,true)])},
+      {cells:['Share of take-home'].concat(two(function(p){return bgPctTxt_(p.takeHomeShare);},false),['100%'])},
+      {cells:['Left over'].concat(two(function(p){return p.disposable;}),[bgMoney_(c.totalDisposable,true)])},
+      {cells:['Set-asides to keep in savings'].concat(two(function(p){return p.setAside;}),[bgMoney_(c.setAside,true)])}],null,'bg-summary')]);
+  var sEm=section('emergency','5','Emergency fund',c.emergency.map(function(e){return e.months+' mo '+bgMoney_(e.total);}).join(' · '),
+    [h('span',{key:'r',style:{fontSize:13,color:BGC.mute}},'Required shared costs (fixed and variable): '+bgMoney_(c.shared.required,true)+' a month'),
+     h('div',{key:'g',className:'bg-emergency',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,150px),1fr))',gap:8}},c.emergency.map(function(e){
+       return h('div',{key:e.months,style:{background:BGC.deep,borderRadius:10,padding:12,display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:12,color:BGC.mute}},e.months+' months'),
+         h('span',{style:Object.assign({fontWeight:700,fontSize:16},num)},bgMoney_(e.total,true)),h('span',{style:Object.assign({fontSize:12,color:BGC.mute},num)},e.byShare.map(function(s,i){return c.people[i].name+' '+bgMoney_(s.amount);}).join(' · ')));}))]);
+  var B=model.bonus||{usually:{},bonus:{},extra:{},toShared:{},kept:{},sharePct:{}};
+  var sBonus=section('bonus','6','Bonuses and extra paychecks','Extra paychecks '+bgMoney_(P.reduce(function(s,p){return s+(B.extra[p.key]||0);},0))+' · to shared goals '+bgMoney_(P.reduce(function(s,p){return s+(B.toShared[p.key]||0);},0))+' · kept out of the monthly budget',
+    [tbl(['',A.name,V.name],[
+      {cells:['Usually paid'].concat(P.map(function(p){return B.usually[p.key]||'—';}))},
+      {cells:['Net bonus deposit'].concat(P.map(function(p,i){var cl=B.bonusCells&&B.bonusCells[i];return B.bonus[p.key]!=null?bgMoney_(B.bonus[p.key],true):h('span',{style:{color:BGC.mute}},'not entered');}))},
+      {cells:['Extra paychecks a year'].concat(P.map(function(p){return B.extra[p.key]!=null?bgMoney_(B.extra[p.key],true):'—';}))},
+      {cells:['Share to shared goals'].concat(P.map(function(p){return B.sharePct[p.key]!=null?bgPctTxt_(B.sharePct[p.key]):'—';}))},
+      {cells:['To shared goals'].concat(P.map(function(p){return B.toShared[p.key]!=null?bgMoney_(B.toShared[p.key],true):'—';}))},
+      {cells:['Kept personally'].concat(P.map(function(p){return B.kept[p.key]!=null?bgMoney_(B.kept[p.key],true):'—';}))}],null,'bg-bonus')]);
+  // ---- the forms (add or edit a bill; change a value) ----
+  var seg=function(field,opts,vals,set){return h('div',{role:'group','aria-label':field,style:{display:'flex',gap:6,flexWrap:'wrap'}},opts.map(function(o){var on=vals[field]===o;
+    return h('button',{key:o,type:'button','aria-pressed':on?'true':'false',className:'bg-seg',onClick:function(){set(field,o);},style:{minHeight:40,padding:'0 12px',borderRadius:10,border:'1px solid '+(on?'#5c7cc4':BGC.br),background:on?'#1d2d57':'transparent',color:on?BGC.txt:BGC.soft,fontWeight:on?600:500,fontSize:13,cursor:'pointer'}},o);}));};
+  var field=function(label,el){return h('label',{style:{display:'flex',flexDirection:'column',gap:5,fontSize:13,color:BGC.mute,minWidth:0}},label,el);};
+  var tin=function(aria,v,on,type){return h('input',{type:type||'text','aria-label':aria,value:v,onChange:function(ev){on(ev.target.value);},
+    style:{minHeight:44,padding:'0 12px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:15,width:'100%',boxSizing:'border-box'}});};
+  var sheet=function(cls,title,sub,body,actions){return h('div',{className:'bg-sheet-back',role:'presentation',onClick:function(ev){if(ev.target===ev.currentTarget){setForm(null);setVedit(null);setConfirmWrite(false);}},
+    style:{position:'fixed',inset:0,background:'rgba(4,8,20,.66)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:1000,boxSizing:'border-box'}},
+    h('div',{className:cls,role:'dialog','aria-modal':'true','aria-label':title,style:Object.assign({},card,{width:'min(560px,100%)',maxHeight:'92vh',overflowY:'auto',display:'flex',flexDirection:'column',gap:14,padding:20})},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h3',{style:{margin:0,font:"600 20px 'Space Grotesk',Inter,sans-serif"}},title),h('span',{style:{fontSize:13,color:BGC.mute}},sub)),
+      body,h('div',{style:{display:'flex',gap:10,justifyContent:'flex-end',flexWrap:'wrap'}},actions)));};
+  var formEl=null;
+  if(form){var fv=form.values,setF=function(k,v){setForm(Object.assign({},form,{values:Object.assign({},fv,(function(){var o={};o[k]=v;return o;})()),err:''}));};
+    var prev=budgetCompute_(bgWithBill_(model,fv,form.key),{},catMap),cats=[];bills.forEach(function(b){if(b.category&&cats.indexOf(b.category)===-1)cats.push(b.category);});
+    var line=function(t,a,b){return Math.abs(a-b)<0.005?null:h('span',{style:Object.assign({fontSize:14},num)},t+' '+bgMoney_(a,true)+' → ',h('b',null,bgMoney_(b,true)));};
+    var diffs=[line('Shared costs',base.shared.total,prev.shared.total)].concat(base.people.map(function(p,i){return line(p.name+'’s Joint transfer',p.checking,prev.people[i].checking);}),
+      base.people.map(function(p,i){return line(p.name+'’s personal bills',p.personalBills,prev.people[i].personalBills);}),base.people.map(function(p,i){return line(p.name+'’s left over',p.disposable,prev.people[i].disposable);})).filter(Boolean);
+    var submit=function(){var v=fv;if(!String(v.name).trim()){setForm(Object.assign({},form,{err:'Give the bill a name.'}));return;}
+      if(!isFinite(Number(String(v.amount).replace(/[$,\s]/g,'')))||String(v.amount).trim()===''){setForm(Object.assign({},form,{err:'Enter the monthly amount.'}));return;}
+      setBusy(true);
+      if(form.key){var o=form.orig,edits=[];[['name',o.name],['amount',String(o.amount)],['type',BG_TYPE_NAME[o.type]],['forWho',o.forWho],['paidBy',o.paidBy],['keptAs',o.keptAs],['category',o.category]].forEach(function(f){
+          if(String(v[f[0]]).trim()!==String(f[1]==null?'':f[1]).trim())edits.push({key:form.key,field:f[0],value:f[0]==='amount'?String(v.amount).replace(/[$,\s]/g,''):v[f[0]]});});
+        if(!edits.length){setBusy(false);setForm(null);return;}
+        apiPost(props.apiUrl,props.apiToken,{action:'budget_write',edits:edits}).then(function(){setBusy(false);setForm(null);flash('Saved '+v.name+' to Household Split.');return load();}).catch(function(e){setBusy(false);setForm(Object.assign({},form,{err:e.message}));});}
+      else apiPost(props.apiUrl,props.apiToken,Object.assign({action:'budget_add_bill'},v,{amount:String(v.amount).replace(/[$,\s]/g,'')})).then(function(r){setBusy(false);setForm(null);flash('Added '+v.name+' to Household Split (row '+r.row+').');return load();})
+        .catch(function(e){setBusy(false);setForm(Object.assign({},form,{err:e.message}));});};
+    formEl=sheet('bg-bill-form',form.key?'Edit '+form.orig.name:'Add a bill',form.key?'Changes this bill’s row in Household Split › 2. Bills.':'Adds a row to Household Split › 2. Bills, above Total bills. The sheet’s totals and split recalculate.',
+      [field('Bill',tin('Bill',fv.name,function(x){setF('name',x);})),
+       h('div',{key:'ac',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,180px),1fr))',gap:12}},field('Monthly amount',tin('Monthly amount',fv.amount,function(x){setF('amount',x);},'number')),
+         field('Category',h('span',null,h('input',{list:'bg-cats','aria-label':'Category',value:fv.category,onChange:function(ev){setF('category',ev.target.value);},style:{minHeight:44,padding:'0 12px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:15,width:'100%',boxSizing:'border-box'}}),
+           h('datalist',{id:'bg-cats'},cats.map(function(x){return h('option',{key:x,value:x});}))))),
+       field('Type',seg('Type',['Fixed','Variable','Nice to have'],fv,function(k,v){setF('type',v);})),
+       field('For',seg('For',['Shared'].concat(P.map(function(p){return p.name;})),fv,function(k,v){setF('forWho',v);})),
+       field('Paid by',seg('Paid by',['Joint'].concat(P.map(function(p){return p.name;})),fv,function(k,v){setF('paidBy',v);})),
+       field('Kept as',h('span',{style:{display:'flex',flexDirection:'column',gap:4}},seg('Kept as',['Actual','Set-aside'],fv,function(k,v){setF('keptAs',v);}),h('span',{style:{fontSize:12}},'Set-aside: you save this much each month toward it (a bill paid quarterly or yearly, or a repair fund).'))),
+       h('div',{key:'pv',className:'bg-preview',style:{background:BGC.deep,border:'1px solid '+BGC.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:5}},h('span',{style:lbl},'What changes'),
+         diffs.length?diffs:h('span',{style:{fontSize:13,color:BGC.mute}},'Nothing yet.')),
+       form.err?h('span',{key:'er',role:'alert',className:'bg-form-err',style:{color:BGC.bad,fontSize:13}},form.err):null],
+      [h('button',{key:'c',type:'button',onClick:function(){setForm(null);},style:btn(false)},'Cancel'),
+       h('button',{key:'s',type:'button',className:'bg-form-save',disabled:busy,onClick:submit,style:btn(true)},busy?'Saving…':form.key?'Save to the sheet':'Add to the sheet')]);}
+  var veditEl=null;
+  if(vedit){var save=function(){var v=String(vedit.value).trim();if(!v){setVedit(Object.assign({},vedit,{err:'Enter a value.'}));return;}write([{key:vedit.key,field:vedit.field,value:vedit.field==='split'?Number(v)/100:v.replace(/[$,\s]/g,'')}],function(){setVedit(null);});};
+    var isText=vedit.field==='cadence';
+    veditEl=sheet('bg-value-form','Change a value','Writes this one cell of Household Split. Figures the sheet works out can’t be typed over.',
+      [h('div',{key:'r',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',minHeight:52,padding:'0 14px',borderRadius:12,border:'1px solid #5c7cc4',background:'#1d2d57'}},
+         h('span',{style:{fontSize:14}},vedit.label),
+         isText?h('select',{'aria-label':vedit.label,value:vedit.value,onChange:function(ev){setVedit(Object.assign({},vedit,{value:ev.target.value,err:''}));},style:{minHeight:44,borderRadius:10,background:BGC.deep,color:BGC.txt,border:'1px solid '+BGC.br,padding:'0 10px',fontSize:15}},
+             ['Weekly','Biweekly','Semimonthly','Monthly'].map(function(o){return h('option',{key:o,value:o},o);})):
+           h('input',{type:'number',step:'any','aria-label':vedit.label,className:'bg-value-input',value:vedit.value,autoFocus:true,onChange:function(ev){setVedit(Object.assign({},vedit,{value:ev.target.value,err:''}));},
+             onKeyDown:function(ev){if(ev.key==='Enter')save();},style:Object.assign({minHeight:44,width:150,padding:'0 12px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:15,textAlign:'right',boxSizing:'border-box'},num)})),
+       h('span',{key:'w',style:Object.assign({fontSize:13,color:BGC.mute},num)},'Was '+vedit.was+(vedit.note?' · '+vedit.note:' · everything worked out from it recalculates in the sheet after saving')),
+       vedit.err?h('span',{key:'e',role:'alert',className:'bg-form-err',style:{color:BGC.bad,fontSize:13}},vedit.err):null],
+      [h('button',{key:'c',type:'button',onClick:function(){setVedit(null);},style:btn(false)},'Cancel'),
+       h('button',{key:'s',type:'button',className:'bg-value-save',disabled:busy,onClick:save,style:btn(true)},busy?'Saving…':'Save to the sheet')]);}
+  // ---- What if ----
+  var saveScenario=function(){var nm=scName.trim();if(!nm){flash('Give the scenario a name.');return;}setBusy(true);
+    apiPost(props.apiUrl,props.apiToken,{action:'budget_scenario_save',name:nm,changes:changed}).then(function(r){setBusy(false);setScName('');flash('Saved “'+nm+'”.');
+      setD(Object.assign({},d,{scenarios:[r.scenario].concat(d.scenarios||[])}));}).catch(function(e){setBusy(false);flash(e.message);});};
+  var edits=whatIf?bgEditsFrom_(model,changed,c.split):[];var u=bgUnits_(model);var blocked=Object.keys(changed).filter(function(k){return u[k]&&u[k].taxes;});
+  var confirmEl=confirmWrite?sheet('bg-write-confirm','Write these to the sheet?','Each changes one input cell of Household Split.',
+      [h('ul',{key:'l',style:{margin:0,paddingLeft:18,display:'flex',flexDirection:'column',gap:4,fontSize:14}},Object.keys(changed).map(function(k){var U=u[k];
+        return h('li',{key:k,style:num},U.label+': '+(k==='split'?Math.round(U.base*100)+'% → '+Math.round(changed[k]*100)+'%':bgMoney_(U.base,true)+' → '+bgMoney_(changed[k]/U.mult,true)+(U.per?' a paycheck':'')));})),
+       blocked.length?h('span',{key:'b',style:{fontSize:13,color:BGC.warn}},'Taxes are worked out by the sheet, so that change stays in What if; change the net deposit instead.'):null],
+      [h('button',{key:'c',type:'button',onClick:function(){setConfirmWrite(false);},style:btn(false)},'Cancel'),
+       h('button',{key:'w',type:'button',className:'bg-write-go',disabled:busy||!edits.filter(function(e){return !(u[e.key]&&u[e.key].taxes);}).length,
+         onClick:function(){write(edits.filter(function(e){return !(u[e.key]&&u[e.key].taxes);}),function(){setConfirmWrite(false);setOv({});setWhatIf(false);});},style:btn(true)},busy?'Writing…':'Write to the sheet')]):null;
+  var wiBar=whatIf?h('div',{className:'bg-whatif-bar',style:Object.assign({},card,{border:'1px dashed #8a7330',display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'})},
+    h('span',{style:{fontSize:14,color:'#e8cc7a',flex:'1 1 220px'}},nChanged?nChanged+' change'+(nChanged===1?'':'s')+' · left over '+bgMoney_(base.totalDisposable,true)+' → '+bgMoney_(c.totalDisposable,true)+'. Nothing is written until you say so.':'Change any figure below; every sum reruns. Nothing is written to the sheet while What if is on.'),
+    nChanged?h('button',{type:'button',className:'bg-reset',onClick:function(){setOv({});},style:Object.assign(btn(false),{minHeight:40})},'Reset'):null,
+    nChanged?h('input',{type:'text','aria-label':'Scenario name',placeholder:'Scenario name',value:scName,onChange:function(ev){setScName(ev.target.value);},style:{minHeight:40,padding:'0 10px',borderRadius:10,border:'1px solid '+BGC.br,background:BGC.deep,color:BGC.txt,fontSize:14,width:160}}):null,
+    nChanged?h('button',{type:'button',className:'bg-save-scenario',disabled:busy,onClick:saveScenario,style:Object.assign(btn(false),{minHeight:40})},'Save as a scenario'):null,
+    nChanged?h('button',{type:'button',className:'bg-write',disabled:busy,onClick:function(){setConfirmWrite(true);},style:Object.assign(btn(false),{minHeight:40,borderColor:'#8a7330',color:'#e8cc7a'})},'Write these to the sheet'):null):null;
+  var scen=(d.scenarios||[]).length?h('div',{className:'bg-scenarios',style:Object.assign({},card,{display:'flex',flexDirection:'column',gap:6})},h('span',{style:lbl},'Saved scenarios'),
+    d.scenarios.slice(0,8).map(function(s){return h('div',{key:s.id,className:'bg-scenario',style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',minHeight:40,fontSize:14,borderBottom:'1px solid '+BGC.line}},
+      h('b',null,s.name),h('span',{style:Object.assign({color:BGC.mute,fontSize:13},num)},(s.quarter||'')+' · left over '+bgMoney_(s.results&&s.results.totalDisposable,true)),
+      h('span',{style:{marginLeft:'auto',display:'flex',gap:6}},h('button',{type:'button',onClick:function(){setOv(Object.keys(s.changes||{}).reduce(function(o,k){var U=u[k];if(U)o[k]=k==='split'?s.changes[k]:s.changes[k]/U.mult;return o;},{}));setWhatIf(true);},style:Object.assign(btn(false),{minHeight:40})},'Open in What if'),
+        confirmDel===s.id?h('button',{type:'button',onClick:function(){apiPost(props.apiUrl,props.apiToken,{action:'budget_scenario_delete',id:s.id}).then(function(){setConfirmDel('');setD(Object.assign({},d,{scenarios:d.scenarios.filter(function(x){return x.id!==s.id;})}));}).catch(function(e){flash(e.message);});},style:Object.assign(btn(false),{minHeight:40,color:BGC.bad})},'Delete'):
+          h('button',{type:'button','aria-label':'Delete '+s.name,onClick:function(){setConfirmDel(s.id);},style:Object.assign(btn(false),{minHeight:40})},'×')));})):null;
+  // ---- the page ----
+  return h('div',{className:'bg-tab',style:{display:'flex',flexDirection:'column',gap:14,color:BGC.txt}},
+    h('div',{className:'bg-head',style:{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'flex-end',gap:12}},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,font:"600 26px 'Space Grotesk',Inter,sans-serif"}},'This month at a glance'),
+        h('span',{className:'bg-sub',style:{fontSize:13,color:BGC.mute}},'From Household Split · a regular month'+(model.phone?' · phone plan from the phone tracker':'')+(acts&&acts.quarter?' · actuals: '+acts.quarter+', a month on average':''))),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'bg-whatif-toggle','aria-pressed':whatIf?'true':'false',onClick:function(){setWhatIf(!whatIf);if(whatIf)setOv({});},style:btn(false)},whatIf?'Done with What if':'What if…'),
+        h('button',{type:'button',className:'bg-add-top',disabled:busy||whatIf,onClick:function(){openForm(null);},style:btn(true)},'Add a bill'))),
+    msg?h('div',{role:'status',className:'bg-msg',style:{fontSize:13,color:BGC.ok}},msg):null,
+    wiBar,kpis,flow,charts,checks,
+    h('div',{className:'bg-sections-head',style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:10,flexWrap:'wrap',paddingTop:6}},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:3}},h('h3',{style:{margin:0,font:"600 20px 'Space Grotesk',Inter,sans-serif"}},'The sheet, section by section'),
+        h('span',{style:{fontSize:13,color:BGC.mute}},'In Household Split’s order. A closed section shows its headline; open it for the detail.')),
+      h('nav',{'aria-label':'Sheet sections',style:{display:'flex',gap:6,flexWrap:'wrap'}},BG_SECTIONS.map(function(s,i){return h('button',{key:s[0],type:'button',className:'bg-jump',
+        onClick:function(){if(!open[s[0]])toggle(s[0]);setTimeout(function(){var el=document.getElementById('bg-s-'+s[0]);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'});},30);},
+        style:{minHeight:40,padding:'0 12px',borderRadius:10,border:'1px solid '+BGC.br,background:'transparent',color:BGC.soft,fontSize:13,cursor:'pointer'}},(i+1)+' '+s[1].replace(' and extra paychecks',''));}))),
+    sPay,sBills,sSplit,sSum,sEm,sBonus,scen,formEl,veditEl,confirmEl);}
 // ---- /BudgetTab ----
 // ---- BillsCashflowTab (Finances › Day to day › Bills & cashflow, issue #226) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // List: the tracker's shared lines as bills in due-day order (amounts from the tracker; due day,

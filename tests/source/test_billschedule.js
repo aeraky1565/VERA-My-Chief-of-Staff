@@ -68,7 +68,7 @@ const PROPS = { SAT_SHEET_ID: 'sat-test', TRANSACTIONS_SHEET_ID: 'tx-test' };
 const CONFIG = { bills_transfer_day: '1' };
 const S = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => PROPS[k] || null }) },
-  SpreadsheetApp: { openById: id => id === 'sat-test' ? ss({ Tracker: TRACKER }, 'tracker') : id === 'tx-test' ? ss(TX, 'tx') : (() => { throw new Error('no such sheet'); })() },
+  SpreadsheetApp: { openById: id => id === 'sat-test' ? ss({ 'Household Split': TRACKER }, 'tracker') : id === 'tx-test' ? ss(TX, 'tx') : (() => { throw new Error('no such sheet'); })() },
   Utilities: { getUuid: () => 'abcdef12-3456-7890-0000', formatDate: (d, tz, f) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') },
   Session: { getScriptTimeZone: () => 'UTC' }, LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Logger: { log() {} },
   getSpreadsheet: () => ss(VERA, 'vera'), getConfigValues: () => CONFIG, getConfigAliases_: () => ({ netco: 'Internet' }),
@@ -84,21 +84,21 @@ S.C = C;
 
 console.log('\nthe bills list');
 let L = run('bsBills_(C, {})');
-check('the shared lines as bills, by due day, undated last (by name)', L.bills.map(b => b.line + '@' + (b.dueDay || '-')).join() === 'Rent@1,Family Plan Payment@12,Internet@13,Utilities - Electric@15,Dog Walker@-,Health Insurance - Medical@-,Subscription - Stream@-', L.bills.map(b => b.line + '@' + (b.dueDay || '-')).join());
+check('the shared lines as bills, by due day, undated last (by name)', L.bills.map(b => b.line + '@' + (b.dueDay || '-')).join() === 'Rent@1,Family Plan Payment@12,Internet@13,Utilities - Electric@15,Dog Walker@-,Subscription - Stream@-', L.bills.map(b => b.line + '@' + (b.dueDay || '-')).join());
 check('budget lines (Household) are not bills', J(L.budgetLines) === J(['Groceries', 'Home Cleaning']));
 check('a credit folds into its bill: net, with the credit kept', (() => { const f = L.bills.find(b => b.line === 'Family Plan Payment'); return f.amount === 150 && f.credit === 50 && f.gross === 200 && !L.bills.some(b => /Credit/.test(b.line)); })());
 check('amounts and accounts from the tracker; the due day from the name', L.bills[0].amount === 2000 && L.bills[0].account === 'Joint' && L.bills[0].dueFrom === 'name');
-check('the monthly total of bills', L.total === 2450, L.total);
-const SCHED = run('bsScheduleMap_(R)', { R: [['Health Insurance - Medical', 5, 'Pat card', 'TRUE', '', 'bill', 'payroll'], ['Gold Card', 3, 'Pat checking', 'yes', 'Gold Card', 'card payment', ''], ['Internet', 20, '', false, '', 'bill', '']] });
+check('the monthly total of bills (the medical premium comes from pay, so it isn’t one)', L.total === 2350 && J(L.fromPay) === J(['Health Insurance - Medical']), L.total);
+const SCHED = run('bsScheduleMap_(R)', { R: [['Dog Walker', 5, 'Pat card', 'TRUE', '', 'bill', 'walks'], ['Gold Card', 3, 'Pat checking', 'yes', 'Gold Card', 'card payment', ''], ['Internet', 20, '', false, '', 'bill', '']] });
 S.SCHED = SCHED;
 L = run('bsBills_(C, SCHED)');
-const med = L.bills.find(b => b.line === 'Health Insurance - Medical');
-check('VERA’s due day, account and autopay win', med.dueDay === 5 && med.dueFrom === 'set' && med.account === 'Pat card' && med.trackerAccount === 'Pat' && med.autopay === true && med.notes === 'payroll', J(med));
+const med = L.bills.find(b => b.line === 'Dog Walker');
+check('VERA’s due day, account and autopay win', med.dueDay === 5 && med.dueFrom === 'set' && med.account === 'Pat card' && med.trackerAccount === 'Joint' && med.autopay === true && med.notes === 'walks', J(med));
 check('a set due day beats the one in the name', L.bills.find(b => b.line === 'Internet').dueDay === 20);
-check('card payments sit apart, never in the bills or their total', J(L.cards.map(c => c.line + '@' + c.dueDay)) === J(['Gold Card@3']) && !L.bills.some(b => /Gold/.test(b.line)) && L.total === 2450);
+check('card payments sit apart, never in the bills or their total', J(L.cards.map(c => c.line + '@' + c.dueDay)) === J(['Gold Card@3']) && !L.bills.some(b => /Gold/.test(b.line)) && L.total === 2350);
 
 check('a tracker line marked as a card payment leaves the bills', (() => { const l = run('bsBills_(C, bsScheduleMap_([["Subscription - Stream", "", "", "", "Stream Card", "card payment", ""]]))');
-  return !l.bills.some(b => b.line === 'Subscription - Stream') && l.total === 2440 && l.cards.some(c => c.line === 'Subscription - Stream'); })());
+  return !l.bills.some(b => b.line === 'Subscription - Stream') && l.total === 2340 && l.cards.some(c => c.line === 'Subscription - Stream'); })());
 console.log('\nJoint Checking through the month');
 let T = run('bsTimeline_(bsBills_(C, {}), C, { transferDay: 1, opening: 0 })');
 check('transfers in, Joint bills out, a bill’s money back in before it goes out gross, with the running balance', J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)) === J(['1:Pat → AMEX Checking:1690', '1:Sam → AMEX Checking:2340', '1:Rent:340', '12:Family Plan Payment: money back, before it’s due:390', '12:Family Plan Payment:190', '13:Internet:130', '15:Utilities - Electric:40']), J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)));
@@ -120,7 +120,7 @@ check('a difference is flagged by name', by('Utilities - Electric').actual === 3
 check('…each transaction counted once (the rent-and-electric fee went to Rent only)', by('Utilities - Electric').count === 3);
 check('a Config alias matches a line', by('Internet').actual === 180 && by('Internet').flag === 'ok');
 check('budget lines are reconciled too, under spend flagged', by('Groceries').kind === 'budget line' && by('Groceries').actual === 1200 && by('Groceries').flag === 'Groceries −$600.00', J(by('Groceries')));
-check('a line nothing covers says “not in uploads”', by('Health Insurance - Medical').flag === 'not in uploads' && by('Health Insurance - Medical').actual === null);
+check('a line nothing covers says “not in uploads”', by('Dog Walker').flag === 'not in uploads' && by('Dog Walker').actual === null, J(by('Dog Walker')));
 check('card payments, income and other quarters never count', R.uploads === 17 && !R.rows.some(r => /Gold/.test(r.line)), R.uploads);
 check('quarter totals over the lines with uploads', R.totals.plan === 6000 + 270 + 180 + 1800 && R.totals.actual === 6010 + 332 + 180 + 1200 && R.totals.flagged === 2, J(R.totals));
 
@@ -131,7 +131,7 @@ check('every Budget line with a monthly plan and its actual as a monthly average
   && al('shared.fixed:Utilities - Electric').actual === 110.67 && al('shared.fixed:Internet').actual === 60 && al('shared.fixed:Groceries').actual === 400, JSON.stringify(BA.lines['shared.fixed:Rent']));
 check('a person’s own lines take only their own uploads', al('pat.nice:Music').actual === 11 && al('sam.nice:Books').actual === 15, JSON.stringify([al('pat.nice:Music'), al('sam.nice:Books')]));
 check('…so the other person’s similar spending isn’t theirs', al('pat.nice:Music').actual !== (10 + 10 + 13 + 99) / 3);
-check('a line nothing covers has no actual', al('shared.fixed:Health Insurance - Medical').actual === null && al('pat.fixed:Car Insurance - Pat').actual === null);
+check('a line nothing covers has no actual', al('shared.pay:Health Insurance - Medical').actual === null && al('pat.fixed:Car Insurance - Pat').actual === null);
 check('uploads per person', JSON.stringify(BA.owners) === JSON.stringify([{ key: 'pat', uploads: 13 }, { key: 'sam', uploads: 4 }]), JSON.stringify(BA.owners));
 
 console.log('\nthe migration from the old Bills list');

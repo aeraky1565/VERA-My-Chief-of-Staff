@@ -141,7 +141,7 @@ function doGet(e) {
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
-      case 'budget_model':          return jsonOut_(webGetBudgetModel_()); // Budget.js — reads the budget tracker by label, never writes it
+      case 'budget_model':          return jsonOut_(webGetBudgetModel_()); // Budget.js — reads Household Split by label (writes go through budget_write)
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'debug_slack':           return jsonOut_(webDebugSlack_());
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
@@ -738,6 +738,9 @@ function doPost(e) {
       case 'gathering_save':             return jsonOut_(webSaveGathering_(body));
       case 'budget_scenario_save':       return jsonOut_(webSaveBudgetScenario_(body));
       case 'budget_scenario_delete':     return jsonOut_(webDeleteBudgetScenario_(body));
+      // Writing to the budget tracker's Household Split tab (Budget.js): input cells only, owner only.
+      case 'budget_write':               return jsonOut_(peopleOwnerOnly_() || webBudgetWrite_(body));
+      case 'budget_add_bill':            return jsonOut_(peopleOwnerOnly_() || webBudgetAddBill_(body));
       case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
       case 'bills_schedule_account':     return jsonOut_(webSaveBillAccount_(body));
       case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));
@@ -2256,209 +2259,55 @@ function webMapsBrowserKey_() {
 }
 
 function webDebugTracker_() {
-  var satId = veraSettingId_('SAT_SHEET_ID');
-  if (!satId) return { ok: false, error: 'SAT_SHEET_ID not set' };
-  var ss;
-  try { ss = SpreadsheetApp.openById(satId); } catch(e) { return { ok: false, error: e.message }; }
-  var sheet = ss.getSheetByName('Tracker');
-  if (!sheet) {
-    var names = ss.getSheets().map(function(s){return s.getName();});
-    return { ok: false, error: 'No Tracker tab. Tabs: ' + names.join(', ') };
-  }
-  var data = sheet.getDataRange().getValues();
-  // Return first 25 rows, first 12 columns, with row indices
-  var rows = data.slice(0, 25).map(function(r, i) {
-    return { row: i, cells: r.slice(0, 12).map(function(c){ return c === '' || c === null ? null : String(c); }) };
-  });
-  return { ok: true, tabName: sheet.getName(), totalRows: data.length, totalCols: data[0] ? data[0].length : 0, preview: rows };
-}
-
-function webGetTrackerBudget_() {
-  var satId = veraSettingId_('SAT_SHEET_ID');
-  if (!satId) return { ok: true, configured: false, error: 'SAT_SHEET_ID not set in Script Properties' };
-
-  var ss;
-  try { ss = SpreadsheetApp.openById(satId); }
-  catch (err) { return { ok: false, error: 'Cannot open SAT sheet: ' + err.message }; }
-
-  // Try exact "Tracker" first, then fall back to any tab containing "tracker" (case-insensitive)
-  var sheet = ss.getSheetByName('Tracker');
-  if (!sheet) {
-    var allSheets = ss.getSheets();
-    var sheetNames = allSheets.map(function(s){return s.getName();});
-    var match = allSheets.filter(function(s){return s.getName().toLowerCase().indexOf('tracker') >= 0;})[0];
-    if (match) {
-      sheet = match;
-    } else {
-      return { ok: true, configured: false, error: 'No Tracker tab found. Available tabs: ' + sheetNames.join(', ') };
-    }
-  }
-
-  var data = sheet.getDataRange().getValues();
-
-  // Column indices — hardcoded per confirmed Tracker sheet structure:
-  // B(1)=Ahmed label, C(2)=Ahmed value, E(4)=Shared label, F(5)=Shared amount,
-  // G(6)=Payer, I(8)=Victoria label, J(9)=Victoria value
-  var sharedLabelCol = 4, sharedAmountCol = 5, payerCol = 6;
-  var ahmedLabelCol = 1, ahmedValueCol = 2;
-  var victoriaLabelCol = 8, victoriaValueCol = 9;
-
-  // --- Helpers ---
-  var DUE_DAY_RE = /\((\d+)(?:st|nd|rd|th)\)/i;
-  function parseAmt(val) {
-    if (typeof val === 'number') return val;
-    var n = parseFloat(String(val || '').replace(/[$,%]/g,'').replace(/,/g,'').trim());
-    return isNaN(n) ? null : n;
-  }
-  function parseName(lbl) { return String(lbl || '').replace(DUE_DAY_RE,'').trim(); }
-  function parseDueDay(lbl) { var m = String(lbl||'').match(DUE_DAY_RE); return m ? parseInt(m[1],10) : null; }
-
-  // --- State machines ---
-  var sharedFixed = [], sharedNiceToHave = [];
-  var ahmedFixed  = [], ahmedNiceToHave  = [];
-  var victoriaFixed = [], victoriaNiceToHave = [];
-  var ahmedIncome    = { gross: 0, net: 0 };
-  var victoriaIncome = { gross: 0, net: 0 };
-  var summary = {};
-
-  var sharedSec   = null;  // 'fixed' | 'nice' | 'whatif'
-  var ahmedSec    = null;  // 'income' | 'expHdr' | 'fixed' | 'nice' | 'done'
-  var victoriaSec = null;
-
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var sl  = String(row[sharedLabelCol]   || '').trim();
-    var sa  = row[sharedAmountCol];
-    var py  = String(row[payerCol]         || '').trim();
-    var al  = String(row[ahmedLabelCol]    || '').trim();
-    var av  = row[ahmedValueCol];
-    var vl  = String(row[victoriaLabelCol] || '').trim();
-    var vv  = row[victoriaValueCol];
-
-    // --- Shared section ---
-    if (sl.startsWith('Total Shared Expenses'))           { summary.totalShared            = parseAmt(sa); }
-    else if (sl.startsWith("Ahmed's Contribution"))        { summary.ahmedContribution       = parseAmt(sa); }
-    else if (sl.startsWith("Victoria's Contribution"))     { summary.victoriaContribution    = parseAmt(sa); }
-    else if (sl.startsWith("Ahmed's Transfer to AMEX Checking")) { summary.ahmedTransferChecking  = parseAmt(sa); }
-    else if (sl.startsWith("Victoria's Transfer to AMEX Checking")) { summary.victoriaTransferChecking = parseAmt(sa); }
-    else if (sl.startsWith("Ahmed's Transfer to AMEX Savings"))   { summary.ahmedTransferSavings   = parseAmt(sa); }
-    else if (sl.startsWith("Victoria's Transfer to AMEX Savings")) { summary.victoriaTransferSavings = parseAmt(sa); }
-    else if (sl === 'Fixed Expenses' && row[payerCol] !== 'Ahmed') { sharedSec = 'fixed'; } // guard: not a data row masquerading as header
-    else if (sl === 'Nice to Have Expenses')               { sharedSec = 'nice'; }
-    else if (sl === 'What If Scenarios')                   { sharedSec = 'whatif'; }
-    else if (sl && sl !== 'Account' && sl !== 'Monthly Expenses' && (sharedSec === 'fixed' || sharedSec === 'nice')) {
-      var amt = parseAmt(sa);
-      var entry = { name: parseName(sl), amount: amt !== null ? amt : 0, paidBy: py || 'Unknown', dueDay: parseDueDay(sl), rowNum: i+1 };
-      if (sharedSec === 'fixed') sharedFixed.push(entry);
-      else sharedNiceToHave.push(entry);
-    }
-
-    // --- Ahmed section ---
-    if      (al === 'Monthly Income')                           { ahmedSec = 'income'; }
-    else if (al === 'Gross Income'    && ahmedSec === 'income') { ahmedIncome.gross = parseAmt(av) || 0; }
-    else if (al === 'Net Income'      && ahmedSec === 'income') { ahmedIncome.net   = parseAmt(av) || 0; }
-    else if (al === 'Monthly Expenses')                         { ahmedSec = 'expHdr'; }
-    else if (al === 'Fixed Expenses'  && ahmedSec === 'expHdr') { ahmedSec = 'fixed'; }
-    else if (al === 'Nice to Have Expenses')                    { ahmedSec = 'nice'; }
-    else if (al === 'Personal Savings Contribution' || al === 'Shared Expense Contribution') { ahmedSec = 'done'; }
-    else if (al && (ahmedSec === 'fixed' || ahmedSec === 'nice')) {
-      var aAmt = parseAmt(av);
-      var aEntry = { name: al, amount: aAmt !== null ? aAmt : 0, rowNum: i+1 };
-      if (ahmedSec === 'fixed') ahmedFixed.push(aEntry); else ahmedNiceToHave.push(aEntry);
-    }
-
-    // --- Victoria section ---
-    if      (vl === 'Monthly Income')                              { victoriaSec = 'income'; }
-    else if (vl === 'Gross Income'    && victoriaSec === 'income') { victoriaIncome.gross = parseAmt(vv) || 0; }
-    else if (vl === 'Net Income'      && victoriaSec === 'income') { victoriaIncome.net   = parseAmt(vv) || 0; }
-    else if (vl === 'Monthly Expenses')                            { victoriaSec = 'expHdr'; }
-    else if (vl === 'Fixed Expenses'  && victoriaSec === 'expHdr') { victoriaSec = 'fixed'; }
-    else if (vl === 'Nice to Have Expenses')                       { victoriaSec = 'nice'; }
-    else if (vl === 'Personal Savings Contribution' || vl === 'Shared Expense Contribution') { victoriaSec = 'done'; }
-    else if (vl && (victoriaSec === 'fixed' || victoriaSec === 'nice')) {
-      var vAmt = parseAmt(vv);
-      var vEntry = { name: vl, amount: vAmt !== null ? vAmt : 0, rowNum: i+1 };
-      if (victoriaSec === 'fixed') victoriaFixed.push(vEntry); else victoriaNiceToHave.push(vEntry);
-    }
-  }
-
-  // --- Derived totals ---
-  var ahmedCard = 0, victoriaCard = 0, jointAmt = 0;
-  sharedFixed.concat(sharedNiceToHave).forEach(function(e) {
-    if (e.paidBy === 'Ahmed') ahmedCard += e.amount;
-    else if (e.paidBy === 'Victoria') victoriaCard += e.amount;
-    else jointAmt += e.amount;
-  });
-  var totalSF  = sharedFixed.reduce(function(s,e){return s+e.amount;},0);
-  var totalSNH = sharedNiceToHave.reduce(function(s,e){return s+e.amount;},0);
-  summary.totalSharedFixed      = Math.round(totalSF  * 100) / 100;
-  summary.totalSharedNiceToHave = Math.round(totalSNH * 100) / 100;
-  if (!summary.totalShared) summary.totalShared = Math.round((totalSF + totalSNH) * 100) / 100;
-  summary.ahmedCardCovered    = Math.round(ahmedCard    * 100) / 100;
-  summary.victoriaCardCovered = Math.round(victoriaCard * 100) / 100;
-  summary.jointCovered        = Math.round(jointAmt     * 100) / 100;
-
-  // When nothing parsed, include raw rows so frontend can show diagnostic
-  var debugRows = null;
-  if (sharedFixed.length === 0 && ahmedFixed.length === 0) {
-    debugRows = data.slice(0, 30).map(function(r, i) {
-      return [i].concat(r.slice(0, 12).map(function(c){ return c === '' ? null : (typeof c === 'number' ? c : String(c)); }));
-    });
-  }
-
-  return {
-    ok: true, configured: true,
-    sharedFixed:        sharedFixed,
-    sharedNiceToHave:   sharedNiceToHave,
-    ahmedFixed:         ahmedFixed,
-    ahmedNiceToHave:    ahmedNiceToHave,
-    victoriaFixed:      victoriaFixed,
-    victoriaNiceToHave: victoriaNiceToHave,
-    ahmedIncome:        ahmedIncome,
-    victoriaIncome:     victoriaIncome,
-    summary:            summary,
-    _debug:             debugRows,
-    _detectedCols:      debugRows ? {sharedLabelCol:sharedLabelCol,sharedAmountCol:sharedAmountCol,payerCol:payerCol,ahmedLabelCol:ahmedLabelCol,victoriaLabelCol:victoriaLabelCol} : null
-  };
-}
-
-function webUpdateTrackerEntry_(e) {
-  var satId = veraSettingId_('SAT_SHEET_ID');
-  if (!satId) return { ok: false, error: 'SAT_SHEET_ID not configured' };
-  var rowParam = parseInt(e.parameter.row || '0', 10);
-  var colParam = parseInt(e.parameter.col !== undefined ? e.parameter.col : '-1', 10);
-  var value    = e.parameter.value !== undefined ? e.parameter.value : '';
-  if (!rowParam || colParam < 0) return { ok: false, error: 'Invalid row/col' };
-  var ss;
-  try { ss = SpreadsheetApp.openById(satId); }
-  catch (err) { return { ok: false, error: 'Cannot open SAT sheet: ' + err.message }; }
-  var sheet = ss.getSheetByName('Tracker');
-  if (!sheet) return { ok: false, error: 'Tracker tab not found' };
-  var numVal = parseFloat(value);
-  sheet.getRange(rowParam, colParam + 1).setValue(isNaN(numVal) ? value : numVal);
-  return { ok: true };
+  var t = bgReadTracker_();
+  if (t.error) return { ok: false, error: t.error };
+  var m = budgetModel_(t.grid);
+  if (!m.ok) return { ok: false, error: m.error, rows: t.grid.slice(0, 30) };
+  return { ok: true, tab: BG_TAB_, people: m.people.map(function(p) { return p.name; }), bills: m.bills.length, missing: m.missing, cells: m.cells };
 }
 
 /**
- * Fuzzy-matches a bill title against shared expense entry names in the Tracker.
- * Returns the matched entry name (without due-day suffix) or '' if no match.
+ * GET budget_tracker → the Finance overview's figures, from Household Split through the Budget engine
+ * (Budget.js) so they match Finances › Budget. The old shape is kept: shared lines with who pays them,
+ * each person's lines and income, and the transfer summary. Due days come from the Bill Schedule.
  */
-function findTrackerBudgetEntry_(title, trackerSheet) {
-  var data = trackerSheet.getDataRange().getValues();
-  var titleLower = title.toLowerCase();
-  var DUE_RE = /\((\d+)(?:st|nd|rd|th)\)/i;
-  var inShared = false;
-  for (var i = 0; i < data.length; i++) {
-    var label = String(data[i][4] || '').trim(); // col E (shared label)
-    if (label === 'Fixed Expenses' || label === 'Nice to Have Expenses') { inShared = true; continue; }
-    if (label === 'What If Scenarios' || label.startsWith('Total Shared')) break;
-    if (!inShared || !label || label === 'Account') continue;
-    var entryName = label.replace(DUE_RE,'').trim();
-    var entryLower = entryName.toLowerCase();
-    if (entryLower === titleLower) return entryName;
-    // Contains match (both ways) with minimum length guard
-    if (entryLower.length >= 4 && titleLower.indexOf(entryLower) !== -1) return entryName;
-    if (titleLower.length >= 4 && entryLower.indexOf(titleLower) !== -1) return entryName;
+function webGetTrackerBudget_() {
+  var plan = bsPlan_();
+  if (plan.error) return { ok: true, configured: !!plan.configured, error: plan.error };
+  var c = plan.computed, sched = {};
+  try { sched = bsReadSchedule_(); } catch (e) {}
+  var entry = function(x) { var s = sched[String(x.name).toLowerCase()] || {};
+    return { name: x.name, amount: x.amount, paidBy: x.account || 'Joint', dueDay: s.dueDay || x.dueDay || null, kind: x.kind, keptAs: x.keptAs, category: x.category, fromPay: !!x.fromPay }; };
+  var out = { ok: true, configured: true, tab: BG_TAB_,
+    sharedFixed: c.shared.lines.filter(function(x) { return x.kind !== 'nice'; }).map(entry),
+    sharedNiceToHave: c.shared.lines.filter(function(x) { return x.kind === 'nice'; }).map(entry), summary: {} };
+  var S = out.summary;
+  c.people.forEach(function(p) {
+    var k = p.key.replace(/[^a-z0-9]/g, '');
+    out[k + 'Fixed'] = p.fixed.map(function(x) { return { name: x.name, amount: x.amount, kind: x.type, keptAs: x.keptAs }; });
+    out[k + 'NiceToHave'] = p.nice.map(function(x) { return { name: x.name, amount: x.amount, kind: 'nice', keptAs: x.keptAs }; });
+    out[k + 'Income'] = { gross: p.gross, net: p.takeHome, takeHome: p.takeHome };
+    S[k + 'Contribution'] = p.contribution; S[k + 'TransferChecking'] = p.checking; S[k + 'TransferSavings'] = p.savings;
+    S[k + 'CardCovered'] = p.ownCards; S[k + 'LeftOver'] = p.disposable;
+  });
+  S.totalShared = c.shared.total; S.totalSharedFixed = bgRound_(c.shared.fixed + c.shared.variable); S.totalSharedNiceToHave = c.shared.nice;
+  S.jointCovered = c.shared.joint; S.split = c.split; S.settleUp = c.settleUp;
+  return out;
+}
+
+/** The old Tracker tab's cell editor is retired: Finances › Budget writes Household Split (budget_write). */
+function webUpdateTrackerEntry_(e) {
+  return { ok: false, error: 'The old Tracker tab is retired. Change budget figures on Finances › Budget, which writes the Household Split tab.' };
+}
+
+/** The Household Split bill whose name matches a bill title ('' when none), for the old Bills sheet's Budget Entry. */
+function findTrackerBudgetEntry_(title, names) {
+  var titleLower = String(title || '').toLowerCase();
+  for (var i = 0; i < names.length; i++) {
+    var entryLower = String(names[i]).toLowerCase();
+    if (entryLower === titleLower) return names[i];
+    if (entryLower.length >= 4 && titleLower.indexOf(entryLower) !== -1) return names[i];
+    if (titleLower.length >= 4 && entryLower.indexOf(titleLower) !== -1) return names[i];
   }
   return '';
 }
@@ -3638,12 +3487,9 @@ function webToggleCalBill_(e) {
     // Attempt to auto-link to a Tracker budget entry by name
     var budgetEntryAuto = '';
     try {
-      var satId = veraSettingId_('SAT_SHEET_ID');
-      if (satId) {
-        var satSS = SpreadsheetApp.openById(satId);
-        var trkSheet = satSS.getSheetByName('Tracker');
-        if (trkSheet) budgetEntryAuto = findTrackerBudgetEntry_(title, trkSheet);
-      }
+      var trk = bgReadTracker_();
+      var trkModel = trk.grid ? budgetModel_(trk.grid) : null;
+      if (trkModel && trkModel.ok) budgetEntryAuto = findTrackerBudgetEntry_(title, trkModel.bills.filter(function(b) { return /^shared$/i.test(b.forWho); }).map(function(b) { return b.name; }));
     } catch(err_) { /* non-critical, skip */ }
     var newRow = [
       title,

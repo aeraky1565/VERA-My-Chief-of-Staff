@@ -1,9 +1,9 @@
-// Finances › Budget (BudgetTab, shared verbatim, issue #226) in BOTH real pages at phone
-// and desktop width, on an invented tracker: the person and shared cards open collapsed to
-// their group and category summaries, expand to every line and remember it, the summary sits
-// beside the tracker's figures with the expected difference named, What if reruns the sums
-// live and marks the changed category, Reset, saving / opening / deleting a scenario, and no
-// sideways scroll. Every name and figure is invented.
+// Finances › Budget (BudgetTab, shared verbatim, issue #226) in BOTH real pages at phone and
+// desktop width, on an invented Household Split tab: the month at a glance (the four figures,
+// where each paycheck goes, the charts, the checks), then the sheet's six sections that open and
+// close and remember it; Add a bill (with what changes) and ✎ on a bill or a figure write the
+// sheet through budget_add_bill / budget_write; What if reruns everything live, saves a scenario
+// or writes its changes; a refused write says why; no sideways scroll. Every name and figure is invented.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const { tracker } = require('./budget_fixture.js');
@@ -37,6 +37,13 @@ const PAYLOAD = { ok: true, configured: true, model, computed, match: vm.runInCo
 const window_ACTS = { ok: true, quarter: '2026-Q3', uploads: 20, lines: { 'shared.fixed:Rent': { plan: 2000, actual: 2003.33 }, 'shared.fixed:Utilities - Electric': { plan: 90, actual: 110.67 },
   'shared.fixed:Internet': { plan: 60, actual: null }, 'pat.nice:Music': { plan: 10, actual: 11 }, 'pat.fixed:Phone - Pat': { plan: 50, actual: null } } };
 
+// What if's units: a paycheck line is typed per paycheck and counts × paychecks in a regular month.
+vm.runInContext(block(APP).replace(/function BudgetTab\(props\)[\s\S]*$/, ''), E);
+E.M2 = JSON.parse(JSON.stringify(model)); E.M2.people[0].perMonth = 2;
+check('What if: a paycheck line counts × paychecks in a regular month, and writes back per paycheck',
+  JSON.stringify(vm.runInContext('bgChanged_(M2, { "pat.gross": 5500, "shared.pay:Health Insurance - Medical": 60, "shared.fixed:Rent": 2100 })', E)) === JSON.stringify({ 'pat.gross': 11000, 'shared.pay:Health Insurance - Medical': 60, 'shared.fixed:Rent': 2100 })
+  && JSON.stringify(vm.runInContext('bgEditsFrom_(M2, { "pat.gross": 11000 }, 0.6)', E)) === JSON.stringify([{ key: 'pat.gross', value: 5500 }]));
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -69,6 +76,8 @@ const window_ACTS = { ok: true, quarter: '2026-Q3', uploads: 20, lines: { 'share
         window.apiGet = (u, t, p) => Promise.resolve(p && p.action === 'budget_model' ? JSON.parse(JSON.stringify(PAYLOAD)) : p && p.action === 'budget_actuals' ? JSON.parse(JSON.stringify(ACTS)) : { ok: false });
         window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
           if (b.action === 'budget_scenario_save') return Promise.resolve({ ok: true, scenario: { id: 'BGS-NEW', name: b.name, changes: b.changes, results: { totalShared: 3650 }, quarter: '2026-Q4' } });
+          if (b.action === 'budget_add_bill') return Promise.resolve({ ok: true, row: 36, bill: b });
+          if (b.action === 'budget_write') return window.__refuse ? Promise.reject(new Error(window.__refuse)) : Promise.resolve({ ok: true, written: b.edits.length, what: b.edits.map(e => e.key) });
           return Promise.resolve({ ok: true }); };
         document.querySelectorAll('#bgprobe').forEach(n => n.remove());
         const host = document.createElement('div'); host.id = 'bgprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
@@ -77,81 +86,91 @@ const window_ACTS = { ok: true, quarter: '2026-Q3', uploads: 20, lines: { 'share
       await page.evaluate(() => { try { localStorage.removeItem('vera_budget_open'); } catch (e) {} });
       await mount(); await wait(400);
       const txt = sel => page.$eval('#bgprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
-      const head = id => page.$eval('#bgprobe .bg-card-' + id + ' .bg-card-head', n => n.getAttribute('aria-expanded')).catch(() => null);
-      const click = sel => page.evaluate(sel => { const n = document.querySelector('#bgprobe ' + sel); if (n) n.click(); return !!n; }, sel);
-      const fill = (sel, v) => page.evaluate(({ sel, v }) => { const n = document.querySelector('#bgprobe ' + sel); if (!n) return false;
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(n, v); n.dispatchEvent(new Event('input', { bubbles: true })); return true; }, { sel, v });
-      const clickHead = id => click('.bg-card-' + id + ' .bg-card-head');
-
-      const heads = await page.$$eval('#bgprobe .bg-card-head', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
-      check(L + ': Pat personal, Sam personal and Shared expenses, all collapsed', heads.length === 3 && /^Pat personal/.test(heads[0]) && /^Sam personal/.test(heads[1]) && /^Shared expenses/.test(heads[2])
-        && (await head('pat')) === 'false' && (await head('shared')) === 'false', JSON.stringify(heads));
-      let pat = await txt('.bg-card-pat');
-      check(L + ': a person collapsed: net income, groups, disposable', /\$7,000 net/.test(pat) && /Net income \$7,000/.test(pat) && /Fixed \$150/.test(pat) && /Nice to have \$50/.test(pat) && /Contributions \$2,790/.test(pat) && /Disposable \$4,010/.test(pat), pat);
-      check(L + ': …with the thin bar, and no lines yet', await page.$('#bgprobe .bg-card-pat .bg-bar') !== null && !/Car Insurance/.test(pat));
-      let sh = await txt('.bg-card-shared');
-      check(L + ': shared collapsed: totals by category, in order', /Housing Joint \$2,000 \$2,000( actual \$[\d,]+)? Utilities Joint \$300 \$300( actual \$[\d,]+)? Health Pat \$100 \$100 Household Sam \$600 Pat \$100 \$700/.test(sh), sh);
-      check(L + ': …a line with no category is under Other, named', /Other\s*no category yet/.test(sh) && /Not in a category yet: Dog Walker/.test(sh));
-      check(L + ': …and the total shared', /Total shared \$3,150\.00/.test(sh));
-      check(L + ': plan vs actual: the quarter named, and actuals per category', /actuals: 2026-Q3, a month on average/.test(await txt('.bg-sub')) && /Housing Joint \$2,000 \$2,000 actual \$2,003/.test(sh) && /Utilities Joint \$300 \$300 actual \$111/.test(sh), sh.slice(0, 200));
-      check(L + ': …over plan marked', await page.$eval('#bgprobe .bg-card-shared', n => Array.from(n.querySelectorAll('.bg-actual.over')).some(x => /\$111/.test(x.textContent))));
-      check(L + ': …a person’s groups with actuals, or none', /Nice to have \$50\s*actual \$11/.test(pat) && /Fixed \$150\s*no actuals/.test(pat), pat);
-      await clickHead('shared'); await wait(150);
-      sh = await txt('.bg-card-shared');
-      check(L + ': expanded: every line, with account, due day and its actual', (await head('shared')) === 'true' && /Rent Joint · due 1st · actual \$2,003\.33\/mo \$2,000\.00/.test(sh) && /Family Plan Credit Joint \$-?−?\$?50\.00|Family Plan Credit Joint −\$50\.00/.test(sh) && /Dog Walker Joint · nice to have \$40\.00/.test(sh), sh.slice(0, 400));
-      check(L + ': …the tracker’s What If rows left out', !/New Rent Delta/.test(sh) && /What If rows are left out/.test(sh));
-      await mount(); await wait(300);
-      check(L + ': open or closed is remembered', (await head('shared')) === 'true' && (await head('pat')) === 'false');
-      await clickHead('pat'); await wait(150);
-      pat = await txt('.bg-card-pat');
-      check(L + ': a person expanded: income, deductions, net from gross − deductions', /Gross income \$10,000\.00/.test(pat) && /Federal Withholding deduction −\$1,500\.00/.test(pat) && /Net income gross − deductions; the tracker types \$7,200\.00 \$7,000\.00/.test(pat), pat.slice(0, 400));
-      check(L + ': …fixed, nice to have, contributions', /Car Insurance - Pat \$100\.00/.test(pat) && /Gym \$40\.00/.test(pat) && /Shared expenses 60% of \$3,150\.00 \$1,890\.00/.test(pat) && /Disposable \$4,010\.00/.test(pat));
-      await clickHead('pat'); await wait(100);
-      const sum = await txt('.bg-card-summary');
-      check(L + ': transfers: share − own cards', /PAT · 60% → AMEX Checking \$1,690\.00 \$1,890\.00 share − \$200\.00 on own cards → AMEX Savings \$600\.00/.test(sum), sum.slice(0, 300));
-      const rows = await page.$$eval('#bgprobe .bg-match-row', ns => ns.map(n => n.className.split(' ')[1] + ':' + n.innerText.replace(/\s+/g, ' ').trim()));
-      check(L + ': the match check: ✓ tracker on every figure but one', rows.filter(r => /^ok:.*✓ tracker$/.test(r)).length === rows.length - 4, JSON.stringify(rows));
-      check(L + ': …the net income difference named, and what follows it', rows.some(r => /^diff:Pat’s net income \$7,000\.00 tracker \$7,200\.00 · −\$200\.00 · gross − deductions; the tracker types it/.test(r))
-        && rows.some(r => /^diff:Pat’s disposable income .* · follows net income/.test(r)));
-      check(L + ': emergency fund by months', /3 \$9,150 \$5,490 \/ \$3,660 \$4,575/.test(sum), sum.slice(-400));
-      // ---- What if ----
+      const click = sel => page.$eval('#bgprobe ' + sel, n => n.click());
+      const fill = async (sel, v) => { await page.fill('#bgprobe ' + sel, v); };
+      const posts = () => page.evaluate(() => window.__posts);
+      const secOpen = id => page.$eval('#bgprobe .bg-sec-' + id + ' .bg-sec-head', n => n.getAttribute('aria-expanded')).catch(() => null);
+      // the glance
+      check(L + ': the four figures', /Take-home, together \$11,500 Pat \$6,900 · Sam \$4,600/i.test(await txt('.bg-kpi-take')) && /Shared costs \$3,150 split 60 \/ 40/i.test(await txt('.bg-kpi-shared'))
+        && /Into Joint Checking \$2,340 matches what Joint pays out ✓/i.test(await txt('.bg-kpi-joint')) && /Left over \$6,650 Pat \$4,010 · Sam \$2,640/i.test(await txt('.bg-kpi-left')), await txt('.bg-kpis'));
+      check(L + ': the summary boxes are whole dollars', !/\.\d\d/.test(await txt('.bg-kpis')), await txt('.bg-kpis'));
+      const flow = await txt('.bg-flow');
+      check(L + ': where each paycheck goes, both of you, with the settle-up', /Pat take-home \$6,900\.00/.test(flow) && /Joint Checking \$1,690/.test(flow) && /Sam take-home \$4,600\.00/.test(flow) && /Pat covers \$286\.00 of Sam’s share/.test(flow), flow);
+      check(L + ': three charts: take-home, shared by category, by type with set-asides', await page.$$eval('#bgprobe .bg-charts svg', ns => ns.length) === 2 && /Housing \$2,000\.00/.test(await txt('.bg-chart-cats'))
+        && /Fixed \$3,000\.00 · 95%/.test(await txt('.bg-chart-type')) && /Pat \$100\.00 · Sam \$0\.00 · \$100\.00 a month/.test(await txt('.bg-setaside')), await txt('.bg-chart-type'));
+      check(L + ': the checks: Joint, missing fields, settle-up, VERA matches the sheet', /Joint in − out \$0\.00 ✓/.test(await txt('.bg-checks')) && /missing Type, For or Paid by 0 ✓/.test(await txt('.bg-checks')) && /match the sheet ✓/.test(await txt('.bg-checks')), await txt('.bg-checks'));
+      // the sections
+      check(L + ': six sections in the sheet’s order; Bills and Split open the first time', (await page.$$eval('#bgprobe .bg-sec .bg-sec-head', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').split(' ')[1]))).join() === '1,2,3,4,5,6'
+        && (await secOpen('bills')) === 'true' && (await secOpen('split')) === 'true' && (await secOpen('paychecks')) === 'false');
+      check(L + ': a closed section shows its headline', /Emergency fund 3 mo \$9,000 · 6 mo \$18,000 · 9 mo \$27,000/.test(await txt('.bg-sec-emergency')) && /Pat \$6,900 × 1/.test(await txt('.bg-sec-paychecks')));
+      await click('.bg-sec-paychecks .bg-sec-head'); await wait(120);
+      check(L + ': opened, it remembers', (await secOpen('paychecks')) === 'true' && await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('vera_budget_open') || '{}').paychecks === true; } catch (e) { return false; } }));
+      const pay = await txt('.bg-sec-paychecks');
+      check(L + ': Paychecks per paycheck, the shared cost from pay marked, taxes worked out, take-home', /Gross pay per paycheck \$10,000\.00/.test(pay) && /Health Insurance - Medical shared \$100\.00/.test(pay) && /Taxes \(worked out from the deposit\) \$2,000\.00/.test(pay) && /Take-home, regular month \$6,900\.00 \$4,600\.00/.test(pay), pay);
+      check(L + ': taxes and take-home have no ✎ (the sheet works them out)', await page.$eval('#bgprobe .bg-pay', t => { const rs = Array.from(t.querySelectorAll('.bg-tr')).filter(r => /^(Taxes|Take-home)/.test(r.innerText.trim())); return rs.length === 2 && rs.every(r => !r.querySelector('.bg-pencil')); }));
+      const bills = await txt('.bg-sec-bills');
+      check(L + ': Bills: the shared ones first, with both shares, the cost from pay listed too', /Shared · 9/.test(bills) && (/Rent \$2,000\.00 Fixed Shared Joint Actual Housing \$1,200\.00 \$800\.00/.test(bills) || /Rent \$2,000\.00 Fixed Shared Paid by Joint Actual Housing Pat \$1,200\.00 Sam \$800\.00/.test(bills)) && /Health Insurance - Medical .*from Pat’s pay/.test(bills) && !/Car Insurance - Pat/.test(bills), bills);
+      check(L + ': plan vs actual on a bill', /Actual, 2026-Q3/.test(bills) && await page.$eval('#bgprobe .bg-bills', t => Array.from(t.querySelectorAll('.bg-bill')).some(r => /^Utilities - Electric/.test(r.innerText.trim()) && r.querySelector('.bg-actual.over'))));
+      await click('.bg-for-pat'); await wait(100);
+      check(L + ': For Pat shows Pat’s own bills, Set-aside marked', /Car Insurance - Pat \$100\.00 Fixed (For )?Pat (Paid by )?Pat Set-aside Insurance/.test(await txt('.bg-sec-bills')) && !/Rent/.test(await txt('.bg-bills')));
+      await click('.bg-for-shared'); await wait(80);
+      // Add a bill
+      await click('.bg-add'); await wait(120);
+      check(L + ': Add a bill opens the form', await page.$('.bg-bill-form') !== null && /Adds a row to Household Split › 2\. Bills/.test(await page.$eval('.bg-bill-form', n => n.innerText)));
+      await page.fill('.bg-bill-form input[aria-label="Bill"]', 'Window Cleaner'); await page.fill('.bg-bill-form input[aria-label="Monthly amount"]', '50');
+      await page.$$eval('.bg-bill-form [aria-label="Paid by"] button', bs => bs.find(b => b.innerText === 'Pat').click());
+      await page.$$eval('.bg-bill-form [aria-label="Kept as"] button', bs => bs.find(b => b.innerText === 'Set-aside').click()); await wait(100);
+      const pv = await page.$eval('.bg-preview', n => n.innerText.replace(/\s+/g, ' '));
+      check(L + ': What changes, before saving', /Shared costs \$3,150\.00 → \$3,200\.00/.test(pv) && /Pat’s Joint transfer \$1,690\.00 → \$1,670\.00/.test(pv) && /Sam’s Joint transfer \$650\.00 → \$670\.00/.test(pv), pv);
+      await page.$eval('.bg-form-save', n => n.click()); await wait(250);
+      let P = await posts();
+      check(L + ': Add to the sheet sends the bill', P.length === 1 && P[0].action === 'budget_add_bill' && P[0].name === 'Window Cleaner' && P[0].amount === '50' && P[0].paidBy === 'Pat' && P[0].keptAs === 'Set-aside' && P[0].forWho === 'Shared' && P[0].type === 'Fixed', JSON.stringify(P));
+      check(L + ': …then says where it went, and reads the sheet again', /Added Window Cleaner to Household Split \(row 36\)/.test(await txt('.bg-msg')) && await page.$('.bg-bill-form') === null);
+      // ✎ on a bill sends only what changed
+      await page.$eval('#bgprobe .bg-bills', t => Array.from(t.querySelectorAll('.bg-bill')).find(r => /^Internet/.test(r.innerText.trim())).querySelector('.bg-pencil').click()); await wait(120);
+      await page.fill('.bg-bill-form input[aria-label="Monthly amount"]', '65'); await wait(60); await page.$eval('.bg-form-save', n => n.click()); await wait(200);
+      P = await posts();
+      check(L + ': ✎ on a bill writes only what changed', P[1] && P[1].action === 'budget_write' && JSON.stringify(P[1].edits) === JSON.stringify([{ key: 'shared.fixed:Internet', field: 'amount', value: '65' }]), JSON.stringify(P[1]));
+      // ✎ on a figure
+      await page.$eval('#bgprobe .bg-pay', t => Array.from(t.querySelectorAll('.bg-tr')).find(r => /^Gross pay/.test(r.innerText.trim())).querySelector('.bg-pencil').click()); await wait(120);
+      check(L + ': Change a value names it and what it was', /Pat’s gross pay per paycheck/.test(await page.$eval('.bg-value-form', n => n.innerText)) && /Was \$10,000\.00/.test(await page.$eval('.bg-value-form', n => n.innerText)));
+      await page.evaluate(() => { window.__refuse = 'Pat · gross pay per paycheck is worked out by the sheet, so VERA won’t type over it.'; });
+      await page.fill('.bg-value-input', '10500'); await page.$eval('.bg-value-save', n => n.click()); await wait(200);
+      check(L + ': a refused write says why and keeps the form open', /worked out by the sheet/.test(await page.$eval('.bg-value-form .bg-form-err', n => n.innerText).catch(() => '')));
+      await page.evaluate(() => { window.__refuse = ''; }); await page.$eval('.bg-value-save', n => n.click()); await wait(200);
+      P = await posts();
+      check(L + ': Save to the sheet sends that one cell, per paycheck', JSON.stringify(P[P.length - 1].edits) === JSON.stringify([{ key: 'pat.gross', field: 'amount', value: '10500' }]) && await page.$('.bg-value-form') === null);
+      // What if
       await click('.bg-whatif-toggle'); await wait(150);
-      check(L + ': What if on: an input on every shared line, shared savings and the split', (await page.$$('#bgprobe .bg-card-shared .bg-input')).length === 11 && await page.$('#bgprobe .bg-split-range') !== null && /Change any amount/.test(await txt('.bg-whatif-bar')));
-      await fill('.bg-card-shared input[aria-label="Rent"]', '2500'); await wait(150);
-      let bar = await txt('.bg-whatif-bar');
-      check(L + ': a change reruns the transfers live', /Pat → Checking \$1,990 \+\$300\.00/.test(bar) && /Sam → Checking \$850 \+\$200\.00/.test(bar) && /Shared \$3,650 \+\$500\.00/.test(bar), bar);
-      await clickHead('shared'); await wait(150);
-      check(L + ': collapsed, the changed category is marked', await page.$eval('#bgprobe .bg-card-shared', n => !!n.querySelector('.bg-cat.bg-changed') && n.querySelector('.bg-cat.bg-changed').innerText.indexOf('Housing') === 0 && /changed/.test(n.querySelector('.bg-card-head').innerText)));
-      check(L + ': …and the people’s contributions group too', await page.$('#bgprobe .bg-card-pat .bg-group-contrib.bg-changed') !== null);
+      check(L + ': What if: every input becomes a field, nothing written', (await page.$$('#bgprobe .bg-bills .bg-input')).length === 9 && !(await page.$$eval('#bgprobe .bg-bills .bg-pencil', n => n.length)) && await page.$('#bgprobe .bg-split-range') !== null && /Nothing is written to the sheet/.test(await txt('.bg-whatif-bar')));
+      await fill('.bg-bills input[aria-label="Rent"]', '2500'); await wait(150);
+      check(L + ': a change reruns every sum', /Shared costs \$3,650/i.test(await txt('.bg-kpi-shared')) && /1 change · left over \$6,650\.00 → \$6,150\.00/.test(await txt('.bg-whatif-bar')), await txt('.bg-whatif-bar'));
       await page.evaluate(() => { const r = document.querySelector('#bgprobe .bg-split-range'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(r, '50'); r.dispatchEvent(new Event('input', { bubbles: true })); });
       await wait(150);
-      bar = await txt('.bg-whatif-bar');
-      check(L + ': the split slider reruns them too', /Pat → Checking \$1,625/.test(bar) && /Sam → Checking \$1,215/.test(bar), bar);
-      await click('.bg-reset'); await wait(150);
-      check(L + ': Reset clears it', /Change any amount/.test(await txt('.bg-whatif-bar')) && await page.$('#bgprobe .bg-changed') === null);
-      await clickHead('pat'); await wait(100);
-      await fill('.bg-card-pat input[aria-label="Personal savings"]', '500');
-      await wait(100);
-      await fill('.bg-scenario-name', 'Save more'); await click('.bg-save'); await wait(200);
-      const posts = await page.evaluate(() => window.__posts);
-      check(L + ': Save as scenario sends the name and only what changed', posts.length === 1 && posts[0].action === 'budget_scenario_save' && posts[0].name === 'Save more' && JSON.stringify(posts[0].changes) === '{"pat.psave":500}', JSON.stringify(posts));
-      check(L + ': …and it shows in the list', /Saved “Save more”/.test(await txt('.bg-msg')) && /Save more 2026-Q4/.test(await txt('.bg-scenarios')));
-      await click('.bg-whatif-toggle'); await wait(100);
-      await page.evaluate(() => Array.from(document.querySelectorAll('#bgprobe .bg-scenario')).find(n => /Cheaper flat/.test(n.innerText)).querySelector('.bg-scenario-open').click()); await wait(150);
-      bar = await txt('.bg-whatif-bar');
-      check(L + ': Open in What if loads a saved scenario', /Shared \$2,950 −\$200\.00/.test(bar), bar);
-      check(L + ': …and opens the card it changes', (await head('shared')) === 'true');
-      await page.evaluate(() => Array.from(document.querySelectorAll('#bgprobe .bg-scenario')).find(n => /Cheaper flat/.test(n.innerText)).querySelector('.bg-scenario-del').click()); await wait(100);
-      check(L + ': delete asks once more first', (await page.evaluate(() => window.__posts.length)) === 1 && await page.$('#bgprobe .bg-scenario-del-yes') !== null);
-      await click('.bg-scenario-del-yes'); await wait(150);
-      check(L + ': …then deletes it', (await page.evaluate(() => window.__posts[1] && window.__posts[1].action + ':' + window.__posts[1].id)) === 'budget_scenario_delete:BGS-OLD' && !/Cheaper flat/.test(await txt('.bg-scenarios')));
-      check(L + ': card headers are big enough to tap', await page.$$eval('#bgprobe .bg-card-head', ns => ns.every(n => n.getBoundingClientRect().height >= 44)));
+      check(L + ': the split slider reruns them too', /Transfer to Joint Checking \$1,625\.00 \$1,215\.00 \$2,840\.00/.test(await txt('.bg-row-joint')), await txt('.bg-row-joint'));
+      await click('.bg-reset'); await wait(120);
+      check(L + ': Reset clears it', /Change any figure/.test(await txt('.bg-whatif-bar')) && await page.$('#bgprobe .bg-input.bg-changed') === null);
+      await fill('.bg-pay input[aria-label="Pat · Health Insurance - Medical per paycheck"]', '150'); await wait(100);
+      check(L + ': a paycheck line is typed per paycheck', /left over \$6,650\.00 → \$6,600\.00/.test(await txt('.bg-whatif-bar')), await txt('.bg-whatif-bar'));
+      await page.fill('#bgprobe input[aria-label="Scenario name"]', 'Dearer cover'); await click('.bg-save-scenario'); await wait(200);
+      P = await posts();
+      check(L + ': Save as a scenario sends only what changed, a month', P[P.length - 1].action === 'budget_scenario_save' && JSON.stringify(P[P.length - 1].changes) === '{"shared.pay:Health Insurance - Medical":150}', JSON.stringify(P[P.length - 1]));
+      await click('.bg-write'); await wait(120);
+      check(L + ': Write these to the sheet lists each change first', /Pat · Health Insurance - Medical: \$100\.00 → \$150\.00 a paycheck/.test(await page.$eval('.bg-write-confirm', n => n.innerText).catch(() => '')));
+      if (!(await page.$('.bg-write-confirm'))) { check(L + ': …then writes them', false, 'no confirm'); await page.close(); continue; }
+      await page.$eval('.bg-write-go', n => n.click()); await wait(250);
+      P = await posts();
+      check(L + ': …then writes them, per paycheck, and leaves What if', JSON.stringify(P[P.length - 1].edits) === JSON.stringify([{ key: 'shared.pay:Health Insurance - Medical', value: 150 }]) && /What if…/.test(await txt('.bg-whatif-toggle')));
+      await page.evaluate(() => Array.from(document.querySelectorAll('#bgprobe .bg-scenario')).find(n => /Cheaper flat/.test(n.innerText)).querySelector('button').click()); await wait(150);
+      check(L + ': Open in What if loads a saved scenario', /Shared costs \$2,950/i.test(await txt('.bg-kpi-shared')), await txt('.bg-kpi-shared'));
+      check(L + ': buttons and section heads are big enough to tap', await page.$$eval('#bgprobe .bg-sec-head, #bgprobe .bg-pencil, #bgprobe .bg-for, #bgprobe .bg-add', ns => ns.every(n => n.getBoundingClientRect().height >= 40)));
+      check(L + ': on a phone the bills are cards and the sections have no tables; on a computer, tables', width < 640 ? (await page.$$('#bgprobe table')).length === 0 && (await page.$$('#bgprobe .bg-bills .bg-bill')).length > 5 : (await page.$$('#bgprobe table')).length >= 2);
       check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       // an unreadable tracker says why
-      await page.evaluate(() => { window.apiGet = () => Promise.resolve({ ok: true, configured: true, unavailable: true, error: 'The tracker has no “Shared Expenses” heading.' }); document.querySelectorAll('#bgprobe').forEach(n => n.remove());
+      await page.evaluate(() => { window.apiGet = () => Promise.resolve({ ok: true, configured: true, unavailable: true, error: 'The budget tracker’s Household Split tab has no “1. Paychecks” section.' }); document.querySelectorAll('#bgprobe').forEach(n => n.remove());
         const host = document.createElement('div'); host.id = 'bgprobe'; document.body.prepend(host); ReactDOM.createRoot(host).render(React.createElement(BudgetTab, { apiUrl: 'u', apiToken: 't' })); });
       await wait(200);
-      check(L + ': an unreadable tracker says why', /no “Shared Expenses” heading/.test(await txt('.bg-unavailable')));
+      check(L + ': an unreadable sheet says why', /no “1\. Paychecks” section/.test(await txt('.bg-unavailable')));
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();
     }

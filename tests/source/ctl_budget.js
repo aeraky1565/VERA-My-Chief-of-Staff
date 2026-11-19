@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_budget_out');
 
-const FILES = ['Budget.js', 'Code.js', 'TripIdeas.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['Budget.js', 'Code.js', 'TripIdeas.js', 'WebApp.js', 'Settings.js', 'Finance.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -21,34 +21,49 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [I]: swap(b[I], fr
 const TEST = 'test_budget.js', UI = 'test_budget_ui.js';
 
 const CONTROLS = [
-  ['the tracker’s What If rows count as spending', engine("if(l2==='what if scenarios'){state='whatif';continue;}", "if(l2==='what if scenarios'){state='nice';continue;}")],
-  ['required counts the credit', engine("x.kind==='fixed'&&x.amount>0", "x.kind==='fixed'")],
-  ['net income is the typed one', engine("var net=gross-sum(ded)", "var net=p.netTyped!=null?p.netTyped:gross-sum(ded)")],
-  ['own cards are not taken off the transfer', engine("checking:bgRound_(contribution-own)", "checking:bgRound_(contribution)")],
+  // the engine (Budget.js and both dashboards)
+  ['a “Shared cost? Yes” deduction stays a personal deduction', engine("var shared=sharedCol>-1&&/^y/i.test(bgText_(at(r,sharedCol)));", "var shared=false;")],
+  ['paychecks aren’t × paychecks in a regular month', engine("var n=x.perMonth;x.gross=bgRound_((x.grossPer||0)*n);", "var n=1;x.gross=bgRound_((x.grossPer||0)*n);")],
+  ['taxes left out of the deductions', engine("if(x.taxesPer!=null)own.push(", "if(false)own.push(")],
+  ['a shared bill paid by a person stays on Joint', engine("b.account=pb==='joint'?'Joint':(byKey[pb]?byKey[pb].name:paidBy);", "b.account='Joint';")],
+  ['Joint ignores what’s on a card or paycheck', engine("checking:bgRound_(contribution-ownAll)", "checking:bgRound_(contribution)")],
   ['the split is the wrong way round', engine("shares[model.people[0].key]=split;shares[model.people[1].key]=1-split;", "shares[model.people[0].key]=1-split;shares[model.people[1].key]=split;")],
-  ['shared savings left out of net expenses', engine("netExp=fx+nc+psave+contribution+ssave", "netExp=fx+nc+psave+contribution")],
-  ['the due day stays in the name', engine("function bgName_(label){return bgText_(label).replace(/\\s*\\((\\d{1,2})(?:st|nd|rd|th)\\)\\s*/i,' ').trim();}", "function bgName_(label){return bgText_(label);}")],
-  ['an unmapped line is quietly filed', engine("for(var i=0;i<BG_CATS.length;i++)if(BG_CATS[i][1].test(name))return BG_CATS[i][0];return 'Other';}", "for(var i=0;i<BG_CATS.length;i++)if(BG_CATS[i][1].test(name))return BG_CATS[i][0];return 'Household';}")],
+  ['take-home ignores what comes from pay', engine("takeHome:bgRound_(net-fromPay)", "takeHome:bgRound_(net)")],
+  ['shared savings left out of left over', engine("netExp=fx+nc+psave+contribution+ssave", "netExp=fx+nc+psave+contribution")],
+  ['settle-up crossed the wrong way', engine("settleUp:bgRound_(V.ownCards*A.share-A.ownCards*V.share)", "settleUp:bgRound_(A.ownCards*A.share-V.ownCards*V.share)")],
+  ['required leaves out variable costs', engine("required=sum(lines.filter(function(x){return x.kind!=='nice';}))", "required=sum(lines.filter(function(x){return x.kind==='fixed';}))")],
+  ['set-asides miss the shared ones a person pays', engine("+sum(mine.filter(function(x){return x.keptAs==='Set-aside';}))", "")],
+  ['the sheet’s Category is ignored', engine("if(bgText_(sheetCat))return bgText_(sheetCat);", "")],
   ['the Config category map is ignored', engine("if(catMap&&catMap[k])return catMap[k];", "")],
-  ['a rounding cent reads as a difference', engine("ok:Math.abs(d)<=0.05", "ok:d===0")],
-  ['a figure that follows net income isn’t said to', engine("return Math.abs(d)>0.05&&Math.abs(d-nd)<=0.05?'follows net income':'';", "return '';")],
-  ['a blank What if input counts as zero', engine("Object.prototype.hasOwnProperty.call(ov,k)&&ov[k]!==''&&ov[k]!=null&&isFinite(Number(ov[k]))", "Object.prototype.hasOwnProperty.call(ov,k)&&isFinite(Number(ov[k]))")],
+  ['groceries count as a bill', engine("var BG_SPEND_RX=/grocer|costco|cleaning|\\btips?\\b/i;", "var BG_SPEND_RX=/^$/;")],
+  ['the due day stays in the name', engine("function bgName_(label){return bgText_(label).replace(/\\s*\\((\\d{1,2})(?:st|nd|rd|th)\\)\\s*/i,' ').trim();}", "function bgName_(label){return bgText_(label);}")],
+  ['the match check never flags a difference', engine("ok:Math.abs(d)<=0.05", "ok:true")],
+  ['the phone plan doesn’t replace the sheet’s lines', b => ({ [B]: swap(b[B], "x.trackerAmount = x.amount; x.amount = plan.total; swapped++;", "swapped++;") })],
   ['a scenario keeps keys the model doesn’t know', b => ({ [B]: swap(b[B], "if (known[k] && changes[k] !== ''", "if (changes[k] !== ''") })],
   ['a scenario saves with nothing changed', b => ({ [B]: swap(b[B], "  if (!Object.keys(changes).length) return { ok: false, error: 'Nothing is changed in What if yet.' };\n", "") })],
-  ['the phone plan doesn’t replace the tracker’s lines', b => ({ [B]: swap(b[B], "x.trackerAmount = x.amount; x.amount = plan.total; swapped++;", "swapped++;") })],
-  ['raw ignores the tracker’s own figures', engine("var own=function(x){return raw&&x.trackerAmount!=null?x.trackerAmount:x.amount;};", "var own=function(x){return x.amount;};")],
-  ['the phone plan isn’t named as the cause', engine("r.because=p.ok?'the phone plan, from the phone tracker':(p.because||'a difference')+', and the phone plan';", "")],
-  ['a line with no category isn’t flagged', b => ({ [B]: swap(b[B], "  bgFlagUncategorized_(computed.shared.other);\n", "") })],
-  ['a category’s actual is compared with every line’s plan', both("if(a!=null){hit=true;t+=a;pl+=acts.lines[k].plan||0;}", "hit=hit||a!=null;t+=a||0;pl+=acts.lines[k]?acts.lines[k].plan:0;"), UI],
-  ['actuals never show', both("setActs(r&&r.ok&&r.lines&&r.uploads?r:null);", "setActs(null);"), UI],
-  ['Open in What if leaves its cards closed', both("Object.keys(ch).forEach(function(k){var w=k.split(/[.:]/)[0];o[w==='split'?'shared':w]=true;});setOpen(o);", ""), UI],
+  // writing (Budget.js, WebApp.js)
+  ['a formula cell is written over', b => ({ [B]: swap(b[B], "    if (f) return { ok: false, error: writes[i].what + ' is worked out by the sheet, so VERA won’t type over it.' };\n", '') })],
+  ['writes go one by one, before all are checked', b => ({ [B]: swap(b[B], "    var f = sheet.getRange(writes[i].row, writes[i].col).getFormula();", "    sheet.getRange(writes[i].row, writes[i].col).setValue(writes[i].value);\n    var f = sheet.getRange(writes[i].row, writes[i].col).getFormula();") })],
+  ['any Type is accepted', b => ({ [B]: swap(b[B], "return t ? { ok: true, value: BG_TYPE_LABEL_[t] } : { ok: false, error: 'Type is Fixed, Variable or Nice to have.' };", "return { ok: true, value: bgText_(value) };") })],
+  ['taxes can be typed over', b => ({ [B]: swap(b[B], "if (byKey[key].taxes) return { ok: false, error: 'Taxes are worked out from the deposit; change the net deposit instead.' };", "") })],
+  ['a name may start a formula', b => ({ [B]: swap(b[B], "if (/^[=+@]/.test(s)) return { ok: false, error: 'A name can’t start with =, + or @.' };", "") })],
+  ['a new bill goes below Total bills', b => ({ [B]: swap(b[B], "return blank ? { ok: true, row: blank, insertAfter: null, values: values, bill: out } : { ok: true, row: last + 1, insertAfter: last, values: values, bill: out };", "return { ok: true, row: C.total + 1, insertAfter: C.total, values: values, bill: out };") })],
+  ['duplicates are added', b => ({ [B]: swap(b[B], "  if (dup) return { ok: false, error: '“' + dup.name + '” is already a bill for ' + dup.forWho + '. Change that one instead.' };\n", '') })],
+  ['anyone may write', b => ({ [W]: swap(b[W], "return jsonOut_(peopleOwnerOnly_() || webBudgetWrite_(body));", "return jsonOut_(webBudgetWrite_(body));") })],
+  ['the old Tracker tab is read', b => ({ [B]: swap(b[B], "var BG_TAB_ = 'Household Split';", "var BG_TAB_ = 'Tracker';") })],
+  ['the HSA plan replaces the sheet’s figure', b => ({ [B]: swap(b[B], "  model.people.some(function(p) {\n    var d = p.deductions.filter(", "  model.people.forEach(function(p) { p.deductions.forEach(function(x) { if (BG_HSA_RX_.test(x.name) && num(year) != null) x.amount = num(year) / 12; }); });\n  model.people.some(function(p) {\n    var d = p.deductions.filter(") })],
   ['the budget_model route is missing', b => ({ [W]: swap(b[W], "      case 'budget_model':", "      case 'budget_model_old':") })],
-  ['the cards open expanded', both("var card=function(id,title,color,figure,collapsed,expanded,hasChange){var on=!!open[id];", "var card=function(id,title,color,figure,collapsed,expanded,hasChange){var on=open[id]!==false;"), UI],
-  ['open or closed is forgotten', both("function bgOpenWrite_(v){try{localStorage.setItem('vera_budget_open',JSON.stringify(v));}catch(e){}}", "function bgOpenWrite_(v){}"), UI],
-  ['a changed category isn’t marked', both("var catRow=function(C){var ch=anyCh(C.keys);", "var catRow=function(C){var ch=false;"), UI],
-  ['Reset leaves the changes', both("onClick:function(){setOv({});setMsg('');}},'Reset'", "onClick:function(){setMsg('');}},'Reset'"), UI],
+  // the dashboard (BudgetTab, both)
+  ['the summary boxes show cents', both("tile('bg-kpi-left','Left over',bgMoney_(c.totalDisposable),", "tile('bg-kpi-left','Left over',bgMoney_(c.totalDisposable,true),"), UI],
+  ['the phone gets the wide table', both("var tbl=function(head,rows,foot,cls){if(narrow)return tblNarrow(head,rows,foot,cls);", "var tbl=function(head,rows,foot,cls){"), UI],
+  ['✎ on a bill sends every field', both("if(String(v[f[0]]).trim()!==String(f[1]==null?'':f[1]).trim())edits.push(", "edits.push("), UI],
+  ['a paycheck line in What if counts once a month', both("out[k]=Math.round(Number(v)*U.mult*10000)/10000;", "out[k]=Math.round(Number(v)*10000)/10000;"), UI],
+  ['Write these to the sheet skips the confirm', both("onClick:function(){setConfirmWrite(true);}", "onClick:function(){write(edits,function(){setOv({});setWhatIf(false);});}"), UI],
+  ['taxes get a ✎', both("return t?(whatIf?input(t.key,shownOf(t.key,t.per),p.name+' · taxes per paycheck'):h('span',{style:num},bgMoney_(t.per,true))):'—';", "return t?fig(t.key,t.per,bgMoney_(t.per,true),p.name+' · taxes'):'—';"), UI],
+  ['a refused write closes the form silently', both("if(vedit)setVedit(Object.assign({},vedit,{err:e.message}));else flash(e.message);", "setVedit(null);"), UI],
+  ['sections forget being opened', both("n[id]=!p[id];bgOpenWrite_(n);return n;", "n[id]=!p[id];return n;"), UI],
+  ['actuals never show', both("setActs(r&&r.ok&&r.lines?r:null);", "setActs(null);"), UI],
   ['a scenario sends everything typed', both("changes:changed}", "changes:ov}"), UI],
-  ['delete doesn’t ask', both("onClick:function(){setConfirmDel(s.id);}},'Delete')", "onClick:function(){del(s.id);}},'Delete')"), UI],
   ['the lite Budget isn’t BudgetTab', b => ({ [L]: swap(b[L], "{activeFinanceTab === 'fin_budget' && <BudgetTab apiUrl={apiUrl} apiToken={apiToken} />}", "{activeFinanceTab === 'fin_budget' && <div />}") }), UI],
 ];
 

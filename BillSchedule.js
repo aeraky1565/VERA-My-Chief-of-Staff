@@ -136,8 +136,8 @@ function bsBills_(computed, schedule, when) {
   schedule = schedule || {};
   var lines = computed.shared.lines, bills = [], credits = [], budgetLines = [], fromPay = [];
   lines.forEach(function(x) {
-    if (x.category === 'Household') { budgetLines.push(x.name); return; }
-    // Taken from a paycheck (Budget.js bgWithPay_): payroll pays it, so it isn't a bill.
+    if (x.spend || x.category === 'Household') { budgetLines.push(x.name); return; }
+    // Taken from a paycheck (Household Split › Paychecks, Shared cost? Yes): payroll pays it, so it isn't a bill.
     if (x.fromPay) { fromPay.push(x.name); return; }
     if (!x.amount) return;
     if (x.amount < 0) { credits.push(x); return; }
@@ -278,7 +278,7 @@ function bsReconcile_(computed, list, tx, quarter, aliasMap) {
   var inQ = bsQuarterTx_(tx, months, list.cards.map(function(c) { return c.line.toLowerCase(); }));
   // A bill's plan is its monthly share (× 3 for the quarter), so a quarterly or yearly one isn't counted 3×.
   var lines = list.bills.filter(function(b) { return b.amount != null; }).map(function(b) { return { line: b.line, plan: b.monthlyShare != null ? b.monthlyShare : b.amount, kind: 'bill' }; })
-    .concat(computed.shared.lines.filter(function(x) { return x.category === 'Household' && x.amount; }).map(function(x) { return { line: x.name, plan: x.amount, kind: 'budget line' }; }));
+    .concat(computed.shared.lines.filter(function(x) { return (x.spend || x.category === 'Household') && x.amount; }).map(function(x) { return { line: x.name, plan: x.amount, kind: 'budget line' }; }));
   var rows = bsMatchLines_(lines, inQ, aliasMap, 3);
   var covered = rows.filter(function(r) { return r.actual != null; });
   return { quarter: quarter, months: months, rows: rows, uploads: inQ.length,

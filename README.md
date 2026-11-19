@@ -503,7 +503,1715 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 ### Finance Overview Dashboard (`Finance.js`)
 
-The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
+The Finance tab in the dashboard shows: net income vs. spend (from the budget tracker’s Household Split tab, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
+
+### Notifications: one home per kind (`Notify.js`, #250)
+
+Every kind in `NOTIF_REGISTRY` (Code.js) has one home, chosen in **System › Settings › Notifications**. The kinds are grouped by category, with **Act now** between Travel and Routines. Each row has:
+
+- **Where:** Slack, Morning email, or Off (`notif_<key>_delivery`). A check-in, which expects a reply, is Slack or Off. A long read (weekly trends, monthly review, the weekend memo) is Email or Off.
+- **Slack channel**, when it goes to Slack (`notif_<key>_channel`): #vera-notifications, #vera-chat, #vera-act-now, #vera-logs, or any other channel by name.
+- **While away:** Send, Hold, or Send if due.
+
+The old `notif_<key>_enabled = FALSE` still means Off.
+
+**One home.**
+- **Morning email by default:** Medium and Low flags, vehicles, contracts, coupons, home service, travel documents, certifications, the PTO plan, the quarterly check-in, goals and growth, Daily Discovery, and USPS.
+- **Pushed:** a bill due, a High flag, packing, the pre-trip and travel-day briefings, leaving home, cycle reminders, and movement.
+- **#vera-chat:** the morning check-in and the evening check-in.
+- **Email:** the weekend memo. It goes Wednesday at `weekend_planner_hour` with no Slack ping.
+
+**Fewer pings (`notifGate_`).** Before a push goes out:
+- a Morning email kind waits for tomorrow's email;
+- so does a push during **quiet hours** (`notif_quiet_start`–`notif_quiet_end`, 21:00–07:00) or past the **daily cap** (`notif_daily_cap`, 6). Travel, leaving home and Act now are exempt, and check-ins don't count against the cap;
+- Away mode holds what it holds.
+
+The morning email shows what waited under **📨 Held for this email**, and clears it once the email is sent. The per-nudge "Reminder sent" lines are gone from #vera-logs; only failures are logged. The nightly tail posts one line instead, e.g. "Yesterday: 5 pushes · 2 check-ins · 3 held for the morning email".
+
+**Movement** replaces the desk break, water break and free-calendar-block nudges. VERA can't see work meetings, so it runs on a schedule:
+- at `movement_times` (10:30, 13:30, 15:30), inside `work_hours` (9:00–17:00);
+- at most `movement_daily_cap` (3) a day;
+- workdays only, never on a holiday, a PTO day (read once a day) or while away.
+
+**Check-in times, to the minute:**
+- `morning_checkin_time` (06:30), and `morning_checkin_weekend_time` (08:30) on weekends;
+- `evening_checkin_time` (20:00).
+
+They ride on the 15-minute flight-status trigger (`checkinTick_`), with hourlyCheck as a backstop. The old `wellness_checkin_hour` and `mobility_reminder_hour` are still read when the new rows are blank.
+
+**What the check-ins and the movement nudge look like** (as in `docs/mockups/notifications.html`; rebuilt Nov 19, since #250 had moved them but kept the old messages):
+- **Morning, #vera-chat:** "☀️ Morning. How are you starting the day?" with three labelled rows: **Slept** ≤5 h · 6 · 7 · 8 · 9 h+ (only when no watch gave it), **Energy** 1–5, **Mood** 😞 😐 🙂 😄 (logged as 1, 3, 4, 5). A tap turns that row into "✅ Mood 🙂".
+- **Evening, #vera-chat:** "🌙 Evening check-in · Did you move today? You logged N movement breaks." with **🏋️ Gym · 🚶 Walk · 🧘 Stretch · Not today**, and a line for tomorrow's first event (your personal calendars, `lgEvents_`) and any bill due today or tomorrow that isn't paid. It replaces the gym check-in and the evening mobility nudge. A tap logs to Health › Fitness and answers with the week so far ("✅ Logged: gym. That's 2 of 4 this week."): **Gym** marks today's planned workout as went (or adds one), **Walk** / **Stretch** add one, **Not today** marks today's planned workout as skipped. Only today's rows are touched; the old Yes button marked whichever session was last left open. Buttons on older messages still work.
+  - **Or type it** (`eveningTypedAnswer_`, GymTracker.js, checked in chat before the AI): after tonight's check-in has gone out, a short reply like "Gym, 45 min legs", "walked 30 minutes", "stretch 10 min hamstrings" or "45 min, legs" (details for the workout you just tapped) is logged with its minutes and note, and VERA answers "Logged: gym, 45 min, legs. That's 3 of 4 this week." "Not today", "skipped" or "no workout today" count as a no. A bare "no", a question, or a sentence that only mentions the gym further on goes to chat as usual.
+- **Movement, #vera-notifications:** "🚶 5-minute reset · Stand, walk a lap, refill your water. Next one around 1:30." with **Done** and **Skip**, and "Movement · 1 of 3 today". Either tap pushes the next one at least 2 hours out (a slot inside that window is passed over), and Done counts toward the evening's "movement breaks".
+
+**The morning email** (`MorningEmail.js`, as in the mockup). Subject "☀️ Tuesday, Nov 17: 2 things need you today". Under the masthead and the weather strip (both as before):
+- **Needs you today:** High flags and anything due or overdue today (a flag's Due date, a bill, a coupon ending, overdue tasks, tasks due today, Google Tasks), each with a High / Due / Overdue chip and its area.
+- **Your Day, Sequenced** (unchanged), or a plain 📆 Today list when the day plan is off.
+- **This week:** the next 7 days, soonest first: bills, packing for a trip, coupons, home maintenance and warranties, guests, and flags due that week.
+- **Held overnight:** pushes that waited for quiet hours or the daily limit, with why and when (held items now remember why, `notifHold_(key, text, why)`).
+- **Also:** what lives in the email (mail, Discovery, …) and "N more flags on the Flags screen".
+- The **Open Needs you in VERA** button and the closing line.
+
+It now goes on a morning with no open flags too, whenever any section has something; it's skipped only when every section is empty (`meIsEmpty_`). The card is 100% wide up to 600 px, so it fits a phone. The capacity line and the High / Medium / Low counts are gone.
+
+**Work busy times** (optional, Settings › Config › Calendars, `work_busy_ics`, shown masked). Paste the free/busy (.ics) link your work calendar publishes (Outlook: Publish calendar, "Can view when I'm busy"). A movement nudge that falls in a meeting waits: the slot isn't spent, and the next hourly run sends it once you're free, until the next slot's time. Timed events, UTC or local times, free or cancelled entries (skipped), daily and weekly repeats (with INTERVAL, BYDAY, UNTIL, EXDATE) and moved occurrences are understood; it's read at most every 30 minutes, and a link that fails is ignored.
+
+**Remind me at …** on #vera-act-now posts (VERA's decisions, HAILEY, TESS, WILLA, ARIA's Book now and price drops): about 3 hours on, on the hour; an hour before the post's deadline when that's sooner; never after 9 PM; no button when there's no sensible time. The tap replaces the button with "⏰ I'll remind you at 11:00 AM." and the 15-minute tick posts "⏰ Reminder: …" in the same channel then (`NOTIF_REMIND`, at most 30 waiting).
+
+**Sleep.** Google Fit is removed: the call, and the `fitness.*` scopes. The morning check-in asks for hours slept with one tap (≤5 h · 6 · 7 · 8 · 9 h+), logged as `sleep_hours`, manual. A watch can fill it in later.
+
+**#vera-act-now** is for a decision with a clock on it.
+- **ARIA's Book now.**
+- **VERA's own decision deadlines:** a return window, a card perk or a contract notice date ending within 2 days, from the Flags tab's Due column. Each is posted once, with ✓ Done and Later buttons.
+
+Each assistant has a daily cap (`act_now_cap_aria`, `act_now_cap_vera`, 3 by default). Past the cap, an item waits for the morning email.
+
+**HAILEY and TESS** are read from their own sheets, read only.
+- **HAILEY (Listings):** a listing first seen today and **Under** its cost ceiling, or a **price cut made today** (from its Notes) on a home that isn't gone. The sheet has no score column, so the ceiling is the bar.
+- **TESS (Tracker):** a **New** match found today scoring at least `act_now_tess_min_score` (85).
+
+Each posts once, with an **Open** link. "Pass" stays in the assistant's own tools, since VERA never writes their sheets. Their caps are `act_now_cap_hailey` and `act_now_cap_tess`.
+
+**Follow-ups and WILLA** come from the same sheets, also read only. Each has its own row in Settings › Notifications › Act now.
+- **HAILEY Home Off the Market** (`hailey_follow_up`): a home went **Gone** today (from its Notes), if it was under your ceiling or VERA had already posted it.
+- **TESS Application Update** (`tess_follow_up`):
+  - a job you **Saved** closes within 3 days (from its Notes: "closes …", "deadline …", "apply by …");
+  - or a job's status moves past New / Saved / Passed (Applied, Interview, Offer…).
+
+  VERA remembers the last status of each Saved-or-later job, and its first run only records them.
+- **WILLA Money Decision** (`act_now_willa`, cap `act_now_cap_willa`, 2):
+  - a **CD** maturing within 7 days, once per term;
+  - on the 1st–3rd of a month, one post with that month's **Plan items**: the total, each item, and how many can wait.
+
+What act-now has posted, and TESS's statuses, live in their own state bundle (`ACTNOW`), with long links kept as short stand-ins. A Script Property holds at most 9 KB, and the old list inside NOTIF could have outgrown it.
+
+**Agent down, per agent.** The nightly agent check's "🤖 Agent health" lines (late, failed, back on time) now follow each agent's own row: ARIA Down, TESS Down, HAILEY Down (System Health, #vera-logs by default).
+- **Off** sends nothing, but the flag still shows on the dashboard.
+- **Morning email** waits for the email.
+- **Slack** goes to whichever channel you pick.
+
+A Notifications page left open across a release can list a kind the new server no longer has. Changing such a kind used to show "unknown key". The page now reloads the list instead, and asks you to make the change again.
+
+### Settings › Feature Flags, Config and Feature map (#254)
+
+These are three subtabs of **System › Settings**, next to Notifications, Trip emails and People & access. One list on the server (`FEATURES_` in `Features.js`, 50 features) drives all three. Only the owner can see or change Settings: the Config and Notifications routes refuse anyone else's sign-in.
+
+**Feature Flags.** Each feature is a real switch. It writes the Config row `<key>_enabled` (a missing row means on), and there's Undo. Group the list **by area** (Travel, Health, Home & food, Money, People & gifts, Work & career, Daily life, Assistants, System) or **by kind** (Screens, Emails & briefings, Background checks, Assistants, Housekeeping). There's a search, and filters for On / Off / Paused / Has settings / Victoria sees.
+
+Each row shows:
+- what the feature touches;
+- who sees it (shown only, not changed here);
+- when it last ran: from its nightly or morning steps (the `STEPS` state bundle) and its scheduled jobs' heartbeats.
+
+**Off means off everywhere**, from that one list:
+- **Steps:** `nightlyStep_` skips the feature's nightly and morning steps, and the run summary says "… is off in Feature Flags".
+- **Notifications:** `notifDeliveryFrom_` answers Off for its notifications. Their Settings › Notifications rows say why, and come back as they were when the feature is turned on.
+- **Scheduled jobs:** flight status, the USPS scan and the HOA watch return early. A flight refresh you ask for still runs. So do ARIA's sync, Away mode, the gym evening check and the Run Log.
+- **Screens:** `/status` lists the screens to hide (`hiddenScreens`), and the dashboard leaves them out (`veraCan_`). Today that's Career, PTO planner, Fitness, Morning Routine, Family wish lists and Notes, including the Jot tile and Home's notes card.
+
+Turning off a bigger feature asks first, listing exactly what stops. Risky ones (Run log, Agent health, Flight status, Memory log, Notes) warn in red.
+
+Two more states:
+- **Blocked:** a feature that needs another (Gym check-ins needs Fitness; Sleep tips needs the Travel Day email) shows "Off · needs …" while that one is off. It keeps its own switch and comes back with it.
+- **Off until a date:** writes `<key>_enabled = FALSE` plus `<key>_paused_until`, so code that reads the switch directly sees it off. The hourly check turns it back on when the date comes.
+
+**A feature's own settings** (cadence, thresholds, caps) are on its row under ⚙, saved through `set_feature_setting`, with each value checked by type.
+
+Some moved there from Config:
+- `pretrip_briefing_hours`, `posttrip_capture_delay_days`, `flight_status_poll_minutes`;
+- the Fitness target and slow-week day, `movement_times` and the check-in times;
+- the act-now caps, the TESS bar and ARIA's minimum saving;
+- the weekend planner hour, and others.
+
+Some are new:
+- `posttrip_recap_delay_days`: when the recap email goes (default: a day after the nudge);
+- `gym_checkin_hours`: when the evening gym check runs (default `18-23`);
+- `run_log_keep_days`: how long the Run Log keeps rows (default 30).
+
+**Every schedule is a setting.** Anything that runs on a cadence or at a set day or time has a picker on its feature's row, and the row says when it runs ("🗓 Wednesdays at 8 am"):
+- the weekend memo (day and hour), the goal check-in, the chores reset, the email tidy-up (frequency and day);
+- the monthly review and PTO snapshot, card perks, the health insight, the PTO accrual day (day of the month, 1st–28th);
+- the wish-list wrap-up and the last day of gift flags; the fitness slow-week day; the weekly memory snapshot;
+- the nightly run's hour (it continues itself in parts until done), the morning email, the USPS scan hour, the HOA scan's day and hour, and how often the email and flight checks run (5, 10, 15 or 30 minutes).
+
+The nightly run and the morning email are **always on**: they have no switch, only their time. Saving a time that a trigger owns rebuilds just that trigger (`rebuildTrigger_`, using the same `veraTriggerSpecs_` as `setupTriggers`), so the change takes effect without running anything in the editor. The rest are read by the hourly or nightly checks, so they take effect at once. A blank or bad value keeps the old default.
+
+**Config.** The settings that belong to no single feature, grouped: Linked files, Calendars, Slack & email, Places & home, Time off, Words VERA looks for, General, and Everything else: any row nothing else owns, editable as it is, grouped under the Config tab's own section headings (Assistants, Gifts & Wish Lists, PTO: Ahmed, Travel, Pacing, Reminders & Wellness, and so on). Rows above any heading go under Other. Every field is editable in the page. Each kind of setting has an editor that fits it:
+- **Linked files:** cards with the file's name, whether VERA can open it (`config_files`), Open and Change.
+- **Slack channels:** cards with Send a test (`config_slack_test`).
+- **Calendars:** one grid, calendars down the side and roles across: Skip, Free time, Victoria's, Life, Bills, Weekend. Skip greys out the rest of the row. You can add a calendar VERA can see (`config_calendars`), take one out of every list, and name it (`calendar_label:*`).
+- **Keyword lists:** chips.
+- **Airport times:** a small table.
+- **PTO:** both of you side by side.
+
+IDs and email addresses stay masked until you tap Show.
+
+Each entry lists:
+- **Used by** (features, linking to Feature Flags), **Needs** and **Needed by**;
+- an **Unused right now** badge when every feature that uses it is off;
+- a **Config line** fold with the raw row(s).
+
+"Need a look" collects placeholders left in (such as `PASTE_…`) and files VERA can't open. Rows VERA no longer reads (the old desk / water break and calendar-opportunity notification rows, `travel_companions`) aren't listed. `purgeRetiredConfig_`, a nightly housekeeping step, deletes them.
+
+**Feature map.** A drawn graph in three columns:
+- **Reads from:** Config entries, plus outside sources (agent sheets, Gmail, the HOA site, flight data, the Trips tabs);
+- **Features:** grouped by area;
+- **Where you see it:** dashboard screens, the morning email, other emails, each Slack channel, Flags, Google Calendar, VERA's sheets.
+
+"Needs" links are dashed red, and features that are off are dashed with faded paths. Tap a box to light up its paths:
+- for a feature, a panel lists Reads from / Needs / Needed by / Shows up in;
+- for a setting or source, it lists every feature that would lose it if it broke.
+
+Area chips narrow the map, and each box sits level with what it connects to.
+
+**ARIA's price drop after booking.** ARIA used to stop pricing a trip once it was booked.
+
+What VERA does:
+- On each booked trip's row in VERA's ARIA Requests tab, VERA writes:
+  - **Paid Per Person**: the trip's Flights **Actual** in the Trip Budget ÷ travelers, in whole dollars;
+  - **Reprice Until**: the depart date.
+- It reads Fare Log rows with **Role = `rebook`**, from today or yesterday.
+- It posts "Price drop after booking" when one is lower than what was paid by at least `aria_rebook_min_saving` ($50 a person). The post shows the saving each and in total, the route, an Open link, and a reminder to check the airline's change rules. It posts once per new low, never after the trip leaves, and counts against ARIA's act-now cap.
+
+What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
+
+**Not built yet:** the VERA app push (Firebase).
+
+### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
+
+Private quick capture. Notes live in a Google Doc (Config `notes_doc_id`, then run `setupNotesDoc()` once). The Doc's table gains **Share, Vault, Hide Label, Back On, Picture, Link, Updated** after Category, the first time they're written. Older rows simply have fewer cells.
+
+- **Yours alone.** Every notes route is owner-only (`peopleOwnerOnly_`), not just hidden in the menu. Linked notes don't load for anyone else.
+- **Private by default.** VERA reads a note only when it's marked **✨ Let VERA use**: chat gets those (`ntForVera_`, Chat.js) and nothing else. **Pin** only changes the order on the page. Nothing typed into Notes goes to Memory. **"note: …"** in chat saves a private note without calling the AI, and so does a Quick capture line that starts with "note:" or carries a #tag.
+- **Just tags.** `#words` are tags. A tag can be suggested from the words by simple rules, never by AI (`ntSuggestTag_`). A note's colour comes from its first tag. An older note's category shows as a tag.
+- **Jot a note**, on Home between Log a grocery run and Away, and **＋ Note** on the screen:
+  - one box, with ✨ and 🔒 switches;
+  - **"remind me…"** or **"add a task…"** makes a Task (today and tomorrow are understood), and **"buy…"** adds to Shopping, on the General list if there is one. Nothing else routes (`ntRoute_`);
+  - every save shows **Undo** (`note_undo`);
+  - a code or password asks "Put it in the Vault?";
+  - a one-line fact like "Shoe 8.5" offers to replace an older "Shoe 8".
+- **The screen:**
+  - search, where every word must match, with matches highlighted; Home has the same search, and **/** jumps to it;
+  - filters for ✨ and 🔒, then tag chips with counts;
+  - Back today, Pinned, then the rest;
+  - cards on a computer, a list on a phone. A card shows 4 lines (2 on a phone); a tap opens the whole note.
+- **In a note:**
+  - checklist lines (`- [ ] tape`) tick;
+  - ✎ Edit, Pin, ✨, and Move to / out of the Vault;
+  - **🖼 Attach a picture**, saved to a **VERA Notes** folder in Drive (`note_picture`);
+  - **🔗 Show a link preview**, fetched only when you ask (`note_link_preview`);
+  - **Bring this back on…** a date. The note then shows in **Back today** on the screen and on Home, and can also make a Task.
+- **The Vault, for now, only hides a note on screen:**
+  - its text sits in the Doc as usual;
+  - its body shows on a tap;
+  - VERA never reads it, it never shows on other screens, and it never fetches a preview or takes a picture;
+  - search sees only its label, which can be hidden ("Locked note").
+
+  Encrypting it is #253.
+- **Tidy tags** is a pop-up: rename or merge a tag (`notes_retag`). It spots look-alikes such as size / sizes, move / moving and one-letter typos.
+- **Share to VERA.** The installed full dashboard appears in Android's share menu (`share_target` in the manifest), and the shared text opens as a new note. On iPhone, a Shortcut can open the same address.
+- **Related to** (Edit › Also show on) links a note to a person, trip or project: their Gift Ideas card, the trip's Summary, or under the Projects board. A Vault note never shows there.
+
+### Address Book (`AddressBook.js`, `WebApp.js`)
+
+The shared list of people we send things to — Christmas cards, birthday cards,
+invitations to the children's things. Lives under **People → 👤 People** in the main
+dashboard and as its own **📒 Address Book** tab in the mobile one.
+
+**The screen** (main dashboard): the **card runs** sit on top, the current one (most recently sent) first, each with "N of M sent this year"; tap one to open the run. Each household card shows chips for the **city**, **people**, the **last card sent** and, when the address was never confirmed or was confirmed two or more years ago, a **stale-address** chip. Under it, each person's **next date** (📅, opens People › Important Dates) and **open gift ideas** (🎁, opens Gift Ideas), matched on the full or first name. **Bulk import** and **Check ids / Repair** sit under **⚙ Tools**.
+
+**It is a different spreadsheet on purpose.** It is shared with Victoria on its own,
+without handing over finances, health and career with it.
+
+**Point VERA at it from the Config tab**, with a row whose key is
+`address_book_sheet_id` and whose value is the sheet id. The
+old `ADDRESS_BOOK_SHEET_ID` script property is still read until it is moved (the Config
+row wins when both are set), so an existing deployment keeps working — but the Config tab is the one that actually
+works in practice:
+
+> **The Apps Script property editor lists only the first 50 properties and is
+> read-only past that** — *"to manage or view all of your properties, do so
+> programmatically using the Properties service."* VERA is well past 50, so a setting
+> a human has to type cannot be added there at all. A sheet has no such cap, and
+> `wishlist_*` and `victoria_email` already live there.
+
+With neither set the tab shows a setup line and
+**records nothing against API health** — an unconfigured feature is not an outage,
+and filing one as a fault is how the "SOME DATA IS NOT LIVE" banner lost its
+credibility the first time.
+
+**Three tabs.** A card is addressed to a `Household` — one envelope, one address, "and
+family". An email or a phone call reaches a person in `People`. And `Mailings` records
+what was actually sent: one row per thing posted, `Household ID · Event · Sent ·
+Notes`. One flat list would mean either duplicating the address on every member, where
+the copies drift apart, or losing the per-person details.
+
+**`Event` is free text** — "Christmas card", "Wedding thank you". The dashboard offers
+the values already in use, most recent first, and lets a new one be typed, so inventing
+an occasion needs no column, no config and no deploy. Every row is something that
+**actually went out**; there is no planned or draft state, so a row never has to be
+interpreted, only counted.
+
+> **`Send Card` and `Last Card Sent` were retired when `Mailings` arrived.** They
+> tracked exactly one occasion and exactly one date, so a second Christmas card
+> overwrote the first and *"did they get one in 2024?"* had no answer. VERA does not
+> delete them from a sheet that still has them — it stops reading and writing them, so
+> the columns can be removed by hand whenever it suits.
+
+**Bulk entry: the `Import` tab.** One row per person, with the household name
+repeated for everyone in the same family; the address only needs filling on one row of
+each household (first non-blank wins). Press **Preview** in the dashboard and VERA
+fills a `Status` column saying what each row *would* do, writing nothing else; read it,
+fix anything, then press **Import**.
+
+- **Rows group by the `Household` column, not by matching addresses.** "12 Elm St" and
+  "12 Elm Street" are one house to a person and two to a string comparison, which is
+  how one family quietly becomes two.
+- A person with no `Household` cell becomes a household of one. A blank row is a
+  spacer, not an error — a pasted block usually has a few.
+- **Re-running is safe.** Households match on name and people on household + name, so
+  a second run reports what is already there rather than duplicating it.
+- An existing household is **updated** from the Import row, and **a blank Import cell
+  leaves the existing value alone** — unless the row gives an `Address Line 1`, in
+  which case it is stating the whole address and its blanks **clear**. "The import is
+  the fresher copy" and "a half-filled row wipes a good address" are the same code if
+  you are not careful; the street line is what tells them apart.
+
+> Without the second half, a wrong `Address Line 2` was **permanent**. The pre-pass
+> refused to overwrite a non-blank address cell — but it had written that cell itself
+> on an earlier preview and could not tell its own stale output from something typed
+> by hand. With the one-liner consumed on a successful split, re-pasting could not get
+> back in either. So: a pasted line now replaces all six parts, empty ones included.
+>
+> The rule reads **the row**, not where the row came from. Keying it on "this was
+> pasted" is the obvious reading and is wrong — the preview consumes the one-liner, so
+> by the time Import runs there is no paste left to detect, and the preview would
+> promise `Address Line 2 (cleared)` while the import quietly did nothing. Preview and
+> Import are one function over one row; the rule has to be too.
+- Imported rows are **not deleted**. Every row keeps its Status so you can check the
+  result; clear the tab yourself when you are happy.
+
+**🔧 Check ids / Repair**, beside Preview and Import. Every row id must be unique, and
+for a while they were not: `newAddressBookId_` was `Date.now()` plus three random
+digits, and inside the import's loop `Date.now()` does not change — **a thousand
+possible ids per millisecond**. Measured on the real generator, 68 households collide
+88.7% of the time and 121 people 99.9%.
+
+> Two households sharing an id is not cosmetic. `membersOf(id)` returns the union, so
+> each shows the other's people and a search for one **matches the other**;
+> `key={h.id}` collides and React corrupts the list as you type; `findAddressBookRow_`
+> returns the first match, so the ✏️ on the second card edits the first; and
+> `deleteAddressBookRowsFor_` removes **every** row with that id, so deleting one
+> household takes the other's members with it and leaves it standing and empty.
+
+The generator now carries a **sequence number**. More random digits would only have
+lengthened the odds; a counter makes a collision within one execution impossible, and
+one execution is exactly where the loop lives. `Date.now()` separates executions and a
+random tail covers two of them starting in the same millisecond.
+
+Repair is **in place and non-destructive**: in each colliding set the first row keeps
+its id and the rest take fresh ones, people are re-linked **from the Import tab by
+name**, and anything that cannot be established that way — a person who never came
+through the Import tab, a mailing, which carries no name to match on — is **reported
+and left exactly as it is**. Nothing is deleted and nothing is guessed. On a healthy
+book it says there is nothing to do, so it is safe to press at any time.
+
+> Preview and import are **one function with a flag**, not two implementations. A
+> preview that can disagree with the thing it previews is worse than none, because
+> being believed is the only way a preview can hurt you.
+
+**Or paste whole addresses into `Full Address`, one per line.** Pasting a multi-line
+block into a Sheets cell puts each line in its own row, which is exactly the shape
+wanted. VERA splits each one working **from the end** — country, postal code, state —
+because that is where the recognisable things are; whatever is left at the front is
+the street, cut at a unit keyword (`Apt`, `Suite`, `Unit`, `#`…) so an apartment lands
+in `Address Line 2`.
+
+> **It matches vocabularies, not shapes.** The first version split on commas and then
+> guessed: a state was "any two letters", a country "anything without digits". Both
+> are wrong often enough to matter — `St` is two letters, `Texas` is not — and they
+> failed *silently*. `7 Nile Street Zamalek Cairo, Egypt` put the whole line into
+> `Address Line 1`, and `Austin, Texas 78701` made the **city** `Texas 78701` and
+> pushed Austin into `Address Line 2`.
+>
+> So there are now four lists: every state by **code and full name** (`Texas` → `TX`),
+> countries by alias (`US`, `U.S.`, `United States` → one spelling, or the same list
+> groups under two countries), street suffixes, and unit keywords. Knowing the state
+> turns it into an **anchor** — the city is what sits before it, the street before
+> that — and commas become a hint rather than the only structure.
+>
+> `Ct` is both Connecticut and Court, and no vocabulary fixes that. **Position** does:
+> a state is only read from the end of the tail, and a street's suffix is found by
+> scanning back from what remains. Both orderings of `12 Oak Ct … CT 06103` are
+> pinned.
+
+**A line it cannot read is left alone and flagged.** If no city, state, postcode or
+country can be identified, the address columns stay **blank**, the `Full Address` cell
+is **kept** so there is something to retype from, and `Status` says
+*⚠ could not read "…" — fill the address columns in by hand*. The household still
+imports; it just has no address.
+
+> The old behaviour was to put the unreadable line in `Address Line 1`. That reads as
+> a filled-in row with no city and surfaces only when somebody goes to print an
+> envelope — **a wrong address is worse than a missing one.** It also means "cleared
+> means split" holds in both directions: consumed when it parsed, kept when it did
+> not.
+
+**The split happens in the Import tab, on Preview.** The parts are written into that
+row's own `Address Line 1` / `City` / `State` / `Postal Code` / `Country` cells and
+the `Full Address` cell is **emptied**, so you can correct a misread cell by cell
+before anything reaches the address book. Everything downstream then reads an
+ordinary typed row — the parse is not a special case in the grouping, the precedence
+or the writes, and *"a typed column wins"* stops being a rule that needs writing down:
+a non-blank cell is simply never overwritten.
+
+> **The one-liner is consumed**, so a non-blank `Full Address` always means "not split
+> yet" — paste again and it splits again. It is not lost on the spot: the line it came
+> from goes into that row's `Status` cell, which is where you check the split. It does
+> not survive the *next* run's Status, so comparing is something to do when you
+> preview, not next week.
+
+> It is still allowed to be approximate **only because you see and can fix its work
+> before anything is written**. Earlier it parsed invisibly on the way to `Households`
+> and merely *reported* what it had read — by the time a misread was obvious the row
+> was already in.
+
+**A row with an address but no household name** is imported named after the address
+(`12 Elm St, Austin`), for renaming later, and every row of it says so in `Status`
+until it is. It used to hit the blank-row guard — which runs *before* the parse — and
+vanish with an empty `Status` and no trace: forty addresses pasted, three names
+missed, three silently gone.
+
+> Households group by **name**, so naming one after its street means two different
+> addresses on the same street *and* city land in one household, and
+> first-non-blank-wins drops the second one's details. Street + city makes that rare;
+> beyond that, a group that absorbed more than one distinct address **says so in
+> `Status`**, naming it, rather than losing one quietly. Keying those groups by the
+> address instead was rejected: that key also decides update-or-insert, so it would
+> need a second key just for matching, and getting that wrong breaks "running it twice
+> is safe".
+
+> **The preview still writes nothing to `Households`, `People` or `Mailings`.** It
+> does fill in the Import tab, which it always did — that is where `Status` goes.
+
+> `Full Address` arrived after the Import tab already existed, and `ensureSheet` only
+> writes headers into a *blank* tab — so the column would never have appeared.
+> `ensureImportColumns_` appends anything missing at the right-hand edge. It applies
+> to `Import` alone, which VERA created and is the only reader of; `Households` and
+> `People` stay under the never-disturb rule.
+
+**The card run carries forward from history.** Pick an event and a household is on the
+list **if it has a row for that event at all** — send someone a Christmas card once
+and they are on the list every year after, with no flag anywhere to keep in step or go
+stale.
+
+**A row with a date is sent; a row with a blank `Sent` is planned** — on the list, not
+posted yet. The pool offers both: *＋ Add* files the intention, *✓ Sent* files the
+fact. Ticking a planned household marks it sent and **takes over that row** rather
+than adding a second. Un-ticking puts it **back to planned**, and a *✕* on the row
+takes the household off the event entirely, behind a confirm that says it drops the
+whole history for that event and not just this year's.
+
+> **Planned is stored as a blank date, not a Status column.** A Status cell can
+> disagree with the date — `Planned` sitting next to `2025-11-02` — and in a tab two
+> people edit by hand it eventually will. A blank date cannot contradict anything.
+
+> **This reverses the original design**, which said every row was something that
+> actually went out so a row would never have to be interpreted. That was wrong the
+> first time the feature was used: an event has no storage of its own — the dropdown
+> is derived from these rows — so with only sent rows allowed, naming a new event
+> saved *nothing* and the name was gone on the next load. There is still no `Events`
+> tab; an event becomes real on the first household added to it, and the run says so
+> in as many words until then.
+
+**Starting the first event.** The picker is built from the mailings that already
+exist, so on an empty address book it offers *＋ New event…*: it asks what to call
+the event, then opens its run with the add-someone pool already showing, because by
+definition nobody has had it yet.
+
+> Without that option the feature was a **closed loop** — the event list came from
+> history, and the only control that can create the first piece of history lived
+> inside a run you could not reach. Every test seeded the event list, so none of
+> them ever stood where Ahmed was standing. The fix is pinned by running the real
+> `startEvent` out of all three shipped dashboard copies.
+
+> The still-to-send filter is a **toggle**, not an inference: *not sent this year*
+> (right for anything annual) or *everyone on the list*. Guessing an event's cadence
+> from its own history would be right most of the time and inexplicable the rest.
+
+`ensureAddressBookTabs_` adds any of those tabs that are missing and **touches
+nothing else in that document** — it reuses `ensureSheet`, which only writes headers
+into a blank sheet, so whatever you already built in there is left exactly as it was.
+
+> **There is no Birthday column, deliberately.** The `Important Dates` tab already
+> stores birthdays, flags them ahead of time and writes them to the shared calendar.
+> A second birthday list would be a second thing to keep right, and the one that is
+> already wired up would win.
+
+**Reads are header-driven.** Two people edit this sheet by hand, so a column *will*
+get inserted in the middle of it; reading by position would shift every field by one
+from that moment on and the first sign would be an address in the Notes column. A
+write targets the header too, so a column you add yourself is never eaten.
+
+**Writes are POST with a JSON body, not GET.** `makeUrl` in the dashboards drops
+falsy values rather than sending them, so a cleared Address Line 2 or an emptied note
+would never arrive and would read as *"leave this field alone"* — the bug that made
+un-checking Autopay a silent no-op. Nearly every field here is optional free text, so
+under GET almost all of them would have needed a presence flag. A JSON body carries
+`""` faithfully.
+
+- `save_mailing` is **idempotent on household + event + date**, because the dashboard
+  logs by ticking a box and a double click must not leave two identical rows. The same
+  event on a *different* date is a new row — that is the history the tab exists for.
+- `Address Confirmed` is a date. A confidently wrong address is the real failure of a
+  card list, and this is the only thing that can tell it from a merely old one. It
+  renders as a quiet marker on the row — **no flag, no nightly step, no email.**
+- **Deleting a household deletes its members and its mailings.** An orphan row
+  pointing at a household that no longer exists renders nowhere, so it can never be
+  found and fixed. The dashboard names both counts before you confirm. Both sweeps go
+  through one `deleteAddressBookRowsFor_`, which deletes **back to front** — two copies
+  of that loop is two chances to write the forward one, where deleting row 4 shifts
+  row 5 up into its place and the loop skips it.
+
+### Card Hub (`CardValue.js`, `CardHub.js`, `WebApp.js`)
+
+Finances › Cards has four subtabs: **🥇 Which card · 📇 My cards · 🎫 Perks · 🪙 Points**.
+Lite has **Shopping › 🥇 Which card** and **Money › 📇 Our cards**, a reference where
+Victoria can tick a perk as used (in lite it sits under **Money**). Everything else is edited on the full dashboard.
+
+- **Which card** ranks every open card by **cents back per $1**. Cash back counts as it
+  is. Points and miles are the rate times what a point is worth in the program the card
+  earns into. That's the Loyalty Programs row whose `Linked Card` lists the card's ID.
+  - **What a point is worth:** your `Cents Per Point` (its first number, so "1.7 – 2.0+"
+    reads 1.7), else `Typical CPP`, else VERA's typical value for the program, else 1¢.
+  - **The groups, in this order:** Everyday (Groceries, Gas / EV, Costco, Dining,
+    Everything else), Travel (Flights, Hotels prepaid, Hotels pay-at-hotel, Travel portal,
+    Abroad, Rental cars), Online & bills (Amazon / Whole Foods, Online shopping, Streaming,
+    Phone / utilities, Rent). Any other category your cards earn on goes under More.
+  - **The rate that counts:** a card's own rate for the category, else a broad `Travel`
+    rate (for flights, hotels and rental cars), else its everything-else rate.
+  - **The rules:** ties go to the lower annual fee, Costco takes Visa only, a card with
+    a `Closed` month is left out, and "I'm abroad" keeps only cards with no foreign fee.
+  - **The full dashboard** shows everyone's cards with an owner tag, plus Ahmed's and
+    Victoria's filters, search and Copy.
+  - **Lite** shows one best card a row; tap a row for the runner-up.
+- **The grocery run's suggested card** (`grBestCard_`) uses the same value maths.
+- **My cards** is the card tracker. Above it, each card's perks used this year are shown
+  against its annual fee.
+- **Perks** puts every open card's perks on one list, due soonest first. Each perk keeps
+  its own cycle and shows its reset date. There's a filter by cycle.
+  - In the browser, "used" is `chPerkUsed_`. It mirrors `cardPerkIsUsed_`, and
+    test_cardvalue checks the two agree on every cycle.
+- **Points** shows each program's owner, member #, status and when it renews, expiry,
+  transfer partners, your ¢ next to the typical ¢, the $ value and a balance trend.
+  - A goal reads its program's balance. With `Count Transfers` ticked, it also counts
+    bank points that transfer in (`Transfers From`, e.g. "Chase UR 1:1").
+- **New columns** are added at the end of each tab and never moved:
+  - `Credit Cards`: `Fee Month`, `FX Fee %`, `Network`, `Opened`, `Closed`. `Auth User`
+    takes a comma list. Setting `FX Fee %` keeps `No FX Fee` in step (0% is Yes).
+  - `Loyalty Programs`: `Owner`, `Member #`, `Status`, `Status Renews`,
+    `Transfers From`, `Typical CPP`.
+  - `Rewards Goals`: `Count Transfers`.
+- **New tabs:**
+  - `Points History` (Date, Program ID, Points, Source) dates every balance change, from
+    the dashboard or Chat.
+  - `Perk Uses` (Date, Perk ID, Card, Amount, Period) holds one row per perk per cycle.
+    Ticking a perk adds its row and un-ticking removes it. It's seeded once from the
+    perks already marked used.
+- **Nightly** (`checkCardHub_`):
+  - a flag 90 days before points expire (High within 30);
+  - a flag 60 days before status renews;
+  - a flag 30 days before an annual fee, saying what the perks paid back. It's Low when
+    they covered the fee, else Medium with a nudge to ask for a retention offer.
+  - The keys are `POINTS|EXP|…`, `POINTS|STATUS|…` and `CARDFEE|…`, and the flags clear
+    themselves.
+  - The fee month comes from `Fee Month`, else the card's Notes (the Finance summary
+    reads it the same way).
+
+### Card Perks (`Code.js`, `WebApp.js`)
+
+Tracks use-it-or-lose-it credit-card benefits on the `Card Perks` tab. A perk's
+`Frequency` is `Monthly`, `Quarterly`, `Semiannual`, `Annual`, `Every N Years` or
+`Standing`, and the periodic ones are strictly **calendar** periods — not
+cardmember-anniversary quarters.
+
+> **One of those frequencies is not like the others.** `Monthly` through `Annual`
+> are **calendar-aligned**: everyone's Q3 is the same Q3, so the period belongs to
+> the calendar and to nothing else — which is why `cardPerkPeriodKey_` is never
+> shown `Last Used`. `Every N Years` is **use-anchored**: the period runs from the
+> day *you* claimed it. Adding it was therefore not a matter of adding a literal.
+> "Used this period" stopped being an equality test against a key derived from
+> today and became a range test against the stored anchor, and the four
+> hand-rolled copies of that equality test — `checkCardPerksExpiring_`, two sites
+> in `Chat.js`, and `isPerkUsed` in the dashboard — all had to become one
+> predicate, `cardPerkIsUsed_` (`Code.js`). If you add another frequency, decide
+> which of the two kinds it is first.
+
+> **Blank `Frequency` means `Monthly`, not "ignore".** Three readers do
+> `String(row[4] || 'Monthly')`, and both period helpers fall through to Monthly
+> for any unrecognised value. A benefit entered with a blank frequency therefore
+> raises a "use it or lose it" flag, email and calendar event **every month,
+> forever**.
+
+**`Standing` is for benefits that never expire** — lounge access, elite status, a
+DashPass membership: things you have rather than things you use up. Leave `Amount`
+blank as well; it is display-only.
+
+- `checkCardPerksExpiring_` skips them entirely — no flag, no email, no calendar
+  event.
+- `cardPerkPeriodEnd_` returns **null** for them, and every derived field
+  (`periodEndIso`, `periodEndLabel`, `daysLeft`) is null rather than a fabricated
+  deadline.
+- Marking one used is a no-op that writes no cell and reports `reason: 'standing'`.
+- **The monthly issuer relevance check still runs.** A standing benefit can be
+  discontinued, and that is exactly the thing worth being told about.
+- The dashboard groups them under their own `Standing` heading with an `♾️`
+  badge in place of the used/unused checkbox.
+
+**`Every N Years` is for a credit you can claim once every few years** — the
+Global Entry / TSA PreCheck application fee is the case it exists for — enter it
+as `Every 4 Years` — and it appears on three cards (`CP-14`, `CP-17`, `CP-23`).
+All three shipped as `Annual`,
+so every December VERA raised three High-urgency *"expires Dec 31, use it or lose
+it"* flags, emailed both mailboxes three times and put three events on the shared
+calendar, for a fee credit that cannot be claimed again for years.
+
+- **`Last Used` holds a full date** — `2023-12-14` — not a year. It is the anchor
+  the next cycle is measured from, and a year alone would read as available on
+  1 January, eleven months early. For Global Entry that means a rejected
+  application and a lost $120.
+- `cardPerkPeriodEnd_` returns **null**, exactly as for `Standing`. That one line
+  is what switches off the flag, the email and the calendar event: there is no
+  deadline to miss, so missing it costs nothing.
+- Instead it gets one **Medium** flag when the cycle completes —
+  *"Global Entry / TSA PreCheck is available again ($120) — AMEX Platinum"* —
+  written by `checkCardPerkEligibleAgain_` and keyed
+  `perk_eligible_<id>_<anchor>`. Medium, not High: nothing is at risk, and a High
+  flag that can never expire is how an alert surface stops being believed.
+- **A blank `Last Used` gets no notice at all.** An absent stamp is not evidence
+  that the credit is due; inventing an anchor would prompt you about credits you
+  may have spent before VERA existed.
+- Marking it used re-anchors it to today and closes the notice
+  (`resolveCardPerkEligibleFlags_`, which matches on the perk rather than the
+  anchor, because the caller has just overwritten the anchor).
+- The dashboard folds every cadence into one **Multi-year** group — `perkGroups`
+  is a list of exact strings, so a frequency carrying a number would otherwise
+  render nowhere at all with no error, the same trap `Standing` fell into.
+- **A multi-year row has no checkbox.** In its place is a date box holding the day
+  you claimed the credit, because the exact day is what the next cycle is counted
+  from and a one-click "today" is the wrong control for it. The perk form grows a
+  **Last claimed** field the moment you pick `Every 4 Years`, so a new row can
+  carry its anchor from the start. Clearing either one clears the cell and the perk
+  goes back to reading *"Never claimed"*.
+- Both go through `update_card_perk`, and `perkAnchorForWrite_` (`WebApp.js`) is the
+  only thing that decides whether a typed value may be stored: a real `yyyy-mm-dd`
+  date, not in the future, and **only** on an `Every N Years` row. A hand-typed
+  period key on a Monthly perk is refused, because nothing would ever match it.
+
+> **Two parameters carry a presence flag — `lastUsedSet` and `autopaySet` — and
+> they are not optional decoration.** `makeUrl` in the dashboards drops falsy
+> values rather than sending them, so a blank never arrives and is
+> indistinguishable from a caller that never mentioned the field. Without the flag,
+> *clearing* anything is a silent no-op. That is exactly why un-checking Autopay
+> from the perk form did nothing until the flag was added.
+
+> **Integer years only.** A benefit advertised as "every 4.5 years" should be
+> entered as `Every 5 Years` and be late rather than early.
+
+`Autopay = Yes` also excludes a perk from tracking, but it means something
+different — *this credit spends itself* — so don't reach for it to silence a
+standing benefit.
+
+**`Last Used` is both the used-flag and the period stamp.** For the
+calendar-aligned frequencies it holds a period key, not a date: `2026-09`,
+`2026-Q3`, `2026-H2`, `2026`; for `Every N Years` it holds `yyyy-MM-dd`.
+`cardPerkPeriodKey_` (`Code.js`) is the single definition of what gets written,
+and `cardPerkIsUsed_` of what it means. That design is why a periodic perk
+**resets for free** — nothing clears the cell at the period boundary; the stored
+key simply stops matching the new one. A perk used in Q3 last year therefore also
+reads as unused. A multi-year perk resets for free too, just by a different
+mechanism: today walks past the anchor plus N years.
+
+**Marking one used — three ways:**
+
+| Where | How |
+|---|---|
+| Dashboard | Finances → 💳 Cards → click the card → 🎁 Perks → the green checkbox. A **toggle**, so a second click undoes a mis-click. |
+| Chat | "I used the Uber credit" → `ACTION:mark_perk_used`. **Idempotent** — saying it twice never un-marks. |
+| API | `GET ?action=mark_card_perk_used&id=CP-n` (idempotent) or `toggle_card_perk` (the checkbox's toggle) |
+
+Both writers go through `resolveCardPerkRow_` (`WebApp.js`) so they can never
+disagree about which column they stamp or which key they stamp it with.
+
+If the same perk text appears on two cards, Chat **asks which** rather than
+guessing — a wrong guess would silence a real reminder. Perks with `Autopay=Yes`
+are excluded from tracking entirely; Chat refuses to mark them and says why,
+while the dashboard checkbox still toggles them as a manual override.
+
+**Reminders.** `checkCardPerksExpiring_` runs in `nightlyRun` and skips any perk
+whose stamp matches the current period, so marking one used silences it for the
+rest of the period. Within 14 days of the period end it raises a High flag; within
+7 it also emails and adds a calendar event, both deduped per perk per period.
+**Marking one used cleans up after the reminder**, whichever way you do it. Both
+writers end in `finishCardPerkMarkedUsed_` (`WebApp.js`), which resolves the
+open flag and takes the reminder event off the shared calendar if its day has not
+arrived yet. An event whose date has already passed stays as history.
+
+> They did **not** always agree. `webMarkCardPerkUsed_` (Chat, API) resolved the
+> flag; `webToggleCardPerk_` — the dashboard checkbox, the path actually used —
+> wrote the `Last Used` cell and nothing else. And the `VERA-PERK:<id>:<period>`
+> marker had exactly one occurrence in the repo, where it is written, so nothing
+> could find the event again. A perk redeemed from the dashboard therefore kept
+> its High flag *and* still fired its calendar reminder on the deadline. Both
+> writers now share one cleanup, and `perkCalendarMark_` builds the marker for the
+> writer and the reader alike.
+
+The event is matched on that exact marker — the period is part of it, and the
+trailing `:` is what stops `CP-1` matching `CP-11`. This runs against the
+**shared** calendar, so a loose match would delete real plans.
+
+**Un-ticking a mis-click writes only the cell.** The flag stays resolved and the
+event stays gone: re-raising them would mean clearing `writeFlags`' fingerprint
+and the `PERK_NOTIFY_` latch too, and a mis-click is far commoner than genuinely
+wanting the reminder back. The email, of course, cannot be unsent.
+
+**And when the period ends unredeemed, the flag closes itself.**
+`closeExpiredPerkFlags_` runs in `nightlyRun` immediately before the checker: any
+`perk_expiry_*` flag whose period has passed gets `Resolved = Yes`, so a credit
+that died on Dec 31 stops shouting "expiring in 3 days" from the dashboard in
+March. Marking used was previously the *only* exit — `resolveCardPerkFlag_` fires
+on that alone, and `recordExpiredFlags_` records an outcome at 30 days without
+ever setting `Resolved` — so unredeemed perks accumulated one open flag per period.
+
+- The deadline is derived from the **flag key**, not the perk row.
+  `perkPeriodKeyEnd_` parses the period out of `perk_expiry_<id>_<periodKey>`
+  (`2026`, `2026-H2`, `2026-Q3`, `2026-09`). The row may since have been deleted,
+  renamed or given a different frequency, and the flag still has to close.
+- A key it does not recognise — including `standing` — returns **null and the flag
+  is left alone**. Closing someone's reminder on a guess is worse than leaving it.
+- The outcome is recorded as **`expired`, not `resolved`**. He did not act on it;
+  it lapsed, and "which perks he never redeems" is the signal the learning pass
+  wants. This also prevents a double count: `recordExpiredFlags_` skips rows that
+  are already resolved.
+- The perk row and the calendar event are untouched. The event is an all-day
+  event *on* the period end, so it is already in the past and self-documenting.
+
+The email links to the dashboard root and deliberately carries **no API token**:
+that token is a single global non-expiring credential authorising every endpoint,
+and no VERA email carries one. It cannot deep-link to the specific card because
+the dashboard has no hash or query routing, which is why the email still names
+the path in prose.
+
+### Email Admin & Travel Email Parser (`EmailParser.js`, `EmailAdmin.js`)
+
+**Travel email parser** (gated by `email_parser_enabled=true`): scans Gmail every 30 minutes for travel confirmation emails (flights, hotels, cars, cruises, restaurants). Claude classifies each email with a confidence score. High-confidence emails are processed automatically into itinerary rows. Medium-confidence emails are held and a flag is generated for manual review. All processed emails are logged in the `Processed Emails` tab for deduplication.
+
+**Email admin:** tracks email follow-ups in the `Email Follow-ups` tab. Chat can flag threads for follow-up.
+
+---
+
+## Nightly Pipeline
+
+`nightlyRun()` runs every night at 11 PM via a time-based trigger. **Every step goes
+through `nightlyStep_(ctx, name, fn)`**, which checks the time budget, writes a
+breadcrumb, times the step and catches anything it throws — so a failure in one step
+never aborts the rest of the run. Failures, skips and the slowest steps are posted to
+`#vera-logs` as a summary at the end.
+
+Each step used to hand-roll its own seven-line `try/catch`, forty times over, and
+only three of those forty consulted the deadline. Two (`writeSummarySnapshot`,
+`checkTaxDocuments_`) had no guard at all and could take the whole run down.
+
+### The night is one list that continues itself (#256)
+
+Google stops any execution at six minutes. The night outgrew one run, then two halves
+an hour apart, and each split drifted back over the limit as steps were added: on
+Nov 18 the first half spent its budget by 341 s, skipped 50 steps and was killed.
+
+So the night no longer has to fit. `NightlyRunner.js` holds **one ordered list** of
+every step (`nightlySteps_`, in five groups: what you'd notice missing, the data and
+the flags call, every other flag writer, analysis, housekeeping) and runs it in
+**parts**:
+
+| | |
+|---|---|
+| `nightlyRun`, `NIGHTLY_RUN_HOUR` | starts tonight's list from the top |
+| a part | runs steps for up to 4 minutes (`NIGHT_PART_BUDGET_MS_`), then saves its place (`NIGHTLY_RESUME`, state bundle `NIGHT`) and schedules `nightlyContinue` a minute later |
+| `nightlyContinue` | a one-off trigger: picks up at the saved step |
+| at most 6 parts | after that the rest is listed as skipped, and the night still finishes |
+
+**A part that is killed anyway** (a single step longer than ~5 minutes) is picked up by
+the backup continuation every part schedules 7 minutes out before its first step. A
+saved place with no handoff plus a breadcrumb (`NIGHTLY_STEP`) means that step died:
+it is recorded as **cut off** and the night goes on from the one after it, so one bad
+step costs itself, not the rest of the night.
+
+**The night finishes once**: one #vera-logs summary ("Nightly run — N new flags ·
+3 parts · 87 steps · 1 cut off (…)"), the slowest steps with any over 90 s named, one
+heartbeat, `LAST_NIGHTLY_RUN`. In the Run Log each part is its own row; a part that
+handed off reads **Continued**.
+
+**Slow steps are caught while they creep.** A step cut off, or over 150 s, on two
+nights running raises one Medium flag naming it (`NIGHTLY_KILLED`).
+
+**The pattern engine still waits for complete input.** `checkCrossPatternFlags_` runs
+after every flag writer, and is withheld on a night where one was skipped or cut off
+(`nightlyCrossGate_`).
+
+The old second half's trigger removes itself the first time it fires (`nightlyRunTail`
+is kept only as that shim), and `setupTriggers` deletes it too. **No setup is needed.**
+
+> Tonight's slow steps were sped up alongside: the Flags sheet's colours are one
+> `setBackgrounds` call instead of one per row (writeFlags took 57 s), the travel
+> calendar read logs one count instead of a line per event, and `recordFlagsGenerated_`
+> is its own step inside the budget.
+
+**A step is only started if the part's budget could plausibly cover it**
+(`NIGHTLY_STEP_RESERVE_MS_`). Without the reserve, a step beginning with seconds left
+overran the ceiling; with it, the part hands off instead.
+
+### `setupTriggers` is safe to re-run, and says what it did
+
+It used to hold **three** lists: a hand-written `||` chain of handler names to delete,
+a run of create blocks, and a hardcoded `Logger.log` summary. Adding `nightlyRunTail`
+touched exactly one of them.
+
+So the function whose own docstring promises it is *"safe to call multiple times"*
+deleted seven handlers, created eight, and **appended the tail on every call**. Two
+tails a night means two Explorer bulletins, two `suggestDueDates` Claude calls, two
+`checkCrossPatternFlags_` passes over the same flags, and two heartbeats racing one
+property — and Apps Script caps triggers per script, so the list only grew. Meanwhile
+the log named the seven it had always named, so it could not even tell you the eighth
+existed. That is the log line that prompted this.
+
+All three now derive from one `veraTriggerSpecs_()` list, so **a handler cannot be
+created without also being deletable, and cannot be created without appearing in the
+log.** The next trigger added gets all three for free, which is the actual fix.
+
+- A **function**, not a top-level `var`: the root `.js` files share one global scope
+  with no guaranteed load order, so a list initialised from `CONFIG.…` or
+  `Session.getScriptTimeZone()` at load time would be a cross-file ordering dependency.
+- Every delete runs **before** any create. Interleaving would let a create land ahead
+  of its own delete, rebuilding the duplicate from the other direction.
+- Re-running it **repairs** a project that already has duplicates: every handler it
+  owns is removed before any is recreated, so two of anything collapse back to one.
+- Triggers it does not own are untouched — `Slack.js` manages its own queue triggers
+  the same way, and got this right first.
+
+`tests/source/test_triggers.js` pins the **exact builder chain for all eight handlers**.
+That is not a description of the new code, it is an equivalence check against what was
+live before: this function points real schedules, and a dropped `.everyDays(1)` or an
+`.inTimezone()` added to an `everyMinutes` chain is a silent misfire. The two minute-
+interval pollers deliberately take no timezone.
+
+### "Never run" and "does not exist" used to look identical
+
+`getOverdueJobs_` skipped any job with no heartbeat. The reason was good — on a fresh
+deploy nothing has recorded, and alarming on all eight would teach you to ignore the
+alarm before it ever said anything true — but it had a consequence: **a job that has
+never run was indistinguishable from a job that does not exist.**
+
+`nightlyRunTail` sat in exactly that state after being added. No heartbeat, no start
+marker, so nothing said each morning whether its trigger had registered at all. Had it
+not, the watchdog would have stayed silent about it forever — which is the failure the
+two-half split exists to end, rebuilt inside the thing that was supposed to be
+watching.
+
+`setupTriggers` now records **when** it registered each handler
+(`recordTriggerRegistrations_`, one JSON property mirroring `SYSTEM_HEARTBEATS`). That
+is the missing evidence:
+
+| Heartbeat | Registered | Verdict |
+|---|---|---|
+| none | never | quiet — the fresh-deploy case, unchanged |
+| none | within its window | quiet — it was not due yet |
+| none | longer ago than its window, **no** start marker | **"has not run in the … since it was registered — the trigger may not exist"** |
+| none | longer ago than its window, start marker **present** | **"has started but never finished in the …"** + `died during <step>` |
+| stale | anything | unchanged — the registration never overrides a real heartbeat |
+
+The last two draw the same trigger-problem/code-problem distinction the stale branch
+already drew, now shared through one `jobStartedAndDied_` helper rather than copied.
+
+> The map is **replaced** on each `setupTriggers` run, not merged: a handler no longer
+> in the list is no longer registered, and carrying its timestamp forward would leave
+> the watchdog waiting on a trigger that is gone.
+
+**This needs `setupTriggers` run once to take effect** — that is what writes the
+registration timestamps. Until then the watchdog stays exactly as silent about
+never-run jobs as before, so nothing regresses in the meantime.
+
+### Flags are written as they go, and read once, last
+
+The split raised a fair question: are the dependencies across the two triggers still
+in the right order — should flag-setting come after everything, so nothing slips under
+the radar?
+
+**There is no deferred flag write to get wrong.** Around fifteen modules call
+`writeFlags` as each step determines something, so a flag exists the moment it is
+found; the `writeFlags(flags)` in `nightlyRun` is only the Claude-generated batch. So
+the order that matters is not where flags are *written* but where they are **read**:
+
+| Step | Reads flags for | Position | Why that is right |
+|---|---|---|---|
+| `escalateAgedFlags_` | flags **≥ 3 days old** | first | tonight's are zero days old |
+| `recordExpiredFlags_`, `closeExpiredPerkFlags_` | age / period expiry | mid | about older flags |
+| **`checkCrossPatternFlags_`** | **unresolved High flags** → intensity signal | **last** | needs every writer first |
+
+`checkCrossPatternFlags_` is the only step that reads *tonight's* flags —
+`buildCrossDomainSnapshot_` counts unresolved High ones into the signal that decides
+whether the week is loaded. It is last in the night, which is correct, and it sits in
+the tail, which means **it had not been running at all**.
+
+The split preserved relative order exactly: step N still precedes N+1, with an hour's
+gap. `tests/source/test_nightlybudget.js` holds this as an executable invariant —
+classify every step by whether it calls `writeFlags` (one level deep, which is how
+`writePTOSnapshot_` writing via `checkAccrualCapRisk_` is caught) and assert
+`checkCrossPatternFlags_` comes after all of them. It asserts on **writes** only: the
+same classifier run over *reads* reported `writeWeeklySnapshot_`, which has zero flag
+references.
+
+**What the split did change.** A head that dies no longer stops the tail — it runs an
+hour later regardless. On such a night most writers never ran, the High count is near
+zero, and the pattern engine reads a loaded week as a quiet one, confidently and with
+no sign anything was missing. So `checkCrossPatternFlags_` — alone among the steps —
+is gated on `nightlyHeadCompletedTonight_()`, which requires **both**:
+
+- `LAST_NIGHTLY_RUN` within `NIGHTLY_HEAD_MAX_AGE_MS_` (4h — `.atHour()` is a window,
+  not a time, so the real gap between the halves ranges up to nearly two hours), and
+- **no** `NIGHTLY_STEP` breadcrumb, which is deleted only on the head's success path.
+
+Neither alone suffices: a hard kill skips the `finally` and so the timestamp, but a
+head that *threw* reaches the `finally` and writes it anyway — the breadcrumb is what
+separates those. It is the same pair the watchdog uses to tell "died" from "never
+fired". Non-fatal step failures do **not** count as incomplete; those steps named
+themselves in the head's warnings, and refusing every imperfect night would refuse
+almost every night.
+
+A withheld step is reported as `🚧 Tail skipped — incomplete input`, counted
+separately from `⏭️ Tail skipped for time`, and logs the night `Partial`. The two are
+kept apart the whole way through because they need different responses from you: one
+says the night ran long, the other says the night was incomplete.
+
+> The other tail steps are deliberately **not** gated. `checkHealthAppointments_`,
+> `resetWeekMealPlan_`, `suggestDueDates` and `runExplorer_` read their own sheets, and
+> `checkMonthlyReview_` summarises a month rather than a night. Withholding them
+> because of one bad evening would cost work and buy no correctness.
+>
+> One gap worth naming: the gate catches a head that *died*, not a head that finished
+> having **skipped** steps for time. The head does not tell the tail what it dropped,
+> so a budget-trimmed night still gets pattern-matched. That is the case the morning
+> banner showed, fixed; the other remains open.
+
+### The morning email outgrew six minutes too
+
+One morning no briefing arrived, and the watchdog said only:
+
+```
+• Morning briefing has not gone out in 1d 2h (expected every 26 hours)
+• Morning email has not run in 1d 2h (expected every 26 hours)
+```
+
+The Apps Script Executions row read **Timed out** — the same failure as the nightly
+run, in the job that reports every morning. A terminated execution skips its `finally`,
+so `recordHeartbeat_('morningNudge')`, the delivery marker and `flushSystemLog_` all
+never ran: no heartbeat, no email, and that run's log gone with it.
+
+`morningNudge` builds from ~15 sources — the Flags sheet, Drive, Calendar, a weather
+API, the watchdog, two task backends, Signal Learning. Each already had its own
+try/catch, so it degraded on **error** but not on **time**: one slow dependency took
+the whole email. Every phase now goes through **`nightlyStep_`** (reused as-is — it is
+generic; only its name is nightly), which supplies the catch, so the duplicated
+try/catch is gone, and adds the three things that were missing:
+
+| | |
+|---|---|
+| a **`MORNING_STEP` breadcrumb** written *before* each phase | a kill now names the phase. A marker written afterwards never survives the kill it exists to explain |
+| a **budget** checked before each phase (4m30s, not the nightly 5m30s — the HTML build and the send come after) | **the email still sends, without that section.** A missing weather ticker beats a missing email |
+| **timings**, reported as `⏱️ Slowest morning phases` | emitted at the end of a run, so until the kill was fixed it was only ever produced by runs that did not need it |
+
+Reading the Flags sheet and the send itself are deliberately **not** budgeted: without
+them there is no email left to degrade. `morningNudge` also gained `LAST_MORNING_START`
+and both markers are now in its `HEARTBEAT_REGISTRY` entry, so `jobStartedAndDied_`
+says *"Morning email started but did not finish — died during `X`"* instead of *"has
+not run"*.
+
+> One duplicated round trip went with it: the capacity ticker called
+> `getUpcomingEvents()` a second time purely to count today's meetings, which
+> `todayEventsAll` already held — an extra calendar fetch on the one execution that was
+> out of time.
+
+### A job cannot report on itself
+
+The first morning email after the timeout fix arrived — and contained these two lines,
+about itself:
+
+```
+• Morning briefing has not gone out in 1d 23h (expected every 26 hours)
+• Morning email started but did not finish; last run was 1d 23h
+  — died during runWatchdog_ (expected every 26 hours)
+```
+
+**`runWatchdog_` is the phase that produced them.** `morningNudge` runs the watchdog as
+one of its own phases, ~250 lines before it records either of its heartbeats — so the
+watchdog saw a start marker four seconds old against a heartbeat from the last run that
+actually *finished*, and answered exactly as designed. Both lines were true of the past
+and absurd where they were printed, and the breadcrumb obligingly named the phase that
+was asking.
+
+> It only shows up **the morning after a failure**: on a normal day the delivery marker
+> is ~24h old, inside its 26h window, so nothing is reported. Which means it appeared on
+> precisely the morning the banner most needed to be readable.
+
+`runWatchdog_(exclude)` now threads a job list down to `getOverdueJobs_`, and
+`morningNudge` passes `['morningNudge', 'delivery:morning_briefing']`.
+
+**Excluded at the registry walk, not at the renderer** — one `notices` object feeds the
+email lines, `syncWatchdogFlags_` and `announceWatchdogToSlack_`, so filtering in
+`getWatchdogNotices_` would have cleaned the email and left a High flag in the sheet
+saying the morning email died during `runWatchdog_`.
+
+**Nothing stopped being watched, and that is the point.** `hourlyCheck` runs the
+watchdog every hour *without* an exclusion, so both jobs stay covered — just not by
+themselves, mid-run. It is the same reasoning as the comment already at its call site:
+*if a job is the thing that died, it cannot be the thing that notices.*
+
+#### Why not just record the heartbeat earlier
+
+`hourlyCheck` does exactly that — it records, *then* calls `runWatchdog_`, which is why
+it has never reported itself. **`morningNudge` cannot copy it.** Its heartbeat lives in
+a `finally` so that a *terminated* run leaves none, and that is the only reason the
+six-minute kill was detectable at all; recording before the watchdog phase would have
+masked it. So `hourlyCheck`'s ordering is load-bearing, is now commented as such, and is
+asserted — a swap would quietly bring the self-report back there.
+
+### "Fired and did nothing" is not "never fired"
+
+Found while diagnosing the above. `Watchdog.js` has stated the rule from the start:
+
+> `runEmailScan_` early-returns when `email_parser_enabled` is false (its default) and
+> `checkFlightStatuses_` no-ops with no flights booked. **Both still record.** Otherwise
+> the watchdog would alarm permanently about correct behaviour.
+
+Nothing enforced it, and `morningNudge` broke it — its
+`if (!isNotifEnabled_('morning_briefing')) return;` sat *before* the `try` whose
+`finally` records. So a briefing you switched off would have reported as an outage every
+morning forever, and a genuinely broken one produced the identical sentence. The check
+is now inside the `try`.
+
+**`tests/source/test_heartbeats.js` enforces it for every job in the registry:** for
+each, find the `try` whose `finalizer` records that job's heartbeat, and assert no
+`return` sits outside it. Derived from `HEARTBEAT_REGISTRY`, so a job added later is
+covered without anyone remembering.
+
+> **It parses rather than scans, and that was learned the hard way.** Four hand-rolled
+> text-scanning versions produced four false positives: `/\bfunction\b/` matched the
+> word in `hourlyCheck`'s *own comment* about returning early; blanking string contents
+> desynchronised on `.replace(/'/g, '')`; walking backwards from the `finally` landed
+> 4.5k characters early inside an object literal; and a block-comment pass that ignored
+> strings read the `*/*` in an HTTP `Accept` header as a comment opener and blanked 40
+> lines of real code. All the same mistake — treating JavaScript as text.
+> `@babel/standalone` was already a devDependency and ships a parser.
+
+And `delivery:morning_briefing` now carries an `enabledKey`, so a briefing that is
+switched off stops being reported as undelivered — while its *job* heartbeat keeps
+reporting, so the trigger itself is still watched.
+
+### What a missing nightly run does and does not mean
+
+`recordHeartbeat_('nightlyRun')` sits in a **`finally`** block — *the trigger fired*
+is what a heartbeat records, success or not. That makes the failure modes readable,
+and they are not the same thing:
+
+| What you see | What happened |
+|---|---|
+| Heartbeat recorded, `#vera-logs` summary with step warnings | Steps failed; the run finished. The warnings name them. |
+| **"VERA Error — Nightly Run Failed"** email with a stack | Something threw outside a step's own guard. The `catch` emailed you, and the `finally` still recorded the heartbeat. |
+| Watchdog says **"started but did not finish — died during `X`"** | The execution was **terminated** — almost always the 6-minute Apps Script ceiling. `finally` never ran, so there is no heartbeat and no email. `X` is the step it was in; see the breadcrumb below. |
+| Watchdog says **"has not run in …"** with no start marker | The trigger never fired. Check **Triggers** in the editor; Apps Script auto-disables one after repeated failures. |
+| Watchdog says **"has not run in the … since it was registered — the trigger may not exist"** | It has *never* run. `setupTriggers` recorded registering it, and no execution has followed. See below. |
+
+The middle two used to be indistinguishable, which cost an investigation. `nightlyRun`
+now writes `LAST_NIGHTLY_START` before any work and `LAST_NIGHTLY_RUN` beside the
+heartbeat, and the Watchdog compares them. (`LAST_NIGHTLY_RUN` had been *read* by
+`Slack.js` and written nowhere, so that status line always said `unknown`.)
+
+> **A start marker is not a heartbeat.** It is deliberately not recorded as one: a run
+> that started is not a run that happened, and letting the Watchdog count it would hide
+> exactly the failure it exists to surface.
+
+**The breadcrumb: `NIGHTLY_STEP`.** Knowing the run *died* still left the real
+question open, and a terminated run takes its own evidence with it — the System Log
+buffer only flushes at 50 rows (`SYSTEM_LOG_AUTOFLUSH_ROWS_`) and a nightly run never
+reaches that, so the whole run's log is lost. `nightlyStep_` therefore writes
+`<step>|<seconds elapsed>` to a Script Property **before** running each step. A marker
+written afterwards would never survive the kill it exists to explain. A completed run
+deletes it, so its *presence* is the signal, and the Watchdog reads it to name the
+step.
+
+> This does not guarantee the run survives. The budget cannot preempt a step that is
+> already running, so one pathologically slow step can still blow the ceiling. What it
+> guarantees is that the run stops being *invisible*: accumulated slowness now skips
+> instead of dying, and a single slow step is named in the next morning's email.
+
+**Time budget.** `DEADLINE` is set at 5 min 30 s, 30 seconds short of the ceiling, and
+**`nightlyStep_` checks it before every step**. Past it, a step is skipped and
+recorded rather than started — which is what lets the run reach its own `finally`,
+write the heartbeat and report what it dropped, instead of being killed silently.
+Skips are reported separately from warnings in the summary: the budget working as
+designed is not a step failure.
+
+The old arrangement checked the deadline at three sites, which meant a heavy step
+*early* in the run spent the whole budget and the three guarded steps at the end never
+got the chance to skip anything.
+
+**Per-step timings** go to `#vera-logs` on every run, not only bad ones — a step
+creeping towards the ceiling is worth seeing while it is still creeping, because by
+the time it kills the run, the run is the thing that cannot tell you about it.
+
+### The night the budget worked and the run died anyway
+
+162s (Oct 6) → 193s (Oct 7) → **killed at 355s of 360s** (Oct 8). Three separate faults,
+and the one the email named was innocent.
+
+**The budget cannot protect what it does not wrap.** It did its job — it skipped
+`computeTravelLegs_` at 5m25s. Then Step 1's four collectors ran anyway, because they
+were bare calls outside `nightlyStep_`, and the execution was killed 30s later inside the
+all-calendar scan: the most expensive call in the codebase, started *after* the run had
+been declared out of time. They are one budgeted step now.
+
+**The breadcrumb named a step that had succeeded.** It holds the last step *attempted*;
+skips do not write one, and work outside a step cannot be named at all — so the death
+landed on `writePTOSnapshot_`, which had finished four minutes earlier. Wrapping the
+collection fixes it at zero cost. `test_nightlybudget` now counts each collector's call
+form and expects exactly one, inside the closure, which is also why those names are
+deliberately absent from the comments there.
+
+**Out of time is not the same as nothing to say.** With the collection skipped every list
+is null, and the empty-data branch would have posted `0 flags (no data)` about a night
+that simply ran out of budget.
+
+> **`writePTOSnapshot_` was 4m 06s of the 6-minute ceiling**, and the log was silent for
+> 155 consecutive seconds inside it — the ~60 lines `getUpcomingTravel_` prints are its
+> cheap tail. Ten `getEvents` calls, four of them redundant:
+>
+> - **`findClearWindows_` and `getMilestones_` fetched the same calendars over the same
+>   window, back to back.** One took its 90 days as a parameter, the other hardcoded 90 —
+>   equal by coincidence, not by agreement, which is precisely why nobody saw it. There is
+>   now one `PTO_GAP_SCAN_DAYS_` and one `scanGapCalendars_` feeding both.
+> - **`getCalendarByName_` had no memo**, so `getCalendarsByName` ran seven times for five
+>   distinct names in one snapshot. It caches misses too: an absent calendar is absent for
+>   the whole run, and re-asking costs a round trip *and* a duplicate warning per caller.
+> - **`getPTOEvents_` walked a year of events twice**, calling `getTitle()` and
+>   `isAllDayEvent()` on every event in both passes. Those are round trips to the Calendar
+>   service, not property reads; they are read once into a prepared array now.
+> - **`touchTripRow_` wrote up to four single cells per trip.** Columns 2-5 are contiguous,
+>   so they go in one `setValues`; `lastSeen` at column 8 is the only separate write. This
+>   matters on the night specifically, because `lastSeen` is rewritten whenever the stored
+>   date is not today — so the nightly run is exactly the run where *every* trip takes it.
+>
+> The step reports its own blocks now (`⏱️ writePTOSnapshot_ breakdown:`), through the
+> **same** `slowestNightlySteps_` formatter as the step line, so the two cannot drift. The
+> timer is declared first in the function: `sub_` is hoisted but `ptoSubs` is not, so an
+> earlier call would push onto `undefined` and take the snapshot down.
+>
+> Two fakes had to be strengthened to catch any of this. `test_tripregistry`'s sheet had
+> `setValues: () => {}` — a **no-op that silently swallowed every batched write** — and
+> `test_tripidentity`'s replaced the whole row regardless of the range's start column. A
+> fake that drops writes cannot catch a bug in writes.
+
+### A function that takes no arguments fetches everything twice
+
+The first timings those phases produced said:
+
+```
+⏱️ Slowest morning phases: buildMorningIntelligence_ 27.5s · getUpcomingEvents 12.6s ·
+   getWeatherTicker_ 2.1s · getUpcomingGuests_ 1.3s · getOpenTasks 1.3s
+```
+
+**Most of that 27.5s was work the same execution had already done.**
+`buildMorningIntelligence_` took no arguments, so every dependency it needed it fetched
+for itself, ~150 lines after `morningNudge` had put the same data in a local variable:
+
+| Duplicated | Cost | What already held it |
+|---|---|---|
+| `getUpcomingEvents(7)` — a second all-calendar 7-day scan | **~12.6s** | `todayEventsAll`, from the phase that had just made the identical scan and kept only day 0 |
+| `getOpenTasks()` ×2 | ~2.6s | the `getOpenTasks` phase — the tab was read **three times** in one run |
+| geocode + forecast | ~2s | the `getWeatherTicker_` phase |
+| `getCapacityMode_()` | — | `capMode`, read ~200 lines earlier |
+| the Packing Items tab, re-read **once per trip** | scales with trips | one pass already has every count |
+| 8 × `SpreadsheetApp.openById` | — | all the same document |
+
+Each is now **passed in**: `buildMorningIntelligence_(allEvents, openTasks, capMode,
+subTimings)`. The calendar phase keeps its whole scan instead of filtering it away —
+`var allEvents = null` beside `todayEventsAll`, where **`null` and `[]` mean different
+things**: `[]` is a real answer ("nothing on any calendar all week"), `null` means the
+phase never ran. Only `null` may suppress the day plan.
+
+> **The rule for fallbacks**, because `x || refetch()` is how this cost comes back
+> while looking defensive: *a lazy fallback is allowed only when the fallback is cheap
+> and bounded — a scalar default, or one `getValues`. It is forbidden when the fallback
+> **is** the expensive thing being removed.* So `openTasks` falls back to one sheet
+> read, `capMode` to the string `'normal'`, and `allEvents` to **nothing at all**.
+
+**The one accepted behaviour change:** if the calendar phase is skipped for budget, the
+day plan is now dropped rather than rendered after a second 12.6s scan — on the block
+that runs latest, with the least time left, having been told there was no time. That is
+the same trade the capacity ticker already made when it stopped re-fetching the calendar
+to count today's meetings.
+
+A second `#vera-logs` line now names the blocks inside the phase, through the **same**
+`slowestNightlySteps_` formatter so the two can never drift:
+
+```
+⏱️ buildMorningIntelligence_ breakdown: daySeq 10.8s · travel 0.3s · bills 0.2s · …
+```
+
+It deliberately does **not** go through `nightlyStep_`: that writes a Script Property per
+call, its timings would be reported as *phases* and double-counted inside the parent's
+own total, and its budget guard would start skipping internal blocks — turning
+degradation that is error-driven into degradation that is time-driven.
+
+> **Caches here are per-execution, because Apps Script gives every execution a fresh
+> global scope.** `getSpreadsheet()` memoises its handle (it was a fresh `openById` on
+> each of ~320 call sites); `fetchWeatherForecast_` memoises **by location**, since on a
+> trip day the ticker wants the trip city while the day plan wants home; `readPTOConfig_`
+> memoises the Config tab's **rows** and not its object, because that object holds arrays
+> and one caller pushing to one would corrupt it for every later caller. Each caches
+> **successes only** — a cached `null` turns one transient failure into no data for the
+> rest of the run, and in the geocode's case would suppress the health failure that puts
+> the source in the banner below. `geocodeLocation_` additionally caches across
+> executions for 6h, like `geocodePackingDestination_`: coordinates do not change.
+>
+> The spreadsheet memo is safe in the direction that looks risky. Every `insertSheet` in
+> the repo runs on a handle that came from `getSpreadsheet()` — none on a direct
+> `SpreadsheetApp.openById` — so one memoised handle makes creators and readers in a run
+> *agree*, where opening a new one each time did not. `invalidateSpreadsheet_()` exists
+> for a caller that must re-read structure it just changed.
+
+### API health: what belongs in the "SOME DATA IS NOT LIVE" banner
+
+The banner's job is to say *do not trust this data*, and it loses that authority the
+moment it reports things that are fine. Three rules keep it honest:
+
+- **A successful call with an empty result is not an outage.** `fetchFlightStatus_`
+  used to record a health *failure* on an HTTP 200 with an empty `data` array — but
+  the AviationStack free tier only carries current/upcoming flights, so a flight
+  booked weeks out legitimately returns nothing and the API answered perfectly to say
+  so. It records a **success** now and still returns `null`, because *this flight has
+  no live status* is a fact about the flight, not about the API.
+- **An HTTP 429 is "try later", not "this data is wrong".** `recordApiHealth_` counted
+  a rate limit like a 500, so open-meteo put a line in the banner every single morning
+  — `last good data 8h 17m ago`, for a quota VERA does not spend. Open-Meteo limits
+  **per IP** and Apps Script egresses from Google ranges shared with every Apps Script
+  project, while VERA makes a handful of calls a night; caching harder cannot reliably
+  change that. A 429 now records `lastRateLimited` / `rateLimitHits` and changes
+  **nothing else** — `consecutiveFailures`, `lastError` and `lastFailure` are left
+  exactly as they were. Two consequences fall out of that, and both are wanted: a
+  source already degraded by a genuine fault **stays** degraded through a 429 and
+  cannot be papered over by one, and a later success still clears everything normally.
+  It is still announced in `#vera-logs`, through its **own** cooldown field
+  (`lastRateLimitAlertedAt`) — sharing `lastAlertedAt` would let a daily rate limit
+  suppress the alert for a real outage that started in between.
+- **`pruneApiHealthState_` drops entries nothing has touched in 14 days.** A source
+  retired from the code leaves residue that can never recover — clearing a failure
+  requires a successful call, and nothing is ever going to make one. That is how
+  `googlefit-steps` nagged daily for an integration that does not exist (only
+  `googlefit-sleep` does). The discriminator is **recency of activity**, not failure
+  count: a genuinely broken source still has code calling it, so its `lastFailure` is
+  refreshed every night and it survives the prune however long it has been failing.
+  **`lastRateLimited` counts as activity** in that recency check, because a 429
+  deliberately freezes both `lastSuccess` and `lastFailure` — a source rate limited
+  every day would otherwise age out as an orphan and be recreated on the next call,
+  for ever.
+
+> **open-meteo has four callers, not one.** `geocodePackingDestination_` (city →
+> lat/lon, cached 6h) and `getPackingWeather_` (`WebApp.js`), `tripDailyForecast_`
+> (`TripDecisions.js`), and — until the 429 work — the `☀️ UV` chip in `Weather.js`.
+> Those first three feed `PreTripBriefing.js`, `TravelDayBriefing.js`, `TripDecisions.js`
+> and two dashboard endpoints, so **open-meteo is load-bearing for packing and trip
+> weather** and a real open-meteo fault must still reach the banner. `fetchUVIndex_` was
+> the least valuable of the four — it already degraded to a dash — and is gone; the
+> ticker keeps temperature, rain and AQI. openweathermap carries UV only on One Call
+> 3.0, a separate subscription the three endpoints VERA uses do not include.
+> `test_ratelimit.js` asserts the other three callers still exist and still record
+> health, so "remove the UV chip" can never quietly become "remove trip weather".
+
+### Script property housekeeping
+
+`pruneScriptProperties_` (`AddressBook.js`) runs nightly and drops expired latches.
+Three kinds were written and **never deleted**, and only fixed-name properties
+(`Pacing.js`, `PTO.js`) were ever cleaned up:
+
+| Key | Written | Growth |
+|---|---|---|
+| `day_plan_<yyyy-MM-dd>` | a cache for Chat's apply action | one a day — 365 a year |
+| `PERK_NOTIFY_<ID>_<PERIOD>` | "already emailed about this perk" | one per perk per period |
+| `TDB_SENT_<yyyymmdd>_<LABEL>` | "already sent this travel briefing" | one per travel day |
+
+Each answers *"have I already done this"*, and the answer stops mattering once the
+period is past. This is the same disease as the orphaned `googlefit-steps` health
+entry — accumulated state nothing prunes — and it is what pushed the property store
+past the editor's 50-row cap.
+
+> **Deleting one too early re-sends something**, so every window is far wider than it
+> needs to be: 7 days for a day plan (a pure cache), 30 for a travel briefing, and 60
+> days **after the period end** for a perk notification. A key shape it does not
+> recognise is left alone rather than guessed at.
+
+> **It deletes one key at a time, never `deleteAllProperties()` plus a restore.** The
+> cheap version is one round trip instead of N, and also a way to lose the API health
+> state, every heartbeat and the web token if the run is killed between the two calls
+> — and the nightly run is killed often enough to have a watchdog for it. The perk
+> period is matched at the **end** of the key, because ids are minted as
+> `'CP-' + Date.now()` and a four-digit match anywhere would read part of the
+> timestamp as the period.
+
+> Maintenance that walks a whole tab must read it in **one** `getValues()` and delete
+> contiguous runs with `deleteRows(start, count)` — see `deleteRowsOlderThan_`
+> (`Memory.js`) and `pruneSystemLog_` (`VERALog.js`). In Apps Script every `getValue()`
+> and `deleteRow()` is its own round-trip, so a per-row loop over a few thousand rows
+> is minutes of wall clock. That is not a micro-optimisation: it is the difference
+> between a run that finishes and one that is killed without recording anything.
+
+| Step | Function | Description |
+|------|----------|-------------|
+| Step -1 | `escalateAgedFlags_()` | Escalate unacknowledged flags older than 3 days (Medium) or 7 days (High) |
+| Step 0 | `writeSummarySnapshot()` | Auto-populate Metrics + Summaries tabs from live data sources |
+| Step 0a | `syncCalendarBirthdaysToImportantDates_()` | Sync birthday events from Joint Chaos calendar to Important Dates |
+| Step 0a-ii | `resetChoresByCadence_()` | Reset chore checkboxes that have elapsed their cadence interval |
+| Step 0b | `writePTOSnapshot_()` | Compute PTO usage, burn-down pace, and suggested windows; write to PTO tab |
+| Step 0c | `runExplorer_()` | Daily AI discovery bulletin — generates a curiosity nudge based on interests |
+| Step 0d | `getSuppressedKeyPatterns_()` | Load suppressed flag patterns from SignalLearning tab for noise filtering |
+| Step 0e | `recordExpiredFlags_()` | Log flags that have been open >30 days without action into SignalLearning |
+| Step 0e-ii | `adoptLegacyTripKeys_()` | Attach legacy trip keys found in the tabs to the trips they belong to — must precede 0f and 0g |
+| Step 0f | `checkPreTripBriefings_()` | Generate pre-trip briefing flags for trips departing within 48h |
+| Step 0g | `checkPostTripCapture_()` | Fire post-trip debrief prompt for trips that ended 1 day ago |
+| Step 0h | Morning routine reset | Reset morning routine checkboxes to unchecked for the new day |
+| Step 0i | `checkGymSessions_()` | Scan calendar for ended EXERCISE events; log to Gym Log; write check-in flag |
+| Step 0j | `checkFitnessConsistency_()` / `checkFitnessTravelGap_()` | Fitness weekly target check + travel-period gap detection |
+| Step 0k | `autoRestockItems_()` / `generatePantryFlags_()` | Pantry EMA-based restock predictions + trip-overlap flags |
+| Step 0l | `inferCapacityMode_()` | Score tomorrow's calendar load → set capacity mode (light/normal/busy) |
+| Step 0m | `checkContracts_()` | Flag contracts approaching expiry or within notice period |
+| Step 0n | `checkHealthAppointments_()` | Flag overdue or upcoming DR: calendar appointments |
+| Step 0o | `checkMonthlyReview_()` | Generate monthly life review on the 1st of each month |
+| Step 0q | `checkCrossPatternFlags_()` | Evaluate 7 cross-domain compound patterns |
+| Step 1 | `getUpcomingEvents()` + `getOpenTasks()` + `getSummaries()` + `getSharedInterestLedger_()` | Collect all data for Claude |
+| Step 1b | `suggestDueDates()` | Suggest due dates for undated tasks (writes back to sheet) |
+| Step 2 | Skip check | Skip Claude call if all three data sources are simultaneously empty |
+| Step 3 | `generateFlags()` | Build Claude prompt → call claude-sonnet-4-6 → parse flags |
+| Step 4 | `writeFlags()` | Write flags to Flags tab with exact + fuzzy deduplication |
+| Step 4b | `recordFlagsGenerated_()` | Record generated flag keys in SignalLearning for engagement tracking |
+| Final | `sendSlackLog_()` | Post run summary to #vera-logs (flag counts, step warnings, elapsed time) |
+
+---
+
+## Triggers
+
+| Function | Schedule | Purpose |
+|----------|----------|---------|
+| `nightlyRun` | Daily at 11 PM | Main intelligence pipeline — all 17+ steps |
+| `morningNudge` | Daily at 7 AM | Morning briefing email with flags, tasks, and calendar summary |
+| `hourlyCheck` | Every 1 hour | Anticipator reminder rules + Weekend Planner (Wednesday 8am) |
+| `checkFlightStatuses_` | Every 15 minutes | Real-time flight status polling via AviationStack for flights within 24h |
+| `runEmailScan_` | Every 30 minutes | Travel email inbox scan (gated by `email_parser_enabled=true` in Config) |
+
+All triggers are installed by `setupTriggers()`. The function is safe to call multiple times — it deletes existing VERA triggers before recreating them to prevent duplicates.
+
+> **Warning:** `runEmailScan_` can generate up to 144 Claude API calls per day when enabled. Only enable it when actively processing a travel email backlog. Disable when done.
+
+---
+
+## Running Things by Hand (`TestBench.js`)
+
+Everything above runs on a schedule. **`TestBench.js` is the index for running
+any of it now**, from the Apps Script editor. Open the file, scan the sections,
+pick a `tb*` function from the Run dropdown, read the Execution log.
+
+It exists because the Run menu lists 200+ functions, so it is a haystack rather
+than a menu. Most entries are one-line callouts — the implementations stay in
+the files they belong to, and nothing is reimplemented here.
+
+| Section | Entries |
+|---------|---------|
+| 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbOwnerToken` (logs the owner's dashboard token, `VERA_WEB_TOKEN`), `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
+| 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
+| 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbMapsStaticKey`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbTripPlaces`, `tbFlightStatus` |
+| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbNetWorth`, `tbCareer`, `tbWishLists`, `tbProjects`, `tbProjectHealth` |
+
+### Knobs
+
+**Apps Script cannot pass arguments from the Run menu.** Anything that needs a
+date, a window or a trip is therefore a constant at the top of the file — edit
+it, save, then run.
+
+| Knob | Effect |
+|------|--------|
+| `TB_DATE` | `'yyyy-MM-dd'` — the travel-day briefing treats this as today, so you can preview a trip day that is not today. Blank = the real today. |
+| `TB_PRETRIP_HOURS` | Widens the pre-trip departure window, in hours, to reach a trip further out than the configured 48. `0` = use `pretrip_briefing_hours`. |
+| `TB_CAREER_DRY_RUN` | `true` makes `tbCareer` only preview what the one-time Career migration would copy, writing nothing. Counts only. |
+| `TB_TRIP_LABEL` | Which trip `tbGeneratePacking` / `tbGenerateDiscoveries` target. Blank = the next upcoming one. |
+| `TB_AIRPORTS` | `'TPA,IAD'` — airports for `tbLoungeAccess`, first treated as the departure. Set it to check lounge matching on a day with no trip; blank = scan the itinerary. |
+| `TB_LESSON_TRIP` | `'Orlando, Florida\|Family\|beach'` — a made-up trip for `tbTripLessons` to match lessons against, as `destination\|context\|activities`. Any part may be blank. Blank overall = list every lesson without matching. |
+
+### These send for real
+
+With two exceptions, the entries do the real thing: real emails, real Slack
+pings, real calendar events.
+
+Where a once-per-trip or once-per-week guard would otherwise make a second run
+silently do nothing, the wrapper **clears that guard first and says so in the
+log** — `tbWeekendMemoSend` clears the 6.25-day cooldown row, and
+`tbPreTripBriefing` / `tbPostTripCapture` delete the matching Flags rows,
+because `writeFlags()` fingerprints against every flag ever written. A test that
+quietly no-ops is worse than no test.
+
+The two exceptions are **`tbWeekendMemoDryRun`**, which builds the whole memo,
+logs the prompt and the finished text, and sends nothing — it would otherwise
+write anti-repeat history that skews the next real memo — and **`tbProjects`**,
+which writes a throwaway test project whose rows you should delete afterwards.
+
+---
+
+## Flag System
+
+### Urgency Levels
+
+| Level | Colour | Meaning |
+|-------|--------|---------|
+| **High** | Red tint (`#ffe4e4`) | Requires attention within 24 hours |
+| **Medium** | Yellow tint (`#fffbe4`) | Should be addressed this week |
+| **Low** | Green tint (`#e4ffe8`) | Informational; act when convenient |
+
+### Flag ID Format
+
+`FLAG-YYYYMMDD-NN` where `NN` is a random two-digit suffix (10–99). The random suffix ensures uniqueness across multiple flags generated on the same night.
+
+### Deduplication
+
+Before writing a new flag, `writeFlags()` checks all existing flags (regardless of state) against two fingerprints:
+
+1. **Exact fingerprint** — `source + flag text` combined hash. Prevents identical flags from being re-written.
+2. **Fuzzy 60% token overlap** — the flag's machine-readable `key` is normalised (month names and standalone numbers stripped), tokenised on underscores, and compared against all existing key-based fingerprints. If 60% or more tokens match, the flag is considered a date-drifted duplicate and is skipped (e.g. `verizon_bill_march_13` vs `verizon_bill_march_14`).
+
+### Lifecycle
+
+```
+created → [3 days] → escalated (Medium→High) → [7 days] → escalated (High stays High)
+                                                          ↓
+                        acknowledged / snoozed (N days) / resolved
+```
+
+Escalation is performed nightly by `escalateAgedFlags_()` (Step -1). Snoozed flags are re-surfaced automatically when `Snoozed Until` date has passed.
+
+### Flag Sources
+
+Claude AI · Pattern Recognition · Health Tracker · Contracts · Pantry · Fitness · Gym Tracker · PTO · Pre-trip Briefing · Post-trip Capture · Monthly Review · Important Dates · Pacing · Email Parser
+
+---
+
+## Travel Module
+
+### Itinerary Event Types
+
+The following types are supported in the `add_itinerary_item` chat action and `Itinerary` tab:
+
+`flight` · `train` · `cruise` · `ferry` · `hotel` · `dining` · `museum` · `beach` · `show` · `spa` · `skiing` · `snorkeling` · `theme_park` · `shopping` · `market` · `manual`
+
+### Trip Lessons — what one trip teaches the next
+
+A Florida beach trip was packed without a hat or a water bottle. Two separate
+things were wrong, and the second shapes the whole design:
+
+1. The packing prompt's beach hint listed *"swimwear, water shoes, dry bag,
+   reef-safe sunscreen"* — it named neither.
+2. That hint only fired when an **itinerary row was typed `beach`**. `activityTypes`
+   is built from itinerary row types, not from the trip's name or context. With no
+   beach-typed row, the hint never ran at all. **Fixed at the source:** the hints now
+   also read the trip's Characteristics, so a trip marked `beach` gets beach guidance
+   whatever its itinerary contains. The same applied to the ski, cruise, outdoors and
+   theme-park hints, which all had the identical weakness.
+
+The capture half already half-existed: debrief question 3 has always asked *"anything
+you'd skip or do differently?"*, and the answer went into the Shared Interests ledger
+— which `Interests.js` and the recap email read, and **nothing that plans a trip ever
+did**. The loop was built on one side only.
+
+**A lesson is a scoped rule, not a diary entry.** It lives on the `Memory Log` tab as
+a `trip_lesson` row, with two columns no other event type uses:
+
+| Scope | Fires on | |
+|---|---|---|
+| `trait:beach` | any trip marked with that **characteristic** | **prefer this** |
+| `always:*` | every trip | |
+| `context:Family Trip` | trips with that Trip Context — who you are with | |
+| `destination:florida` | trips to that place, matched either way round so stored `florida` catches `Orlando, Florida` | narrow fallback |
+| `activity:beach` | trips with an itinerary row of that `type` | narrower still |
+
+> **A lesson generalises over the kind of trip, not the place.** The hat and the water
+> bottle have nothing to do with Florida — they are about *beach trips*, and should
+> fire for Hawaii or Greece too. Scoped `destination:florida` the lesson only ever
+> helps on a return visit to the same state; scoped `activity:beach` it would have
+> missed the original trip *for exactly the same reason the hint did*, since both
+> read itinerary row types and no row was typed `beach`.
+>
+> `destination` survives because some lessons really are about a place — *"leave 30
+> min earlier for ORD"*, *"tipping works differently in Japan"*. It is the wrong
+> default, not a wrong idea. The debrief now offers `trait` first and names
+> `destination` as the narrow fallback.
+
+**Trip Characteristics** are what `trait` matches against: a `Characteristics` column
+on `TripMeta` holding `beach, city` — multi-value, because Miami is both and forcing
+one would make the field lie. The vocabulary is `beach · city · resort · ski ·
+outdoors · roadtrip · cruise · themepark`, and `normaliseTripCharacteristics_` drops
+anything outside it, since a characteristic nothing can match is indistinguishable
+from a typo.
+
+This is a **different axis from Trip Context**, which is `Anniversary Trip · Business Trip
+· Family Trip · Girls Trip · Solo Adventure` — entirely *who you are with and why*.
+A beach trip is a beach trip whether it is an anniversary or a family holiday.
+
+Set them from the chips under the trip briefing in the dashboard, or in Chat with
+`set_trip_characteristics`. Seeding is a deterministic keyword scan of **the trip
+briefing** — the field that already says what the trip is actually for, so *"beach
+week with the family"* suggests `beach`. No Claude call: explainable, free, and wrong
+only by omission, which is why it is a suggestion and the field stays editable. The
+trip *label* is deliberately never scanned — "Florida Trip" does not say beach, and
+guessing a trip's character from its name is the move that already failed.
+
+> **A blank Characteristics field is the one real hazard.** It reads exactly like
+> "not a beach trip", so every `trait:` lesson silently says *no match* for a reason
+> that has nothing to do with the lesson. It is therefore reported rather than
+> inferred: the chips say so when empty, `webGeneratePacking_` returns
+> `characteristicsMissing` with what the briefing suggests, and `tbTripLessons()`
+> prints a note.
+
+`Category` decides who reads it back: **Packing** reaches the packing prompt,
+**Dining** and **Activities** reach the recommendations prompt. **Logistics** and
+**Other** are captured and visible in chat but injected nowhere — a vague lesson
+cannot quietly distort a generator.
+
+In both prompts the block sits **above** the rules, not after them: a lesson exists
+because the generic rules already failed once. In recommendations it sits before the
+search instruction, so what you rejected shapes the search rather than being applied
+to its results. Both lookups are non-fatal — an unreadable Memory Log costs you the
+lessons, never the list.
+
+**Lessons do not age out.** `pruneMemoryLog_` deletes rows older than
+`memory_log_retention_months` (default 12) and now skips `trip_lesson`. Everything
+else in that log records something that happened and has served its purpose a year
+on; a lesson is a standing rule, and deleting it on its first birthday would silently
+undo the thing it was written for. Retire one by deleting its row.
+
+An unparseable scope is **refused at the door** — `logTripLesson_` returns an error
+Chat surfaces, rather than writing a row every reader would ignore. Treating it as
+"applies to everything" would push it into every prompt forever.
+
+Check your work with `tbTripLessons()` (set `TB_LESSON_TRIP`), which lists every
+lesson, says which would fire for a made-up trip, flags any unparseable scope, and
+prints the exact block each prompt would receive. The failure mode is otherwise
+silent: a lesson scoped to something your next trip won't match is indistinguishable
+from no lesson at all.
+
+### Pre-trip Briefing
+
+48 hours before departure (configurable via `pretrip_briefing_hours`), VERA generates a High-urgency flag containing: destination weather, all flight legs with confirmation numbers, full itinerary overview, cancellation deadlines, and packing list completion percentage. Fires exactly once per trip via the flag key deduplication system.
+
+### Travel-Day Briefing — where flight times come from
+
+The day-of email reads its itinerary from **`webGetItinerary_`**, the same
+function the dashboard's Active Travel Card uses, called with no second argument
+so its per-event timezone pass runs. That pass formats each departure in the
+event's own `start/timeZone` and each arrival in its `end/timeZone`, which is the
+only reason the card has always shown the right clock.
+
+The briefing used to run its own `CalendarApp` pull, format both ends in the
+script zone, and write `dep_scheduled` / `arr_scheduled` as `.toISOString()` —
+**UTC instants** — into metadata that the Claude prompt then labelled "local to
+the origin/destination airport". It also scraped the destination IATA code from
+the event **title only**, so `Flight to Washington (UA 1370)` yielded nothing.
+Handed a UTC instant under a false label and no destination, Claude converted the
+departure correctly and echoed the raw UTC clock for the arrival: a real email
+showed `6:47 PM (TPA) → 1:03 AM (unknown)` for the flight its own schedule
+section, four lines below, printed correctly as `18:47 – 21:03`.
+
+**Measured, not generated.** `USEFUL TO KNOW` fields that are facts are computed
+server-side and overwrite the model's answer unconditionally after the call:
+
+| Field | Source |
+|---|---|
+| `dep_local`, `arr_local` | `webGetItinerary_`'s per-zone times, formatted 12-hour |
+| `origin_code`, `dest_code` | the itinerary row — description **and** title |
+| `tz_offset_hours`, `tz_offset_label` | the two IANA zones, evaluated **on the flight date** so August gets DST and January does not |
+| `distance_miles`, `haul_category` | haversine over Open-Meteo geocoder coordinates (keyless, cached 6h) |
+| `daynight_pct_day` | still the model's estimate — clamped 0–100 |
+
+Zones come from the calendar where it supplies them and from the geocoded city
+otherwise; the calendar's are exact, so they win. City centroids carry a 10–40 km
+error, irrelevant at the rounding the email prints.
+
+**Nothing prints a number whose input was unknown.** `tz_offset_hours` stays
+`null` rather than becoming `0`, and every renderer gates on it. The dashboard's
+recovery card shows an explicit *"timezone shift unknown"* state — previously the
+`|| 0` coercion set its recovery window to zero days and the panel silently
+disappeared on every day after a flight. A known departure time also survives an
+unknown arrival: the times row is an OR, not an AND, and names the missing half.
+
+### Lounge Access — five gates, and why it was silently empty
+
+The travel-day email's `LOUNGE ACCESS` section **never rendered, on any email ever
+sent.** An orphaned paragraph of `buildTravelDayPlainText_` had been spliced into
+`getLoungePerkPrograms_`'s body, referencing `narrativeData` and `lines` — neither
+in scope. Every call threw `ReferenceError`, the function's own catch returned
+`[]`, and the section vanished. Nothing logged.
+
+That was gate 1 of five. Each one now names itself in the execution log:
+
+| Gate | Requires |
+|---|---|
+| 1 | `getLoungePerkPrograms_` returns without throwing |
+| 2 | a `Card Perks` row whose **Perk** text names a lounge program |
+| 3 | an IATA code from `metadata.origin`/`dest`, or a bare 3-letter code in **Location** |
+| 4 | Claude names a lounge it is confident about |
+| 5 | the reply fits the token budget and parses |
+
+**Gate 2 is the one to check first.** `populateCreditCardHub_` seeds exactly one
+matching perk (`CP-15, AMEX Platinum, Priority Pass`) and **aborts entirely if the
+Credit Cards tab already has a data row**, so a sheet whose cards were entered by
+hand never got it. This is a sheet fix, not a code fix.
+
+**Programs recognised** — one ordered table, so matching and labelling cannot
+disagree: Centurion Lounge · Priority Pass · Capital One Lounge · Delta Sky Club ·
+United Club · Admirals Club · Escape Lounge · Plaza Premium · Global Lounge
+Collection. Anything else containing "lounge" or "airport club" keeps its own perk
+name rather than being dropped. A perk naming two programs yields **both** — the
+old first-match cascade reported one. Airline clubs were previously invisible:
+`Delta Sky Club` contains no "lounge" substring, so a row for it was discarded in
+silence.
+
+**It never shows an empty section.** When gates 1–3 pass but no lounge can be
+named, the email lists the programs actually held plus today's airports and says
+to check the program's app. An empty section is indistinguishable from the bug
+above, which is precisely why it went unnoticed for so long.
+
+**Lounge names are grounded in search, not recalled.** They used to come purely from
+the model, and it invented them: a "Centurion Lounge Chicago O'Hare" at an airport
+that has never had one, and the same at IAD. The prompt already said *"only include
+lounges you are CONFIDENT exist — do not guess"*, and it guessed anyway, so that
+paragraph is gone; stronger wording was never going to be the fix.
+
+`searchLoungeCandidates_` runs a general `<CODE> airport lounges list` query per
+airport — the shape that surfaces pages actually enumerating lounges — then one per
+programme, phrased so a name already containing the word does not produce
+`Centurion Lounge lounge DCA airport`. General queries go first so a capped run keeps
+the informative ones; 12 queries max, cached 24h. The prompt then asks the model to
+pick from those results rather than to remember. The guard that actually holds the line is deterministic,
+in `validateLounges_`:
+
+**Two ways in, and both are needed.** A lounge is kept when it passes the cheap
+rejections **and** either:
+
+- **its name appears verbatim** in the snippets retrieved for *its own airport* —
+  `loungeNameIsGrounded_`, normalising both sides to lowercase alphanumerics. Free,
+  deterministic, and how a proper noun like `The Club DCA` gets through. Per-airport
+  on purpose: a real name from one airport must not vouch for a fabrication at
+  another; or
+- **its (programme, airport) pair verifies** — `verifyLoungeProgramAtAirport_` runs
+  one targeted search and takes a one-word `CONFIRMED` / `NOT_FOUND` / `UNKNOWN`
+  verdict, cached 24h. **`UNKNOWN` is not a yes.**
+
+The second path exists because the first had a false negative: `The Centurion Lounge
+at Ronald Reagan Washington National Airport` is real, but it is a *description*, not
+a string any snippet contains — and it was being rejected by an arbitrary 60-character
+cap before grounding even ran. The cap is now 100 and runs *after* grounding.
+
+Equally, the pair check cannot replace the string check. `Centurion Lounge` appears in
+ORD's results too, inside a list of cities that does not include Chicago — so no
+substring test can separate *"there is one here"* from *"they exist, elsewhere"*, and
+no model verdict alone should be the only guard. Keeping both is the point.
+- A name containing a parenthetical or a hedge is **not a name** — the real run
+  produced `"The Salon at O'Hare (United Polaris Lounge excluded; check current
+  PP-participating lounges)"`.
+- `hours`, `guest_limit` and `access_window` that say *"Varies by lounge"* or
+  *"check the app"* are **nulled, not printed**.
+- The airport and programme must be ones we asked about; the card always comes from
+  the Card Perks tab, never the model.
+- **The tip is cleared whenever anything was dropped.** It is written against the
+  pre-validation list, so it once recommended the very Centurion Lounge that had just
+  been removed — the same invention returning through a different field.
+
+Every drop is logged with its reason, and `tbLoungeAccess()` prints them.
+
+**Without `VERA_SEARCH_API_KEY` there are no names at all.** No candidates means no
+model call — the section shows the programmes you hold and the airports in play, and
+stops. The failure mode is silence, never fiction. The caveat line stays even when
+names verify: a search snippet is not an official feed, and hours move.
+
+**`tbLoungeAccess()`** walks the gates in order and stops at the first failure,
+printing every `Card Perks` row with its matched program or why it missed, the
+airports found and the row each came from, and Claude's raw reply before parsing
+— the only way to tell gate 4 from gate 5. Set `TB_AIRPORTS = 'TPA,IAD'` to run it
+on a day with no trip.
+
+### Flight Status Monitor
+
+`checkFlightStatuses_()` runs every 15 minutes. It scans the Itinerary tab for flight rows with a flight number, plus Google Calendar for events matching the airline-code + number pattern. From 6 hours before a flight's departure until it leaves, it queries the AviationStack API. Results are stored in the Itinerary sheet metadata column (JSON) and in Script Properties (`FLIGHT_STATUS_CACHE`). The dashboard merges both sources via `?action=flight_statuses&tripKey=...`.
+
+Spacing per flight: 1–6h before departure → every 60 minutes; under 1h → every 15 minutes (`flight_status_poll_minutes` can only space them further). A 429 rate-limit response triggers a 2-hour backoff (or a 30-day backoff if the monthly quota is exhausted).
+
+**Staying inside the plan.** Every call to AviationStack counts against the plan's month (the free plan is 100), including the empty answers it gives for a flight it has no data for yet. The System Log showed what used to happen: an empty or failed answer wasn't written down, so the 15-minute trigger asked again every run, all day (96 lookups on Oct 21, all empty), and a refresh from the dashboard skipped the spacing and the quota pause. Now:
+- **Every try is remembered.** An Itinerary row keeps `flight_attempt_at` in its Metadata; a calendar flight keeps `attemptAt` in `FLIGHT_STATUS_CACHE`. The spacing above counts from the last try, good answer or not, so a flight costs at most about 10 lookups on its travel day.
+- **↺ and the dashboard's own fill-in** wait during a backoff, and skip a flight tried in the last 10 minutes. The ↺ line says why ("Checked a few minutes ago", "paused until …", "this month's lookups are used").
+- **A monthly count.** Each real call is counted in the `AVIATIONSTACK_USED` Script Property (`yyyy-MM:n`; a new month starts at 0). At the budget, `flight_status_monthly_budget` (default 100, on Feature Flags › Flight status checks), nothing more is asked until the 1st. The System Log says so at 80% and at 100%, and the Flight status row shows "Lookups this month: N of 100".
+- `debugFlightStatusScan` tests one flight, with no second raw call.
+
+### Post-trip Capture
+
+1 day after a trip ends, VERA fires a prompt flag. Responding via chat triggers a structured 5-question debrief: restaurants worth revisiting, trip highlights, things to skip next time, Victoria's highlights, and whether to go back. The chat backend auto-logs interests, countries visited, and bucket list updates.
+
+### Email Parser
+
+`runEmailScan_()` (every 30 minutes, gated by `email_parser_enabled=true`) searches Gmail for travel confirmation emails using a broad query covering flights, hotels, reservations, e-tickets, and check-in confirmations. Emails are batched and sent to Claude for confidence scoring. Emails scoring above 0.85 are auto-processed into itinerary rows; those scoring 0.60–0.85 are held pending manual review with a flag; those below 0.60 are silently discarded. All processed emails are recorded in the `Processed Emails` tab for deduplication.
+
+### Calendar Title Prefix
+
+Trips in Google Calendar should use the prefix `TRIP:` in the event title. VERA's itinerary tab uses a `Trip Key` format of `YYYY-MM-DD|Trip Label` (the departure date + a descriptive label).
+
+---
+
+## Finance Module
+
+### Transactions Sheet
+
+Financial transaction data lives in a **separate** Google Sheet (not a tab in Life OS), identified by the Config row `transactions_sheet_id`. Data format matches the Empower CSV export: Date, Account, Description, Category, Tags, Amount. This separation keeps sensitive financial data isolated from the main Life OS sheet.
+
+### The budget tracker: Household Split (`Budget.js`)
+
+The budget tracker is read via the Config row `sat_sheet_id`. VERA reads its **Household Split** tab, by label, never by cell position; the old `Tracker` tab is retired and nothing reads it. The tab has six numbered sections, and the shared engine (`budgetModel_` / `budgetCompute_` / `budgetMatch_`, word for word in `Budget.js`, `docs/app.js` and `docs/dashboard-lite.html`) works every figure out from its inputs:
+
+1. **Paychecks**: one paycheck per person (pay cadence, gross, pre- and after-tax deductions, taxes, net deposit, paychecks a year and in a regular month). Each line counts × paychecks in a regular month. A deduction marked **Shared cost? Yes** (medical, vision) is a shared cost taken from that person's pay: it joins the shared costs and is taken off that person's Joint transfer.
+2. **Bills**: only what's paid from take-home, each with Monthly, Type (Fixed / Variable / Nice to have), For (Shared or a person), Paid by (Joint or a person), Actual or set-aside, and Category.
+3. **Split**: the first person's share of shared costs, and the shared and personal savings.
+4–6. **Summary, Emergency fund, Bonuses**: the sheet's own figures, which `budgetMatch_` checks VERA's against (within 5¢).
+
+The figures: share = shared costs × split; → Joint Checking = share − the shared costs on that person's own card or pay; take-home = net deposit × paychecks in a regular month; left over = take-home − Joint − shared savings − shared bills on own card − personal bills − personal savings; settle-up = what the first person covers of the second's share; set-asides = the bills kept as set-aside, by who pays them; required = shared fixed + variable (× 3, 6 and 9 for the emergency fund). A line's category is Config `budget_category:<line>`, else the sheet's Category, else the rules in `BG_CATS`. Groceries, Costco and cleaning are spending budgets, not bills (`BG_SPEND_RX`).
+
+**Writing back.** VERA writes only input cells, owner only, through two POST routes. Every change is found by label in the sheet as it is at that moment, checked before any is written, and refused if the cell holds a formula ("worked out by the sheet"). Each write is logged to the System Log.
+
+| Route | Body | What it does |
+|---|---|---|
+| `budget_write` | `{ edits: [{ key, field, value }] }` | Writes input cells: `<person>.gross / net / cadence / perYear / perMonth / psave / ssave`, `split`, a deduction or shared-from-pay key (per paycheck), or a bill key with `field` amount / name / type / forWho / paidBy / keptAs / category. Taxes are refused (change the net deposit). |
+| `budget_add_bill` | `{ name, amount, type, forWho, paidBy, keptAs, category }` | Adds a bill in the first empty row of the bills list, or a new row after the last bill, so the sheet's Total bills takes it in. A duplicate (same name and For) is refused. |
+
+**The HSA plan.** Config `hsa_annual_<year>` holds what you plan for a year. The sheet's HSA/FSA line stays the figure used; when a year's plan differs, Budget's Checks offers **Put $X a paycheck in the sheet** (plan ÷ paychecks a year).
+
+**Other readers.** Bills & cashflow, Accounts, the bill reminders, the morning email, Chat, Claude's nightly context (`getSATSummaries_`: each person's take-home, Joint transfer, personal bills and left over, and the household totals) and the Finance overview (`budget_tracker`, the same figures in its old shape) all read Household Split through this engine. `update_tracker_entry` is retired.
+
+Tested by `test_budget.js` and `test_budget_ui.js` (with `ctl_budget.js`), on an invented Household Split (`budget_fixture.js`).
+
+### Finance Overview Dashboard (`Finance.js`)
+
+The Finance tab in the dashboard shows: net income vs. spend (from the budget tracker’s Household Split tab, Config `sat_sheet_id`), spending by category from the Transactions sheet (Config `transactions_sheet_id`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
 ### Notifications: one home per kind (`Notify.js`, #250)
 
@@ -2206,17 +3914,11 @@ Four bento cards on the Finance tab:
 |---|---|---|
 | `bill_estimates` | — | For bills with no amount: `{ bill: { amount, count, months } }` from the last 12 months of transactions |
 
-### Budget: what comes from pay (`Budget.js` `bgWithPay_`)
+### Finances › Budget (`BudgetTab`, shared verbatim by both dashboards)
 
-`bgModel_` marks the lines taken from a paycheck before it's paid, matching `BG_FROM_PAY_RX_`: premiums, disability, AD&D and life cover, identity/legal plans, HSA and FSA. Config `from_pay:<line>` = `yes` or `no` overrides the match. A line is marked `fromPay = <person key>` when it is:
-- on a person's own fixed or nice-to-have list;
-- on the shared list, with an account naming a person (not Joint).
+The month at a glance on top: four summary figures in whole dollars (take-home together, shared costs, into Joint Checking, left over), where each paycheck goes (a bar per person with the settle-up), the household's take-home and shared costs by category (donuts), shared costs by type with the set-asides, and the checks (Joint in − out, bills missing a field, settle-up, whether VERA's figures match the sheet, the HSA plan). Below, the sheet's six sections in its order, each a row that opens and closes (remembered in `vera_budget_open`); Bills and Split start open. On a phone (under 640px) a table becomes a list (label, then the figures under the column names) and each bill a card.
 
-`budgetCompute_` (the shared engine) gives each person `fromPay`, `fromPayLines` and `takeHome` (net − fromPay). The split, the transfers and disposable are unchanged. `bsBills_` leaves these lines out of the bills (`list.fromPay` names them).
-
-The HSA deduction (`BG_HSA_RX_`) is Config `hsa_annual_<year>` ÷ 12 when that row is set, with the tracker's figure kept as `trackerAmount`. `budget_model` sends `hsaYears` (this year and next) for the Budget card's editor, which saves through `set_config_value`.
-
-Tested by `test_frompay.js` (with `ctl_frompay.js`) and `test_frompay_ui.js`.
+**Add a bill** and **✎** on a bill open a form (name, monthly, category, Type, For, Paid by, Kept as) with **What changes** worked out before saving; **✎** on a figure opens **Change a value**. Figures the sheet works out (taxes, take-home, totals) have no ✎. **What if** turns the inputs into fields (a paycheck line typed per paycheck), reruns every sum, and can **Save as a scenario** or **Write these to the sheet** (listed first, then written per paycheck or per month).
 
 ### Bills Tab
 

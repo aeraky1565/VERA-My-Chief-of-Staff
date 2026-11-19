@@ -56,7 +56,7 @@ const ss = (store, owner) => ({ getSheetByName: n => store[n] ? fakeSheet(n, sto
 const PROPS = { SAT_SHEET_ID: 'sat-test' };
 const S = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => PROPS[k] || null }) },
-  SpreadsheetApp: { openById: id => { if (id === 'sat-test') return ss({ Tracker: TRACKER }, 'tracker'); throw new Error('no such sheet'); }, flush() {} },
+  SpreadsheetApp: { openById: id => { if (id === 'sat-test') return ss({ 'Household Split': TRACKER }, 'tracker'); throw new Error('no such sheet'); }, flush() {} },
   Utilities: { getUuid: () => 'abcdef12-3456-7890-0000', formatDate: (d, tz, pat) => { const D = new Date(d);
     if (pat === 'yyyy-MM') return D.getFullYear() + '-' + p2(D.getMonth() + 1); if (pat === 'yyyy-MM-dd') return D.getFullYear() + '-' + p2(D.getMonth() + 1) + '-' + p2(D.getDate()); throw new Error(pat); } },
   Session: { getScriptTimeZone: () => 'UTC' }, LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Logger: { log() {} },
