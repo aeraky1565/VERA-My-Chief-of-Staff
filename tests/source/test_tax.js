@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Finances › Tax (Tax.js, the tax document routes, checkTaxLate_, TaxTab, the Needs you row). Pins:
 //  - Received On is stamped the first time a document leaves Not received, cleared when it goes back,
 //    and the column is named on a tab made before it;
@@ -66,7 +67,7 @@ check('the words', C.txWhen_('2026-01-24') === 'late Jan' && C.txWhen_('2026-02-
   check('the nightly flag: 14+ days late only, Medium, under tax_late_', flags.calls[0][0] === 'tax_late_' && J(Object.keys(w)) === J(['tax_late_n']) && w.tax_late_n.urgency === 'Medium' && /20 days later than last year/.test(w.tax_late_n.flag), J(w));
   sh.rows[2][6] = 'received'; flags.calls = []; c.checkTaxLate_();
   check('…once it arrives the flag isn’t wanted (so it closes)', J(Object.keys(flags.calls[0][2])) === J([]));
-  check('it runs nightly, right after the tax documents check', CODE.indexOf("nightlyStep_(ctx, 'checkTaxLate_', checkTaxLate_);") > CODE.indexOf("nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);") && CODE.indexOf("nightlyStep_(ctx, 'checkTaxLate_'") - CODE.indexOf("nightlyStep_(ctx, 'checkTaxDocuments_'") < 120);
+  check('it runs nightly, right after the tax documents check', NR__.indexOf("S('checkTaxDocuments_', ") !== -1 && NR__.indexOf("S('checkTaxLate_', ") > NR__.indexOf("S('checkTaxDocuments_', ") && NR__.indexOf("S('checkTaxLate_', ") - NR__.indexOf("S('checkTaxDocuments_', ") < 120);
 }
 {
   const sh = sheetOf([HDR.concat(['Received On']), ['o', 2024, 'W-2', 'Verdant', '', '', 'uploaded', '', 'Ahmed', '', '2025-01-24'], ['n', 2025, 'W-2', 'Verdant', '', '', 'not_received', '', 'Ahmed', '', '']]);

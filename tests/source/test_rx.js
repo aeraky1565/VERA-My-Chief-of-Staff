@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Health › Prescriptions (Rx.js, webGetPrescriptions_, PrescriptionsTab, the shared NeedsYou block). Pins:
 //  - ✓ Refilled today: Last Filled today, Refill Date + Days Supply (else the last gap; else blank);
 //  - the nightly flag 7 days ahead (Medium; High when overdue), active ones only, closed when the date moves on;
@@ -53,7 +54,7 @@ console.log('\nthe nightly flag');
   const w = calls[0][2];
   check('due within 7 days or overdue, active only, under rx_refill_', calls[0][0] === 'rx_refill_' && J(Object.keys(w).sort()) === J(['rx_refill_A', 'rx_refill_B']), J(Object.keys(w)));
   check('…Medium ahead, High overdue, with the pharmacy and Rx', w.rx_refill_A.urgency === 'Medium' && w.rx_refill_B.urgency === 'High' && /overdue by 2 days/.test(w.rx_refill_B.flag) && /Corner Pharmacy · Rx 445566/.test(w.rx_refill_B.reason));
-  check('it runs nightly after the tax checks', CODE.indexOf("nightlyStep_(ctx, 'checkRefills_', checkRefills_);") > CODE.indexOf("nightlyStep_(ctx, 'checkTaxLate_'"));
+  check('it runs nightly, with what you’d notice missing (group 1)', /S\('checkRefills_', 1, function\(\) \{ checkRefills_\(\); \}\)/.test(NR__));
 }
 
 console.log('\nher lite Today');

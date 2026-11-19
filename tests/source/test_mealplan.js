@@ -386,7 +386,7 @@ console.log('\nThe web layer');
 
 console.log('\nThe Saturday seeding job is gone');
 {
-  check('nightlyRun no longer calls it', CODE.indexOf("nightlyStep_(ctx, 'resetWeekMealPlan_'") === -1,
+  check('nightlyRun no longer calls it', CODE.indexOf("nightlyStep_(ctx, 'resetWeekMealPlan_'") === -1 && require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8').indexOf('resetWeekMealPlan_') === -1,
         'it seeded seven blank rows for next week, and there are no blank rows to seed');
   check('…and the function went with it', MP.indexOf('function resetWeekMealPlan_') === -1,
         'a nightly step that can only append empty rows is not worth the slot');

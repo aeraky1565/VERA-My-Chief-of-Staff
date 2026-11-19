@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Home Front › Warranties & Service (HomeSteward.js + HomestewardView). Pins:
 //  - receipt and manual links: written to their own columns (named on first use), only http(s),
 //    refused on a stale row; a new item can bring them;
@@ -75,7 +76,7 @@ console.log('\noverdue: a flag and a Task, and Snooze');
   check('…so the flag goes (it no longer asks for one)', !c.__flags.wanted.home_service_overdue_hvac_filter && !!c.__flags.wanted.home_service_overdue_gutters);
   check('recording the service marks its Task Done', c.hsSyncTask_('Gutters', '', true) === 'done' && tasks.grid[2][4] === 'Done' && tasks.grid[2][8] === '2026-11-16');
   check('…which the Record service route does', /hsSyncTask_\(String\(sheet\.getRange\(rowNum, 1\)\.getValue\(\) \|\| ''\), '', true\)/.test(fnSrc(WEB, 'webRecordService_')));
-  check('the nightly step runs after the warranty one', /nightlyStep_\(ctx, 'checkWarrantiesExpiring_', checkWarrantiesExpiring_\);\n\s*nightlyStep_\(ctx, 'checkHomeServiceOverdue_', checkHomeServiceOverdue_\);/.test(CODE));
+  check('the nightly step runs after the warranty one', NR__.indexOf("S('checkWarrantiesExpiring_', ") !== -1 && NR__.indexOf("S('checkHomeServiceOverdue_', ") > NR__.indexOf("S('checkWarrantiesExpiring_', "));
 }
 
 console.log('\nthe order and the counters');

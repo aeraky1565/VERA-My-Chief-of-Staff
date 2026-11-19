@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // Home Front › Neighborhood (Neighborhood.js, the flyer routes in WebApp.js, NeighborhoodWatchView). Pins:
 //  - Going puts the flyer on the Joint Chaos calendar once; any other answer takes it off;
 //    no date or no Joint Chaos calendar says so, and the answer is still saved;
@@ -84,7 +85,7 @@ console.log('\nclearing old flyers');
   const sh = fakeSheet([HEAD, ['a', 'Old', '', '2026-10-01', '', '', '', 'false'], ['b', 'Recent', '', '2026-10-20', '', '', '', 'false'], ['c', 'Yearly', '', '2025-11-01', '', '', '', 'true'], ['d', 'No date', '', '', '', '', '', 'false']]);
   const c = ctx(sh);
   check('more than 30 days past goes; recurring and undated stay', c.purgeOldFlyers_().removed === 1 && J(sh.grid.slice(1).map(r => r[0])) === J(['b', 'c', 'd']));
-  check('the nightly step runs it', /nightlyStep_\(ctx, 'purgeOldFlyers_', purgeOldFlyers_\);/.test(CODE));
+  check('the nightly step runs it', /S\('purgeOldFlyers_', \d, function\(\) \{ purgeOldFlyers_\(\); \}\)/.test(NR__));
 }
 
 console.log('\nthe screen’s groups');

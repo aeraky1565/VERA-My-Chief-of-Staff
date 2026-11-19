@@ -1,3 +1,4 @@
+const NR__ = require('fs').readFileSync(require('path').join(process.env.VERA_ROOT || require('path').join(__dirname, '..', '..'), 'NightlyRunner.js'), 'utf8');   // the night's one list (#256)
 // People › Important Dates (GiftNudge.js, checkNoGiftIdea_, DatesHome). Pins:
 //  - a Low flag for a birthday or anniversary within 14 days with no open gift idea for the person;
 //    given ideas don't count; it runs nightly after the important dates check;
@@ -30,7 +31,7 @@ const IDEAS = [{ Person: 'Victoria', Idea: 'Weekend away' }, { Person: 'Kit', Id
   c.checkNoGiftIdea_();
   const w = calls[0][2];
   check('within 14 days, no open idea: Sam and Kit (Kit’s idea was given); not Victoria (has one), not Jo (20 d), not the dentist', calls[0][0] === 'no_gift_' && J(Object.keys(w).map(k => k.split('_')[2]).sort()) === J(['d1', 'd5']) && w[Object.keys(w)[0]].urgency === 'Low', J(Object.keys(w)));
-  check('it runs nightly after the important dates', CODE.indexOf("nightlyStep_(ctx, 'checkNoGiftIdea_', checkNoGiftIdea_);") > CODE.indexOf("nightlyStep_(ctx, 'checkImportantDates_', checkImportantDates_);"));
+  check('it runs nightly after the important dates', NR__.indexOf("S('checkImportantDates_', ") !== -1 && NR__.indexOf("S('checkNoGiftIdea_', ") > NR__.indexOf("S('checkImportantDates_', "));
 }
 
 console.log('\nthe screen’s numbers');
