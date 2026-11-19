@@ -2291,7 +2291,12 @@ function webGetTrackerBudget_() {
     S[k + 'CardCovered'] = p.ownCards; S[k + 'LeftOver'] = p.disposable;
   });
   S.totalShared = c.shared.total; S.totalSharedFixed = bgRound_(c.shared.fixed + c.shared.variable); S.totalSharedNiceToHave = c.shared.nice;
-  S.jointCovered = c.shared.joint; S.split = c.split; S.settleUp = c.settleUp;
+  S.jointCovered = c.shared.joint; S.split = c.split; S.settleUp = c.settleUp; S.sharedSavings = c.shared.savings;
+  // Each person as the sheet's Split section lays it out, for the transfer calculator.
+  out.people = c.people.map(function(p) { return { key: p.key, name: p.name, share: p.share, contribution: p.contribution, fromPay: p.fromPay, ownCard: p.ownCard,
+    checking: p.checking, savings: p.savings }; });
+  // The Joint checkpoints, month by month (a renewal only in its month, at its full payment).
+  try { var when = bsWhen_(); out.checkpoints = bsCheckpoints_(c, sched, when.month, 12, when.today); } catch (e) { out.checkpoints = []; Logger.log('checkpoints: ' + e.message); }
   return out;
 }
 

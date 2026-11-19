@@ -29,7 +29,7 @@ function extractFn(src, name) {
 const E = vm.createContext({});
 vm.runInContext(APP.slice(APP.indexOf('// ---- BudgetEngine'), APP.indexOf('// ---- /BudgetEngine ----')), E);
 vm.runInContext(BS.slice(BS.indexOf('var BS_TAB_'), BS.indexOf('// ---- reading and writing')), E);
-['bsWhen_', 'bsRowDue_', 'bsTogglePaidDate_', 'bsSetPaid_', 'webSaveBillSchedule_'].forEach(n => vm.runInContext(extractFn(BS, n), E));
+['bsWhen_', 'bsRowDue_', 'bsTogglePaidDate_', 'bsSetPaid_', 'webSaveBillSchedule_', 'bsTextCells_'].forEach(n => vm.runInContext(extractFn(BS, n), E));
 vm.runInContext(extractFn(NOTIFY, 'eveningUnpaid_'), E);
 const due = (o, m) => J(E.bsDueDates_(o, m));
 
@@ -62,6 +62,16 @@ const b = n => L.bills.find(x => x.line === n) || {};
 check('each bill says how often, and whether it’s due this month', b('Rent').cadence === 'monthly' && b('Rent').dueThisMonth === true && b('Internet').cadence === 'quarterly' && b('Internet').dueThisMonth === false && b('Internet').next === '2026-12-09', J([b('Internet').cadence, b('Internet').dueThisMonth, b('Internet').next]));
 check('every 2 weeks: both dates this month, and which are paid', J(b('Utilities - Electric').dueDates) === '["2026-11-06","2026-11-20"]' && J(b('Utilities - Electric').paidDates) === '["2026-11-06"]');
 check('the monthly share: a quarterly bill a third, every 2 weeks 26/12', b('Internet').monthlyShare === Math.round(b('Internet').amount / 3 * 100) / 100 && b('Utilities - Electric').monthlyShare === Math.round(b('Utilities - Electric').amount * 26 / 12 * 100) / 100);
+check('the sheet’s Monthly is a month’s worth: a quarterly payment is 3 of them, every 2 weeks 12/26 of one', b('Internet').monthly === 60 && b('Internet').amount === 180 && b('Internet').monthlyShare === 60
+  && b('Utilities - Electric').amount === 41.54 && b('Utilities - Electric').monthlyShare === 90 && b('Rent').amount === 2000, J([b('Internet').amount, b('Utilities - Electric').amount]));
+const CP = vm.runInContext('bsCheckpoints_(C, SCHED, "2026-11", 3, "2026-11-19")', E);
+const win = (m, w) => CP[m].windows.find(x => x.window === w);
+check('checkpoints, month by month: three months from this one', J(CP.map(x => x.month)) === '["2026-11","2026-12","2027-01"]');
+check('November: Rent and the first electric payment by day 1, the plan and the second by day 15', win(0, '1–7').due === 2041.54 && win(0, '8–20').due === 191.54 && win(0, '21+').due === 0
+  && win(0, '1–7').need === 2233.08 && J(win(0, '8–20').items.map(i => i.line + '@' + i.day)) === '["Family Plan Payment@12","Utilities - Electric@20"]', J(CP[0].windows));
+check('December: the quarterly Internet is in, at its full payment, and named as a renewal', win(1, '8–20').due === 371.54 && win(1, '8–20').items.some(i => i.line === 'Internet' && i.amount === 180 && i.cadenceLabel === 'Quarterly')
+  && J(CP[1].renewals) === '["Internet"]' && J(CP[0].renewals) === '[]', J(CP[1]));
+check('a bill with no due day is listed apart', J(CP[0].undated) === '["Dog Walker"]');
 const expectDue = L.bills.reduce((s, x) => s + (x.dueThisMonth ? (x.amount || 0) * Math.max(1, x.dueDates.length) : 0), 0);
 check('due this month leaves out the quarterly bill and counts both electric payments', L.total === Math.round(expectDue * 100) / 100 && L.total !== L.bills.reduce((s, x) => s + (x.amount || 0), 0), J([L.total, expectDue]));
 check('…and the monthly share is every bill spread over the year', L.monthlyShare === Math.round(L.bills.reduce((s, x) => s + (x.monthlyShare || 0), 0) * 100) / 100);
@@ -90,7 +100,10 @@ check('paid this month: only when every date this month is ticked', E.bsPaidFor_
 console.log('\nSaving how often');
 {
   const rows = [['Internet', 9, '', false, '', 'bill', '', '2026-11', '', '']], saved = [];
-  Object.assign(E, { tiRows_: () => rows, bsSheet_: () => ({ appendRow: r => saved.push(r), getRange: () => ({ setValues: v => saved.push(v[0]) }) }) });
+  // the row is written as columns 1–7, then Paid / Cadence / Starts as text: saved[0] is the whole row
+  let part = null; const fmts = [];
+  Object.assign(E, { tiRows_: () => rows, bsSheet_: () => ({ appendRow: r => saved.push(r), getLastRow: () => 2,
+    getRange: (r, c) => { const g = { setNumberFormat: f => { fmts.push(c + ':' + f); return g; }, setValues: v => { if (c === 1) part = v[0].slice(); else { saved.push((part || []).concat(v[0])); part = null; } return g; } }; return g; } }) });
   check('quarterly without a month is refused', E.webSaveBillSchedule_({ line: 'Internet', dueDay: 9, cadence: 'quarterly' }).error === 'Pick when it’s next due.');
   check('every 2 weeks without a date is refused', E.webSaveBillSchedule_({ line: 'Internet', cadence: 'biweekly', starts: '2026-11' }).error === 'Pick a date you paid it.');
   const r = E.webSaveBillSchedule_({ line: 'Internet', dueDay: 9, cadence: 'quarterly', starts: '2026-12-01' });
@@ -99,6 +112,7 @@ console.log('\nSaving how often');
   check('switching to every 2 weeks clears a month-style Paid', saved[0][7] === '' && saved[0][8] === 'Bi-weekly' && saved[0][9] === '2026-11-06', J(saved[0]));
   saved.length = 0; E.webSaveBillSchedule_({ line: 'Internet', dueDay: 9 });
   check('monthly leaves Cadence and Starts blank (existing rows unchanged)', saved[0][8] === '' && saved[0][9] === '', J(saved[0]));
+  check('Paid, Cadence and Starts are set to plain text before they’re written', fmts.length >= 3 && fmts.every(f => f === '8:@'), J(fmts));
 }
 
 console.log('\nEvery reader that means “due this month”');

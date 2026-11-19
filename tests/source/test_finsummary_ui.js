@@ -43,9 +43,19 @@ const CHECKIN = { ok: true, today: '2026-11-02', quarter: '2026-Q4', month: '202
   unavailable: {} };
 const GROC = { ok: true, ym: '2026-11', today: '2026-11-02', total: 612, budget: 800, byWho: {}, cards: [], runs: [], pace: { spent: 612, budget: 800, left: 188, daysLeft: 28, lastMonthByNow: 540 }, stores: [] };
 const BILLS = { ok: true, configured: true, bills: [], cards: [], budgetLines: [], total: 0, timeline: { events: [], windows: [{ window: '1–7', need: 2300, due: 2000 }, { window: '8–20', need: 300, due: 300 }, { window: '21+', need: 0, due: 0 }], undated: [], transferDay: 1, opening: 0, low: null } };
-const OLD_TB = { ok: true, configured: true, sharedFixed: [{ name: 'Rent', amount: 2000, paidBy: 'Joint', dueDay: 1 }, { name: 'Internet', amount: 60, paidBy: 'Joint', dueDay: 13 }], sharedNiceToHave: [],
-  ahmedFixed: [], ahmedNiceToHave: [], victoriaFixed: [], victoriaNiceToHave: [], ahmedIncome: { gross: 0, net: 0 }, victoriaIncome: { gross: 0, net: 0 },
-  summary: { totalShared: 2060, ahmedContribution: 1236, victoriaContribution: 824, ahmedTransferChecking: 1236, victoriaTransferChecking: 824, ahmedTransferSavings: 600, victoriaTransferSavings: 400 } };
+const OLD_TB = { ok: true, configured: true, tab: 'Household Split',
+  summary: { totalShared: 2060, split: 0.6, settleUp: 120, sharedSavings: 1000 },
+  people: [{ key: 'pat', name: 'Pat', share: 0.6, contribution: 1236, fromPay: 100, ownCard: 20, checking: 1116, savings: 600 },
+           { key: 'sam', name: 'Sam', share: 0.4, contribution: 824, fromPay: 0, ownCard: 200, checking: 624, savings: 400 }],
+  checkpoints: [
+    { month: '2026-11', total: 2060, renewals: [], undated: ['Dog Walker'], windows: [
+      { window: '1–7', due: 2000, need: 2060, items: [{ line: 'Rent', day: 1, amount: 2000, cadence: 'monthly', cadenceLabel: 'Monthly' }] },
+      { window: '8–20', due: 60, need: 60, items: [{ line: 'Internet', day: 13, amount: 60, cadence: 'monthly', cadenceLabel: 'Monthly' }] },
+      { window: '21+', due: 0, need: 0, items: [] }] },
+    { month: '2026-12', total: 2440, renewals: ['Car Insurance'], undated: [], windows: [
+      { window: '1–7', due: 2000, need: 2440, items: [{ line: 'Rent', day: 1, amount: 2000, cadence: 'monthly', cadenceLabel: 'Monthly' }] },
+      { window: '8–20', due: 60, need: 440, items: [{ line: 'Internet', day: 13, amount: 60, cadence: 'monthly', cadenceLabel: 'Monthly' }] },
+      { window: '21+', due: 380, need: 380, items: [{ line: 'Car Insurance', day: 22, amount: 380, cadence: 'semiannual', cadenceLabel: 'Semi-annual' }] }] }] };
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
@@ -106,11 +116,24 @@ const OLD_TB = { ok: true, configured: true, sharedFixed: [{ name: 'Rent', amoun
       check(L + ': the tiles: net worth with plan status, cash with the low and floor, spending (expected), goals',
         /^Net worth \$800,000 Plan: Green/.test(tiles[0]) && tiles[1] === 'Cash & CDs $90,000 12-month low $41,500 (Jun 27) · floor $20,000' && /^Spent this month \$3,150 expected · nothing uploaded yet/.test(tiles[2]) && tiles[3] === 'Goals $40,000 set aside 1 of 3 done', JSON.stringify(tiles));
       const sums = await page.$$eval('#fsprobe .fsu-line-sum', ns => ns.map(n => n.textContent));
-      check(L + ': one line each: transfers from the Budget, groceries, checkpoints', sums[0] === 'Pat → AMEX Checking $1,690, Savings $600 · Sam → AMEX Checking $650, Savings $400' && sums[1] === '$612 of $800 · $188 left' && sums[2] === 'keep $2,300 from day 1 · keep $300 from day 8', JSON.stringify(sums));
+      check(L + ': one line each: transfers from the Budget, groceries, checkpoints', sums[0] === 'Pat → Joint $1,690, savings $600 · Sam → Joint $650, savings $400' && sums[1] === '$612 of $800 · $188 left' && sums[2] === 'keep $2,300 from day 1 · keep $300 from day 8', JSON.stringify(sums));
       await page.evaluate(() => document.querySelectorAll('#fsprobe .fsu-details').forEach(b => b.click())); await wait(500);
       const full = await page.$$eval('#fsprobe .fsu-full', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim().slice(0, 120)));
-      check(L + ': Details opens the dashboard’s own cards, unchanged', full.length === 3 && (kind === 'lite' ? /Monthly Transfers/.test(full[0]) : /Monthly Transfer Calculator/.test(full[0]))
-        && /Groceries · November 2026/.test(full[1]) && (kind === 'lite' ? /Joint Account Balance Checkpoints/i.test(full[2]) : /Minimum Joint Balance Checkpoints/i.test(full[2])), JSON.stringify(full));
+      check(L + ': Details opens the transfer calculator, groceries and the checkpoints', full.length === 3 && /Monthly transfers/.test(full[0]) && /Groceries · November 2026/.test(full[1]) && /Joint balance checkpoints/i.test(full[2]), JSON.stringify(full));
+      const tr = await txt('.jp-transfer');
+      check(L + ': transfers from Household Split: the sheet’s split, each share, less from pay and own card, → Joint and savings, the settle-up',
+        /split 60 \/ 40/.test(tr) && /Share of shared costs \(\$2,060 in all\) \$1,236 \$824/.test(tr) && /taken from your pay −\$100 —/.test(tr) && /own card −\$20 −\$200/.test(tr)
+        && /→ Joint Checking, a month \$1,116 \$624/.test(tr) && /→ Shared savings, a month \$600 \$400/.test(tr) && /Pat covers \$120 of Sam’s share/.test(tr), tr);
+      const ck = () => txt('.jp-checkpoints');
+      let c1 = await ck();
+      check(L + ': checkpoints: this month first, a marker per window with what Joint must keep, a bill with no due day named',
+        /November 2026/.test(c1) && /By the 1st bills due days 1–7 Rent 1st \$2,000 Keep in Joint \$2,060/.test(c1) && /By the 8th .*Internet 13th \$60 Keep in Joint \$60/.test(c1) && /No due day yet: Dog Walker/.test(c1), c1);
+      check(L + ': the months, a renewal month starred', JSON.stringify(await page.$$eval('#fsprobe .jp-month', ns => ns.map(n => n.innerText.trim()))) === JSON.stringify(['Nov', 'Dec ★']));
+      await page.evaluate(() => Array.from(document.querySelectorAll('#fsprobe .jp-month'))[1].click()); await wait(150);
+      c1 = await ck();
+      check(L + ': in a renewal month the full payment is in its window, and every marker before it keeps more',
+        /December 2026/.test(c1) && /★ This month: Car Insurance/.test(c1) && /By the 21st .*Car Insurance 22nd Semi-annual \$380 Keep in Joint \$380/.test(c1) && /By the 1st .*Keep in Joint \$2,440/.test(c1) && /By the 8th .*Keep in Joint \$440/.test(c1), c1);
+      check(L + ': on a phone the markers stack', width < 640 ? await page.$eval('#fsprobe .jp-markers', n => getComputedStyle(n).gridTemplateColumns.split(' ').length === 1) : await page.$eval('#fsprobe .jp-markers', n => getComputedStyle(n).gridTemplateColumns.split(' ').length === 3));
       check(L + ': …and only that card (no bills strip, no budget health)', !/due soon/i.test(full.join(' ')) && (kind === 'full' || !/Based on Tracker/.test(full.join(' '))));
       const att = await page.$$eval('#fsprobe .fsu-att', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': Needs attention, soonest first, and what couldn’t be checked', att.length === 2 && /Internet \$60 due in 2 days Nov 4/.test(att[0]) && /CD A matures/.test(att[1]) && /Couldn’t check: card fees\./.test(await txt('.fsu-att-missing')), JSON.stringify(att));

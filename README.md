@@ -3920,6 +3920,14 @@ The month at a glance on top: four summary figures in whole dollars (take-home t
 
 **Add a bill** and **✎** on a bill open a form (name, monthly, category, Type, For, Paid by, Kept as) with **What changes** worked out before saving; **✎** on a figure opens **Change a value**. Figures the sheet works out (taxes, take-home, totals) have no ✎. **What if** turns the inputs into fields (a paycheck line typed per paycheck), reruns every sum, and can **Save as a scenario** or **Write these to the sheet** (listed first, then written per paycheck or per month).
 
+### Finance overview: transfers and Joint checkpoints (`JointPlan`, shared verbatim by both dashboards)
+
+Both come from Household Split through the `budget_tracker` route (`webGetTrackerBudget_`, now built on the Budget engine). **Transfers**: each person's share of shared costs (the sheet's split; change it on Budget), less what's taken from their pay and what's on their own card, → Joint Checking and → shared savings, and the settle-up. **Checkpoints**: month by month for the next 12 (`bsCheckpoints_`, BillSchedule.js), the Joint bills due by the 1st (days 1–7), the 8th (8–20) and the 21st (21+), and what Joint must keep from each day to the month's end. A month with a quarterly, twice-a-year or yearly bill is starred and shows its full payment. Cadence comes from the Bills page, so the two never disagree.
+
+**Amounts.** Household Split's Monthly column is a month's worth: a quarterly bill's payment is 3 of them, twice a year 6, yearly 12, every 2 weeks 12/26 (`bsWithCadence_`, `fromMonthly`). Bills shows the payment with "$X a month" under it.
+
+**Bill Schedule cells.** Paid, Cadence and Starts are written as plain text, because Google Sheets turns a typed "2026-08" into a date; a cell that already became a date reads back as yyyy-MM (`bsCellText_`). A row saved under an old tracker name ("Utilities - Water") is renamed to the current one ("Water") the first time the bills are read (`bsRenamePlan_` / `bsMigrateNames_`, logged).
+
 ### FSA & HSA: the HSA is a plan, put in a paycheck at a time (`HealthAccounts.js` `haHsaView_`)
 
 On an HSA row, **You** and **Employer** are the plan for the year. The money goes in a paycheck at a time, so what's in **so far** is the plan × the paychecks paid this year ÷ paychecks a year (26, or Config `hsa_paychecks_per_year`): nothing before the plan year starts, all of it after it ends. The card (and the Finance overview's FSA & HSA line) shows what's in so far of what's planned, the paychecks so far and what's still to come, and the room the plan leaves under the yearly limit. **Update balance** on an HSA changes only the balance; the plan is changed with **Edit**.

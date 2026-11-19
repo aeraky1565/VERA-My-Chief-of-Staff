@@ -99,9 +99,21 @@ check('card payments sit apart, never in the bills or their total', J(L.cards.ma
 
 check('a tracker line marked as a card payment leaves the bills', (() => { const l = run('bsBills_(C, bsScheduleMap_([["Subscription - Stream", "", "", "", "Stream Card", "card payment", ""]]))');
   return !l.bills.some(b => b.line === 'Subscription - Stream') && l.total === 2340 && l.cards.some(c => c.line === 'Subscription - Stream'); })());
+console.log('\nthe sheet’s dates, and names saved under the old tracker');
+check('a month the sheet turned into a date reads back as yyyy-MM; a payment date as yyyy-MM-dd', run('bsCellText_(new Date(2026, 7, 1))') === '2026-08' && run('bsCellText_(new Date(2026, 10, 6), true)') === '2026-11-06');
+check('“2026-8” pads to 2026-08; text stays as typed; a forced-text apostrophe is dropped', run('bsCellText_("2026-8")') === '2026-08' && run('bsCellText_("2026-11-06,2026-11-20")') === '2026-11-06,2026-11-20' && run('bsCellText_("\'2026-03")') === '2026-03');
+{ const m = run('bsScheduleMap_(R)', { R: [['Water', '', 'Joint Checking', true, '', 'bill', '', new Date(2026, 10, 1), 'Quarterly', new Date(2026, 7, 1)]] });
+  check('a quarterly bill whose start month became a date still has its start and its paid month', m.water.starts === '2026-08' && m.water.paid === '2026-11' && m.water.cadence === 'quarterly', JSON.stringify(m.water)); }
+{ const plan = run('bsRenamePlan_(N, L)', { N: ['Rent', 'Family Plan Payment', 'Utilities - Water', 'Utilities - Electric', 'Renter Insurance', 'Old Gym'], L: ['Rent', 'Phone family plan', 'Phone plan credit', 'Water', 'Electric', 'Renter insurance', 'Internet'] });
+  check('old names find their bill: Utilities - Water → Water, Family Plan Payment → Phone family plan', JSON.stringify(plan.map(x => x.from + '→' + x.to)) === JSON.stringify(['Family Plan Payment→Phone family plan', 'Utilities - Water→Water', 'Utilities - Electric→Electric']), JSON.stringify(plan)); }
+check('a name with its own row, or two possible matches, isn’t renamed', run('bsRenamePlan_(N, L).length', { N: ['Utilities - Water', 'Water'], L: ['Water'] }) === 0 && run('bsRenamePlan_(N, L).length', { N: ['Car Insurance'], L: ['Car insurance - BMW', 'Car insurance - Mercedes'] }) === 0);
+check('saving a bill writes Paid, Cadence and Starts as text, so the sheet keeps 2026-08', /bsTextCells_\(sheet, at\)\.setValues\(\[\[row\[7\], row\[8\], row\[9\]\]\]\)/.test(BS) && /r\.setNumberFormat\('@'\)/.test(BS));
+check('a paid tick is written as text and read back through bsCellText_', /var now = paid == null \? bsCellText_\(rows\[i\]\[7\]\) !== month/.test(BS) && /bsTextCells_\(sheet, i \+ 2\); sheet\.getRange\(i \+ 2, 8\)\.setValue\(now \? month : ''\)/.test(BS));
+check('the old names are renamed when the bills are read', /bsMigrateNames_\(computed\);/.test(BS));
+
 console.log('\nJoint Checking through the month');
 let T = run('bsTimeline_(bsBills_(C, {}), C, { transferDay: 1, opening: 0 })');
-check('transfers in, Joint bills out, a bill’s money back in before it goes out gross, with the running balance', J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)) === J(['1:Pat → AMEX Checking:1690', '1:Sam → AMEX Checking:2340', '1:Rent:340', '12:Family Plan Payment: money back, before it’s due:390', '12:Family Plan Payment:190', '13:Internet:130', '15:Utilities - Electric:40']), J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)));
+check('transfers in, Joint bills out, a bill’s money back in before it goes out gross, with the running balance', J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)) === J(['1:Pat → Joint Checking:1690', '1:Sam → Joint Checking:2340', '1:Rent:340', '12:Family Plan Payment: money back, before it’s due:390', '12:Family Plan Payment:190', '13:Internet:130', '15:Utilities - Electric:40']), J(T.events.map(e => e.day + ':' + e.what + ':' + e.balance)));
 check('only Joint bills (a bill on someone’s own card isn’t here)', !T.events.some(e => /Medical|Stream/.test(e.what)));
 check('the checkpoint windows: what’s due in each and what to keep from its first day', J(T.windows.map(w => [w.window, w.due, w.need])) === J([['1–7', 2000, 2300], ['8–20', 300, 300], ['21+', 0, 0]]), J(T.windows));
 check('the low point, and the Joint bills with no due day', T.low.day === 15 && T.low.balance === 40 && J(T.undated) === J(['Dog Walker']));

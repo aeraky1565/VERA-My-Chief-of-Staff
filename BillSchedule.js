@@ -110,17 +110,60 @@ function bsPaidFor_(entry, month) {
 function bsMoney_(n) { return '$' + Math.abs(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 /** Pure: Bill Schedule rows → { '<line, lower case>': entry }. */
+/**
+ * Pure: a Paid or Starts cell as text. Google Sheets turns a typed "2026-08" into a date, so a cell
+ * can come back as a Date; it reads as yyyy-MM (or yyyy-MM-dd when `day`). "2026-8" pads to "2026-08".
+ * A leading apostrophe (text forced in the sheet) is dropped.
+ */
+function bsCellText_(v, day) {
+  if (v && Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    var ym = v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0');
+    return day ? ym + '-' + String(v.getDate()).padStart(2, '0') : ym;
+  }
+  return bsText_(v).replace(/^'/, '').split(',').map(function(s) {
+    s = bsText_(s); var m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/);
+    return m ? m[1] + '-' + m[2].padStart(2, '0') + (m[3] ? '-' + m[3].padStart(2, '0') : '') : s;
+  }).join(',');
+}
+
 function bsScheduleMap_(rows) {
   var out = {};
   (rows || []).forEach(function(r) {
     var line = bsText_(r[0]);
     if (!line) return;
-    var k = bsText_(r[5]);
+    var k = bsText_(r[5]), cad = bsCadence_(r[8]);
     out[line.toLowerCase()] = { line: line, dueDay: bsDay_(r[1]), account: bsText_(r[2]), autopay: bsBool_(r[3]),
-      cardLink: bsText_(r[4]), kind: /card/i.test(k) ? 'card payment' : /calendar/i.test(k) ? 'calendar' : 'bill', notes: bsText_(r[6]), paid: bsText_(r[7]),
-      cadence: bsCadence_(r[8]), starts: bsText_(r[9]).slice(0, 10) };
+      cardLink: bsText_(r[4]), kind: /card/i.test(k) ? 'card payment' : /calendar/i.test(k) ? 'calendar' : 'bill', notes: bsText_(r[6]), paid: bsCellText_(r[7], cad === 'biweekly'),
+      cadence: cad, starts: bsCellText_(r[9], cad === 'biweekly').slice(0, 10) };
   });
   return out;
+}
+
+/**
+ * Pure: Bill Schedule rows saved under a name the budget tracker no longer uses → the current name.
+ * A row with no bill of its name matches a current bill when the words of one hold the other's
+ * ("Utilities - Water" → "Water") or they share two words ("Family Plan Payment" → "Phone family
+ * plan"), and only when that's the only match both ways and the current bill has no row of its own.
+ * → [{ index, from, to }]
+ */
+var BS_NAME_SKIP_ = { utilities: 1, utility: 1, the: 1, and: 1, bill: 1, bills: 1 };
+function bsRenamePlan_(rowNames, lines) {
+  var words = function(s) { return bsText_(s).toLowerCase().replace(/\(.*?\)/g, ' ').split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !BS_NAME_SKIP_[w]; }); };
+  var low = {}; lines.forEach(function(l) { low[bsText_(l).toLowerCase()] = 1; });
+  var had = {}; rowNames.forEach(function(n) { had[bsText_(n).toLowerCase()] = 1; });
+  var fits = function(a, b) { var A = words(a), B = words(b); if (!A.length || !B.length) return false;
+    var inB = A.filter(function(w) { return B.indexOf(w) !== -1; }).length;
+    return inB === A.length || inB === B.length || inB >= 2; };
+  var plan = [];
+  rowNames.forEach(function(n, i) {
+    var k = bsText_(n).toLowerCase(); if (!k || low[k]) return;
+    var hits = lines.filter(function(l) { return !had[bsText_(l).toLowerCase()] && fits(n, l); });
+    if (hits.length !== 1) return;
+    var back = rowNames.filter(function(m) { var mk = bsText_(m).toLowerCase(); return mk && !low[mk] && fits(m, hits[0]); });
+    if (back.length !== 1) return;
+    plan.push({ index: i, from: bsText_(n), to: hits[0] });
+  });
+  return plan;
 }
 
 /** Pure: the first two words of a name, for folding a credit into the bill it belongs to. */
@@ -145,12 +188,12 @@ function bsBills_(computed, schedule, when) {
     if (s.kind === 'card payment') return;
     var due = s.dueDay || x.dueDay || null;
     bills.push({ line: x.name, amount: x.amount, gross: x.amount, credit: 0, account: s.account || x.account, trackerAccount: x.account,
-      dueDay: due, dueFrom: s.dueDay ? 'set' : (x.dueDay ? 'name' : ''), autopay: !!s.autopay, notes: s.notes || '', category: x.category, kind: x.kind });
+      dueDay: due, dueFrom: s.dueDay ? 'set' : (x.dueDay ? 'name' : ''), autopay: !!s.autopay, notes: s.notes || '', category: x.category, kind: x.kind, fromMonthly: true });
   });
   credits.forEach(function(c) {
     var into = bills.filter(function(b) { return bsStem_(b.line) === bsStem_(c.name); })[0];
     if (into) { into.credit = Math.round((into.credit - c.amount) * 100) / 100; into.amount = Math.round((into.amount + c.amount) * 100) / 100; }
-    else bills.push({ line: c.name, amount: c.amount, gross: c.amount, credit: 0, account: c.account, trackerAccount: c.account, dueDay: c.dueDay, dueFrom: c.dueDay ? 'name' : '', autopay: false, notes: '', category: c.category, kind: c.kind });
+    else bills.push({ line: c.name, amount: c.amount, gross: c.amount, credit: 0, account: c.account, trackerAccount: c.account, dueDay: c.dueDay, dueFrom: c.dueDay ? 'name' : '', autopay: false, notes: '', category: c.category, kind: c.kind, fromMonthly: true });
   });
   var trackerNames = {};
   lines.forEach(function(x) { trackerNames[x.name.toLowerCase()] = 1; });
@@ -178,7 +221,13 @@ function bsWithCadence_(b, s, when) {
   b.dueDates = month ? bsDueDates_(entry, month) : [];
   b.dueThisMonth = !month || b.dueDates.length > 0;
   b.next = when.today ? bsNextDue_(entry, when.today) : '';
-  b.monthlyShare = b.amount == null ? null : bsMonthlyShare_(b.amount, b.cadence);
+  // Household Split's Monthly column is a month's worth: a yearly bill's payment is 12 of them, a
+  // quarterly one 3, every 2 weeks 12/26 of one. Bills not in the sheet keep their typed payment.
+  if (b.fromMonthly && b.amount != null) {
+    var per = BS_PER_MONTH_[b.cadence], r2 = function(n) { return Math.round(n / per * 100) / 100; };
+    b.monthly = b.amount; b.amount = r2(b.amount); b.gross = b.gross == null ? null : r2(b.gross); b.credit = b.credit ? r2(b.credit) : b.credit;
+    b.monthlyShare = b.monthly;
+  } else b.monthlyShare = b.amount == null ? null : bsMonthlyShare_(b.amount, b.cadence);
   b.paidDates = b.cadence === 'biweekly' ? bsPaidDates_(s.paid) : [];
   return b;
 }
@@ -194,7 +243,7 @@ function bsWindow_(day) { return !day ? '' : day <= 7 ? '1–7' : day <= 20 ? '8
 function bsTimeline_(list, computed, opts) {
   opts = opts || {};
   var tday = bsDay_(opts.transferDay) || 1, open = Number(opts.opening) || 0, ev = [];
-  computed.people.forEach(function(p) { if (p.checking) ev.push({ day: tday, what: p.name + ' → AMEX Checking', amount: p.checking, kind: 'in' }); });
+  computed.people.forEach(function(p) { if (p.checking) ev.push({ day: tday, what: p.name + ' → Joint Checking', amount: p.checking, kind: 'in' }); });
   // Only bills due this month; a bill every 2 weeks is out on each of its dates.
   var joint = list.bills.filter(function(b) { return /joint/i.test(b.account) && b.amount != null && b.dueThisMonth !== false; });
   var daysOf = function(b) { return (b.dueDates || []).length ? b.dueDates.map(function(d) { return +d.slice(8, 10); }) : (b.dueDay ? [b.dueDay] : []); };
@@ -209,13 +258,14 @@ function bsTimeline_(list, computed, opts) {
   ev.forEach(function(e) { bal = Math.round((bal + e.amount) * 100) / 100; e.balance = bal; e.window = bsWindow_(e.day); if (low == null || bal < low.balance) low = { day: e.day, balance: bal }; });
   var windows = ['1–7', '8–20', '21+'].map(function(w) {
     var from = { '1–7': 1, '8–20': 8, '21+': 21 }[w];
-    var hits = [], need = 0;
+    var hits = [], need = 0, items = [];
     joint.forEach(function(b) { daysOf(b).forEach(function(day) {
-      if (bsWindow_(day) === w) hits.push(b);
+      if (bsWindow_(day) === w) { hits.push(b); items.push({ line: b.line, day: day, amount: b.amount, cadence: b.cadence || 'monthly', cadenceLabel: b.cadenceLabel || 'Monthly' }); }
       if (day >= from) need += b.amount;
     }); });
     var names = []; hits.forEach(function(b) { if (names.indexOf(b.line) === -1) names.push(b.line); });
-    return { window: w, bills: names, due: Math.round(hits.reduce(function(s, b) { return s + b.amount; }, 0) * 100) / 100, need: Math.round(need * 100) / 100 };
+    items.sort(function(a, b) { return a.day - b.day || a.line.localeCompare(b.line); });
+    return { window: w, bills: names, items: items, due: Math.round(hits.reduce(function(s, b) { return s + b.amount; }, 0) * 100) / 100, need: Math.round(need * 100) / 100 };
   });
   return { events: ev, opening: open, transferDay: tday, low: low, windows: windows,
     undated: joint.filter(function(b) { return !daysOf(b).length; }).map(function(b) { return b.line; }) };
@@ -336,9 +386,48 @@ function bsMigrate_(billRows, computed, existing) {
   return out;
 }
 
+/**
+ * Pure: the Joint balance checkpoints for each of the next `n` months from `month` (yyyy-MM): for each
+ * marker (days 1–7, 8–20, 21+) the Joint bills due in it that month — a yearly or quarterly bill only in
+ * its month, at its full payment; every 2 weeks on each date — and what Joint must still hold from that
+ * marker to the month's end. → [{ month, windows: [{ window, items, due, need }], total, renewals: [lines] }]
+ */
+function bsCheckpoints_(computed, schedule, month, n, today) {
+  var out = [], y = Number(month.slice(0, 4)), m = Number(month.slice(5, 7));
+  for (var i = 0; i < (n || 12); i++) {
+    var mm = y + '-' + String(m).padStart(2, '0');
+    var list = bsBills_(computed, schedule, { month: mm, today: today || mm + '-01' });
+    var tl = bsTimeline_(list, computed, {});
+    var renewals = [];
+    tl.windows.forEach(function(w) { w.items.forEach(function(it) { if (BS_CADENCE_MONTHS_[it.cadence] && renewals.indexOf(it.line) === -1) renewals.push(it.line); }); });
+    out.push({ month: mm, windows: tl.windows.map(function(w) { return { window: w.window, items: w.items, due: w.due, need: w.need }; }),
+      total: Math.round(tl.windows.reduce(function(s, w) { return s + w.due; }, 0) * 100) / 100, renewals: renewals,
+      undated: list.bills.filter(function(b) { return /joint/i.test(b.account) && b.amount != null && !b.dueDay && b.cadence !== 'biweekly'; }).map(function(b) { return b.line; }) });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
 // ---- reading and writing ---------------------------------------------------------------------
 
 function bsSheet_() { return tiSchema_(ensureSheet(getSpreadsheet(), BS_TAB_, BS_HEADERS_), BS_HEADERS_); }
+
+/** Paid, Cadence and Starts of a row are plain text, so the sheet never turns "2026-08" into a date. */
+function bsTextCells_(sheet, row) { var r = sheet.getRange(row, 8, 1, 3); if (r.setNumberFormat) r.setNumberFormat('@'); return r; }
+
+/** Bill Schedule rows saved under an old tracker name take the current name (bsRenamePlan_), once per run. */
+var BS_RENAMED_ = false;
+function bsMigrateNames_(computed) {
+  if (BS_RENAMED_) return [];
+  BS_RENAMED_ = true;
+  try {
+    var sheet = bsSheet_(), rows = tiRows_(sheet, BS_HEADERS_.length);
+    var plan = bsRenamePlan_(rows.map(function(r) { return r[0]; }), computed.shared.lines.map(function(x) { return x.name; }));
+    plan.forEach(function(x) { sheet.getRange(x.index + 2, 1).setValue(x.to); });
+    if (plan.length && typeof veraLog_ === 'function') veraLog_('bsMigrateNames_', 'Bills', 'Success', 'Bill Schedule names now match Household Split: ' + plan.map(function(x) { return x.from + ' → ' + x.to; }).join('; '));
+    return plan;
+  } catch (e) { Logger.log('bsMigrateNames_: ' + e.message); return []; }
+}
 function bsReadSchedule_() { return bsScheduleMap_(tiRows_(bsSheet_(), BS_HEADERS_.length)); }
 
 /** The tracker model and its plan, or { error }. */
@@ -347,7 +436,9 @@ function bsPlan_() {
   if (t.error) return { error: t.error, configured: false };
   var model = bgModel_(t.grid);
   if (!model.ok) return { error: model.error, configured: true };
-  return { model: model, computed: budgetCompute_(model, {}, bgCategoryMap_()) };
+  var computed = budgetCompute_(model, {}, bgCategoryMap_());
+  bsMigrateNames_(computed);
+  return { model: model, computed: computed };
 }
 
 /** The uploaded transactions for some months: [{ month:'YYYY-MM', description, amount, account }]. */
@@ -426,10 +517,12 @@ function webSaveBillSchedule_(body) {
       at = i + 2;
       // Paid is kept, unless the cadence changed between a month and a list of dates.
       var was = bsCadence_(rows[i][8]);
-      row[7] = (was === 'biweekly') === (cadence === 'biweekly') ? rows[i][7] || '' : '';
+      row[7] = (was === 'biweekly') === (cadence === 'biweekly') ? bsCellText_(rows[i][7], was === 'biweekly') : '';
       break;
     }
-    if (at === -1) sheet.appendRow(row); else sheet.getRange(at, 1, 1, BS_HEADERS_.length).setValues([row]);
+    if (at === -1) { sheet.appendRow(row.slice(0, 7).concat(['', '', ''])); at = sheet.getLastRow(); }
+    else sheet.getRange(at, 1, 1, 7).setValues([row.slice(0, 7)]);
+    bsTextCells_(sheet, at).setValues([[row[7], row[8], row[9]]]);
     return { ok: true, entry: bsScheduleMap_([row])[line.toLowerCase()] };
   });
 }
@@ -578,20 +671,21 @@ function bsSetPaid_(line, month, paid, kind, date) {
     for (var i = 0; i < rows.length; i++) {
       if (bsText_(rows[i][0]).toLowerCase() !== line.toLowerCase()) continue;
       if (bsCadence_(rows[i][8]) === 'biweekly') {
-        var e = { cadence: 'biweekly', starts: bsText_(rows[i][9]), paid: bsText_(rows[i][7]) };
+        var e = { cadence: 'biweekly', starts: bsCellText_(rows[i][9], true), paid: bsCellText_(rows[i][7], true) };
         var dates = date ? [String(date).slice(0, 10)] : bsDueDates_(e, month);
         var all = paid == null && !date ? !bsPaidFor_(e, month) : paid;
         var cell = e.paid, res = null;
         dates.forEach(function(d) { res = bsTogglePaidDate_(cell, d, all, bsWhen_().today); cell = res.cell; });
-        sheet.getRange(i + 2, 8).setValue(cell);
+        bsTextCells_(sheet, i + 2); sheet.getRange(i + 2, 8).setValue(cell);
         return res ? res.paid : false;
       }
-      var now = paid == null ? bsText_(rows[i][7]) !== month : !!paid;
-      sheet.getRange(i + 2, 8).setValue(now ? month : '');
+      var now = paid == null ? bsCellText_(rows[i][7]) !== month : !!paid;
+      bsTextCells_(sheet, i + 2); sheet.getRange(i + 2, 8).setValue(now ? month : '');
       return now;
     }
     var on = paid == null ? true : !!paid;
-    sheet.appendRow([line, '', '', false, '', kind || 'bill', '', on ? month : '']);
+    sheet.appendRow([line, '', '', false, '', kind || 'bill', '', '']);
+    var last = sheet.getLastRow(); bsTextCells_(sheet, last); sheet.getRange(last, 8).setValue(on ? month : '');
     return on;
   });
 }
@@ -617,3 +711,4 @@ function bsDeleteScheduleBill_(line) {
     return { ok: false, error: 'Bill not found: ' + line };
   });
 }
+

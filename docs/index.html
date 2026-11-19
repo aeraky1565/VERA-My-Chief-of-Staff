@@ -14338,6 +14338,70 @@ function ReassignBillModal({bill,accounts,busy,onClose,onSave}){
   );
 }
 // ---- Finance Summary Tab (redesigned first view) ----------------------------
+// ---- JointPlan (Finances › Overview: transfers and Joint checkpoints) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Both from Household Split (the budget_tracker payload, through the Budget engine). Transfers: each
+// person's share of shared costs, less what's on their own pay or card, → Joint Checking and → shared
+// savings, and the settle-up. Checkpoints: month by month (the next 12), the Joint bills due in each
+// window — a quarterly, twice-a-year or yearly bill only in its month, at its full payment — and what
+// Joint must still hold from that day to the month's end. Cadence comes from the Bills page.
+var JP_C={card:'#0d1b3e',br:'#1e3060',deep:'#070f1e',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',gold:'#d4b35a',teal:'#2bb5a0',warn:'#f6d27a',who:['#5c9eff','#c97ef2']};
+var JP_WIN={'1–7':{day:1,sub:'bills due days 1–7'},'8–20':{day:8,sub:'bills due days 8–20'},'21+':{day:21,sub:'bills due day 21 on'}};
+function jpMoney_(n){if(n==null||isNaN(n))return '—';var a=Math.round(Math.abs(Number(n)));return (n<-0.5?'−':'')+'$'+a.toLocaleString('en-US');}
+function jpOrd_(d){var s=['th','st','nd','rd'],v=d%100;return d+(s[(v-20)%10]||s[v]||s[0]);}
+function jpMonth_(ym,long){var m=Number(String(ym).slice(5,7)),y=String(ym).slice(0,4);var s=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],f=['January','February','March','April','May','June','July','August','September','October','November','December'];return long?(f[m-1]||ym)+' '+y:(s[m-1]||ym);}
+function JointPlan(props){var h=React.createElement,tb=props.tb,part=props.part,C=JP_C;
+  var _m=React.useState(0),mi=_m[0],setMi=_m[1];
+  var _n=React.useState(function(){return typeof window!=='undefined'&&window.innerWidth<640;}),narrow=_n[0],setNarrow=_n[1];
+  React.useEffect(function(){var on=function(){setNarrow(window.innerWidth<640);};window.addEventListener('resize',on);return function(){window.removeEventListener('resize',on);};},[]);
+  var card=function(cls,kids){return h('div',{className:'jp-card '+cls,style:{background:C.card,border:'1px solid '+C.br,borderRadius:12,padding:narrow?14:18,marginBottom:14,display:'flex',flexDirection:'column',gap:12,color:C.txt,boxSizing:'border-box',minWidth:0}},kids);};
+  var title=function(t,sub){return h('div',{style:{display:'flex',flexDirection:'column',gap:3}},h('span',{style:{fontWeight:700,fontSize:15}},t),sub?h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.4}},sub):null);};
+  var num={fontVariantNumeric:'tabular-nums'};
+  if(props.loading&&!tb)return card('jp-loading',[h('span',{key:'l',style:{fontSize:13,color:C.mute}},'Reading Household Split…')]);
+  if(!tb||!tb.ok||tb.configured===false||tb.error)return card('jp-unavailable',[h('span',{key:'e',style:{fontSize:13,color:C.soft,lineHeight:1.5}},(tb&&tb.error)||'Household Split isn’t loaded yet.'),
+    props.onReload?h('button',{key:'b',type:'button',onClick:props.onReload,style:{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:10,border:'1px solid '+C.br,background:'transparent',color:C.txt,cursor:'pointer'}},'Load'):null]);
+  var P=tb.people||[],S=tb.summary||{};
+  if(part==='transfer'){
+    if(P.length<2)return card('jp-transfer',[title('💸 Monthly transfers','Household Split names two people; it doesn’t yet.')]);
+    var A=P[0],V=P[1];
+    var grid={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10};
+    var row=function(cls,label,f,big){return h('div',{key:cls,className:'jp-row '+cls,style:{display:'flex',flexDirection:'column',gap:4,padding:'8px 0',borderBottom:'1px solid '+C.line}},
+      h('span',{style:{fontSize:12,color:big?C.txt:C.mute,fontWeight:big?700:400}},label),
+      h('div',{style:grid},[A,V].map(function(p,i){var v=f(p);return h('span',{key:i,style:Object.assign({textAlign:'right',fontSize:big?24:15,fontWeight:big?700:500,color:big?C.who[i]:C.txt},num)},v);})));};
+    var settle=S.settleUp||0;
+    return card('jp-transfer',[title('💸 Monthly transfers','From Household Split · split '+Math.round(A.share*100)+' / '+Math.round(V.share*100)+' (change it on Budget)'),
+      h('div',{key:'h',style:Object.assign({},grid,{paddingBottom:4,borderBottom:'1px solid '+C.br})},[A,V].map(function(p,i){return h('span',{key:i,style:{textAlign:'right',fontSize:12,fontWeight:700,color:C.who[i]}},p.name+' · '+Math.round(p.share*100)+'%');})),
+      h('div',{key:'rows',style:{display:'flex',flexDirection:'column'}},
+        row('jp-share','Share of shared costs ('+jpMoney_(S.totalShared)+' in all)',function(p){return jpMoney_(p.contribution);}),
+        row('jp-frompay','Less: shared costs taken from your pay',function(p){return p.fromPay?'−'+jpMoney_(p.fromPay):'—';}),
+        row('jp-owncard','Less: shared bills on your own card',function(p){return p.ownCard?'−'+jpMoney_(p.ownCard):'—';}),
+        row('jp-joint','→ Joint Checking, a month',function(p){return jpMoney_(p.checking);},true),
+        row('jp-savings','→ Shared savings, a month',function(p){return jpMoney_(p.savings);})),
+      h('span',{key:'s',className:'jp-settle',style:{fontSize:12,color:C.mute,lineHeight:1.45}},'Into Joint '+jpMoney_((A.checking||0)+(V.checking||0))+' a month'+(Math.abs(settle)>=1?' · the settle-up is built in: '+(settle>0?A.name+' covers '+jpMoney_(settle)+' of '+V.name+'’s share':V.name+' covers '+jpMoney_(-settle)+' of '+A.name+'’s share')+'.':'.'))]);}
+  // checkpoints
+  var cps=tb.checkpoints||[];
+  if(!cps.length)return card('jp-checkpoints',[title('📅 Joint balance checkpoints','No Joint bills found in Household Split.')]);
+  var cp=cps[Math.min(mi,cps.length-1)];
+  var chips=h('div',{key:'chips',role:'group','aria-label':'Month',className:'jp-months',style:{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}},cps.map(function(x,i){var on=i===mi;
+    return h('button',{key:x.month,type:'button',className:'jp-month'+(x.renewals.length?' jp-has-renewal':''),'aria-pressed':on?'true':'false',onClick:function(){setMi(i);},
+      style:{flex:'none',minHeight:40,padding:'0 12px',borderRadius:10,border:'1px solid '+(on?'#5c7cc4':C.br),background:on?'#1d2d57':'transparent',color:on?C.txt:C.soft,fontWeight:on?600:500,fontSize:13,cursor:'pointer'}},
+      jpMonth_(x.month)+(x.renewals.length?' ★':''));}));
+  var box=function(w){var meta=JP_WIN[w.window]||{day:'',sub:''};
+    return h('div',{key:w.window,className:'jp-marker',style:{background:C.deep,border:'1px solid '+C.br,borderRadius:10,padding:12,display:'flex',flexDirection:'column',gap:6,minWidth:0}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontWeight:700,fontSize:14}},'By the '+jpOrd_(meta.day)),h('span',{style:{fontSize:11,color:C.mute}},meta.sub)),
+      w.items.length?w.items.map(function(it,i){return h('div',{key:i,className:'jp-bill',style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:12,color:C.soft}},
+          h('span',{style:{minWidth:0,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},it.line,h('span',{style:{color:C.mute}},jpOrd_(it.day)),
+            it.cadence!=='monthly'?h('span',{className:'jp-cadence',style:{fontSize:10,padding:'0 7px',borderRadius:9,border:'1px solid '+(it.cadence==='biweekly'?C.br:'#8a7330'),color:it.cadence==='biweekly'?C.soft:'#e8cc7a'}},it.cadenceLabel):null),
+          h('span',{style:Object.assign({color:C.gold,flex:'none'},num)},jpMoney_(it.amount)));}):h('span',{style:{fontSize:12,color:C.mute}},'No Joint bills due'),
+      h('div',{className:'jp-need',style:{marginTop:2,paddingTop:6,borderTop:'1px solid '+C.br,display:'flex',justifyContent:'space-between',gap:8,fontSize:13}},
+        h('span',{style:{color:C.soft}},'Keep in Joint'),h('b',{style:Object.assign({color:C.teal},num)},jpMoney_(w.need))));};
+  return card('jp-checkpoints',[title('📅 Joint balance checkpoints','What Joint needs to hold on each day, month by month: everything due from that day to the month’s end. ★ marks a month with a quarterly or yearly bill.'),
+    chips,
+    h('div',{key:'head',style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',fontSize:13}},h('b',{className:'jp-month-name'},jpMonth_(cp.month,true)),h('span',{style:Object.assign({color:C.mute},num)},'Joint bills '+jpMoney_(cp.total))),
+    cp.renewals.length?h('span',{key:'ren',className:'jp-renewals',style:{fontSize:12,color:'#e8cc7a'}},'★ This month: '+cp.renewals.join(', ')+' (the full payment)'):null,
+    h('div',{key:'grid',className:'jp-markers',style:{display:'grid',gridTemplateColumns:narrow?'minmax(0,1fr)':'repeat(3,minmax(0,1fr))',gap:10}},cp.windows.map(box)),
+    (cp.undated||[]).length?h('span',{key:'und',className:'jp-undated',style:{fontSize:12,color:C.warn}},'No due day yet: '+cp.undated.join(', ')+'. Set one on Bills to place it.'):null]);}
+// ---- /JointPlan ----
+
 function FinanceSummaryTab({bills,accounts,budget,split,saveSplit,trackerBudget,trackerBudgetLoading,onRefreshTracker,part}){
   var today=new Date();
   var currDay=today.getDate();
@@ -14345,6 +14409,8 @@ function FinanceSummaryTab({bills,accounts,budget,split,saveSplit,trackerBudget,
   var[splitA,setSplitA]=React.useState(String(split&&split.ahmed!=null?split.ahmed:60));
   var[splitV,setSplitV]=React.useState(String(split&&split.victoria!=null?split.victoria:40));
   var blue='#5c9eff';var purple='#c97ef2';var gold='#c9a84c';
+  // The transfer calculator and the Joint checkpoints are the shared JointPlan block, from Household Split.
+  if(part==='transfer'||part==='checkpoints')return React.createElement(JointPlan,{tb:trackerBudget,part:part,loading:trackerBudgetLoading,onReload:onRefreshTracker});
 
   // Account → owner lookup
   var ownerMap={};(accounts||[]).forEach(function(a){ownerMap[a.name]=a.owner;});
@@ -15193,7 +15259,7 @@ function BillsCashflowTab(props){var h=React.createElement;var C=BGC;
   // ---- List ----
   var mig=d.migration;
   var list=h('div',{className:'bs-list',style:{display:'flex',flexDirection:'column',gap:8}},
-    h('span',{style:{fontSize:13,color:C.soft,lineHeight:1.5}},'Amounts come from the tracker, as each payment. VERA keeps how often and when each is due, from which account, and whether it’s on autopay.'),
+    h('span',{style:{fontSize:13,color:C.soft,lineHeight:1.5}},'Amounts come from Household Split as a month’s worth. A quarterly, twice-a-year or yearly bill’s payment is 3, 6 or 12 months of it, and every 2 weeks 12/26. VERA keeps how often and when each is due, from which account, and whether it’s on autopay.'),
     mig&&(mig.matched.length||mig.cards.length||mig.unmatched.length)?h('div',{className:'bs-migrate',style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:12,border:'1px dashed '+C.warn}},
       h('span',{style:{fontSize:13,fontWeight:600}},'Bring over due days from the old Bills list'),
       h('span',{style:{fontSize:12,color:C.soft,lineHeight:1.5}},mig.matched.length+' match a tracker line, '+mig.cards.length+' are card payments'+(mig.unmatched.length?', and these match nothing: '+mig.unmatched.map(function(u){return u.bill;}).join(', ')+' (left out; add them in the tracker if they’re bills)':'')+'. The old list isn’t changed.'),
@@ -15203,7 +15269,7 @@ function BillsCashflowTab(props){var h=React.createElement;var C=BGC;
       var left=c==='biweekly'?(dd.length?dd.map(function(x){return bsOrd_(+x.slice(8,10));}).join(', '):'—'):b.dueDay?bsOrd_(b.dueDay):'—';
       var r=row(b.line,left,[h('span',{key:'n',style:{fontSize:14,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}},b.line,c!=='monthly'?h('span',{className:'bs-cadence',style:{fontSize:11,padding:'1px 8px',borderRadius:10,border:'1px solid '+C.line,color:C.soft}},bsCadenceName_(c)):null),
         h('span',{key:'m',style:{fontSize:12,color:C.mute}},[off?'Not due this month':'',c!=='monthly'&&b.next?'next '+bsShortDate_(b.next):'',b.account,b.autopay?'autopay':'',b.credit?'net of the '+bsMoneyC_(b.credit)+' credit':'',!b.dueDay&&c!=='biweekly'?'set a due day':'',c!=='monthly'&&c!=='biweekly'&&!b.starts?'set when it’s due':'',b.notes].filter(Boolean).join(' · '))],
-        h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},bsMoneyC_(b.amount,true)),editBtn(b));
+        h('span',{className:'bs-amt',style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}},h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},bsMoneyC_(b.amount,true)),b.monthly!=null&&(b.cadence||'monthly')!=='monthly'?h('span',{className:'bs-monthly',style:{fontSize:11,color:C.mute,fontVariantNumeric:'tabular-nums'}},bsMoneyC_(b.monthly,true)+' a month'):null),editBtn(b));
       return off?h('div',{key:b.line,className:'bs-row-off',style:{opacity:0.55}},r):r;}),
     h('div',{className:'bs-total',style:{display:'flex',justifyContent:'space-between',fontSize:13,padding:'4px 12px',color:C.soft}},h('span',null,'Due this month'),h('b',{style:{color:C.txt}},bsMoneyC_(d.total,true))),
     d.monthlyShare!=null&&Math.round(d.monthlyShare)!==Math.round(d.total)?h('div',{className:'bs-share',style:{display:'flex',justifyContent:'space-between',fontSize:13,padding:'0 12px 4px',color:C.soft}},h('span',null,'Monthly share (every bill spread over the year)'),h('b',{style:{color:C.txt}},bsMoneyC_(d.monthlyShare,true))):null,
@@ -15395,7 +15461,7 @@ function FinSummary(props){var h=React.createElement;var C=BGC;
     on&&el?h('div',{className:'fsu-full',style:{paddingBottom:10}},el):null);};
   var g=gr&&gr.ok?gr:null,tl=bs&&bs.ok&&bs.timeline;
   var lines=h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
-    line('transfer','Transfer Calculator',people?people.map(function(p){return p.name+' → AMEX Checking '+fsuMoney_(p.checking)+', Savings '+fsuMoney_(p.savings);}).join(' · '):'From the Budget',props.transferCard),
+    line('transfer','Transfer Calculator',people?people.map(function(p){return p.name+' → Joint '+fsuMoney_(p.checking)+', savings '+fsuMoney_(p.savings);}).join(' · '):'From the Budget',props.transferCard),
     line('groceries','Groceries',g?fsuMoney_(g.total)+' of '+fsuMoney_(g.budget)+(g.pace&&g.pace.left!=null?' · '+fsuMoney_(g.pace.left)+' left':''):'This month’s runs',props.groceriesCard),
     line('checkpoints','Joint account checkpoints',tl?tl.windows.filter(function(w){return w.need;}).map(function(w){return 'keep '+fsuMoney_(w.need)+' from day '+({'1–7':1,'8–20':8,'21+':21}[w.window]);}).join(' · ')||'no Joint bills dated':'From Bills & cashflow',props.checkpointsCard));
   var att=d.attention||{items:[],unavailable:[]};
