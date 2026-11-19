@@ -45,11 +45,11 @@ function ctx() {
       : f === 'yyyy-MM' ? d.getFullYear() + '-' + pad(d.getMonth() + 1) : f === 'H' ? String(d.getHours()) : f === 'm' ? String(d.getMinutes())
       : f === 'h:mm a' ? ((d.getHours() + 11) % 12 + 1) + ':' + pad(d.getMinutes()) + (d.getHours() < 12 ? ' AM' : ' PM') : String(d) },
     veraStateGet_: () => Object.assign({}, c.state), veraStateSet_: (b, p) => Object.assign(c.state, p),
-    sendNudge_: (...a) => c.sent.push(a), awayStatus_: () => ({ on: false }), ptsVerizonHolidays_: () => ({}),
+    sendNudge_: (...a) => c.sent.push(a), awayStatus_: () => ({ on: false }), workBusyToday_: () => null, ptsVerizonHolidays_: () => ({}),
     readPTOConfig_: () => ({}), getPTOEvents_: () => ({ events: [] }),
   });
   vm.createContext(c);
-  vm.runInContext([/var MOVE_GAP_MIN_ = .*;/.exec(NOTIFY)[0], ...['notifMinutes_', 'moveTimes_', 'moveDue_', 'moveDayOff_', 'movePtoOn_', 'checkMovement_', 'moveState_', 'moveTooSoon_',
+  vm.runInContext([/var MOVE_GAP_MIN_ = .*;/.exec(NOTIFY)[0], ...['notifMinutes_', 'moveTimes_', 'moveDue_', 'moveDayOff_', 'movePtoOn_', 'checkMovement_', 'moveState_', 'moveTooSoon_', 'moveBusyAt_',
     'moveClock_', 'moveMessage_', 'moveTap_', 'moveDoneToday_', 'eveningExtraLine_', 'eveningFirstTomorrow_', 'eveningUnpaid_', 'eveningContext_'].map(n => extractFn(NOTIFY, n))].join('\n'), c);
   vm.runInContext([/var WELL_MOOD_ = .*;/.exec(SLACK)[0], /var EVENING_MOVE_IDS_ = [\s\S]*?\};/.exec(SLACK)[0],
     ...['wellShow_', 'buildMorningWellnessBlocks_', 'wellnessAfterTap_', 'buildEveningCheckinBlocks_', 'eveningAfterTap_', 'moveAfterTap_'].map(n => extractFn(SLACK, n))].join('\n'), c);

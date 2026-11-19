@@ -234,7 +234,7 @@ const CONTROLS = {
   }),
   'the intelligence section is called with no arguments again': b => ({
     'Code.js': b['Code.js'].replace(
-      'buildMorningIntelligence_(allEvents, openTasks, capMode, intelSubTimings)',
+      'buildMorningIntelligence_(allEvents, openTasks, capMode, intelSubTimings, meOut)',
       'buildMorningIntelligence_()'),
   }),
   'a phase variable goes back to const': b => ({

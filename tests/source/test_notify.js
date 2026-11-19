@@ -170,7 +170,7 @@ console.log('\nHAILEY and TESS in #vera-act-now (read only)');
   check('…and a missing column reads blank rather than breaking', c.actNowTessPicks_([['Company', 'Status'], ['X', 'New']], '2026-11-18', [], 85, id).length === 0);
   const b = c.actNowAgentBlocks_('HAILEY', hp[0], 1, 3);
   check('the post: badge, what it is, the home, why, Open, "act-now 1 of 3 today"', /\*HAILEY\*  ·  ⏳ today  ·  New listing under your ceiling/.test(b[0].elements[0].text) && b[2].elements[0].url === 'https://example.test/12-elm' && /HAILEY · act-now 1 of 3 today/.test(b[3].elements[0].text));
-  check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions' || x.elements.every(e => !e.url)));
+  check('…no Open button without a link', c.actNowAgentBlocks_('HAILEY', { kind: 'x', title: 't', reason: '', url: '' }, 1, 3).every(x => x.type !== 'actions' || x.elements.every(e => e.action_id !== 'act_now_open')));
   check('hourlyCheck posts them; both kinds are in Act now, with caps and the TESS bar as settings', /try \{ actNowAgentsSync_\(new Date\(\)\); \}/.test(REM) && /key: 'act_now_hailey',[^\n]*category: 'Act now'/.test(CODE) && /key: 'act_now_tess',[^\n]*category: 'Act now'/.test(CODE) && /\['act_now_tess_min_score', +'85'\]/.test(CODE) && /\['act_now_cap_hailey',/.test(CODE));
   check('VERA only reads their sheets', !/setValue|appendRow|setValues/.test(SRC.slice(SRC.indexOf('function actNowAgentsSync_'), SRC.indexOf('    actNowPostedSave_(posted);\n    try { if (tId)'))));
 }
