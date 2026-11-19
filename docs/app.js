@@ -3569,6 +3569,61 @@ function FpBlockEdit(props){var h=React.createElement,b=props.block,d=props.data
       onClick:function(){props.onSave({id:b?b.id:'',parent:f.parent,kind:f.kind,startWeek:Number(f.startWeek),weeks:f.weeks,payPct:f.payPct});}},'Save'),
     b?h('button',{type:'button',className:'fp-be-delete',style:fpBtn('danger'),onClick:function(){props.onDelete(b.id);}},'Remove block'):null);}
 
+function FpCare(props){var h=React.createElement,d=props.data,s=d.settings||{},items=d.items||[],m=d.money||{};
+  var _a=React.useState(null),adding=_a[0],setAdding=_a[1];
+  var areas=['childcare','pregnancy','money','gear','paperwork','support'];
+  var titles={childcare:'Childcare',pregnancy:'Pregnancy',money:'Money',gear:'Home & gear',paperwork:'Paperwork',support:'Support & visitors'};
+  var cycle=function(i){props.onItem({id:i.id,status:i.status==='todo'?'started':i.status==='started'?'done':'todo'});};
+  var statusWord={todo:'To do',started:'Started',done:'Done'};
+  React.useEffect(function(){if(!props.area)return;var n=document.getElementById('fp-area-'+props.area);if(n&&n.scrollIntoView)try{n.scrollIntoView();}catch(x){}},[props.area]);
+  var row=function(i){return h('div',{key:i.id,className:'fp-item','data-area':i.area,style:{display:'flex',flexDirection:'column',gap:6,borderBottom:'1px solid #13203a',padding:'10px 0'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start'}},
+      h('span',{style:{fontSize:14,lineHeight:1.4,textDecoration:i.status==='done'?'line-through':'none',color:i.status==='done'?FP_C.mute:FP_C.txt}},i.title),
+      h('button',{type:'button',className:'fp-item-status','data-status':i.status,disabled:props.busy,onClick:function(){cycle(i);},style:Object.assign(fpChip(i.status!=='todo'),{minHeight:36,flexShrink:0})},statusWord[i.status])),
+    h('span',{style:{fontSize:12,color:FP_C.mute}},[i.when?i.when+(i.date?' · '+fpDay(i.date):''):'',i.cost!=null?fpMoneyFmt(i.cost)+(i.area==='childcare'?' a month':''):'',i.owner!=='Both'?'for '+i.owner:''].filter(Boolean).join(' · ')),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+      i.area==='gear'?(i.ppId?h('span',{className:'fp-in-pp',style:{fontSize:12,color:FP_C.ok}},'In Planned Purchases'):h('button',{type:'button',className:'fp-to-pp',disabled:props.busy,style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onGear(i.id);}},'Plan this purchase ›')):null,
+      i.link?h('a',{href:i.link,target:'_blank',rel:'noopener noreferrer',style:{fontSize:12,color:FP_C.acc,alignSelf:'center'}},'Link ↗'):null,
+      h('button',{type:'button',className:'fp-item-edit',style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){setAdding({area:i.area,item:i});}},'Edit'),
+      h('button',{type:'button',className:'fp-item-delete',style:Object.assign(fpBtn('danger'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onDelete(i.id);}},'Remove')));};
+  return h('div',{className:'fp-care',style:{display:'flex',flexDirection:'column',gap:22}},
+    areas.map(function(a){var mine=items.filter(function(i){return i.area===a;}).sort(function(x,y){return (x.date||'9')<(y.date||'9')?-1:(x.date||'9')>(y.date||'9')?1:0;});
+      return h('section',{key:a,id:'fp-area-'+a,className:'fp-section','data-area':a,style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:17,fontWeight:700}},titles[a]),
+        a==='childcare'&&d.careFrom?h('span',{style:{fontSize:13,color:FP_C.mute}},'Needed from week '+d.careFrom+(d.careFromDate?' · about '+fpDay(d.careFromDate):'')+', from the leave plan.'):null,
+        a==='money'?h('div',{className:'fp-money',style:{display:'grid',gridTemplateColumns:'1fr auto',gap:'6px 14px',fontSize:13,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:12}},
+          h('span',{style:{color:FP_C.mute}},'Birth, after insurance'),h('span',null,m.oopMax!=null?'up to '+fpMoneyFmt(m.oopMax):'set the out-of-pocket max in Setup'),
+          h('span',{style:{color:FP_C.mute}},'Gear and nursery'),h('span',null,fpMoneyFmt(m.gear)),
+          h('span',{style:{color:FP_C.mute}},'Weeks below full pay'),h('span',null,String(m.belowFullPayWeeks||0)),
+          h('span',{style:{color:FP_C.mute}},'Childcare, monthly'),h('span',null,m.childcareMonthly!=null?'from '+fpMoneyFmt(m.childcareMonthly):'—'),
+          h('span',{style:{color:FP_C.mute}},'Baby fund so far'),h('span',null,m.fund?fpMoneyFmt(m.fund.saved)+' of '+fpMoneyFmt(m.fund.target):'choose a savings goal in Setup')):null,
+        a==='money'?h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},'Dependent Care FSA: elect it at open enrollment, or within the plan’s window after the birth, to pay daycare pre-tax. It shows in Finances › FSA & HSA.'):null,
+        a==='gear'&&s.registry?h('a',{href:s.registry,target:'_blank',rel:'noopener noreferrer',className:'fp-registry',style:{fontSize:13,color:FP_C.acc}},'Open the registry ↗'):null,
+        a==='gear'?h('span',{style:{fontSize:12,color:FP_C.mute}},'The registry stays with its provider; VERA keeps only the link.'):null,
+        mine.map(row),
+        adding&&adding.area===a?h(FpItemForm,{item:adding.item,area:a,busy:props.busy,onCancel:function(){setAdding(null);},onSave:function(it){props.onItem(it,function(){setAdding(null);});}}):
+          h('button',{type:'button',className:'fp-add-item','data-area':a,style:Object.assign(fpBtn('plain'),{alignSelf:'flex-start',padding:0}),onClick:function(){setAdding({area:a,item:null});}},a==='childcare'?'＋ Add an option':'＋ Add'));}));}
+
+function FpItemForm(props){var h=React.createElement,i=props.item;
+  var parse=function(a){var m;if((m=/^week:(\d+)$/.exec(a||'')))return ['week',m[1]];if((m=/^birth\+(\d+)$/.exec(a||'')))return ['birth',m[1]];if((m=/^leave\+(\d+)$/.exec(a||'')))return ['leave',m[1]];if((m=/^date:(.+)$/.exec(a||'')))return ['date',m[1]];return ['none',''];};
+  var p0=parse(i&&i.anchor);
+  var _f=React.useState({title:i?i.title:'',when:p0[0],n:p0[1],cost:i&&i.cost!=null?String(i.cost):'',owner:i?i.owner:'Both',link:i?i.link:'',notes:i?i.notes:''}),f=_f[0],setF=_f[1];
+  var set=function(k,v){setF(function(x){var n=Object.assign({},x);n[k]=v;return n;});};
+  var anchor=f.when==='week'&&f.n?'week:'+f.n:f.when==='birth'&&f.n!==''?'birth+'+f.n:f.when==='leave'&&f.n?'leave+'+f.n:f.when==='date'&&f.n?'date:'+f.n:'';
+  return h('div',{className:'fp-item-form',style:{display:'flex',flexDirection:'column',gap:10,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12}},
+    fpField('fp-it-title',props.area==='childcare'?'Option (a daycare, a nanny share, family help)':'What',h('input',{id:'fp-it-title',className:'fp-it-title',value:f.title,onChange:function(e){set('title',e.target.value);},style:FP_INPUT})),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+      fpField('fp-it-when','When',h('select',{id:'fp-it-when',className:'fp-it-when',value:f.when,onChange:function(e){set('when',e.target.value);set('n','');},style:FP_INPUT},
+        h('option',{value:'none'},'No date'),h('option',{value:'week'},'By a week of pregnancy'),h('option',{value:'birth'},'Days after the birth'),h('option',{value:'leave'},'Day of parental leave'),h('option',{value:'date'},'A fixed date'))),
+      f.when==='none'?h('span'):fpField('fp-it-n',f.when==='week'?'Week':f.when==='date'?'Date':'Days',h('input',{id:'fp-it-n',className:'fp-it-n',type:f.when==='date'?'date':'text',inputMode:f.when==='date'?undefined:'numeric',value:f.n,onChange:function(e){set('n',e.target.value);},style:FP_INPUT}))),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+      fpField('fp-it-cost',props.area==='childcare'?'Per month':'Cost (optional)',h('input',{id:'fp-it-cost',className:'fp-it-cost',inputMode:'decimal',value:f.cost,onChange:function(e){set('cost',e.target.value);},style:FP_INPUT,placeholder:'$'})),
+      fpField('fp-it-owner','Remind',h('select',{id:'fp-it-owner',value:f.owner,onChange:function(e){set('owner',e.target.value);},style:FP_INPUT},['Both','Ahmed','Victoria'].map(function(o){return h('option',{key:o,value:o},o==='Both'?'Both of you':o);})))),
+    fpField('fp-it-link','Link (optional)',h('input',{id:'fp-it-link',value:f.link,onChange:function(e){set('link',e.target.value);},style:FP_INPUT,placeholder:'https://'})),
+    h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'fp-it-save',disabled:!f.title.trim()||props.busy,style:Object.assign(fpBtn('blue'),{flex:1}),
+      onClick:function(){props.onSave({id:i?i.id:'',area:props.area,title:f.title,anchor:anchor,cost:f.cost,owner:f.owner,link:f.link,notes:f.notes});}},'Save'),
+      h('button',{type:'button',style:fpBtn(),onClick:props.onCancel},'Cancel')));}
+// ---- end FamilyPlanningPanel ----
 // ---- CoverageTab (Health › Care › Coverage, issue #257) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Four tabs for looking things up: Cards (who has medical, dental and vision, and each card's numbers,
 // READ from the household cheat sheet; a private number shows on tap, then copies), Covered (from the
@@ -3706,62 +3761,6 @@ function CoverageTab(props){var h=React.createElement,C=CVC;
   return h('div',{className:'cv-tab',style:{display:'flex',flexDirection:'column',gap:14,color:C.txt}},nav,
     msg?h('div',{role:'status',className:'cv-msg',style:{fontSize:13,color:C.ok}},msg):null,body);}
 // ---- /CoverageTab ----
-
-function FpCare(props){var h=React.createElement,d=props.data,s=d.settings||{},items=d.items||[],m=d.money||{};
-  var _a=React.useState(null),adding=_a[0],setAdding=_a[1];
-  var areas=['childcare','pregnancy','money','gear','paperwork','support'];
-  var titles={childcare:'Childcare',pregnancy:'Pregnancy',money:'Money',gear:'Home & gear',paperwork:'Paperwork',support:'Support & visitors'};
-  var cycle=function(i){props.onItem({id:i.id,status:i.status==='todo'?'started':i.status==='started'?'done':'todo'});};
-  var statusWord={todo:'To do',started:'Started',done:'Done'};
-  React.useEffect(function(){if(!props.area)return;var n=document.getElementById('fp-area-'+props.area);if(n&&n.scrollIntoView)try{n.scrollIntoView();}catch(x){}},[props.area]);
-  var row=function(i){return h('div',{key:i.id,className:'fp-item','data-area':i.area,style:{display:'flex',flexDirection:'column',gap:6,borderBottom:'1px solid #13203a',padding:'10px 0'}},
-    h('div',{style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start'}},
-      h('span',{style:{fontSize:14,lineHeight:1.4,textDecoration:i.status==='done'?'line-through':'none',color:i.status==='done'?FP_C.mute:FP_C.txt}},i.title),
-      h('button',{type:'button',className:'fp-item-status','data-status':i.status,disabled:props.busy,onClick:function(){cycle(i);},style:Object.assign(fpChip(i.status!=='todo'),{minHeight:36,flexShrink:0})},statusWord[i.status])),
-    h('span',{style:{fontSize:12,color:FP_C.mute}},[i.when?i.when+(i.date?' · '+fpDay(i.date):''):'',i.cost!=null?fpMoneyFmt(i.cost)+(i.area==='childcare'?' a month':''):'',i.owner!=='Both'?'for '+i.owner:''].filter(Boolean).join(' · ')),
-    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
-      i.area==='gear'?(i.ppId?h('span',{className:'fp-in-pp',style:{fontSize:12,color:FP_C.ok}},'In Planned Purchases'):h('button',{type:'button',className:'fp-to-pp',disabled:props.busy,style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onGear(i.id);}},'Plan this purchase ›')):null,
-      i.link?h('a',{href:i.link,target:'_blank',rel:'noopener noreferrer',style:{fontSize:12,color:FP_C.acc,alignSelf:'center'}},'Link ↗'):null,
-      h('button',{type:'button',className:'fp-item-edit',style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){setAdding({area:i.area,item:i});}},'Edit'),
-      h('button',{type:'button',className:'fp-item-delete',style:Object.assign(fpBtn('danger'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onDelete(i.id);}},'Remove')));};
-  return h('div',{className:'fp-care',style:{display:'flex',flexDirection:'column',gap:22}},
-    areas.map(function(a){var mine=items.filter(function(i){return i.area===a;}).sort(function(x,y){return (x.date||'9')<(y.date||'9')?-1:(x.date||'9')>(y.date||'9')?1:0;});
-      return h('section',{key:a,id:'fp-area-'+a,className:'fp-section','data-area':a,style:{display:'flex',flexDirection:'column',gap:6}},
-        h('span',{style:{fontSize:17,fontWeight:700}},titles[a]),
-        a==='childcare'&&d.careFrom?h('span',{style:{fontSize:13,color:FP_C.mute}},'Needed from week '+d.careFrom+(d.careFromDate?' · about '+fpDay(d.careFromDate):'')+', from the leave plan.'):null,
-        a==='money'?h('div',{className:'fp-money',style:{display:'grid',gridTemplateColumns:'1fr auto',gap:'6px 14px',fontSize:13,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:12}},
-          h('span',{style:{color:FP_C.mute}},'Birth, after insurance'),h('span',null,m.oopMax!=null?'up to '+fpMoneyFmt(m.oopMax):'set the out-of-pocket max in Setup'),
-          h('span',{style:{color:FP_C.mute}},'Gear and nursery'),h('span',null,fpMoneyFmt(m.gear)),
-          h('span',{style:{color:FP_C.mute}},'Weeks below full pay'),h('span',null,String(m.belowFullPayWeeks||0)),
-          h('span',{style:{color:FP_C.mute}},'Childcare, monthly'),h('span',null,m.childcareMonthly!=null?'from '+fpMoneyFmt(m.childcareMonthly):'—'),
-          h('span',{style:{color:FP_C.mute}},'Baby fund so far'),h('span',null,m.fund?fpMoneyFmt(m.fund.saved)+' of '+fpMoneyFmt(m.fund.target):'choose a savings goal in Setup')):null,
-        a==='money'?h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},'Dependent Care FSA: elect it at open enrollment, or within the plan’s window after the birth, to pay daycare pre-tax. It shows in Finances › FSA & HSA.'):null,
-        a==='gear'&&s.registry?h('a',{href:s.registry,target:'_blank',rel:'noopener noreferrer',className:'fp-registry',style:{fontSize:13,color:FP_C.acc}},'Open the registry ↗'):null,
-        a==='gear'?h('span',{style:{fontSize:12,color:FP_C.mute}},'The registry stays with its provider; VERA keeps only the link.'):null,
-        mine.map(row),
-        adding&&adding.area===a?h(FpItemForm,{item:adding.item,area:a,busy:props.busy,onCancel:function(){setAdding(null);},onSave:function(it){props.onItem(it,function(){setAdding(null);});}}):
-          h('button',{type:'button',className:'fp-add-item','data-area':a,style:Object.assign(fpBtn('plain'),{alignSelf:'flex-start',padding:0}),onClick:function(){setAdding({area:a,item:null});}},a==='childcare'?'＋ Add an option':'＋ Add'));}));}
-
-function FpItemForm(props){var h=React.createElement,i=props.item;
-  var parse=function(a){var m;if((m=/^week:(\d+)$/.exec(a||'')))return ['week',m[1]];if((m=/^birth\+(\d+)$/.exec(a||'')))return ['birth',m[1]];if((m=/^leave\+(\d+)$/.exec(a||'')))return ['leave',m[1]];if((m=/^date:(.+)$/.exec(a||'')))return ['date',m[1]];return ['none',''];};
-  var p0=parse(i&&i.anchor);
-  var _f=React.useState({title:i?i.title:'',when:p0[0],n:p0[1],cost:i&&i.cost!=null?String(i.cost):'',owner:i?i.owner:'Both',link:i?i.link:'',notes:i?i.notes:''}),f=_f[0],setF=_f[1];
-  var set=function(k,v){setF(function(x){var n=Object.assign({},x);n[k]=v;return n;});};
-  var anchor=f.when==='week'&&f.n?'week:'+f.n:f.when==='birth'&&f.n!==''?'birth+'+f.n:f.when==='leave'&&f.n?'leave+'+f.n:f.when==='date'&&f.n?'date:'+f.n:'';
-  return h('div',{className:'fp-item-form',style:{display:'flex',flexDirection:'column',gap:10,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12}},
-    fpField('fp-it-title',props.area==='childcare'?'Option (a daycare, a nanny share, family help)':'What',h('input',{id:'fp-it-title',className:'fp-it-title',value:f.title,onChange:function(e){set('title',e.target.value);},style:FP_INPUT})),
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
-      fpField('fp-it-when','When',h('select',{id:'fp-it-when',className:'fp-it-when',value:f.when,onChange:function(e){set('when',e.target.value);set('n','');},style:FP_INPUT},
-        h('option',{value:'none'},'No date'),h('option',{value:'week'},'By a week of pregnancy'),h('option',{value:'birth'},'Days after the birth'),h('option',{value:'leave'},'Day of parental leave'),h('option',{value:'date'},'A fixed date'))),
-      f.when==='none'?h('span'):fpField('fp-it-n',f.when==='week'?'Week':f.when==='date'?'Date':'Days',h('input',{id:'fp-it-n',className:'fp-it-n',type:f.when==='date'?'date':'text',inputMode:f.when==='date'?undefined:'numeric',value:f.n,onChange:function(e){set('n',e.target.value);},style:FP_INPUT}))),
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
-      fpField('fp-it-cost',props.area==='childcare'?'Per month':'Cost (optional)',h('input',{id:'fp-it-cost',className:'fp-it-cost',inputMode:'decimal',value:f.cost,onChange:function(e){set('cost',e.target.value);},style:FP_INPUT,placeholder:'$'})),
-      fpField('fp-it-owner','Remind',h('select',{id:'fp-it-owner',value:f.owner,onChange:function(e){set('owner',e.target.value);},style:FP_INPUT},['Both','Ahmed','Victoria'].map(function(o){return h('option',{key:o,value:o},o==='Both'?'Both of you':o);})))),
-    fpField('fp-it-link','Link (optional)',h('input',{id:'fp-it-link',value:f.link,onChange:function(e){set('link',e.target.value);},style:FP_INPUT,placeholder:'https://'})),
-    h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'fp-it-save',disabled:!f.title.trim()||props.busy,style:Object.assign(fpBtn('blue'),{flex:1}),
-      onClick:function(){props.onSave({id:i?i.id:'',area:props.area,title:f.title,anchor:anchor,cost:f.cost,owner:f.owner,link:f.link,notes:f.notes});}},'Save'),
-      h('button',{type:'button',style:fpBtn(),onClick:props.onCancel},'Cancel')));}
-// ---- end FamilyPlanningPanel ----
 // ---- GroceriesCard (Finances → Summary) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // This month's grocery spend from Done shopping runs (Groceries.js), against the
 // Groceries line of the Budget tab, by person and by card, with each run to fix or
