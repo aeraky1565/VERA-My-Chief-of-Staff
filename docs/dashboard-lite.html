@@ -13210,6 +13210,173 @@ function CoverageTab(props){var h=React.createElement,C=CVC;
   return h('div',{className:'cv-tab',style:{display:'flex',flexDirection:'column',gap:14,color:C.txt}},nav,
     msg?h('div',{role:'status',className:'cv-msg',style:{fontSize:13,color:C.ok}},msg):null,body);}
 // ---- /CoverageTab ----
+// ---- EyesTab (Health › Care › Eyes) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Glasses and contacts prescriptions for each person: the current ones (Rx grid, expiry, the photo,
+// Copy for an online order), contacts supply from logged orders, the eye exam from Appointments with
+// Book it, Add a prescription from a photo or PDF (VERA reads it; unsure numbers are marked), the
+// history, and what each person buys and where.
+var EYC={card:'#0d1b3e',br:'#1e3060',deep:'#070f1e',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',acc:'#8ab4f8',gold:'#d4b35a',ok:'#8fe3c4',warn:'#f6d27a',bad:'#ffb4a9'};
+var EY_GRID={glasses:[['SPH','Sph'],['CYL','Cyl'],['AXIS','Axis'],['ADD','Add']],contacts:[['PWR','Sph'],['CYL','Cyl'],['AXIS','Axis']]};
+function eyDay_(s){var m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return s||'';return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1]+' '+(+m[3])+', '+m[1];}
+function eyDaysTo_(iso,today){if(!iso||!today)return null;var a=Date.UTC(+iso.slice(0,4),+iso.slice(5,7)-1,+iso.slice(8,10)),b=Date.UTC(+today.slice(0,4),+today.slice(5,7)-1,+today.slice(8,10));return Math.round((a-b)/86400000);}
+// A photo is sized down to 1600px as a JPEG; a PDF goes as it is.
+function eyReadFile_(file){return new Promise(function(resolve,reject){
+  if(!file){reject(new Error('No file.'));return;}
+  if(file.type==='application/pdf'){var fr=new FileReader();fr.onload=function(){resolve({base64:String(fr.result).split(',')[1],mime:'application/pdf',preview:''});};fr.onerror=function(){reject(new Error('Couldn’t open that file.'));};fr.readAsDataURL(file);return;}
+  var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var s=Math.min(1,1600/Math.max(img.width,img.height)),w=Math.round(img.width*s),hh=Math.round(img.height*s),cv=document.createElement('canvas');
+    cv.width=w;cv.height=hh;cv.getContext('2d').drawImage(img,0,0,w,hh);URL.revokeObjectURL(url);var du=cv.toDataURL('image/jpeg',0.85);resolve({base64:du.split(',')[1],mime:'image/jpeg',preview:du});};
+  img.onerror=function(){reject(new Error('That isn’t a photo VERA can open.'));};img.src=url;});}
+function EyesTab(props){var h=React.createElement,C=EYC;
+  var _d=React.useState(null),d=_d[0],setD=_d[1];
+  var _p=React.useState(''),person=_p[0],setPerson=_p[1];
+  var _v=React.useState('now'),view=_v[0],setView=_v[1];
+  var _f=React.useState(null),form=_f[0],setForm=_f[1];       // {kind, values, unsure, exam, expires, doctor, lens, wear, file, reading, err, diff}
+  var _u=React.useState(null),uform=_u[0],setUform=_u[1];
+  var _o=React.useState(null),oform=_o[0],setOform=_o[1];
+  var _ph=React.useState(null),photo=_ph[0],setPhoto=_ph[1];
+  var _cp=React.useState(''),copied=_cp[0],setCopied=_cp[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var load=function(){return apiGet(props.apiUrl,props.apiToken,{action:'eyes'}).then(function(r){setD(r||{ok:false});return r;}).catch(function(e){setD({ok:false,error:e.message});});};
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;load();},[props.apiUrl,props.apiToken]);
+  var flash=function(t){setMsg(t);setTimeout(function(){setMsg('');},5000);};
+  var post=function(body,done){setBusy(true);return apiPost(props.apiUrl,props.apiToken,body).then(function(r){setBusy(false);if(r&&r.ok===false){flash(r.error||'That didn’t work.');return r;}done&&done(r);return load();})
+    .catch(function(e){setBusy(false);flash(e.message);});};
+  var num={fontVariantNumeric:'tabular-nums'},mono={fontFamily:"'JetBrains Mono',ui-monospace,Menlo,monospace",fontVariantNumeric:'tabular-nums'};
+  var card=function(cls,kids){return h('section',{className:'ey-card '+cls,style:{background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:16,display:'flex',flexDirection:'column',gap:10,boxSizing:'border-box',minWidth:0}},kids);};
+  var title=function(t,right){return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('h3',{style:{margin:0,font:"600 18px 'Space Grotesk',Inter,sans-serif"}},t),right||null);};
+  var btn=function(primary){return {minHeight:44,padding:'0 14px',borderRadius:12,border:primary?0:'1px solid '+C.br,background:primary?C.gold:'transparent',color:primary?'#0b1430':C.txt,fontWeight:primary?700:600,fontSize:14,cursor:busy?'wait':'pointer'};};
+  var pill=function(cls,text,col){return h('span',{className:'ey-pill '+cls,style:{fontSize:12,fontWeight:700,padding:'2px 10px',borderRadius:9,border:'1px solid '+col,color:col,background:col+'22',whiteSpace:'nowrap'}},text);};
+  var chip=function(on,cls,label,onClick){return h('button',{key:label,type:'button',className:cls,'aria-pressed':on?'true':'false',onClick:onClick,
+    style:{minHeight:40,padding:'0 14px',borderRadius:10,border:'1px solid '+(on?C.gold:C.br),background:on?'rgba(212,179,90,.14)':'transparent',color:on?C.txt:C.soft,fontWeight:on?700:500,fontSize:14,cursor:'pointer',flex:'1 1 0'}},label);};
+  var input=function(label,value,on,extra){extra=extra||{};return h('label',{style:{display:'flex',flexDirection:'column',gap:3,fontSize:12,color:C.mute,minWidth:0}},label,
+    h('input',Object.assign({type:'text','aria-label':label,value:value==null?'':value,onChange:function(ev){on(ev.target.value);},
+      style:Object.assign({minHeight:42,borderRadius:8,border:'1px solid '+(extra.unsure?C.warn:C.br),background:extra.unsure?'rgba(246,210,122,.12)':C.deep,color:C.txt,padding:'0 8px',fontSize:14,width:'100%',boxSizing:'border-box'},extra.mono?mono:{})},extra.attrs||{})));};
+  if(!d)return h('div',{className:'ey-tab',style:{color:C.mute,fontSize:13,padding:'12px 0'}},'Reading your eye prescriptions…');
+  if(!d.ok)return h('div',{className:'ey-tab ey-unavailable',style:{padding:14,borderRadius:12,background:C.card,border:'1px solid '+C.br,color:C.soft,fontSize:13}},d.error||'Eyes couldn’t be read.');
+  var people=d.people&&d.people.length?d.people:['Me'],who=person&&people.indexOf(person)!==-1?person:people[0];
+  var cur=function(kind){return (d.current||[]).filter(function(r){return r.person===who&&r.kind===kind;})[0];};
+  var expPill=function(r){if(!r.expires)return pill('ey-exp','no expiry date',C.mute);var n=eyDaysTo_(r.expires,d.today);
+    return n<0?pill('ey-exp ey-exp-bad','expired '+eyDay_(r.expires),C.bad):n<=45?pill('ey-exp ey-exp-soon','expires in '+n+' day'+(n===1?'':'s'),C.warn):pill('ey-exp ey-exp-ok','good to '+eyDay_(r.expires),C.ok);};
+  var grid=function(r){var cols=EY_GRID[r.kind];
+    return h('div',{style:{overflowX:'auto'}},h('table',{className:'ey-rx',style:Object.assign({width:'100%',borderCollapse:'collapse',fontSize:14},mono)},
+      h('thead',null,h('tr',null,h('th',{style:{textAlign:'left',fontSize:11,color:C.mute,padding:'4px 4px 6px',fontFamily:'Inter,sans-serif'}},''),cols.map(function(c){return h('th',{key:c[0],style:{textAlign:'right',fontSize:11,color:C.mute,padding:'4px 4px 6px',fontFamily:'Inter,sans-serif'}},c[0]);}))),
+      h('tbody',null,['od','os'].map(function(e){return h('tr',{key:e},h('td',{style:{padding:'7px 4px',borderTop:'1px solid '+C.line,fontFamily:'Inter,sans-serif',fontWeight:600,color:C.soft}},e.toUpperCase()),
+        cols.map(function(c){return h('td',{key:c[0],style:{textAlign:'right',padding:'7px 4px',borderTop:'1px solid '+C.line}},r[e+c[1]]||'—');}));}))));};
+  var copy=function(r){try{navigator.clipboard.writeText(r.copy);}catch(e){}setCopied(r.id);setTimeout(function(){setCopied('');},4000);};
+  var showPhoto=function(r){setPhoto({id:r.id,loading:true});apiGet(props.apiUrl,props.apiToken,{action:'eye_photo',id:r.id}).then(function(x){setPhoto(Object.assign({id:r.id},x));}).catch(function(e){setPhoto({id:r.id,error:e.message});});};
+  var rxActions=function(r){return h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'ey-copy',onClick:function(){copy(r);},style:btn(false)},'Copy for an online order'),
+      r.photo?h('button',{type:'button',className:'ey-photo',onClick:function(){showPhoto(r);},style:btn(false)},photo&&photo.id===r.id?'Photo below':'See the photo'):null);};
+  var photoEl=function(r){if(!photo||photo.id!==r.id)return null;
+    if(photo.loading)return h('span',{style:{fontSize:13,color:C.mute}},'Opening the photo…');
+    if(photo.error||photo.ok===false)return h('span',{style:{fontSize:13,color:C.bad}},photo.error||'Couldn’t open the photo.');
+    return photo.pdf?h('a',{href:photo.url,target:'_blank',rel:'noopener',style:{color:C.acc,fontSize:14}},'Open the PDF in Drive'):h('img',{src:photo.dataUrl,alt:'The prescription',style:{maxWidth:'100%',borderRadius:10,border:'1px solid '+C.br}});};
+  var rxCard=function(kind){var r=cur(kind),name=kind==='glasses'?'Glasses':'Contacts';
+    if(!r)return card('ey-'+kind+' ey-empty',[title(name),h('span',{key:'n',style:{fontSize:14,color:C.mute}},'No '+kind+' prescription for '+who+' yet.'),
+      h('button',{key:'a',type:'button',className:'ey-add-'+kind,onClick:function(){openForm(kind);},style:Object.assign(btn(false),{alignSelf:'flex-start'})},'＋ Add one')]);
+    return card('ey-'+kind,[title(name,expPill(r)),grid(r),
+      h('div',{key:'m',className:'ey-meta',style:{display:'grid',gridTemplateColumns:'auto 1fr',gap:'4px 12px',fontSize:13}},
+        kind==='glasses'?[h('span',{key:'a',style:{color:C.mute}},'PD'),h('span',{key:'b',style:mono},r.pd||'—')]:[h('span',{key:'a',style:{color:C.mute}},'BC · DIA'),h('span',{key:'b',style:mono},(r.bc||'—')+' · '+(r.dia||'—'))],
+        kind==='contacts'&&r.lens?[h('span',{key:'c',style:{color:C.mute}},'Lens'),h('span',{key:'d'},r.lens+(r.wear?' · '+r.wear:''))]:null,
+        h('span',{key:'e',style:{color:C.mute}},'Exam'),h('span',{key:'f'},(r.exam?eyDay_(r.exam):'—')+(r.doctor?' · '+r.doctor:''))),
+      kind==='contacts'?supplyEl():null,
+      rxActions(r),copied===r.id?h('span',{key:'cp',className:'ey-copied',style:{fontSize:13,color:C.ok}},'Copied: '+r.copy):null,photoEl(r)]);};
+  var supplyEl=function(){var s=d.supply&&d.supply[who];
+    if(!s)return h('span',{key:'s',className:'ey-supply ey-supply-none',style:{fontSize:13,color:C.mute}},'Log an order (Buying) and set the usual contacts’ days per pack to see how long they last.');
+    var total=Math.max(1,(s.boxes||1)*90),pct=Math.max(0,Math.min(100,s.daysLeft/Math.max(s.daysLeft,eyDaysTo_(s.lastsTo,s.lastOrder)||1)*100)),low=s.daysLeft<=21;
+    return h('div',{key:'s',className:'ey-supply',style:{display:'flex',flexDirection:'column',gap:6}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:14}},h('span',{style:{color:C.soft}},'Supply left'),h('b',{style:Object.assign({color:low?C.warn:C.txt},num)},s.daysLeft<=0?'run out':'about '+s.daysLeft+' days')),
+      h('div',{style:{height:8,borderRadius:5,background:C.deep,overflow:'hidden'}},h('div',{style:{width:pct+'%',height:8,background:low?C.warn:C.ok}})),
+      h('span',{style:{fontSize:12,color:C.mute}},'From the order on '+eyDay_(s.lastOrder)+' ('+s.boxes+' per eye). Reorder by '+eyDay_(s.reorderBy)+'.'),
+      s.link?h('a',{className:'ey-reorder',href:s.link,target:'_blank',rel:'noopener',style:Object.assign(btn(true),{display:'inline-flex',alignItems:'center',alignSelf:'flex-start',textDecoration:'none'})},'Reorder'+(s.store?' · '+s.store:'')):null);};
+  var exams=(d.exams||[]).filter(function(x){return x.person===who;});
+  var examEl=card('ey-exam',[title('Eye exam',exams[0]&&exams[0].daysUntil!=null?(exams[0].daysUntil<0?pill('ey-due','overdue',C.bad):exams[0].daysUntil<=30?pill('ey-due','due '+eyDay_(exams[0].nextDue),C.warn):pill('ey-due','due '+eyDay_(exams[0].nextDue),C.acc)):null),
+    exams.length?h('span',{key:'t',style:{fontSize:13,color:C.soft}},(exams[0].lastVisit?'Last visit '+eyDay_(exams[0].lastVisit):'No visit yet')+(exams[0].provider?' · '+exams[0].provider:'')+(exams[0].scheduledNext?' · booked '+eyDay_(exams[0].scheduledNext):'')+'. From Health › Appointments.')
+      :h('span',{key:'t',style:{fontSize:13,color:C.mute}},'No eye exam in Appointments yet. Add a calendar event “DR: '+who+' - Eye Exam” and it shows here.'),
+    h('button',{key:'b',type:'button',className:'ey-book',disabled:busy,onClick:function(){post({action:'appt_book',person:who,type:exams[0]?exams[0].type:'Eye Exam'},function(r){flash(r.made?'Task added: '+r.task+(r.phone?' ('+r.phone+')':''):'There’s already a Task: '+r.task);});},style:Object.assign(btn(false),{alignSelf:'flex-start'})},'Book it → Task')]);
+  // ---- add a prescription ----
+  var openForm=function(kind){setForm({kind:kind||'glasses',values:{},unsure:[],exam:'',expires:'',doctor:'',lens:'',wear:'',file:null,reading:false,err:''});setView('now');};
+  var setFv=function(k,v){setForm(function(f){var n=Object.assign({},f,{values:Object.assign({},f.values)});n.values[k]=v;n.unsure=n.unsure.filter(function(x){return x!==k;});return n;});};
+  var setF=function(k,v){setForm(function(f){var n=Object.assign({},f);n[k]=v;return n;});};
+  var pick=function(ev){var file=ev.target.files&&ev.target.files[0];if(!file)return;
+    setForm(function(f){return Object.assign({},f,{reading:true,err:''});});
+    eyReadFile_(file).then(function(x){setForm(function(f){return Object.assign({},f,{file:x});});
+      return apiPost(props.apiUrl,props.apiToken,{action:'eye_read',kind:form.kind,imageBase64:x.base64,mime:x.mime});})
+      .then(function(r){setForm(function(f){if(!r||r.ok===false)return Object.assign({},f,{reading:false,err:(r&&r.error)||'Couldn’t read it. Type the numbers instead.'});
+        return Object.assign({},f,{reading:false,values:r.values||{},unsure:r.unsure||[],exam:r.exam||f.exam,expires:r.expires||f.expires,doctor:r.doctor||f.doctor,lens:r.lens||f.lens,wear:r.wear||f.wear});});})
+      .catch(function(e){setForm(function(f){return Object.assign({},f,{reading:false,err:e.message});});});};
+  var save=function(){var f=form;setBusy(true);
+    apiPost(props.apiUrl,props.apiToken,{action:'eye_save',person:who,kind:f.kind,values:f.values,exam:f.exam,expires:f.expires,doctor:f.doctor,lens:f.lens,wear:f.wear,confirmed:true,
+      imageBase64:f.file?f.file.base64:undefined,mime:f.file?f.file.mime:undefined}).then(function(r){setBusy(false);
+      if(!r||r.ok===false){setF('err',(r&&r.error)||'Not saved.');return;}setForm(null);flash('Saved '+who+'’s '+f.kind+' prescription.');load();}).catch(function(e){setBusy(false);setF('err',e.message);});};
+  var formEl=null;
+  if(form){var prev=cur(form.kind),cols=EY_GRID[form.kind],diff=prev?['od','os'].reduce(function(a,e){cols.forEach(function(c){var k=e+c[1],x=String(prev[k]||''),y=String(form.values[k]||'');if(y&&x!==y)a.push(e.toUpperCase()+' '+c[0]+' '+(x||'—')+' → '+y);});return a;},[]):[];
+    formEl=card('ey-form',[title('New prescription · '+who),
+      h('div',{key:'k',role:'group','aria-label':'Kind',style:{display:'flex',gap:6}},chip(form.kind==='glasses','ey-kind ey-kind-glasses','Glasses',function(){setF('kind','glasses');}),chip(form.kind==='contacts','ey-kind ey-kind-contacts','Contacts',function(){setF('kind','contacts');})),
+      h('div',{key:'u',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+        h('label',{style:Object.assign(btn(true),{display:'inline-flex',alignItems:'center'})},'Take a photo',h('input',{type:'file',accept:'image/*',capture:'environment',className:'ey-camera',onChange:pick,style:{display:'none'}})),
+        h('label',{style:Object.assign(btn(false),{display:'inline-flex',alignItems:'center'})},'Upload a file',h('input',{type:'file',accept:'image/*,application/pdf',className:'ey-file',onChange:pick,style:{display:'none'}})),
+        h('span',{style:{fontSize:12,color:C.mute,flex:'1 1 200px'}},form.reading?'VERA is reading it…':form.file?'Kept in a private VERA folder in your Drive once saved.':'A photo of the paper, or the PDF from the eye doctor. Or type the numbers.')),
+      form.file&&form.file.preview?h('img',{key:'pv',src:form.file.preview,alt:'The photo',style:{maxWidth:'100%',maxHeight:260,objectFit:'contain',borderRadius:10,border:'1px solid '+C.br}}):null,
+      form.unsure.length?h('span',{key:'un',className:'ey-unsure-note',style:{fontSize:13,color:C.warn}},'Check the marked '+(form.unsure.length===1?'number':'numbers')+' against the photo: VERA wasn’t sure.'):null,
+      h('div',{key:'g',className:'ey-grid',style:{display:'grid',gridTemplateColumns:'34px repeat('+cols.length+',minmax(0,1fr))',gap:6,alignItems:'end'}},
+        [h('span',{key:'h'})].concat(cols.map(function(c){return h('span',{key:'h'+c[0],style:{fontSize:11,color:C.mute,textAlign:'center'}},c[0]);}),
+          ['od','os'].reduce(function(a,e){a.push(h('span',{key:e,style:{fontWeight:600,color:C.soft,paddingBottom:12,fontSize:13}},e.toUpperCase()));
+            cols.forEach(function(c){var k=e+c[1];a.push(h('div',{key:k,className:'ey-field'+(form.unsure.indexOf(k)!==-1?' ey-unsure':'')},input(e.toUpperCase()+' '+c[0],form.values[k],function(v){setFv(k,v);},{unsure:form.unsure.indexOf(k)!==-1,mono:true,attrs:{inputMode:'decimal'}})));});return a;},[]))),
+      h('div',{key:'x',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}},
+        form.kind==='glasses'?h('div',{className:'ey-field'+(form.unsure.indexOf('pd')!==-1?' ey-unsure':'')},input('PD',form.values.pd,function(v){setFv('pd',v);},{unsure:form.unsure.indexOf('pd')!==-1,mono:true})):null,
+        form.kind==='contacts'?h('div',{className:'ey-field'+(form.unsure.indexOf('bc')!==-1?' ey-unsure':'')},input('BC',form.values.bc,function(v){setFv('bc',v);},{unsure:form.unsure.indexOf('bc')!==-1,mono:true})):null,
+        form.kind==='contacts'?h('div',{className:'ey-field'+(form.unsure.indexOf('dia')!==-1?' ey-unsure':'')},input('DIA',form.values.dia,function(v){setFv('dia',v);},{unsure:form.unsure.indexOf('dia')!==-1,mono:true})):null,
+        form.kind==='contacts'?input('Lens',form.lens,function(v){setF('lens',v);}):null,
+        input('Exam date',form.exam,function(v){setF('exam',v);},{attrs:{type:'date'}}),
+        input('Expires',form.expires,function(v){setF('expires',v);},{attrs:{type:'date'}}),
+        input('Doctor',form.doctor,function(v){setF('doctor',v);})),
+      diff.length?h('span',{key:'df',className:'ey-diff',style:Object.assign({fontSize:13,color:C.soft},mono)},'Changed: '+diff.join(' · ')):null,
+      form.err?h('span',{key:'e',role:'alert',className:'ey-err',style:{fontSize:13,color:C.bad}},form.err):null,
+      h('div',{key:'b',style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',onClick:function(){setForm(null);},style:btn(false)},'Cancel'),
+        h('button',{type:'button',className:'ey-save',disabled:busy||form.reading,onClick:save,style:btn(true)},busy?'Saving…':'Save · it becomes the current one'))]);}
+  // ---- history ----
+  var hist=(d.history||[]).filter(function(r){return r.person===who;});
+  var histEl=card('ey-hist',[title('Earlier prescriptions'),hist.length?h('div',{key:'l',style:{display:'flex',flexDirection:'column'}},hist.map(function(r){return h('div',{key:r.id,className:'ey-hist-row',style:{display:'flex',flexDirection:'column',gap:4,padding:'10px 0',borderTop:'1px solid '+C.line}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',fontSize:14}},h('b',null,(r.kind==='contacts'?'Contacts':'Glasses')+' · '+(r.exam?eyDay_(r.exam):'no date')),
+        h('span',{style:{display:'flex',gap:6}},r.photo?h('button',{type:'button',onClick:function(){showPhoto(r);},style:Object.assign(btn(false),{minHeight:36})},'Photo'):null,
+          h('button',{type:'button','aria-label':'Remove this prescription',onClick:function(){post({action:'eye_delete',id:r.id},function(){flash('Removed.');});},style:Object.assign(btn(false),{minHeight:36})},'×'))),
+      h('span',{style:Object.assign({fontSize:13,color:C.soft,overflowWrap:'anywhere'},mono)},r.copy||''),photoEl(r));}))
+      :h('span',{key:'n',style:{fontSize:13,color:C.mute}},'Older prescriptions move here when a new one is saved, with their photos.')]);
+  // ---- buying ----
+  var usual=(d.usual||[]).filter(function(x){return x.person===who;}),orders=(d.orders||[]).filter(function(x){return x.person===who;});
+  var setU=function(k,v){setUform(function(f){var n=Object.assign({},f);n[k]=v;return n;});},setO=function(k,v){setOform(function(f){var n=Object.assign({},f);n[k]=v;return n;});};
+  var buyEl=[card('ey-usual',[title('What '+who+' buys, and where'),
+      usual.map(function(x){return h('div',{key:x.id,className:'ey-usual-row',style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid '+C.line,fontSize:14}},
+        h('span',{style:{minWidth:0}},h('b',null,x.what),h('br'),h('span',{style:{fontSize:13,color:C.soft}},[x.brand,x.pack?x.pack+'-pack':'',x.daysPerPack?x.daysPerPack+' days a pack':'',x.store,x.price?'$'+x.price:''].filter(Boolean).join(' · '))),
+        h('span',{style:{display:'flex',gap:6,flex:'none'}},x.link?h('a',{href:x.link,target:'_blank',rel:'noopener',style:Object.assign(btn(false),{display:'inline-flex',alignItems:'center',minHeight:36,textDecoration:'none'})},'Open'):null,
+          h('button',{type:'button',onClick:function(){setUform(Object.assign({},x));},style:Object.assign(btn(false),{minHeight:36})},'✎')));}),
+      uform?h('div',{key:'f',className:'ey-usual-form',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}},
+        input('What',uform.what,function(v){setU('what',v);}),input('Brand',uform.brand,function(v){setU('brand',v);}),input('Pack',uform.pack,function(v){setU('pack',v);}),
+        input('Days per pack',uform.daysPerPack,function(v){setU('daysPerPack',v);}),input('Store',uform.store,function(v){setU('store',v);}),input('Link',uform.link,function(v){setU('link',v);}),input('Price',uform.price,function(v){setU('price',v);}),
+        h('div',{style:{display:'flex',gap:8,gridColumn:'1 / -1',flexWrap:'wrap'}},h('button',{type:'button',onClick:function(){setUform(null);},style:btn(false)},'Cancel'),
+          uform.id?h('button',{type:'button',onClick:function(){post({action:'eye_usual_delete',id:uform.id},function(){setUform(null);});},style:btn(false)},'Remove'):null,
+          h('button',{type:'button',className:'ey-usual-save',disabled:busy,onClick:function(){post(Object.assign({action:'eye_usual_save',person:who},uform),function(){setUform(null);flash('Saved.');});},style:btn(true)},'Save')))
+        :h('button',{key:'a',type:'button',className:'ey-usual-add',onClick:function(){setUform({what:'Contacts',brand:'',pack:'90',daysPerPack:'90',store:'',link:'',price:''});},style:Object.assign(btn(false),{alignSelf:'flex-start'})},'＋ Add a brand or store')]),
+    card('ey-orders',[title('Orders'),
+      orders.map(function(o){return h('div',{key:o.id,className:'ey-order-row',style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid '+C.line,fontSize:14}},
+        h('span',{style:{minWidth:0}},eyDay_(o.date)+' · '+o.what+(o.boxes?' · '+o.boxes+' per eye':''),h('br'),h('span',{style:{fontSize:13,color:C.soft}},[o.store,o.cost?'$'+o.cost:'',o.paidWith].filter(Boolean).join(' · '))),
+        h('button',{type:'button','aria-label':'Remove this order',onClick:function(){post({action:'eye_order_delete',id:o.id});},style:Object.assign(btn(false),{minHeight:36,flex:'none'})},'×'));}),
+      oform?h('div',{key:'f',className:'ey-order-form',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}},
+        input('Date',oform.date,function(v){setO('date',v);},{attrs:{type:'date'}}),input('What',oform.what,function(v){setO('what',v);}),input('Boxes per eye',oform.boxes,function(v){setO('boxes',v);}),
+        input('Store',oform.store,function(v){setO('store',v);}),input('Cost',oform.cost,function(v){setO('cost',v);}),input('Paid with',oform.paidWith,function(v){setO('paidWith',v);}),
+        h('div',{style:{display:'flex',gap:8,gridColumn:'1 / -1'}},h('button',{type:'button',onClick:function(){setOform(null);},style:btn(false)},'Cancel'),
+          h('button',{type:'button',className:'ey-order-save',disabled:busy,onClick:function(){post(Object.assign({action:'eye_order_log',person:who},oform),function(){setOform(null);flash('Order logged.');});},style:btn(true)},'Log it')))
+        :h('button',{key:'a',type:'button',className:'ey-order-add',onClick:function(){var u0=usual.filter(function(x){return /contact/i.test(x.what);})[0];setOform({date:d.today,what:'Contacts',boxes:'',store:u0?u0.store:'',cost:'',paidWith:''});},style:Object.assign(btn(false),{alignSelf:'flex-start'})},'＋ Log an order'),
+      h('span',{key:'n',style:{fontSize:12,color:C.mute}},'Glasses and contacts are FSA eligible. Boxes per eye × days per pack tells VERA when the contacts run out.')])];
+  return h('div',{className:'ey-tab',style:{display:'flex',flexDirection:'column',gap:14,color:C.txt}},
+    h('div',{role:'group','aria-label':'Person',style:{display:'flex',gap:6,flexWrap:'wrap'}},people.map(function(p){return chip(p===who,'ey-person',p,function(){setPerson(p);setForm(null);setPhoto(null);});})),
+    h('div',{role:'tablist','aria-label':'Eyes',style:{display:'flex',gap:6}},[['now','Now'],['hist','History'],['buy','Buying']].map(function(t){return h('button',{key:t[0],type:'button',role:'tab','aria-selected':view===t[0]?'true':'false',className:'ey-nav-'+t[0],onClick:function(){setView(t[0]);},
+      style:{flex:'1 1 0',minHeight:40,borderRadius:10,border:'1px solid '+(view===t[0]?'#5c7cc4':C.br),background:view===t[0]?'#1d2d57':'transparent',color:view===t[0]?C.txt:C.soft,fontWeight:view===t[0]?700:500,fontSize:14,cursor:'pointer'}},t[1]);})),
+    msg?h('div',{role:'status',className:'ey-msg',style:{fontSize:13,color:C.ok}},msg):null,
+    view==='now'?[formEl,form?null:h('button',{key:'add',type:'button',className:'ey-add',onClick:function(){openForm('glasses');},style:btn(true)},'＋ Add a prescription'),rxCard('glasses'),rxCard('contacts'),examEl]:view==='hist'?histEl:buyEl);}
+// ---- /EyesTab ----
 
 // ---- Finance Summary Lite tab -----------------------------------------------
 
@@ -14288,7 +14455,7 @@ var VN_GROUPS={
     {id:'places',label:'Places',icon:'🌍',items:['countries','bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','bags','gifts']}],
   career:[{id:'direction',label:'Direction',icon:'🧭',items:['northstar','readiness']},{id:'proof',label:'Proof',icon:'📎',items:['evidence','credentials']},
     {id:'search',label:'Search',icon:'🔍',items:['brand','market']},{id:'agents',label:'Agents',icon:'🔁',items:['pipeline','exchange']},{id:'network',label:'Network',icon:'🤝',items:['network']}],
-  health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['coverage','prescriptions','appointments']},
+  health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['coverage','eyes','prescriptions','appointments']},
     {id:'family',label:'Family',icon:'👶',items:['family_planning']}],
   people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
     {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
@@ -14386,7 +14553,7 @@ const TOP_TABS = [
 const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 'coupons'], prescriptions: ['family', 'prescriptions'],
   wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
 const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '🥇 Which card' }, { id: 'coupons', label: '🎟️ Coupons' }];
-const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'coverage', label: '🩺 Coverage' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
+const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'coverage', label: '🩺 Coverage' }, { id: 'eyes', label: '👓 Eyes' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
 const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'bucketlist', label: '🪣 Bucket List' }, { id: 'profiles', label: '👤 Profiles' }, { id: 'bags', label: '🧳 Our bags' }, { id: 'gifts', label: '🎁 Gifts' }];
 // Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
 const HF_GROUPS_LITE = [
@@ -16182,6 +16349,7 @@ function App() {
         )}
         {activeTab === 'family' && familySub === 'planning' && <FamilyPlanningPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />}
         {activeTab === 'family' && familySub === 'coverage' && <CoverageTab apiUrl={apiUrl} apiToken={apiToken} />}
+        {activeTab === 'family' && familySub === 'eyes' && <EyesTab apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'prescriptions' && <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'wishlists' && <WishListsView apiUrl={apiUrl} apiToken={apiToken} />}
         {activeTab === 'family' && familySub === 'contacts' && <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />}

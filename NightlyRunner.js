@@ -49,6 +49,7 @@ function nightlySteps_() {
     S('plCloseEndedTrips_', 1, function() { plCloseEndedTrips_(10); }),
     S('checkGymSessions_', 1, function() { checkGymSessions_(); }),
     S('checkRefills_', 1, function() { checkRefills_(); }),
+    S('checkEyes_', 1, function() { checkEyes_(); }),
     S('checkHealthAppointments_', 1, function() { checkHealthAppointments_(); }),
     S('syncCalendarBirthdaysToImportantDates_', 1, function() { syncCalendarBirthdaysToImportantDates_(); }),
     S('syncImportantDatesToCalendar_', 1, function() { syncImportantDatesToCalendar_(); }),

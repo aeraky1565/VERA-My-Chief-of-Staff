@@ -171,6 +171,8 @@ function doGet(e) {
       case 'bills_schedule':          return jsonOut_(webGetBillsSchedule_()); // BillSchedule.js — tracker amounts + VERA's Bill Schedule
       case 'bills_reconcile':         return jsonOut_(webGetBillsReconcile_(e));
       case 'budget_actuals':          return jsonOut_(webGetBudgetActuals_(e)); // plan vs actual per Budget line, from the uploads
+      case 'eyes':                    return jsonOut_(webGetEyes_()); // Eyes.js — Health › Care › Eyes: glasses and contacts prescriptions, usual brands, orders, supply
+      case 'eye_photo':               return jsonOut_(webEyePhoto_(e));
       case 'coverage':                return jsonOut_(webGetCoverage_()); // Coverage.js — Health › Care › Coverage: cards (from the cheat sheet), covered, FSA questions, perks
       case 'checkin':                 return jsonOut_(webGetCheckin_()); // FinSummary.js — the Summary page and the quarterly check-in
       case 'phone_plan':              return jsonOut_(webGetPhonePlan_()); // PhonePlan.js — reads the phone tracker, never writes it
@@ -749,6 +751,14 @@ function doPost(e) {
       case 'perk_delete':                return jsonOut_(peopleOwnerOnly_() || webPerkDelete_(body));
       case 'perk_log':                   return jsonOut_(webPerkLog_(body));
       case 'perk_log_delete':            return jsonOut_(webPerkLogDelete_(body));
+      // Health › Care › Eyes (Eyes.js): both of you can read, add and change
+      case 'eye_read':                   return jsonOut_(webEyeRead_(body));
+      case 'eye_save':                   return jsonOut_(webEyeSave_(body));
+      case 'eye_delete':                 return jsonOut_(webEyeDelete_(body));
+      case 'eye_usual_save':             return jsonOut_(webEyeUsualSave_(body));
+      case 'eye_usual_delete':           return jsonOut_(webEyeUsualDelete_(body));
+      case 'eye_order_log':              return jsonOut_(webEyeOrderLog_(body));
+      case 'eye_order_delete':           return jsonOut_(webEyeOrderDelete_(body));
       case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
       case 'bills_schedule_account':     return jsonOut_(webSaveBillAccount_(body));
       case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));

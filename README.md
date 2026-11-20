@@ -126,7 +126,7 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
   - Home: Kitchen, House, Chores, Hosting;
   - Money: This month, Saving, Our cards, Net worth;
   - Travel: My trips, Bucket list, Profiles, Gifts;
-  - Family: Planning, Coverage, Prescriptions, Wish lists, Addresses;
+  - Family: Planning, Coverage, Eyes, Prescriptions, Wish lists, Addresses;
   - More: Projects, Settings, and Your assistants.
 - **Under the bar** are the same tabs as before, with the same ids (`TOP_TABS`), so People & access and old links still work. A hidden tab has no button and no icon.
 - **On iPhone**, the page runs to the screen edges (`viewport-fit=cover`), and the bar pads itself clear of the home indicator.
@@ -188,6 +188,7 @@ VERA's chat system supports the following action categories, each backed by a li
 | **Pantry / Purchase History** | add_purchase, log_receipt_items (image → line items) |
 | **Career** | add_career_win, add_career_goal, update_career_position |
 | **Coverage** | fsa_check (is this FSA / HSA eligible? answered from the FSA documents in Resources, logged to Coverage Questions) |
+| **Eyes** | eye_rx (the current glasses and contacts prescriptions, as text) |
 | **Prescriptions** | add_prescription, mark_prescription_refilled |
 | **Health Appointments** | log_health_visit (creates DR: calendar event), add_health_appointment, query_health_due |
 | **Credit Cards** | log_card_used, mark_perk_used, update_loyalty_points |
@@ -230,6 +231,20 @@ Config overrides: `pattern_max_flags` (default 2 per run), `pattern_dedup_days` 
 - **Perks.** Employer perks in VERA's **Perks** tab (Name, For, What, Link, Allowances like `therapy:6; coaching:6`, Resets). Hinge (the owner's) and Maven are added once. A perk with an allowance shows how many are left this year and a **Log** button per kind (refused once the year's allowance is used, or for a kind it doesn't have); uses go in **Perk Log**. **Add a perk** for more.
 
 Routes: GET `coverage`; POST `coverage_read_docs`, `perk_save`, `perk_delete` (owner only), `coverage_ask`, `perk_log`, `perk_log_delete`.
+
+### Eyes: glasses and contacts prescriptions (`Eyes.js`, `EyesTab`)
+
+**Health › Care › Eyes** (lite: Family › Eyes). For each person (the owner, Config `eyes_people`, and anyone in the rows):
+
+- **Glasses** and **Contacts** cards: the Rx grid (SPH/CYL/AXIS/ADD, or PWR/CYL/AXIS), PD or BC · DIA, the lens, the exam and doctor, an expiry pill, **See the photo**, and **Copy for an online order**.
+- **Contacts supply**: the last contacts order (boxes per eye) × the usual contacts' days per pack, the days left, **Reorder by** (14 days before) and **Reorder** (the usual store's link).
+- **Eye exam**: read from Appointments (`DR: <person> - Eye Exam` events); **Book it** uses Appointments' `appt_book` (a call Task).
+- **＋ Add a prescription**: Glasses or Contacts, then **Take a photo** or **Upload a file** (an image or PDF). The page sizes a photo to 1600 px; `eye_read` sends it to Claude, which fills the numbers and lists what it wasn't sure of; those are marked until you type over them (`eyRxClean_` also marks off-step powers, an axis outside 0–180, an odd PD, BC or DIA). **Save** keeps the photo in the Drive folder "VERA Eye Prescriptions" and the row in **Eye Rx**; the newest exam is the current one and the rest are **History**. Expiry, when not written: glasses 2 years, contacts 1 year from the exam.
+- **Buying**: **Eye Usual** (what, brand, pack, days per pack, store, link, price) and **Eye Orders** (date, what, boxes per eye, store, cost, paid with).
+
+Nightly `checkEyes_`: a flag 45 days before a prescription expires (High once expired), and one when contacts have 21 days or fewer left. Each flag closes itself.
+
+Routes: GET `eyes`, `eye_photo`; POST `eye_read`, `eye_save`, `eye_delete`, `eye_usual_save`, `eye_usual_delete`, `eye_order_log`, `eye_order_delete` (both of you).
 
 ### Signal Learning & Noise Filtering (`SignalLearning.js`)
 

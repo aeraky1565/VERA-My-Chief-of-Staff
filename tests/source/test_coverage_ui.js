@@ -16,7 +16,7 @@ const START = '// ---- CoverageTab (Health › Care › Coverage, issue #257) �
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
 console.log('\nthe shared block and where it lives');
 check('both dashboards carry it, word for word', block(APP).length > 3000 && block(APP) === block(LITE));
-check('Coverage is first under Health › Care', /\{id:'care',label:'Care',icon:'🩺',items:\['coverage','prescriptions','appointments'\]\}/.test(APP) && /sub==='coverage'&&React\.createElement\(CoverageTab,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
+check('Coverage is first under Health › Care', /\{id:'care',label:'Care',icon:'🩺',items:\['coverage','eyes','prescriptions','appointments'\]\}/.test(APP) && /sub==='coverage'&&React\.createElement\(CoverageTab,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
 check('…and on lite’s Family tab', /\{ id: 'coverage', label: '🩺 Coverage' \}/.test(LITE) && /familySub === 'coverage' && <CoverageTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 
 const COV = { ok: true, people: ['Pat', 'Sam'], year: '2026',
