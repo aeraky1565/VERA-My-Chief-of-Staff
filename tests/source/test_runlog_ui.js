@@ -9,7 +9,7 @@ let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n)) : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-const LOG = { ok: true, where: 'the Run Log tab in your logs sheet', jobs: [
+const LOG = { ok: true, where: 'the Run Log tab in your logs sheet', tz: 'America/New_York', jobs: [
   { fn: 'nightlyRun', runs: [
     { started: '2026-11-17T23:02:00', status: 'Cut off', secs: null, step: 'mpSyncNudges_', at: 183, steps: 40, skipped: '', errors: '', slowest: '', summary: 'Never finished: cut off during mpSyncNudges_ at 183s' },
     { started: '2026-11-16T23:01:00', status: 'Cut off', step: 'collect', at: 181, steps: 7 },
@@ -43,6 +43,7 @@ const LOG = { ok: true, where: 'the Run Log tab in your logs sheet', jobs: [
     check(L + ': it reads the run log', (await page.evaluate(() => window.__asked)).indexOf('run_log') !== -1);
     check(L + ': the pill counts jobs whose latest run didn’t finish', (await txt('.rl-pill')) === '1 didn’t finish', await txt('.rl-pill'));
     check(L + ': says where the rows come from', /From the Run Log tab in your logs sheet\./.test(await txt('.rl-head')));
+    check(L + ': says the times are Eastern', /Times are Eastern\./.test(await txt('.rl-head')));
     const names = await page.$$eval('#rl .rl-name', ns => ns.map(n => n.innerText));
     check(L + ': one line per job, by name, in the order given', JSON.stringify(names) === '["Nightly run","Hourly check","Email scan","Flight status"]', JSON.stringify(names));
     const first = await txt('.rl-jobs > .rl-job:nth-of-type(1)');

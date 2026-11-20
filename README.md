@@ -4730,7 +4730,7 @@ Career writes are POST actions (`body.action`): `career_save_constraints` (write
 | `agent_health` | `refresh=1` (optional) | Agent health: whether ARIA, TESS, HAILEY and VERA's own jobs ran on time |
 | `get_notes`, `add_note`, `update_note`, `delete_note`, `pin_note` | — | Owner only (#252). `update_note` also takes `share`, `vault`, `hideLabel`, `backOn` (+ `backTask`) |
 | `note_picture_view` | `id` | Owner only: a note's picture as a data URL |
-| `run_log` | — | Owner only: VERA's scheduled runs from the Run Log, one entry per job with its last 7 runs (System › Checks › Run log) |
+| `run_log` | — | Owner only: VERA's scheduled runs from the Run Log, one entry per job with its last 7 runs, in VERA's time zone, which the card names (the logs sheet is moved to that zone; the retired second half of the night isn't listed) (System › Checks › Run log) |
 | `trip_id_check` | — | Trip IDs (read only): rows with and without a Trip ID per trip tab, mismatches, clean since, ready for step 3 |
 | `home_nightly` | — | Full Home's System health: when the nightly run last finished, and the step it stopped in if it didn't (read only) |
 | `trip_orphans` | — | Trip IDs: the keys that name no trip, rows per tab, VERA's guess, the trips to pick from, and whether you can fix them (read only) |

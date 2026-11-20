@@ -161,10 +161,21 @@ console.log('\nThe card’s data');
   check('one entry per job, in schedule order: the nightly run first', JSON.stringify(jobs.map(j => j.fn)) === '["nightlyRun","hourlyCheck","checkFlightStatuses_"]', JSON.stringify(jobs.map(j => j.fn)));
   check('the every-15-minutes job doesn’t crowd the nightly run out: at most 7 each, newest first', jobs[2].runs.length === 7 && jobs[2].runs[0].started === 't11');
   check('each run carries its status and step', jobs[0].runs[0].status === 'Cut off' && jobs[0].runs[0].step === 'collect' && jobs[0].runs[0].at === 181 && jobs[1].runs[0].secs === 12);
+  const ret = JSON.parse(JSON.stringify(c.runLogJobs_(rows.concat([row({ STARTED: 'x1', FN: 'nightlyRunTail', STATUS: 'Partial', ID: 'x1' })]), null, 7)));
+  check('the retired second half of the night is left off the card, old rows and all', ret.length === 3 && !ret.some(j => j.fn === 'nightlyRunTail'), JSON.stringify(ret.map(j => j.fn)));
+  check('…and its tab isn’t read', !/'nightlyRunTail'/.test(SRC.match(/RUN_LOG_ORDER_ = \[[^\]]*\]/)[0]));
+  {
+    let set = null; const ss = { getSpreadsheetTimeZone: () => 'Etc/GMT', setSpreadsheetTimeZone: z => { set = z; } };
+    check('a logs sheet on another zone is moved to VERA’s clock', c.runLogAlignZone_(ss, 'America/New_York') === true && set === 'America/New_York');
+    const same = { getSpreadsheetTimeZone: () => 'America/New_York', setSpreadsheetTimeZone: () => { throw new Error('no'); } };
+    check('…and left alone when it already matches', c.runLogAlignZone_(same, 'America/New_York') === false);
+    check('the sheet is aligned when it’s opened', /runLogAlignZone_\(_runLogSS_, Session\.getScriptTimeZone\(\)\)/.test(SRC));
+  }
   const no = ctx({ notOwner: true });
   check('owner only', no.webRunLog_().error === 'Only the owner can do that');
   const own = ctx({ sheet: fakeSheet(rows) }).webRunLog_();
   check('the route, from the shared tab: the jobs, and where they come from', own.ok && own.jobs.length === 3 && /Run Log tab in VERA/.test(own.where), JSON.stringify(own).slice(0, 200));
+  check('the route says which zone the times are in', own.tz === 'UTC');
   const tabs = { 'Nightly run': fakeSheet([rows[3]]), 'Flight status': fakeSheet(rows.filter(r => r[1] === 'checkFlightStatuses_')), 'Hourly check': fakeSheet([rows[rows.length - 1]]) };
   const out = ctx({ tabs, setting: { RUN_LOG_SHEET_ID: 'X' } }).webRunLog_();
   check('…from a tab per job: each job’s last 7, read from its own tab', out.ok && JSON.stringify(out.jobs.map(j => j.fn + ':' + j.runs.length)) === '["nightlyRun:1","hourlyCheck:1","checkFlightStatuses_:7"]' && out.jobs[2].runs[0].started === 't11' && /a tab per job/.test(out.where), JSON.stringify(out.jobs.map(j => j.fn + ':' + j.runs.length)));

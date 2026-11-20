@@ -37,9 +37,11 @@ var RUN_LOG_EVERY_MS_  = 30 * 1000;       // …or every 30 s, whichever comes f
 var RUN_LOG_LOOK_      = 300;             // rows read back when finding or sweeping
 var RUN_LOG_READ_      = 1500;            // rows the card reads from the single tab (~170 runs a day)
 // The scheduled jobs, in the order the card lists them (TRIGGER_SPECS, Code.js), and their tabs.
-var RUN_LOG_ORDER_ = ['nightlyRun', 'nightlyRunTail', 'morningNudge', 'hourlyCheck', 'checkFlightStatuses_', 'runEmailScan_', 'scanUSPSMail_', 'scanHoaWebsite_'];
+var RUN_LOG_ORDER_ = ['nightlyRun', 'morningNudge', 'hourlyCheck', 'checkFlightStatuses_', 'runEmailScan_', 'scanUSPSMail_', 'scanHoaWebsite_'];
 var RUN_LOG_TABS_ = { nightlyRun: 'Nightly run', nightlyRunTail: 'Nightly run, second half', morningNudge: 'Morning email', hourlyCheck: 'Hourly check',
                       checkFlightStatuses_: 'Flight status', runEmailScan_: 'Email scan', scanUSPSMail_: 'USPS mail scan', scanHoaWebsite_: 'HOA website scan' };
+// Jobs that no longer run (#256 folded the night's second half into one list): left off the card.
+var RUN_LOG_RETIRED_ = ['nightlyRunTail'];
 // Each job's breadcrumb (Code.js NIGHTLY_STEP_PROP_ etc.), as "step|seconds".
 var RUN_LOG_CRUMBS_ = { nightlyRun: 'NIGHTLY_STEP', nightlyRunTail: 'NIGHTLY_TAIL_STEP', morningNudge: 'MORNING_STEP' };
 
@@ -53,7 +55,18 @@ function runLogBook_() {
   try { id = veraSettingId_(RUN_LOG_SETTING_); } catch (e) { id = ''; }
   _runLogOwn_ = !id;
   _runLogSS_ = id ? SpreadsheetApp.openById(id) : getSpreadsheet();
+  // The logs sheet keeps VERA's clock. A sheet left on another zone (it was on GMT) stores
+  // each run hours off, and the card then shows the wrong time.
+  try { runLogAlignZone_(_runLogSS_, Session.getScriptTimeZone()); } catch (e) {}
   return _runLogSS_;
+}
+
+/** Sets the sheet's time zone to VERA's when they differ. → true when it changed it. */
+function runLogAlignZone_(ss, tz) {
+  if (!ss || typeof ss.getSpreadsheetTimeZone !== 'function' || !tz) return false;
+  if (ss.getSpreadsheetTimeZone() === tz) return false;
+  ss.setSpreadsheetTimeZone(tz);
+  return true;
 }
 
 /** Pure: the tab a job's rows go in. One tab per job in the logs sheet; one shared tab in VERA's own. */
@@ -262,7 +275,7 @@ function runLogJobs_(rows, fmt, per) {
   var by = {};
   for (var i = rows.length - 1; i >= 0; i--) {
     var r = rows[i], fn = String(r[RUN_LOG_C_.FN] || '');
-    if (!fn) continue;
+    if (!fn || RUN_LOG_RETIRED_.indexOf(fn) !== -1) continue;
     var list = by[fn] || (by[fn] = []);
     if (list.length >= per) continue;
     list.push({ started: fmt(r[RUN_LOG_C_.STARTED]), status: String(r[RUN_LOG_C_.STATUS] || ''), finished: fmt(r[RUN_LOG_C_.FIN]),
@@ -291,5 +304,5 @@ function webRunLog_() {
     var from = Math.max(2, last - (t.fn ? 7 : RUN_LOG_READ_) + 1);   // a job's own tab: its last 7 rows are all that's shown
     rows = rows.concat(t.sheet.getRange(from, 1, last - from + 1, RUN_LOG_HEADERS_.length).getValues());
   });
-  return { ok: true, jobs: runLogJobs_(rows, fmt, 7), where: where };
+  return { ok: true, jobs: runLogJobs_(rows, fmt, 7), where: where, tz: tz };
 }
