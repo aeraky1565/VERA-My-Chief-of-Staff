@@ -88,25 +88,23 @@ CLAUDE_REPLY = 'sorry'; check('nothing readable says so', /couldn’t make out a
 
 console.log('\nsaving');
 r = run('webEyeSave_(B)', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.25', osSph: '-2.00', pd: '63' }, exam: '2025-03-12', doctor: 'Dr. Lee', imageBase64: 'aGVsbG8=', mime: 'image/jpeg' } });
-check('saving keeps the photo in VERA’s own sheet (a hidden Eye Photos tab) and the row in Eye Rx, with the expiry worked out', r.ok && /^EP-/.test(STORE['Eye Rx'][1][19]) && STORE['Eye Photos'].length === 2 && STORE['Eye Photos'][1][1] === 'image/jpeg' && FILES.length === 0 && r.expires === '2027-03-12' && STORE['Eye Rx'].length === 2, J(r));
-const big = 'A'.repeat(45000) + 'B'.repeat(45000) + 'C'.repeat(10001); run('webEyeSave_(B)', { B: { person: 'Sam', kind: 'glasses', values: { odSph: '-1.00' }, exam: '2026-01-01', imageBase64: big, mime: 'image/png' } });
-const bigId = STORE['Eye Rx'][STORE['Eye Rx'].length - 1][19];
-check('a bigger photo is split into 45,000-character parts and comes back whole', STORE['Eye Photos'].filter(r => r[0] === bigId).length === 3 && run('eyPhotoRead_(I)', { I: bigId }).b64 === big);
-check('a PDF over 2 MB is refused (take a photo instead)', /over 2 MB/.test(run('webEyeSave_(B).error', { B: { person: 'Sam', kind: 'glasses', values: { odSph: '-1.00' }, imageBase64: 'A'.repeat(2800001), mime: 'application/pdf' } })));
-check('Eyes keeps photos in the sheet: no Drive folder or Drive file is made', !/DriveApp\.(createFolder|getFoldersByName)|veraDriveSave_\(/.test(EY) && FOLDERS.length === 0);
+check('saving keeps the photo in its own Drive folder and the row in Eye Rx, with the expiry worked out', r.ok && FILES.length === 1 && FILES[0].folder === 'VERA Eye Prescriptions' && /Pat glasses 2025-03-12/.test(FILES[0].name) && FOLDERS.length === 1 && r.expires === '2027-03-12' && STORE['Eye Rx'].length === 2, J(r));
+check('the folder is made once and reused', (run('webEyeSave_(B)', { B: { person: 'Sam', kind: 'glasses', values: { odSph: '-1.00' }, exam: '2026-01-01', imageBase64: 'aGk=', mime: 'image/png' } }), FOLDERS.length === 1 && FILES.length === 2 && FILES[1].folder === 'VERA Eye Prescriptions'));
+check('Eyes and Notes save through the Drive service (drive.file), not DriveApp folders', !/DriveApp\.(createFolder|getFoldersByName)/.test(EY) && /veraDriveSave_\(EY_FOLDER_,/.test(EY) && !/DriveApp\.(createFolder|getFoldersByName)/.test(read('Notes.js')) && /veraDriveSave_\(NT_PICTURES_FOLDER_,/.test(read('Notes.js')));
+check('the manifest asks only for files VERA creates, and turns the Drive service on', (m => m.oauthScopes.includes('https://www.googleapis.com/auth/drive.file') && !m.oauthScopes.includes('https://www.googleapis.com/auth/drive') && m.dependencies.enabledAdvancedServices.some(s => s.serviceId === 'drive' && s.userSymbol === 'Drive'))(JSON.parse(read('appsscript.json'))));
 check('marked numbers aren’t saved until you’ve checked them', /Check the marked/.test(run('webEyeSave_(B).error', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.30' } } })) && run('webEyeSave_(B).ok', { B: { person: 'Sam', kind: 'contacts', values: { odSph: '-4.50', osSph: '-4.75', bc: '8.5', dia: '14.1' }, exam: '2026-01-05', lens: 'Dailies', confirmed: true } }) === true);
 check('no numbers, no person, a formula-like name are refused', /at least the sphere/.test(run('webEyeSave_(B).error', { B: { person: 'Pat', kind: 'glasses', values: {} } })) && /Whose/.test(run('webEyeSave_({}).error')) && /can’t start with =/.test(run('webEyeSave_(B).error', { B: { person: '=X', values: { odSph: '-1' } } })));
 run('webEyeSave_(B)', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.50', osSph: '-2.25', pd: '63' }, exam: '2026-03-10', doctor: 'Dr. Lee' } });
 let d = run('webGetEyes_()');
 const patG = d.current.filter(x => x.person === 'Pat' && x.kind === 'glasses');
-check('the newest exam is the current one; the older one is history, with its photo', patG.length === 1 && patG[0].odSph === '-2.50' && d.history.length === 1 && d.history[0].odSph === '-2.25' && /^EP-/.test(d.history[0].photo), J(d.history));
+check('the newest exam is the current one; the older one is history, with its photo', patG.length === 1 && patG[0].odSph === '-2.50' && d.history.length === 1 && d.history[0].odSph === '-2.25' && d.history[0].photo === 'FILE1', J(d.history));
 check('each current one carries the copy text', /^OD -2.50 · OS -2.25 · PD 63/.test(patG[0].copy), patG[0].copy);
 check('the people come from the household cheat sheet; the “Owner” placeholder is never one', J(d.people) === '["Pat","Sam"]', J(d.people));
 OWNER = 'Pat'; CONFIG_PEOPLE = 'Kim';
 check('…the owner’s real name and Config eyes_people join without repeats', J(run('webGetEyes_().people')) === '["Pat","Sam","Kim"]', J(run('webGetEyes_().people')));
 OWNER = 'Owner'; CONFIG_PEOPLE = '';
 check('the eye exam comes from Appointments (not the dentist)', J(d.exams.map(x => x.person + ':' + x.type)) === '["Sam:Eye Exam"]');
-check('the photo opens as a data URL, rebuilt from the sheet', run('webEyePhoto_(E).dataUrl', { E: { parameter: { id: d.history[0].id } } }) === 'data:image/jpeg;base64,aGVsbG8=');
+check('the photo opens as a data URL', /^data:image\/jpeg;base64,/.test(run('webEyePhoto_(E).dataUrl', { E: { parameter: { id: d.history[0].id } } })));
 
 console.log('\nwhat you buy, orders and the supply');
 check('a usual item: needs whose and what; days per pack is a number; a link is https', run('webEyeUsualSave_(B).ok', { B: { person: 'Sam', what: 'Contacts', brand: 'Dailies Total1', pack: '90', daysPerPack: '90', store: 'Costco', link: 'https://shop.test/x' } }) === true

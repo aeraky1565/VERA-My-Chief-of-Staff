@@ -234,7 +234,7 @@ The Chores tab gains `Owner` (Ahmed / Victoria / Either) and `Checked By` (from 
 
 **Health › Care › Eyes** (on lite, Family › Eyes): glasses and contacts prescriptions for each of you.
 
-- **Add a prescription:** pick Glasses or Contacts, then **Take a photo** or **Upload a file** (a photo or the PDF from the eye doctor). VERA reads the numbers in. Anything it wasn't sure of is marked: check it against the photo, then **Save**. The photo is kept in VERA's own sheet. The new one becomes current, and the old one moves to History.
+- **Add a prescription:** pick Glasses or Contacts, then **Take a photo** or **Upload a file** (a photo or the PDF from the eye doctor). VERA reads the numbers in. Anything it wasn't sure of is marked: check it against the photo, then **Save**. The photo is kept in a private VERA folder in your Drive. The new one becomes current, and the old one moves to History.
 - **The cards** show the prescription, when it expires, the photo, and **Copy for an online order**.
 - **Contacts:** log each order under Buying (boxes per eye) and set the usual contacts' days per pack (e.g. 90). VERA then shows how many days are left and when to reorder, with a **Reorder** link to your usual store.
 - **Eye exam:** comes from Appointments. **Book it** adds a call Task.
