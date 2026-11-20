@@ -12716,10 +12716,13 @@ function BudgetTab(props){var h=React.createElement;
         h('span',{style:Object.assign({fontSize:15,fontWeight:600},num)},o.amount),o.edit||null),
       h('div',{style:{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center',fontSize:12,color:BGC.soft}},o.chips),
       o.shares?h('div',{style:Object.assign({display:'flex',flexWrap:'wrap',gap:'4px 14px',fontSize:13,color:BGC.mute},num)},o.shares):null);};
-  var cardOf=function(b,L,amtEl,a,isShared,editBtn){var shares=[];if(isShared)shares=[A.name+' '+bgMoney_(L.amount*c.split,true),V.name+' '+bgMoney_(L.amount*(1-c.split),true)];
+  // Who pays it, as a filled pill: Joint blue, each person their own colour.
+  var payChip=function(who,label){var k=String(who||'').toLowerCase(),col=k==='joint'?BGC.acc:k===String(A.name).toLowerCase()?BGC.ok:k===String(V.name).toLowerCase()?'#f0a6d8':BGC.soft;
+    return h('span',{className:'bg-paidby',style:{fontSize:12,fontWeight:700,padding:'2px 10px',borderRadius:9,background:col+'2e',border:'1px solid '+col,color:col,whiteSpace:'nowrap'}},label||('Paid by '+who));};
+  var cardOf=function(b,L,amtEl,a,isShared,editBtn){var shares=[];
     if(a!=null)shares.push(h('span',{key:'a',className:'bg-actual'+(a>L.amount*1.1?' over':''),style:{color:a>L.amount*1.1?BGC.warn:BGC.soft}},'actual '+bgMoney_(a)));
     return billCard({key:b.key,cls:isCh(b.key)?' bg-changed':'',name:h('span',{style:{display:'inline-flex',gap:6,alignItems:'center',flexWrap:'wrap'}},b.name,b.incomplete?chip('needs Type, For or Paid by',true):null),amount:amtEl,edit:editBtn,
-      chips:[chip(BG_TYPE_NAME[b.type]||'—'),chip(isShared?'Shared':'For '+b.forWho),chip('Paid by '+b.paidBy),chip(b.keptAs,b.keptAs==='Set-aside'),chip(L.category||b.category||'Other')],shares:shares.length?shares.map(function(s,i){return typeof s==='string'?h('span',{key:i},s):s;}):null});};
+      chips:[payChip(b.paidBy),chip(BG_TYPE_NAME[b.type]||'—'),chip(isShared?'Shared':'For '+b.forWho),chip(b.keptAs,b.keptAs==='Set-aside'),chip(L.category||b.category||'Other')],shares:shares.length?shares.map(function(s,i){return typeof s==='string'?h('span',{key:i},s):s;}):null});};
   var billRows=shownBills.map(function(b){var L=lineOf[b.key]||personOf[b.key]||b,amt=L.amount,isShared=/^shared$/i.test(b.forWho),a=act(b.key);
     return {cls:'bg-bill'+(isCh(b.key)?' bg-changed':''),cells:[h('span',{style:{display:'inline-flex',gap:6,alignItems:'center',flexWrap:'wrap'}},b.name,b.incomplete?chip('needs Type, For or Paid by',true):null),
       whatIf?input(b.key,shownOf(b.key,b.amount),b.name):h('span',{style:num},bgMoney_(amt,true)),BG_TYPE_NAME[b.type]||'—',b.forWho,b.paidBy,chip(b.keptAs,b.keptAs==='Set-aside'),L.category||b.category||'—',
@@ -12740,7 +12743,7 @@ function BudgetTab(props){var h=React.createElement;
      narrow?h('div',{key:'cards',className:'bg-bills'},shownBills.map(function(b){var L=lineOf[b.key]||personOf[b.key]||b,isShared=/^shared$/i.test(b.forWho);
          return cardOf(b,L,whatIf?input(b.key,shownOf(b.key,b.amount),b.name,100):bgMoney_(L.amount,true),act(b.key),isShared,whatIf?null:pencil('Edit '+b.name,function(){openForm(b);}));}).concat(
          (forBills==='shared'||forBills==='all')?(model.shared.pay||[]).map(function(x){var L=lineOf[x.key]||x;return billCard({key:x.key,cls:' bg-bill-pay',mute:true,name:x.name,amount:bgMoney_(L.amount,true),
-           chips:[chip('Fixed'),chip('Shared'),chip('from '+x.account+'’s pay'),chip(L.category||'Health')],shares:[h('span',{key:0},A.name+' '+bgMoney_(L.amount*c.split,true)),h('span',{key:1},V.name+' '+bgMoney_(L.amount*(1-c.split),true))]});}):[])):
+           chips:[payChip(x.account,'from '+x.account+'’s pay'),chip('Fixed'),chip('Shared'),chip(L.category||'Health')],shares:null});}):[])):
      tbl(['Bill','Monthly','Type','For','Paid by','Kept as','Category',A.name+' '+Math.round(c.split*100)+'%',V.name+' '+Math.round((1-c.split)*100)+'%',acts&&acts.quarter?'Actual, '+acts.quarter:'Actual',''],billRows,
        ['Shown',bgMoney_(shownBills.reduce(function(s,b){var L=lineOf[b.key]||personOf[b.key]||b;return s+(L.amount||0);},0)+((forBills==='shared'||forBills==='all')?(model.shared.pay||[]).reduce(function(s,x){return s+((lineOf[x.key]||x).amount||0);},0):0),true),'','','','','','','','',''],'bg-bills')]);
   // ---- 3. Split ----
