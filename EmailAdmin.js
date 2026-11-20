@@ -34,6 +34,7 @@ var EA_LABELS = {
  * whether to actually proceed on a given day).
  */
 function runEmailAdmin_() {
+  try { runLogStart_('runEmailAdmin_', arguments[0]); } catch (rlErr) {}   // RunLog.js
   var _eaStart = Date.now();
   try {
   // ── Step 1: Read config ──────────────────────────────────────────────────
@@ -296,6 +297,8 @@ function runEmailAdmin_() {
   } catch (err) {
     Logger.log('runEmailAdmin_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('runEmailAdmin', 'Email', 'Failed', '', Date.now() - _eaStart, err.message);
+  } finally {
+    try { runLogFinish_('runEmailAdmin_'); } catch (rlErr) {}   // it records no heartbeat, so it completes its own row
   }
 }
 

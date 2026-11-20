@@ -273,7 +273,9 @@ function carFindRow_(sheet, id) {
 
 /** Insert or replace by ID. Returns the ID. */
 function carUpsert_(sheet, rec, prefix) {
-  if (!rec.ID) rec.ID = prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  // A new ID is never one already in the sheet: two rows saved in the same millisecond
+  // could draw the same number, and the second save would then overwrite the first.
+  if (!rec.ID) { do { rec.ID = prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000); } while (carFindRow_(sheet, rec.ID)); }
   var found = carFindRow_(sheet, rec.ID);
   if (found) {
     var merged = Object.assign({}, found, rec);

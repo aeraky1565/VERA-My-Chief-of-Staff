@@ -193,7 +193,7 @@ function extractFnNR_(name) {
 console.log('\nWired into the scheduled handlers');
 {
   const files = { 'NightlyRunner.js': ['nightlyRun'], 'Code.js': ['morningNudge'], 'Reminders.js': ['hourlyCheck'], 'FlightStatus.js': ['checkFlightStatuses_'],
-                  'EmailParser.js': ['runEmailScan_'], 'MailCounter.js': ['scanUSPSMail_'], 'NeighborhoodWatcher.js': ['scanHoaWebsite_'] };
+                  'EmailParser.js': ['runEmailScan_'], 'MailCounter.js': ['scanUSPSMail_'], 'NeighborhoodWatcher.js': ['scanHoaWebsite_'], 'EmailAdmin.js': ['runEmailAdmin_'] };
   Object.keys(files).forEach(f => {
     const src = read(f);
     files[f].forEach(fn => {
@@ -207,6 +207,7 @@ console.log('\nWired into the scheduled handlers');
   check('…which is every handler in TRIGGER_SPECS, and the card lists them all', handlers.length === 7 && handlers.indexOf('nightlyRunTail') === -1 && handlers.every(h => /RUN_LOG_ORDER_ = \[[^\]]*'/.test(SRC) && SRC.indexOf("'" + h + "'") !== -1), handlers.join(','));
   check('each nightly part after the first opens its own row (a part that hands off ends as Continued)', /  try \{ runLogStart_\('nightlyRun', arguments\[0\]\); \} catch \(rlErr\) \{\}/.test(extractFnNR_('nightlyContinue')) && /runLogHandoff_\(ctx, /.test(read('NightlyRunner.js')));
   check('nightlyStep_ reports each step', /try \{ runLogStep_\(ctx, name\); \} catch \(rlErr\) \{\}/.test(code));
+  check('Email admin is on the card, and completes its own row (it records no heartbeat)', /'runEmailAdmin_'/.test(SRC.match(/RUN_LOG_ORDER_ = \[[^\]]*\]/)[0]) && /finally \{\n    try \{ runLogFinish_\('runEmailAdmin_'\); \} catch \(rlErr\) \{\}/.test(read('EmailAdmin.js')));
   check('recordHeartbeat_ completes the row', /try \{ runLogFinish_\(job\); \} catch \(rlErr\) \{\}/.test(read('Watchdog.js')));
   check('the hourly watchdog sweeps rows left Running', /runLogSweep_\(null, null, Date\.now\(\)\)/.test(read('Watchdog.js')));
   check('veraLog_ passes on each handler’s verdict', /try \{ runLogNote_\(routine, status, summary, error\); \} catch \(rlErr\) \{\}/.test(read('VERALog.js')));

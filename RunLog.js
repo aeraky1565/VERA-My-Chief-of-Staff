@@ -37,9 +37,9 @@ var RUN_LOG_EVERY_MS_  = 30 * 1000;       // …or every 30 s, whichever comes f
 var RUN_LOG_LOOK_      = 300;             // rows read back when finding or sweeping
 var RUN_LOG_READ_      = 1500;            // rows the card reads from the single tab (~170 runs a day)
 // The scheduled jobs, in the order the card lists them (TRIGGER_SPECS, Code.js), and their tabs.
-var RUN_LOG_ORDER_ = ['nightlyRun', 'morningNudge', 'hourlyCheck', 'checkFlightStatuses_', 'runEmailScan_', 'scanUSPSMail_', 'scanHoaWebsite_'];
+var RUN_LOG_ORDER_ = ['nightlyRun', 'morningNudge', 'hourlyCheck', 'checkFlightStatuses_', 'runEmailScan_', 'runEmailAdmin_', 'scanUSPSMail_', 'scanHoaWebsite_'];
 var RUN_LOG_TABS_ = { nightlyRun: 'Nightly run', nightlyRunTail: 'Nightly run, second half', morningNudge: 'Morning email', hourlyCheck: 'Hourly check',
-                      checkFlightStatuses_: 'Flight status', runEmailScan_: 'Email scan', scanUSPSMail_: 'USPS mail scan', scanHoaWebsite_: 'HOA website scan' };
+                      checkFlightStatuses_: 'Flight status', runEmailScan_: 'Email scan', runEmailAdmin_: 'Email admin', scanUSPSMail_: 'USPS mail scan', scanHoaWebsite_: 'HOA website scan' };
 // Jobs that no longer run (#256 folded the night's second half into one list): left off the card.
 var RUN_LOG_RETIRED_ = ['nightlyRunTail'];
 // Each job's breadcrumb (Code.js NIGHTLY_STEP_PROP_ etc.), as "step|seconds".

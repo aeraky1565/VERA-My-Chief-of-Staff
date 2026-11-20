@@ -18,6 +18,7 @@ const C = 'Career.js';
 const TEST = 'test_career.js';
 
 const CONTROLS = [
+  ['a new ID can repeat one already in the sheet', b => ({ [C]: swap(b[C], "  if (!rec.ID) { do { rec.ID = prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000); } while (carFindRow_(sheet, rec.ID)); }", "  if (!rec.ID) rec.ID = prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000);") })],
   ['rung details are always open', b => ({ 'docs/app.js': swap(b['docs/app.js'], 'var[open,setOpen]=React.useState(false);\n  var hasDetails', 'var[open,setOpen]=React.useState(true);\n  var hasDetails') })],
   ['a rung’s typical pay is not saved', b => ({ [C]: swap(b[C], "              'Pay Target': String(r.payTarget || '').slice(0, 300) };", "              'Pay Target': '' };") })],
   ['the ladder sorts by when a rung was added', b => ({ [C]: swap(b[C], '  }).sort(carRungCompare_);', '  }).sort(function(a, b) { return a.order - b.order; });') })],

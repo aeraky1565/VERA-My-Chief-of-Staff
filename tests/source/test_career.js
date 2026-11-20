@@ -192,6 +192,17 @@ console.log('\nrole history is in the order it happened');
   const L = run(S, 'carReadLadder_()');
   const titles = L.map(r => r.title);
   const hist = L.filter(r => r.status === 'reached').map(r => r.title);
+  // Two rows saved in the same millisecond that draw the same number both stay (Career.js carUpsert_).
+  {
+    const D = sandbox(); run(D, 'carMigrateV1_()');
+    run(D, 'var __n = Date.now; Date.now = function() { return 1700000000000; }; var __r = Math.random; Math.random = function() { return 0.5; };');
+    const a = run(D, 'webCareerSaveRung_({ rung: { title: "Twin One", status: "reached", start: "2010", end: "2011" } })');
+    run(D, 'Math.random = (function() { var k = 0; return function() { return k++ < 1 ? 0.5 : 0.25; }; })();');
+    const b = run(D, 'webCareerSaveRung_({ rung: { title: "Twin Two", status: "reached", start: "2011", end: "2012" } })');
+    run(D, 'Date.now = __n; Math.random = __r;');
+    const t = run(D, 'carReadLadder_()').map(r => r.title);
+    check('two new rows minted in the same millisecond never share an ID, so neither overwrites the other', a.id !== b.id && t.indexOf('Twin One') !== -1 && t.indexOf('Twin Two') !== -1, JSON.stringify({ a: a.id, b: b.id, t }));
+  }
   check('reached roles sort by start date, whenever they were added', JSON.stringify(hist) === JSON.stringify(['Engineer', 'Invented Intern', 'Planning Manager', 'Invented Manager']), JSON.stringify(hist));
   check('…then the current role, then the steps ahead in their own order', titles.indexOf('Senior Manager, Planning') > titles.indexOf('Planning Manager') &&
         L.slice(-3).map(r => r.status).join() === 'next,next,future', JSON.stringify(L.map(r => r.status)));

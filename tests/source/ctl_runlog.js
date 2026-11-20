@@ -6,7 +6,7 @@ const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_runlog_out');
 
 const FILES = ['NightlyRunner.js', 'RunLog.js', 'Code.js', 'Watchdog.js', 'VERALog.js', 'WebApp.js', 'Reminders.js', 'GymTracker.js', 'FlightStatus.js', 'EmailParser.js',
-  'MailCounter.js', 'NeighborhoodWatcher.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+  'MailCounter.js', 'NeighborhoodWatcher.js', 'EmailAdmin.js', 'docs/app.js', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -41,6 +41,8 @@ const CONTROLS = [
   ['the sheet isn’t aligned on open', rl('  try { runLogAlignZone_(_runLogSS_, Session.getScriptTimeZone()); } catch (e) {}\n', ''), SRV],
   ['the route doesn’t say the zone', rl('where: where, tz: tz };', 'where: where };'), SRV],
   ['the card doesn’t name the zone', full("+(data.tz?' Times are '+rlZone_(data.tz)+'.':'')", ''), UI],
+  ['Email admin isn’t logged', on('EmailAdmin.js', "  try { runLogStart_('runEmailAdmin_', arguments[0]); } catch (rlErr) {}   // RunLog.js\n", ''), SRV],
+  ['Email admin never finishes its row', on('EmailAdmin.js', "    try { runLogFinish_('runEmailAdmin_'); } catch (rlErr) {}", ''), SRV],
   ['the route isn’t owner-only', rl('  var refused = peopleOwnerOnly_();\n  if (refused) return refused;\n  var tabs', '  var tabs'), SRV],
   ['the prune drops recent rows', rl('if (isNaN(t) || t >= cutoff) break;', 'if (isNaN(t)) break;'), SRV],
   ['the heartbeat doesn’t complete the row', on('Watchdog.js', '  try { runLogFinish_(job); } catch (rlErr) {}\n', ''), SRV],
