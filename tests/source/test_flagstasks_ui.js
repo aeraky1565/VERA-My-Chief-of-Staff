@@ -1,6 +1,6 @@
 // The Flags and Tasks tabs in the full dashboard, at phone and desktop width, over a stubbed
 // server and invented flags and tasks: groups by area (open when they hold a High), the Due
-// chip, automatic flags (no Resolve, what clears them), the snooze menu, Go to it, ＋ Task,
+// chip, automatic flags (Resolve too, what clears them), Don't raise this again, the held-back and muted lists (#258), the snooze menu, Go to it, ＋ Task,
 // quick reschedule, Undo after a check-off, Delete with a confirm, the flag a task came from,
 // and Done this week with Reopen.
 const { chromium } = require('playwright');
@@ -45,6 +45,8 @@ const DONE = [{ id: 'TASK-9', task: 'Renew library books', completed: add(-1) }]
         const a = p.action;
         const body = a === 'flags' ? { ok: true, flags: FLAGS } : a === 'tasks' ? { ok: true, tasks: TASKS, doneThisWeek: DONE }
           : a === 'status' ? { ok: true, activeFlags: 4, features: {} } : a === 'vehicles' ? { ok: true, vehicles: [] }
+          : a === 'flags_quiet' ? { ok: true, heldOn: '2027-03-09', held: [{ i: 0, flag: 'Confirm the Friendsgiving dish', why: 'Same topic as a flag you resolved 2027-03-06 · quiet until 2027-03-13: Friendsgiving Saturday' }], muted: [{ id: 'M1', key: 'aviation_gap', title: 'Aviation data gap', since: '2027-03-01', until: 'never', words: ['aviationstack'] }], quiet: [] }
+          : a === 'flag_mute' ? { ok: true, id: p.id, action: 'muted' } : a === 'flag_raise_held' ? { ok: true, action: 'raised' } : a === 'flag_unmute' ? { ok: true, action: 'unmuted' }
           : a === 'flag_to_task' ? { ok: true, id: 'TASK-3', created: true } : a === 'complete_task' ? { ok: true, id: p.id, action: 'completed', flag: 'resolved' }
           : { ok: true, rows: [], items: [], tasks: [], flags: [], summaries: [] };
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
@@ -67,7 +69,7 @@ const DONE = [{ id: 'TASK-9', task: 'Renew library books', completed: add(-1) }]
     const civic = '.flag-card[data-flag="F1"]';
     check(L + ': the Due chip says how late', (await page.$eval(civic + ' .flag-due', n => n.textContent).catch(() => '')) === 'overdue 2d');
     check(L + ': an automatic flag says so, and what clears it', (await page.$eval(civic + ' .flag-auto', n => n.textContent).catch(() => '')) === 'automatic' && /saved on the vehicle’s card/.test(await page.$eval(civic + ' .flag-clears', n => n.textContent).catch(() => '')));
-    check(L + ': …and has no Resolve', !(await page.$(civic + ' .btn-resolve')));
+    check(L + ': …and has Resolve too (#258)', !!(await page.$(civic + ' .btn-resolve')));
     check(L + ': no sideways scroll on Flags', !(await sideways()));
     // open Finances: a one-off flag keeps Resolve
     await page.click('.flag-group[data-group="finances"] .flag-group-head'); await wait(100);
@@ -94,6 +96,33 @@ const DONE = [{ id: 'TASK-9', task: 'Renew library books', completed: add(-1) }]
     await page.click('.flag-card[data-flag="F2"] .btn-totask'); await wait(200);
     c = await calls();
     check(L + ': ＋ Task makes a task from the flag', c.some(x => x.action === 'flag_to_task' && x.id === 'F2'), JSON.stringify(c));
+    // #258: Don't raise this again, with a confirm
+    await clearCalls();
+    await page.click('.flag-card[data-flag="F2"] .btn-mute'); await wait(80);
+    check(L + ': Don’t raise this again asks first', /Never raise this topic again\?/.test(await page.$eval('.flag-card[data-flag="F2"] .flag-mute-confirm', n => n.textContent).catch(() => '')) && !(await calls()).length);
+    await page.click('.flag-card[data-flag="F2"] .btn-mute-no'); await wait(60);
+    check(L + ': …Cancel closes it', !(await page.$('.flag-card[data-flag="F2"] .flag-mute-confirm')));
+    await page.click('.flag-card[data-flag="F2"] .btn-mute'); await wait(60);
+    await page.click('.flag-card[data-flag="F2"] .btn-mute-yes'); await wait(200);
+    c = await calls();
+    check(L + ': Mute it mutes the flag', c.some(x => x.action === 'flag_mute' && x.id === 'F2'), JSON.stringify(c));
+    check(L + ': …and says so', /Muted · VERA won’t raise this topic again/.test(await page.evaluate(() => document.body.innerText)));
+    await wait(1700);
+    // #258: held back last night, and muted topics
+    const heldSum = await page.$eval('.fq-held summary', n => n.textContent).catch(() => '');
+    check(L + ': the held-back list, with its count and night', /^1Held back/.test(heldSum), heldSum);
+    await page.click('.fq-held summary'); await page.click('.fq-muted summary'); await wait(80);
+    check(L + ': each held flag says why', /quiet until 2027-03-13/.test(await page.$eval('.fq-held-row .fq-why', n => n.textContent).catch(() => '')));
+    await clearCalls();
+    await page.click('.fq-raise'); await wait(150);
+    c = await calls();
+    check(L + ': Raise it raises that one', c.some(x => x.action === 'flag_raise_held' && x.i === '0') && /Raised/.test(await page.$eval('.fq-raise', n => n.textContent)), JSON.stringify(c));
+    check(L + ': muted topics, with Unmute', /Aviation data gap/.test(await page.$eval('.fq-muted-row', n => n.textContent).catch(() => '')));
+    await page.click('.fq-unmute'); await wait(150);
+    c = await calls();
+    check(L + ': Unmute', c.some(x => x.action === 'flag_unmute' && x.id === 'M1'), JSON.stringify(c));
+    check(L + ': no sideways scroll with the lists open', !(await sideways()));
+    await clearCalls();
     // Go to it
     const goLabel = await page.$eval(civic + ' .btn-goto', n => n.textContent).catch(() => '');
     check(L + ': Go to it names the place', goLabel === 'Go to the vehicle →', goLabel);

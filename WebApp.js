@@ -107,6 +107,10 @@ function doGet(e) {
       case 'acknowledge':    return jsonOut_(webAcknowledge_(id));
       case 'snooze':         return jsonOut_(webSnooze_(id, days, e.parameter.until));
       case 'resolve':        return jsonOut_(webResolve_(id));
+      case 'flags_quiet':     return jsonOut_(webFlagsQuiet_());                     // FlagQuiet.js (#258)
+      case 'flag_mute':       return jsonOut_(webFlagMute_(id));
+      case 'flag_unmute':     return jsonOut_(webFlagUnmute_(id));
+      case 'flag_raise_held': return jsonOut_(webFlagRaiseHeld_(e.parameter.i));
       case 'complete_task':         return jsonOut_(webCompleteTask_(id));
       case 'add_task':              return jsonOut_(webAddTask_(e));
       case 'update_task':           return jsonOut_(webUpdateTask_(e));
@@ -1261,10 +1265,12 @@ function webSnooze_(id, days, until) {
 
 function webResolve_(id) {
   const found = findFlagRow_(id);
-  // A flag a nightly check keeps would only come back: it clears itself once its cause is fixed.
-  const auto = flagAutoOf_(found.sheet.getRange(found.rowNum, 10).getValue());
-  if (auto) return { ok: false, id: id, auto: true, error: 'This flag clears itself. ' + auto.clears };
+  const row = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
+  // #258: its topic stays quiet until its date passes (7 days with none). An automatic
+  // flag isn't reopened by its check meanwhile (FlagQuiet.js).
+  let quietUntil = '';
+  try { quietUntil = fqRemember_(row, 'resolved'); } catch (fqErr) { Logger.log('webResolve_: quiet (non-fatal) — ' + fqErr.message); }
 
   // Signal Learning: record outcome
   try {
@@ -1274,7 +1280,7 @@ function webResolve_(id) {
     Logger.log('SignalLearning: resolve hook error (non-fatal) — ' + slErr.message);
   }
 
-  return { ok: true, id: id, action: 'resolved' };
+  return { ok: true, id: id, action: 'resolved', quietUntil: quietUntil };
 }
 
 // ---- Complete task ----------------------------------------------------------

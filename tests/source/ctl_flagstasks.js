@@ -13,7 +13,7 @@ const ui = (from, to) => b => ({ 'docs/app.js': swap(b['docs/app.js'], from, to)
 const NODE = 'test_flagstasks.js', UI = 'test_flagstasks_ui.js';
 const CONTROLS = [
   ['a nightly check left out', one('FlagsTasks.js', "  { prefix: 'MEALPREP|',         clears: 'Clears once the prep is done.' },\n", ''), NODE],
-  ['Resolve allowed on automatic flags', one('WebApp.js', "  if (auto) return { ok: false, id: id, auto: true, error: 'This flag clears itself. ' + auto.clears };\n", ''), NODE],
+  ['Resolve doesn’t resolve', one('WebApp.js', "  found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I\n  // #258", "  // #258"), NODE],
   ['the read drops Due', one('WebApp.js', "      due:          flagDueCell_(r[11]),\n", ''), NODE],
   ['the read drops automatic', one('WebApp.js', "      auto:         !!flagAutoOf_(r[9]),\n", ''), NODE],
   ['snooze ignores the date', one('WebApp.js', "const when      = flagSnoozeUntil_(until, days, ftToday_());", "const when      = flagSnoozeUntil_('', days, ftToday_());"), NODE],
@@ -29,7 +29,7 @@ const CONTROLS = [
   ['Done this week counts cancelled', one('FlagsTasks.js', "  var DONE = ['done', 'complete', 'completed'];", "  var DONE = ['done', 'complete', 'completed', 'cancelled'];"), NODE],
   ['Reopen leaves the day', one('FlagsTasks.js', "  found.sheet.getRange(found.rowNum, ftCompletedCol_()).setValue('');\n", ''), NODE],
   ['a task row one cell short', one('WebApp.js', ".setValues([[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '', '']]);", ".setValues([[id, taskText, addedStr, dueDate, 'Open', recurring, notes, '']]);"), NODE],
-  ['the card offers Resolve on automatic flags', ui("!flag.auto&&h(\"button\",{className:\"btn btn-resolve\"", "true&&h(\"button\",{className:\"btn btn-resolve\""), UI],
+  ['the card hides Resolve on automatic flags', ui("      h(\"button\",{className:\"btn btn-resolve\"", "      !flag.auto&&h(\"button\",{className:\"btn btn-resolve\""), UI],
   ['every group starts open', ui("Object.prototype.hasOwnProperty.call(open,g.id)?!!open[g.id]:g.high;", "Object.prototype.hasOwnProperty.call(open,g.id)?!!open[g.id]:true;"), UI],
   ['snoozed flags stay in their area', ui("var g=!f.resolved&&f.snoozedUntil&&f.snoozedUntil>today?FLAG_SNOOZED_:a;", "var g=a;"), UI],
   ['the urgency filter does nothing', ui("if(urgency&&urgency!=='all'&&f.urgency!==urgency)return;", ""), UI],

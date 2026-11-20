@@ -93,6 +93,8 @@ function nightlySteps_() {
     S('writeFlags', 2, function(ctx, st) {
       var flags = nightlyUnstash_('NIGHTLY_FLAGS') || [];
       if (!flags.length) { Logger.log('No flags generated tonight — nothing to write.'); return; }
+      // #258: repeats of an open, quiet or muted topic are held back and listed on Flags.
+      if (typeof flagHoldBackRun_ === 'function') { var kept = flagHoldBackRun_(flags); st.vars.held = flags.length - kept.length; flags = kept; }
       st.vars.written = writeFlags(flags);
       var by = function(u) { return flags.filter(function(f) { return f.urgency === u; }).length; };
       st.vars.hml = [by('High'), by('Medium'), by('Low')];

@@ -707,6 +707,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Flag any Active goal with $0 monthly contribution and no target date. Use key: fgoal_[snake_name]_needs_plan\n' +
     '- Do NOT re-flag goals already marked Achieved.\n\n' +
 
+    // #258: the last 3 weeks of flags and what was done with them, so a topic keeps its key.
+    (typeof fqPromptBlock_ === 'function' ? fqPromptBlock_() : '') +
+
     'Based on this data, generate up to ' + CONFIG.MAX_FLAGS + ' intelligent, actionable flags for Ahmed. ' +
     'Prioritize items that are time-sensitive, high-stakes, have dependencies, or have been neglected.\n\n' +
 
@@ -726,7 +729,8 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '    • If an issue is genuinely new or a fresh recurrence, append a short qualifier: "verizon_payment_due_q2" or "dentist_followup"\n' +
     '    • Good examples: "verizon_payment_due", "anniversary_dinner", "ramadan_iftar", "sti_payout", "apartment_cleaning"\n' +
     '    • Bad examples: "verizon_bill_march_13", "upcoming_anniversary_dinner_march_9", "sti_payout_march_11"\n' +
-    '  "due"     — OPTIONAL: only for a flag with a real deadline (a bill\'s due date), as YYYY-MM-DD. Leave it out otherwise.\n\n' +
+    '  "due"     — OPTIONAL: only for a flag with a real deadline (a bill\'s due date), as YYYY-MM-DD. Leave it out otherwise.\n' +
+    '  "changed" — OPTIONAL: only when raising a topic again that RECENT FLAGS shows as resolved: what changed, in a few words. Leave it out otherwise.\n\n' +
 
     'Example of the expected format (do not include this in your response):\n' +
     '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High","key":"anniversary_dinner"}]\n\n' +
@@ -874,6 +878,7 @@ function parseFlags(rawContent) {
         urgency: urgency,
         key:     String(f.key    || '').toLowerCase().replace(/[^a-z0-9_]/g, '').trim(),
         due:     /^\d{4}-\d{2}-\d{2}$/.test(String(f.due || '').trim()) ? String(f.due).trim() : '',   // #246
+        changed: String(f.changed || '').trim().slice(0, 160),   // #258: why a resolved topic is back
       };
     })
     .slice(0, CONFIG.MAX_FLAGS); // Enforce max flag cap

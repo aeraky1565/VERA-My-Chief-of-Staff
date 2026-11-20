@@ -1324,7 +1324,8 @@ function writeFlags(flags) {
 
     // Fuzzy check: reject keys that share ≥60% token overlap with any existing key
     // (catches date-drifted variants like verizon_bill_march_13 vs verizon_bill_march_14)
-    if (flag.key && keysAreSimilar_(flag.key, existing)) {
+    // A flag that says what changed (#258) comes back on purpose, under a new key.
+    if (flag.key && !flag.changed && keysAreSimilar_(flag.key, existing)) {
       Logger.log('Dedup (fuzzy): skipping similar key [' + flag.key + ']');
       skipped++;
       return;
@@ -2398,7 +2399,9 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
   var lastRow = sheet.getLastRow();
   var rows    = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, FLAG_HEADERS.length).getValues() : [];
 
-  var seen = {};
+  var seen = {}, settled = [];
+  // #258: one resolved or muted by hand stays resolved while it's quiet (FlagQuiet.js).
+  var quietKey = typeof fqKeyQuiet_ === 'function' ? fqKeyQuiet_ : function() { return false; };
   for (var i = 0; i < rows.length; i++) {
     var key = String(rows[i][9] || '').trim();
     if (key.indexOf(prefix) !== 0) continue;
@@ -2408,6 +2411,7 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
 
     if (wanted[key]) {
       seen[key] = true;
+      if (resolved && quietKey(key)) continue;
       if (resolved) {
         sheet.getRange(rowNum, 9).setValue('No');
         sheet.getRange(rowNum, 7).setValue('No');
@@ -2421,8 +2425,11 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
       if (String(rows[i][5]) !== wanted[key].urgency) sheet.getRange(rowNum, 6).setValue(wanted[key].urgency);
     } else if (!resolved) {
       sheet.getRange(rowNum, 9).setValue('Yes');
+    } else {
+      settled.push(key);   // its check no longer raises it: the situation changed
     }
   }
+  if (settled.length && typeof fqClearKeys_ === 'function') { try { fqClearKeys_(settled); } catch (e) {} }
 
   var appended = 0;
   Object.keys(wanted).forEach(function(key) {

@@ -1,6 +1,6 @@
 // The Flags and Tasks tabs' server side (FlagsTasks.js and the routes in WebApp.js):
 //  - automatic flags: every prefix a nightly check keeps (upsertKeyedFlags_) is known,
-//    with what clears it; Resolve on one is refused; a one-off flag still resolves;
+//    with what clears it; Resolve works on every flag (#258);
 //  - the Flags read returns Due, Escalated, automatic and what clears it;
 //  - snooze to a date (tomorrow at the earliest, a year at most) or for days;
 //  - a task made from a flag (its ID in "Flagged", the flag's text and Due), once;
@@ -96,8 +96,7 @@ console.log('\nResolve, Snooze and the read');
   const flags = [flagRow({ id: 'F1', key: 'vehicle_renewal_VEH-1_service_2027-03-08', due: '2027-03-08', escalated: '3d' }), flagRow({ id: 'F2', key: 'water_bill_nov' }), flagRow({ id: 'F3' })];
   let c = ctx(flags);
   const r1 = c.webResolve_('F1');
-  check('Resolve on an automatic flag is refused, saying what clears it', r1.ok === false && r1.auto === true && /clears itself\. Clears once the new date is saved/.test(r1.error), J(r1));
-  check('…and nothing is written', !c._sheets.Flags._writes.length);
+  check('Resolve on an automatic flag resolves it too (#258: its check keeps it quiet, FlagQuiet.js)', r1.ok === true && c._sheets.Flags._all[1][8] === 'Yes', J(r1));
   const r2 = c.webResolve_('F2');
   check('a one-off flag still resolves', r2.ok === true && c._sheets.Flags._all[2][8] === 'Yes');
   const got = c.webGetFlags_({ parameter: {} }).flags;
