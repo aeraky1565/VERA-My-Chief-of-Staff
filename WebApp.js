@@ -757,6 +757,8 @@ function doPost(e) {
       case 'perk_log_delete':            return jsonOut_(webPerkLogDelete_(body));
       // Health › Care › Eyes (Eyes.js): both of you can read, add and change
       case 'eye_read':                   return jsonOut_(webEyeRead_(body));
+      case 'recipe_read':                return jsonOut_(webRecipeRead_(body));   // Recipes.js
+      case 'recipe_save':                return jsonOut_(webRecipeSave_(body));
       case 'eye_save':                   return jsonOut_(webEyeSave_(body));
       case 'eye_delete':                 return jsonOut_(webEyeDelete_(body));
       case 'eye_usual_save':             return jsonOut_(webEyeUsualSave_(body));
@@ -3552,7 +3554,11 @@ function webGetRecipes_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.RECIPES);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, recipes: [] };
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(RC_PHOTO_COL_, sheet.getMaxColumns())).getValues();
+  var width = Math.max(RC_PHOTO_COL_, sheet.getLastColumn());
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(width, sheet.getMaxColumns())).getValues();
+  // The fields after Photo, found by their header (Recipes.js RC_MORE_HEADERS_).
+  var head = sheet.getRange(1, 1, 1, Math.min(width, sheet.getMaxColumns())).getValues()[0].map(function(h) { return String(h || '').trim(); });
+  var col = function(r, h) { var i = head.indexOf(h); return i === -1 ? '' : String(r[i] == null ? '' : r[i]).trim(); };
   var recipes = [];
   // Last made / next planned from Meal Plan (Recipes.js). A failure there never costs the list.
   var made = {};
@@ -3574,6 +3580,12 @@ function webGetRecipes_() {
       tags:        String(row[6] || '').trim(),
       notes:       String(row[7] || '').trim(),
       photo:       /^https:\/\//.test(String(row[8] || '')) ? String(row[8]).trim() : '',
+      cookTime:    col(row, 'Cook Time'),
+      totalTime:   col(row, 'Total Time'),
+      directions:  col(row, 'Directions'),
+      equipment:   col(row, 'Equipment'),
+      nutrition:   col(row, 'Nutrition'),
+      source:      col(row, 'Source'),
       lastMade:    (made[name.toLowerCase()] || {}).lastMade || '',
       nextPlanned: (made[name.toLowerCase()] || {}).nextPlanned || '',
     });
@@ -3587,7 +3599,8 @@ function webRecipeToShopping_(e) {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.RECIPES);
   if (!sheet) throw new Error('Recipes tab not found');
-  var raw = String(sheet.getRange(rowNum, 6).getValue() || '').trim(); // Col F = Ingredients
+  // The card may send its own lines, scaled to the servings chosen there.
+  var raw = String((e.parameter && e.parameter.items) || '').trim() || String(sheet.getRange(rowNum, 6).getValue() || '').trim(); // Col F = Ingredients
   if (!raw) return { ok: false, error: 'No ingredients listed for this recipe.' };
   var ingredients = raw.split(';').map(function(s) { return s.trim(); }).filter(Boolean);
   return addRecipeIngredients_(ingredients);

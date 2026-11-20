@@ -8,7 +8,7 @@ fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js')).forEach(f => { BASE[f] = 
 ['docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'].forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 const swapIn = (files, from, to) => b => { const out = {}; files.forEach(f => { if (b[f].indexOf(from) !== -1) out[f] = b[f].split(from).join(to); });
   if (!Object.keys(out).length) throw new Error('anchor moved: ' + from.slice(0, 70)); return out; };
-const S = ['Recipes.js'], FULL = ['docs/app.js', 'docs/index.html'];
+const S = ['Recipes.js'], FULL = ['docs/app.js', 'docs/index.html'], BOTH = ['docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'];
 const CONTROLS = [
   ['only og:image in one attribute order', swapIn(S, "  for (var i = 0; i < pats.length && !m; i++) m = pats[i].exec(s);", "  m = pats[0].exec(s);")],
   ['relative images kept relative', swapIn(S, "else if (/^\\//.test(u)) {", "else if (false) {")],
@@ -26,7 +26,26 @@ const CONTROLS = [
   ['the picker shows past days', swapIn(FULL, "if(date<t)return;", "")],
   ['replacing a dinner doesn’t ask', swapIn(FULL, "if(!d.free&&!window.confirm('Replace '+d.meal+' on '+d.day+'?'))return;", "")],
   ['Plan it plans nothing', swapIn(FULL, "onPlan(recipe,d.weekStart,d.day,d.date);onClose();", "onClose();")],
-  ['photos never asked for', swapIn(FULL, "asked.current=true;onFetchPhotos();", "asked.current=true;")],
+  ['photos never asked for', swapIn(FULL, "asked.current=true;apiGet(props.apiUrl,props.apiToken,{action:'recipe_photos'})", "asked.current=true;Promise.resolve({})")],
+  // adding a recipe (Recipes.js) and the new card (RecipeBook)
+  ['ISO durations kept raw', swapIn(S, "  if (!m || !(m[1] || m[2] || m[3])) return s.slice(0, 40);", "  return s.slice(0, 40);")],
+  ['a Recipe inside @graph isn’t found', swapIn(S, "var kids = Array.isArray(o) ? o : [].concat(o['@graph'] || [], o.mainEntity || []);", "var kids = Array.isArray(o) ? o : [];")],
+  ['a section loses its heading', swapIn(S, "if (x.name) out.push(rcText_(x.name).replace(/:?$/, ':'));", "")],
+  ['a site’s recipe data skipped for Claude', swapIn(S, "if (r.ingredients.length && r.directions.length) return { ok: true, recipe: r, unsure: [], from: 'site' };", "")],
+  ['a bad link kept', swapIn(S, "link: /^https?:\\/\\//i.test(String(g.link || '')) ? String(g.link).trim().slice(0, 1000) : '',", "link: String(g.link || ''),")],
+  ['save accepts a formula name', swapIn(S, "if ([r.name, r.cuisine].some(function(v) { return /^[=+@-]/.test(v); }))", "if (false)")],
+  ['save with a row adds a new one', swapIn(S, "var at = row || sheet.getLastRow() + 1;", "var at = sheet.getLastRow() + 1;")],
+  ['directions saved on one line', swapIn(S, "put('Directions', r.directions.join('\\n'));", "put('Directions', r.directions.join(' '));")],
+  ['the read leaves out the new fields', swapIn(['WebApp.js'], "      directions:  col(row, 'Directions'),\n", "")],
+  ['the list ignores the card’s scaled lines', swapIn(['WebApp.js'], "String((e.parameter && e.parameter.items) || '').trim() || ", "")],
+  ['mixed numbers misread', swapIn(BOTH, "(?:\\s+(\\d+)\\/(\\d+)|\\/(\\d+))?", "(?:\\s+(\\d+)\\/(\\d+))?")],
+  ['servings don’t scale', swapIn(BOTH, "function rbFactor_(r,serv){var b=rbBase_(r&&r.servings);return b&&serv?serv/b:1;}", "function rbFactor_(r,serv){return 1;}")],
+  ['the unit stays plural', swapIn(BOTH, "var want=n<=1?sing:RB_UNITS[sing];", "var want=RB_UNITS[sing];")],
+  ['Add to the list sends the recipe as saved', swapIn(BOTH, "row:r.row,items:items.join(';')", "row:r.row")],
+  ['cooking mode counts headings as steps', swapIn(BOTH, "steps=rbSteps_(r).filter(function(l){return !/:$/.test(l);});", "steps=rbSteps_(r);")],
+  ['an unsure field isn’t marked', swapIn(BOTH, "var un=form.unsure.indexOf(k)!==-1;", "var un=false;")],
+  ['Edit saves as a new recipe', swapIn(BOTH, "setForm({row:r.row,from:r.source||''", "setForm({row:0,from:r.source||''")],
+  ['the card shows details when closed', swapIn(BOTH, "isOpen&&h('div',{className:'rb-detail'", "h('div',{className:'rb-detail'")],
 ];
 const T = 'test_recipes.js';
 let allBit = true;
