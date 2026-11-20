@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_eyes_out');
 
-const FILES = ['Eyes.js', 'Code.js', 'Chat.js', 'TripIdeas.js', 'WebApp.js', 'NightlyRunner.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['Eyes.js', 'DriveSave.js', 'Notes.js', 'appsscript.json', 'Code.js', 'Chat.js', 'TripIdeas.js', 'WebApp.js', 'NightlyRunner.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -33,7 +33,7 @@ const CONTROLS = [
   ['a file over 10 MB is read', srv(EY, "if (b64.length > EY_MAX_B64_) return { error: 'That file is over 10 MB.' };", "")],
   // saving
   ['marked numbers save without being checked', srv(EY, "if (clean.unsure.length && !b.confirmed) return", "if (false) return")],
-  ['the photo isn’t kept', srv(EY, "photo = eyFolder_().createFile(", "eyFolder_().createFile(")],
+  ['the photo isn’t kept', srv(EY, "photo = veraDriveSave_(EY_FOLDER_,", "veraDriveSave_(EY_FOLDER_,")],
   ['the oldest exam is the current one', srv(EY, "return (a.exam || '') < (b.exam || '') ? 1 : (a.exam || '') > (b.exam || '') ? -1 :", "return (a.exam || '') < (b.exam || '') ? -1 : (a.exam || '') > (b.exam || '') ? 1 :")],
   ['a formula-like name is saved', srv(EY, "if (/^[=+@]/.test(person) || /^[=+@]/.test(eyText_(b.doctor)) || /^[=+@]/.test(eyText_(b.lens))) return { ok: false, error: 'A name can’t start with =, + or @.' };", "")],
   // supply and flags
@@ -44,6 +44,10 @@ const CONTROLS = [
   ['an expired prescription is only Medium', srv(EY, "urgency: d < 0 ? 'High' : 'Medium' };", "urgency: 'Medium' };")],
   ['the dentist shows as the eye exam', srv(EY, ".filter(function(a) { return /eye|optom|ophthal/i.test(a.type); })", ".filter(function(a) { return true; })")],
   ['the nightly step is gone', srv('NightlyRunner.js', "    S('checkEyes_', 1, function() { checkEyes_(); }),\n", "")],
+  ['the folder is made every time', srv('DriveSave.js', "if (found && found.files && found.files.length) return found.files[0].id;", "")],
+  ['full Drive access is asked for', b => ({ 'appsscript.json': swap(b['appsscript.json'], '"https://www.googleapis.com/auth/drive.file"', '"https://www.googleapis.com/auth/drive"') })],
+  ['the household’s names are ignored', srv(EY, "try { cvPeople_((getHouseholdInfoData_() || {}).sections || []).forEach(add); } catch (e) {}", "")],
+  ['the “Owner” placeholder shows as a person', srv(EY, "if (on && on !== 'Owner') add(on);", "if (on) add(on);")],
   // routes and chat
   ['the save route is missing', srv(W, "      case 'eye_save':                   return jsonOut_(webEyeSave_(body));\n", "")],
   ['the chat can’t give the prescription', srv(CH, "else if (type === 'eye_rx')", "else if (type === 'eye_rx_off')")],

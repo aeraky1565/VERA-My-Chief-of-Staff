@@ -302,12 +302,6 @@ function webNoteLinkPreview_(body) {
   return { ok: true, link: pv };
 }
 
-/** The Drive folder pictures go in, made the first time. */
-function ntPicturesFolder_() {
-  var it = DriveApp.getFoldersByName(NT_PICTURES_FOLDER_);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(NT_PICTURES_FOLDER_);
-}
-
 /** POST note_picture {id, imageBase64, mime} — attaches a picture, saved to the Notes folder in Drive. */
 function webNotePicture_(body) {
   var refused = peopleOwnerOnly_(); if (refused) return refused;
@@ -318,9 +312,9 @@ function webNotePicture_(body) {
   if (!mime || !b.imageBase64) return { ok: false, error: 'That isn’t a picture VERA can keep.' };
   var bytes = Utilities.base64Decode(String(b.imageBase64).replace(/^data:[^,]+,/, ''));
   if (bytes.length > 10 * 1024 * 1024) return { ok: false, error: 'That picture is over 10 MB.' };
-  var file = ntPicturesFolder_().createFile(Utilities.newBlob(bytes, mime, 'note-' + f.note.id.slice(0, 8) + '-' + Date.now()));
-  var v = {}; v[NT_COL_.PICTURE] = file.getId(); v[NT_COL_.UPDATED] = ntNow_(); ntSetCells_(f.row, v);
-  return { ok: true, picture: file.getId() };
+  var fileId = veraDriveSave_(NT_PICTURES_FOLDER_, Utilities.newBlob(bytes, mime, 'note-' + f.note.id.slice(0, 8) + '-' + Date.now()));
+  var v = {}; v[NT_COL_.PICTURE] = fileId; v[NT_COL_.UPDATED] = ntNow_(); ntSetCells_(f.row, v);
+  return { ok: true, picture: fileId };
 }
 
 /** GET note_picture_view {id} — the note's picture as a data URL, for the dashboard. */

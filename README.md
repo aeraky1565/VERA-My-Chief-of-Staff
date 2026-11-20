@@ -242,6 +242,8 @@ Routes: GET `coverage`; POST `coverage_read_docs`, `perk_save`, `perk_delete` (o
 - **＋ Add a prescription**: Glasses or Contacts, then **Take a photo** or **Upload a file** (an image or PDF). The page sizes a photo to 1600 px; `eye_read` sends it to Claude, which fills the numbers and lists what it wasn't sure of; those are marked until you type over them (`eyRxClean_` also marks off-step powers, an axis outside 0–180, an odd PD, BC or DIA). **Save** keeps the photo in the Drive folder "VERA Eye Prescriptions" and the row in **Eye Rx**; the newest exam is the current one and the rest are **History**. Expiry, when not written: glasses 2 years, contacts 1 year from the exam.
 - **Buying**: **Eye Usual** (what, brand, pack, days per pack, store, link, price) and **Eye Orders** (date, what, boxes per eye, store, cost, paid with).
 
+Photos (and Notes pictures) are saved with the Drive service under the narrow `drive.file` permission (`DriveSave.js`): VERA can make and read back only its own folders and files. The people are the household from the cheat sheet (as Coverage reads it), plus Config `owner_name` when set and `eyes_people`.
+
 Nightly `checkEyes_`: a flag 45 days before a prescription expires (High once expired), and one when contacts have 21 days or fewer left. Each flag closes itself.
 
 Routes: GET `eyes`, `eye_photo`; POST `eye_read`, `eye_save`, `eye_delete`, `eye_usual_save`, `eye_usual_delete`, `eye_order_log`, `eye_order_delete` (both of you).

@@ -7,7 +7,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => { try { return fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch (e) { return fs.readFileSync(path.join(REPO, f), 'utf8'); } };
-const EY = read('Eyes.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), CODE = read('Code.js'), TI = read('TripIdeas.js'), NR = read('NightlyRunner.js');
+const EY = read('Eyes.js'), DS = read('DriveSave.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), CODE = read('Code.js'), TI = read('TripIdeas.js'), NR = read('NightlyRunner.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n)) : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
@@ -20,8 +20,8 @@ function extractFn(src, name) {
   throw new Error('unbalanced: ' + name);
 }
 
-const STORE = { Flags: [['Key']] }, FILES = [], CLAUDE = [], FLAGS = [];
-let CLAUDE_REPLY = '{}', CLAUDE_CODE = 200;
+const STORE = { Flags: [['Key']] }, FILES = [], FOLDERS = [], CLAUDE = [], FLAGS = [];
+let CLAUDE_REPLY = '{}', CLAUDE_CODE = 200, OWNER = 'Owner', CONFIG_PEOPLE = '';
 function fakeSheet(name) {
   const grid = STORE[name];
   return { getName: () => name, getLastRow: () => grid.length, getMaxRows: () => grid.length + 50,
@@ -38,11 +38,17 @@ const S = {
   fetchTracked_: (src, url, o) => { CLAUDE.push(JSON.parse(o.payload)); return { getResponseCode: () => CLAUDE_CODE, getContentText: () => J({ content: [{ text: CLAUDE_REPLY }] }) }; },
   Session: { getScriptTimeZone: () => 'UTC' },
   Utilities: { getUuid: () => String(Math.random()).slice(2, 10) + '-' + String(Math.random()).slice(2, 10), formatDate: (d, tz, f) => '2026-11-20',
-    base64Decode: s => Buffer.from(s, 'base64'), base64Encode: b => Buffer.from(b).toString('base64'), newBlob: (bytes, mime, name) => ({ bytes, mime, name }) },
-  DriveApp: { getFoldersByName: () => ({ hasNext: () => false }), createFolder: n => ({ createFile: blob => { FILES.push(Object.assign({ folder: n }, blob)); return { getId: () => 'FILE' + FILES.length }; } }),
-    getFileById: id => ({ getMimeType: () => 'image/jpeg', getBlob: () => ({ getBytes: () => [1, 2, 3] }), getUrl: () => 'https://drive.test/' + id }) },
+    base64Decode: s => Buffer.from(s, 'base64'), base64Encode: b => Buffer.from(b).toString('base64'), newBlob: (bytes, mime, name) => ({ bytes, mime, name, getName: () => name }) },
+  // The Drive service with "files VERA creates" (DriveSave.js): folders found by name, else made.
+  Drive: { Files: {
+    list: o => ({ files: FOLDERS.filter(f => o.q.indexOf("name = '" + f.name + "'") !== -1).map(f => ({ id: f.id })) }),
+    create: (meta, blob) => { if (!blob) { const f = { id: 'FOLDER' + (FOLDERS.length + 1), name: meta.name }; FOLDERS.push(f); return { id: f.id }; }
+      FILES.push({ folder: (FOLDERS.find(f => f.id === meta.parents[0]) || {}).name, name: meta.name, mime: blob.mime }); return { id: 'FILE' + FILES.length }; } } },
+  DriveApp: { getFileById: id => ({ getMimeType: () => 'image/jpeg', getBlob: () => ({ getBytes: () => [1, 2, 3] }), getUrl: () => 'https://drive.test/' + id }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Logger: { log() {} },
-  peopleOwnerName_: () => 'Pat', getConfigValues: () => ({ eyes_people: 'Pat, Sam' }),
+  peopleOwnerName_: () => OWNER, getConfigValues: () => ({ eyes_people: CONFIG_PEOPLE }),
+  getHouseholdInfoData_: () => ({ sections: [{ section: 'Insurance', subsections: [{ subsection: 'Vision – Pat' }, { subsection: 'Vision – Sam' }] }] }),
+  cvPeople_: secs => secs[0].subsections.map(s => s.subsection.split(' – ')[1]),
   getHealthAppointments_: () => [{ person: 'Sam', type: 'Eye Exam', provider: 'Dr. Iris', lastVisit: '2025-12-01', nextDue: '2026-12-01', daysUntil: 11, scheduledNext: null },
     { person: 'Pat', type: 'Dental', provider: 'Dr. Chu', lastVisit: '2026-05-01', nextDue: '2026-11-01', daysUntil: -19 }],
   upsertKeyedFlags_: (sheet, prefix, source, wanted, day) => { FLAGS.push({ prefix, source, wanted: JSON.parse(J(wanted)), day }); },
@@ -50,7 +56,7 @@ const S = {
 vm.createContext(S);
 vm.runInContext(extractFn(CODE, 'ensureSheet'), S);
 ['tiSchema_', 'tiRows_', 'tiRowOf_', 'tiMintId_', 'tiLocked_'].forEach(n => vm.runInContext(extractFn(TI, n), S));
-vm.runInContext(EY, S);
+vm.runInContext(EY, S); vm.runInContext(DS, S);
 const run = (expr, vars) => { Object.assign(S, vars || {}); return vm.runInContext(expr, S); };
 
 console.log('\nreading the numbers');
@@ -67,11 +73,13 @@ check('expiry: typed wins; else glasses 2 years and contacts 1 year from the exa
 check('what changed from the last one', J(run('eyDiff_("glasses", A, B)', { A: { odSph: '-2.25', osSph: '-2.00' }, B: { odSph: '-2.50', osSph: '-2.00' } })) === '[{"field":"odSph","from":"-2.25","to":"-2.50"}]');
 check('copy text for an online order', run('eyCopyText_(R)', { R: { kind: 'glasses', odSph: '-2.25', odCyl: '-0.50', odAxis: '180', osSph: '-2.00', pd: '63', expires: '2027-03-12' } }) === 'OD -2.25 -0.50 x180 · OS -2.00 · PD 63 · expires 2027-03-12');
 
+console.log('\nwho');
+check('before anything is saved, the people are the household’s, from the cheat sheet', J(run('webGetEyes_().people')) === '["Pat","Sam"]', J(run('webGetEyes_().people')));
 console.log('\nreading a photo');
 CLAUDE_REPLY = 'Here it is: ' + J({ odSph: '-2.50', odCyl: '-0.50', odAxis: '180', osSph: '-2.25', osCyl: '-0.75', osAxis: '170', pd: '63', exam: '2026-03-10', doctor: 'Dr. Lee, Bright Eye', unsure: ['osAxis'] });
 let r = run('webEyeRead_(B)', { B: { kind: 'glasses', imageBase64: 'aGVsbG8=', mime: 'image/jpeg' } });
 check('VERA reads the photo: numbers, the exam, the doctor, and what it wasn’t sure of', r.ok && r.values.odSph === '-2.50' && J(r.unsure) === '["osAxis"]' && r.exam === '2026-03-10' && /Dr\. Lee/.test(r.doctor), J(r));
-check('…it sends the photo as an image, and nothing is saved', CLAUDE[CLAUDE.length - 1].messages[0].content[0].type === 'image' && !STORE['Eye Rx']);
+check('…it sends the photo as an image, and nothing is saved', CLAUDE[CLAUDE.length - 1].messages[0].content[0].type === 'image' && (STORE['Eye Rx'] || []).length <= 1);
 run('webEyeRead_(B)', { B: { kind: 'contacts', imageBase64: 'aGVsbG8=', mime: 'application/pdf' } });
 check('a PDF goes as a document, and contacts ask for BC and DIA', CLAUDE[CLAUDE.length - 1].messages[0].content[0].type === 'document' && /"bc","dia"/.test(CLAUDE[CLAUDE.length - 1].messages[0].content[1].text));
 check('not a photo, too big, or no file is refused', /isn’t a photo/.test(run('webEyeRead_(B).error', { B: { imageBase64: 'aGk=', mime: 'text/plain' } })) && /over 10 MB/.test(run('webEyeRead_(B).error', { B: { imageBase64: 'a'.repeat(14000001), mime: 'image/png' } })) && /No photo/.test(run('webEyeRead_({}).error')));
@@ -80,7 +88,10 @@ CLAUDE_REPLY = 'sorry'; check('nothing readable says so', /couldn’t make out a
 
 console.log('\nsaving');
 r = run('webEyeSave_(B)', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.25', osSph: '-2.00', pd: '63' }, exam: '2025-03-12', doctor: 'Dr. Lee', imageBase64: 'aGVsbG8=', mime: 'image/jpeg' } });
-check('saving keeps the photo in its own Drive folder and the row in Eye Rx, with the expiry worked out', r.ok && FILES.length === 1 && FILES[0].folder === 'VERA Eye Prescriptions' && /Pat glasses 2025-03-12/.test(FILES[0].name) && r.expires === '2027-03-12' && STORE['Eye Rx'].length === 2, J(r));
+check('saving keeps the photo in its own Drive folder and the row in Eye Rx, with the expiry worked out', r.ok && FILES.length === 1 && FILES[0].folder === 'VERA Eye Prescriptions' && /Pat glasses 2025-03-12/.test(FILES[0].name) && FOLDERS.length === 1 && r.expires === '2027-03-12' && STORE['Eye Rx'].length === 2, J(r));
+check('the folder is made once and reused', (run('webEyeSave_(B)', { B: { person: 'Sam', kind: 'glasses', values: { odSph: '-1.00' }, exam: '2026-01-01', imageBase64: 'aGk=', mime: 'image/png' } }), FOLDERS.length === 1 && FILES.length === 2 && FILES[1].folder === 'VERA Eye Prescriptions'));
+check('Eyes and Notes save through the Drive service (drive.file), not DriveApp folders', !/DriveApp\.(createFolder|getFoldersByName)/.test(EY) && /veraDriveSave_\(EY_FOLDER_,/.test(EY) && !/DriveApp\.(createFolder|getFoldersByName)/.test(read('Notes.js')) && /veraDriveSave_\(NT_PICTURES_FOLDER_,/.test(read('Notes.js')));
+check('the manifest asks only for files VERA creates, and turns the Drive service on', (m => m.oauthScopes.includes('https://www.googleapis.com/auth/drive.file') && !m.oauthScopes.includes('https://www.googleapis.com/auth/drive') && m.dependencies.enabledAdvancedServices.some(s => s.serviceId === 'drive' && s.userSymbol === 'Drive'))(JSON.parse(read('appsscript.json'))));
 check('marked numbers aren’t saved until you’ve checked them', /Check the marked/.test(run('webEyeSave_(B).error', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.30' } } })) && run('webEyeSave_(B).ok', { B: { person: 'Sam', kind: 'contacts', values: { odSph: '-4.50', osSph: '-4.75', bc: '8.5', dia: '14.1' }, exam: '2026-01-05', lens: 'Dailies', confirmed: true } }) === true);
 check('no numbers, no person, a formula-like name are refused', /at least the sphere/.test(run('webEyeSave_(B).error', { B: { person: 'Pat', kind: 'glasses', values: {} } })) && /Whose/.test(run('webEyeSave_({}).error')) && /can’t start with =/.test(run('webEyeSave_(B).error', { B: { person: '=X', values: { odSph: '-1' } } })));
 run('webEyeSave_(B)', { B: { person: 'Pat', kind: 'glasses', values: { odSph: '-2.50', osSph: '-2.25', pd: '63' }, exam: '2026-03-10', doctor: 'Dr. Lee' } });
@@ -88,7 +99,10 @@ let d = run('webGetEyes_()');
 const patG = d.current.filter(x => x.person === 'Pat' && x.kind === 'glasses');
 check('the newest exam is the current one; the older one is history, with its photo', patG.length === 1 && patG[0].odSph === '-2.50' && d.history.length === 1 && d.history[0].odSph === '-2.25' && d.history[0].photo === 'FILE1', J(d.history));
 check('each current one carries the copy text', /^OD -2.50 · OS -2.25 · PD 63/.test(patG[0].copy), patG[0].copy);
-check('the people: the owner first, then from Config and the rows', J(d.people) === '["Pat","Sam"]', J(d.people));
+check('the people come from the household cheat sheet; the “Owner” placeholder is never one', J(d.people) === '["Pat","Sam"]', J(d.people));
+OWNER = 'Pat'; CONFIG_PEOPLE = 'Kim';
+check('…the owner’s real name and Config eyes_people join without repeats', J(run('webGetEyes_().people')) === '["Pat","Sam","Kim"]', J(run('webGetEyes_().people')));
+OWNER = 'Owner'; CONFIG_PEOPLE = '';
 check('the eye exam comes from Appointments (not the dentist)', J(d.exams.map(x => x.person + ':' + x.type)) === '["Sam:Eye Exam"]');
 check('the photo opens as a data URL', /^data:image\/jpeg;base64,/.test(run('webEyePhoto_(E).dataUrl', { E: { parameter: { id: d.history[0].id } } })));
 

@@ -176,7 +176,10 @@ function webGetEyes_() {
   var rows = eyRxRows_(), cur = eyCurrent_(rows), usual = eyUsualRows_(), orders = eyOrderRows_(), today = eyToday_();
   var people = [];
   var add = function(p) { if (p && people.indexOf(p) === -1) people.push(p); };
-  try { add(peopleOwnerName_()); } catch (e) {}
+  // The household, from the cheat sheet's insurance and doctors (as Coverage reads it), then the
+  // owner's name if Config has one (not the "Owner" placeholder), then Config eyes_people.
+  try { cvPeople_((getHouseholdInfoData_() || {}).sections || []).forEach(add); } catch (e) {}
+  try { var on = peopleOwnerName_(); if (on && on !== 'Owner') add(on); } catch (e) {}
   rows.concat(usual, orders).forEach(function(x) { add(x.person); });
   try { (getConfigValues().eyes_people || '').split(',').forEach(function(p) { add(eyText_(p)); }); } catch (e) {}
   var supply = {}; people.forEach(function(p) { supply[p] = eySupply_(p, orders, usual, today); });
@@ -224,9 +227,6 @@ function webEyeRead_(body) {
     lens: eyText_(got.lens).slice(0, 80), wear: eyText_(got.wear).slice(0, 30) };
 }
 
-/** The Drive folder the prescription photos go in, made the first time. */
-function eyFolder_() { var it = DriveApp.getFoldersByName(EY_FOLDER_); return it.hasNext() ? it.next() : DriveApp.createFolder(EY_FOLDER_); }
-
 /** POST eye_save { id?, person, kind, values, exam, expires, doctor, lens, wear, notes, imageBase64?, mime? } */
 function webEyeSave_(body) {
   var b = body || {}, person = eyText_(b.person).slice(0, 40), kind = /contact/i.test(b.kind) ? 'contacts' : 'glasses';
@@ -241,7 +241,7 @@ function webEyeSave_(body) {
   if (b.imageBase64) {
     var f = eyCheckFile_(b); if (f.error) return { ok: false, error: f.error };
     var ext = f.mime === 'application/pdf' ? '.pdf' : '';
-    photo = eyFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(f.b64), f.mime, person + ' ' + kind + ' ' + (exam || eyToday_()) + ext)).getId();
+    photo = veraDriveSave_(EY_FOLDER_, Utilities.newBlob(Utilities.base64Decode(f.b64), f.mime, person + ' ' + kind + ' ' + (exam || eyToday_()) + ext));
   }
   return tiLocked_(function() {
     var sh = eySheet_(EY_RX_TAB_, EY_RX_HEADERS_), id = eyText_(b.id) || tiMintId_('EY-');
