@@ -6355,7 +6355,7 @@ function EyesTab(props){var h=React.createElement,C=EYC;
       h('div',{key:'u',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         h('label',{style:Object.assign(btn(true),{display:'inline-flex',alignItems:'center'})},'Take a photo',h('input',{type:'file',accept:'image/*',capture:'environment',className:'ey-camera',onChange:pick,style:{display:'none'}})),
         h('label',{style:Object.assign(btn(false),{display:'inline-flex',alignItems:'center'})},'Upload a file',h('input',{type:'file',accept:'image/*,application/pdf',className:'ey-file',onChange:pick,style:{display:'none'}})),
-        h('span',{style:{fontSize:12,color:C.mute,flex:'1 1 200px'}},form.reading?'VERA is reading it…':form.file?'Kept in a private VERA folder in your Drive once saved.':'A photo of the paper, or the PDF from the eye doctor. Or type the numbers.')),
+        h('span',{style:{fontSize:12,color:C.mute,flex:'1 1 200px'}},form.reading?'VERA is reading it…':form.file?'Kept with your VERA data once saved.':'A photo of the paper, or the PDF from the eye doctor. Or type the numbers.')),
       form.file&&form.file.preview?h('img',{key:'pv',src:form.file.preview,alt:'The photo',style:{maxWidth:'100%',maxHeight:260,objectFit:'contain',borderRadius:10,border:'1px solid '+C.br}}):null,
       form.unsure.length?h('span',{key:'un',className:'ey-unsure-note',style:{fontSize:13,color:C.warn}},'Check the marked '+(form.unsure.length===1?'number':'numbers')+' against the photo: VERA wasn’t sure.'):null,
       h('div',{key:'g',className:'ey-grid',style:{display:'grid',gridTemplateColumns:'34px repeat('+cols.length+',minmax(0,1fr))',gap:6,alignItems:'end'}},

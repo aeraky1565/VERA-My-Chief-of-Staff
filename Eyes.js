@@ -22,6 +22,10 @@ var EY_USUAL_HEADERS_ = ['ID', 'Person', 'What', 'Brand', 'Pack', 'Days per pack
 var EY_ORDER_TAB_ = 'Eye Orders';
 var EY_ORDER_HEADERS_ = ['ID', 'Person', 'Date', 'What', 'Boxes per eye', 'Store', 'Cost', 'Paid with', 'Notes'];
 var EY_FOLDER_ = 'VERA Eye Prescriptions';
+// The photo is kept in VERA's own sheet (no Drive permission needed): a hidden tab, the base64 split
+// into cells of EY_PHOTO_CHUNK_ characters, one row per part. A PDF is capped at EY_PHOTO_PDF_MAX_.
+var EY_PHOTO_TAB_ = 'Eye Photos', EY_PHOTO_HEADERS_ = ['ID', 'Mime', 'Part', 'Data'];
+var EY_PHOTO_CHUNK_ = 45000, EY_PHOTO_PDF_MAX_ = 2800000;   // ~2 MB of PDF as base64
 var EY_FLAG_PREFIX_ = 'EYES|';
 var EY_EXPIRY_LEAD_DAYS_ = 45, EY_SUPPLY_LEAD_DAYS_ = 21, EY_REORDER_DAYS_ = 14;
 var EY_MAX_B64_ = 14000000;   // ~10 MB
@@ -240,8 +244,8 @@ function webEyeSave_(body) {
   var photo = eyText_(b.photo);
   if (b.imageBase64) {
     var f = eyCheckFile_(b); if (f.error) return { ok: false, error: f.error };
-    var ext = f.mime === 'application/pdf' ? '.pdf' : '';
-    photo = veraDriveSave_(EY_FOLDER_, Utilities.newBlob(Utilities.base64Decode(f.b64), f.mime, person + ' ' + kind + ' ' + (exam || eyToday_()) + ext));
+    if (f.mime === 'application/pdf' && f.b64.length > EY_PHOTO_PDF_MAX_) return { ok: false, error: 'That PDF is over 2 MB. Take a photo of it instead.' };
+    photo = eyPhotoSave_(f.b64, f.mime);
   }
   return tiLocked_(function() {
     var sh = eySheet_(EY_RX_TAB_, EY_RX_HEADERS_), id = eyText_(b.id) || tiMintId_('EY-');
@@ -258,9 +262,34 @@ function webEyeSave_(body) {
 function webEyePhoto_(e) {
   var id = eyText_(e && e.parameter && e.parameter.id), r = eyRxRows_().filter(function(x) { return x.id === id; })[0];
   if (!r || !r.photo) return { ok: false, error: 'No photo for that prescription.' };
+  if (/^EP-/.test(r.photo)) {
+    var got = eyPhotoRead_(r.photo);
+    if (!got) return { ok: false, error: 'That photo is missing from the Eye Photos tab.' };
+    return got.mime === 'application/pdf' ? { ok: true, url: 'data:' + got.mime + ';base64,' + got.b64, pdf: true } : { ok: true, dataUrl: 'data:' + got.mime + ';base64,' + got.b64 };
+  }
   var file = DriveApp.getFileById(r.photo), mime = file.getMimeType();
   if (mime === 'application/pdf') return { ok: true, url: file.getUrl(), pdf: true };
   return { ok: true, dataUrl: 'data:' + mime + ';base64,' + Utilities.base64Encode(file.getBlob().getBytes()) };
+}
+
+/** Pure: a base64 string split into cells of `size` characters. */
+function eyChunks_(b64, size) { var out = []; for (var i = 0; i < b64.length; i += size) out.push(b64.slice(i, i + size)); return out.length ? out : ['']; }
+
+/** Keeps a photo in the hidden Eye Photos tab → its id ("EP-…"). */
+function eyPhotoSave_(b64, mime) {
+  var sh = eySheet_(EY_PHOTO_TAB_, EY_PHOTO_HEADERS_), id = tiMintId_('EP-'), parts = eyChunks_(b64, EY_PHOTO_CHUNK_);
+  var rows = parts.map(function(p, i) { return [id, mime, i + 1, p]; });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, EY_PHOTO_HEADERS_.length).setNumberFormat('@').setValues(rows);
+  try { if (!sh.isSheetHidden()) sh.hideSheet(); } catch (e) {}
+  return id;
+}
+
+/** A photo back from the Eye Photos tab → { mime, b64 } or null. */
+function eyPhotoRead_(id) {
+  var rows = tiRows_(eySheet_(EY_PHOTO_TAB_, EY_PHOTO_HEADERS_), EY_PHOTO_HEADERS_.length).filter(function(r) { return eyText_(r[0]) === id; })
+    .sort(function(a, b) { return Number(a[2]) - Number(b[2]); });
+  if (!rows.length) return null;
+  return { mime: eyText_(rows[0][1]), b64: rows.map(function(r) { return String(r[3]); }).join('') };
 }
 
 /** A row by ID removed from one of the three tabs. */
