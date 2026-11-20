@@ -86,6 +86,14 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8Dwn4G
     check(L + ': what changed from the current one', /Changed: OD SPH -2\.25 → -2\.50 · OS SPH -2\.00 → -2\.25/.test(await txt('.ey-diff')), await txt('.ey-diff'));
     await page.fill('#eyprobe input[aria-label="OS AXIS"]', '171'); await wait(80);
     check(L + ': typing over a marked number clears the mark', (await page.$$('#eyprobe .ey-unsure')).length === 0);
+    check(L + ': with a photo, Save with the photo or Save without it', (await page.$eval('#eyprobe .ey-save', n => n.innerText)) === 'Save with the photo' && (await page.$eval('#eyprobe .ey-save-nophoto', n => n.innerText)) === 'Save without the photo');
+    await click('.ey-save-nophoto'); await wait(200);
+    const np = await page.evaluate(() => window.__posts.filter(p => p.action === 'eye_save').slice(-1)[0] || {});
+    check(L + ': Save without the photo sends the numbers and no photo', np.kind === 'glasses' && np.values.osAxis === '171' && !('imageBase64' in np) && /Saved Pat’s glasses prescription\./.test(await txt('.ey-msg')), JSON.stringify(np));
+    await click('.ey-add'); await wait(100);
+    check(L + ': no photo yet → one Save button', (await page.$('#eyprobe .ey-save-nophoto')) === null && /Save · it becomes the current one/.test(await page.$eval('#eyprobe .ey-save', n => n.innerText)));
+    await page.setInputFiles('#eyprobe .ey-file', pngFile); await wait(500);
+    await page.fill('#eyprobe input[aria-label="OS AXIS"]', '171'); await wait(80);
     await click('.ey-save'); await wait(200);
     const sv = await page.evaluate(() => window.__posts.filter(p => p.action === 'eye_save').slice(-1)[0] || {});
     check(L + ': Save sends Pat’s glasses, the numbers, the exam and the photo', sv.person === 'Pat' && sv.kind === 'glasses' && sv.values.osAxis === '171' && sv.exam === '2026-03-10' && sv.confirmed === true && /^B64:/.test(sv.imageBase64), JSON.stringify(sv));
