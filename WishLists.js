@@ -51,6 +51,23 @@ function wishStruck_(el) {
  *   { t: 'table', rows: [[ { text, struck } ]] }
  * A cell is struck when any list item inside it is: that is a ticked checklist box.
  */
+/**
+ * Every tab of a doc as blocks, in order (child tabs too). Each tab starts with its title as
+ * a plain line, so a tab named "2025" opens that year; getBody() alone reads the first tab only.
+ */
+function wishDocAllBlocks_(doc) {
+  if (!doc || typeof doc.getTabs !== 'function') return wishDocBlocks_(doc.getBody());
+  var out = [];
+  (function walk(tabs) {
+    (tabs || []).forEach(function(t) {
+      out.push({ t: 'p', text: String(t.getTitle() || ''), list: false, struck: false });
+      try { out = out.concat(wishDocBlocks_(t.asDocumentTab().getBody())); } catch (e) {}
+      walk(typeof t.getChildTabs === 'function' ? t.getChildTabs() : []);
+    });
+  })(doc.getTabs());
+  return out.length ? out : wishDocBlocks_(doc.getBody());
+}
+
 function wishDocBlocks_(body) {
   var T = DocumentApp.ElementType, out = [];
   for (var i = 0; i < body.getNumChildren(); i++) {
@@ -136,7 +153,9 @@ function parseWishDoc_(blocks) {
   };
   (blocks || []).forEach(function(b) {
     if (b.t === 'table') {
-      if (b.rows.length === 1 && b.rows[0].length === 1 && wishYearOf_(b.rows[0][0].text)) {
+      // A year banner: one row, the year in its first cell, any other cells blank (a 1×4 banner too).
+      if (b.rows.length === 1 && b.rows[0].length && wishYearOf_(b.rows[0][0].text) &&
+          b.rows[0].slice(1).every(function(c) { return !String((c && c.text) || '').trim(); })) {
         cur = section(wishYearOf_(b.rows[0][0].text)); mode = null; return;
       }
       if (!cur || !b.rows.length) return;
@@ -292,7 +311,7 @@ function webGetFamilyWishLists_() {
   var initials = wishInitialsMap_(cfg), unmapped = {};
   var people = entries.map(function(entry) {
     try {
-      var v = wishPersonView_(entry.person, wishDocBlocks_(DocumentApp.openById(entry.docId).getBody()), initials, upcoming);
+      var v = wishPersonView_(entry.person, wishDocAllBlocks_(DocumentApp.openById(entry.docId)), initials, upcoming);
       v.unmapped.forEach(function(u) { unmapped[u] = true; });
       return v;
     } catch (err) {

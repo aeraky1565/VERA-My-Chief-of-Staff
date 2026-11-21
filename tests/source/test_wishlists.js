@@ -127,6 +127,34 @@ check('…a blank one is neither', !y19.gifts[2].purchased && !y19.gifts[2].wrap
 check('…and the Total row is not a gift', !y19.gifts.some(g => /total/i.test(g.item)));
 check('ideas for next year, and nothing after them', JSON.stringify(y19.ideas) === '["Pottery class","Plant stand"]', JSON.stringify(y19.ideas));
 
+console.log('\na wide year banner, and a doc in tabs');
+{
+  const cell = t => ({ text: t, struck: false });
+  S.wide = [{ t: 'p', text: 'Mom Christmas List' }, { t: 'table', rows: [[cell('2026'), cell(''), cell(''), cell('')]] },
+            { t: 'p', text: 'Wishlist' }, { t: 'p', text: 'Toaster', list: true },
+            { t: 'table', rows: [['Item', 'Purchaser', 'Purchased', 'Wrapped'].map(cell), [cell('Toaster'), cell('VV'), { text: '', struck: true }, cell('')]] },
+            { t: 'table', rows: [[cell('2025'), cell('')]] }, { t: 'p', text: 'Wishlist' }, { t: 'p', text: 'Mug', list: true }];
+  const w = vm.runInContext('parseWishDoc_(wide)', S).years;
+  check('a 1×4 banner (the year, then blank cells) opens its year', !!w[2026] && w[2026].wishlist[0].text === 'Toaster' && w[2026].gifts[0].item === 'Toaster' && w[2026].gifts[0].purchased, JSON.stringify(w));
+  check('…and the next banner the next year', !!w[2025] && w[2025].wishlist[0].text === 'Mug' && !w[2026].wishlist.some(x => x.text === 'Mug'));
+  S.notBanner = [{ t: 'table', rows: [[cell('2026'), cell('')]] }, { t: 'table', rows: [[cell('2024'), cell('note')]] }, { t: 'p', text: 'Wishlist' }, { t: 'p', text: 'Pen', list: true }];
+  const nb = vm.runInContext('parseWishDoc_(notBanner)', S).years;
+  check('a one-row table with text beside the year is not a banner', !nb[2024] && nb[2026].wishlist[0].text === 'Pen', JSON.stringify(nb));
+  // A doc in tabs: getBody() is only the first tab.
+  const tabDoc = (title, kids, body) => ({ getTitle: () => title, getChildTabs: () => kids || [], asDocumentTab: () => ({ getBody: () => body }) });
+  const t26 = body([TBL([['2026', '', '', '']]), P('Wishlist'), L('Toaster'), TBL([['Item', 'Purchaser', 'Purchased', 'Wrapped'], ['Toaster', 'AE', BOX(0), BOX(0)]])]);
+  const t25 = body([P('Wishlist'), L('Scarf'), TBL([['Item', 'Who is purchasing'], ['Scarf', 'Purchased - Vic']])]);
+  const t24 = body([P('Wishlist'), L('Kettle')]);
+  S.tabbed = { getBody: () => t26, getTabs: () => [tabDoc('2026', [], t26), tabDoc('2025', [tabDoc('2024', [], t24)], t25)] };
+  S.tabBlocks = vm.runInContext('wishDocAllBlocks_(tabbed)', S);
+  const ty = vm.runInContext('parseWishDoc_(tabBlocks)', S).years;
+  check('every tab is read: 2026, 2025 and a child tab 2024', Object.keys(ty).sort().join(',') === '2024,2025,2026', Object.keys(ty).join(','));
+  check('…a tab named for a year opens that year, with its own list and gifts', ty[2025].wishlist[0].text === 'Scarf' && ty[2025].gifts[0].purchased && ty[2024].wishlist[0].text === 'Kettle' && ty[2026].gifts[0].item === 'Toaster');
+  S.plain = { getBody: () => DOC };
+  check('a doc without tabs reads its body as before', vm.runInContext('wishDocAllBlocks_(plain)', S).length === blocks.length);
+  check('the wish lists read every tab', /wishDocAllBlocks_\(DocumentApp\.openById\(entry\.docId\)\)/.test(WL));
+}
+
 console.log('\ncolumns are read by label, never by position');
 {
   S.moved = [{ t: 'table', rows: [['2025'].map(t => ({ text: t }))] },

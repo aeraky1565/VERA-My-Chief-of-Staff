@@ -19,6 +19,22 @@ const swap = (src, from, to) => {
 const WL = 'WishLists.js', LITE = 'docs/dashboard-lite.html';
 
 const CONTROLS = {
+  // ---- a wide year banner, and a doc in tabs ----------------------------------
+  'only a 1×1 table is a year banner again': b => ({
+    [WL]: swap(b[WL], "if (b.rows.length === 1 && b.rows[0].length && wishYearOf_(b.rows[0][0].text) &&", "if (b.rows.length === 1 && b.rows[0].length === 1 && wishYearOf_(b.rows[0][0].text) &&"),
+  }),
+  'a one-row table with text beside the year counts as a banner': b => ({
+    [WL]: swap(b[WL], "          b.rows[0].slice(1).every(function(c) { return !String((c && c.text) || '').trim(); })) {", "          true) {"),
+  }),
+  'only the first tab is read again': b => ({
+    [WL]: swap(b[WL], "wishDocAllBlocks_(DocumentApp.openById(entry.docId))", "wishDocBlocks_(DocumentApp.openById(entry.docId).getBody())"),
+  }),
+  'child tabs are skipped': b => ({
+    [WL]: swap(b[WL], "      walk(typeof t.getChildTabs === 'function' ? t.getChildTabs() : []);\n", ""),
+  }),
+  'a tab’s name doesn’t open its year': b => ({
+    [WL]: swap(b[WL], "      out.push({ t: 'p', text: String(t.getTitle() || ''), list: false, struck: false });\n", ""),
+  }),
   // ---- the real defect, restored --------------------------------------------
   'every table cell becomes its own paragraph again (the pile of words)': b => ({
     [WL]: swap(b[WL], "    } else if (type === T.TABLE) {", "    } else if (false) {"),
@@ -41,7 +57,7 @@ const CONTROLS = {
     [WL]: swap(b[WL], "{ text: text, done: !!b.struck }", "{ text: text, done: false }"),
   }),
   'a one-cell year banner isn’t seen as a year': b => ({
-    [WL]: swap(b[WL], "      if (b.rows.length === 1 && b.rows[0].length === 1 && wishYearOf_(b.rows[0][0].text)) {", "      if (false) {"),
+    [WL]: swap(b[WL], "      if (b.rows.length === 1 && b.rows[0].length && wishYearOf_(b.rows[0][0].text) &&", "      if (false &&"),
   }),
 
   // ---- who and what -----------------------------------------------------------
