@@ -1,8 +1,8 @@
 # ARIA: changes from VERA (add to ARIA's task prompt)
 
 VERA can now change a trip ARIA is already watching: its ceiling, airports, travelers, flex days, or
-airlines. Tap **✎ Change** on the trip's card in VERA. Paste the block below into ARIA's scheduled
-task prompt, after the part about the **ARIA Requests** tab. Nothing else in ARIA changes.
+airlines. Tap **✎ Change** on the trip's card in VERA. This is already in ARIA's scheduled task ("ARIA daily travel check") since 2026-11-21; the block below is kept
+here as the reference, and for setting ARIA up again.
 
 ---
 
@@ -27,5 +27,3 @@ Fields not named in Changes keep the rule you already follow: fill them only whi
 How it fits together:
 - **VERA writes** only to its own ARIA Requests tab. A change keeps the same Request ID, and the
   card says "Changes sent DATE: … ARIA applies them on its next 06:52 run".
-- Until this block is in ARIA's prompt, ARIA fills only blank fields. So a missing ceiling still
-  gets picked up, but a changed one doesn't.

@@ -1,8 +1,8 @@
 # ARIA: the rebook check (add to ARIA's task prompt)
 
 VERA (#250) now records what you paid for a booked trip, so ARIA can tell you when the fare drops.
-Paste the block below into ARIA's scheduled task prompt, after the part about the **ARIA Requests**
-tab. Nothing else in ARIA changes.
+This is already in ARIA's scheduled task ("ARIA daily travel check") since 2026-11-21; the block below is kept
+here as the reference, and for setting ARIA up again.
 
 ---
 

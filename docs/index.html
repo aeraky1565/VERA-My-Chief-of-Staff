@@ -4886,8 +4886,9 @@ function ariaPickWords_(p){if(!p)return '';var who=function(f){return f.airline|
 // A fare is firm only when no flag says otherwise.
 // Side by side: the cheapest fares that include a carry-on (the least you'd travel with), up to three
 // airlines to flip through, against the best fare on your own airline. From the latest day ARIA looked.
-// A fare without a carry-on is one whose flags say basic or bags extra, unless one says the carry-on is in.
-function ariaCarryOn_(f){var fl=(f&&f.flags||[]).join(' | ').toLowerCase();if(/carry-?on (is )?included|incl\.? carry/.test(fl))return true;return !/basic|excl\.? bags|no carry|carry-?on (not|extra)/.test(fl);}
+// A fare without a carry-on is one whose flags say basic (not "basic fare $X excluded", which is about a dropped fare)
+// or bags extra, unless one says the carry-on is in.
+function ariaCarryOn_(f){var fl=(f&&f.flags||[]).join(' | ').toLowerCase();if(/carry-?on (is )?included|incl\.? carry/.test(fl))return true;return !/basic(?![^|]*excluded)|excl\.? bags|no carry|carry-?on (not|extra)/.test(fl);}
 function ariaCompare_(fares,cfg,abroad,travelers){if(!cfg||!(fares||[]).length)return null;var last='';fares.forEach(function(f){if(f.dateSeen>last)last=f.dateSeen;});
   var day=fares.filter(function(f){return f.dateSeen===last&&ariaPP_(f,travelers)!=null&&ariaCarryOn_(f);});if(!day.length)return null;
   day.sort(function(a,b){return ariaPP_(a,travelers)-ariaPP_(b,travelers);});
@@ -4917,8 +4918,10 @@ function ariaWhen_(w){if(w.status==='scouting'){var span=w.earliest&&w.latest?ti
     var n=w.nightsMin!=null||w.nightsMax!=null?(w.nightsMin===w.nightsMax||w.nightsMax==null?w.nightsMin:w.nightsMin==null?w.nightsMax:w.nightsMin+'–'+w.nightsMax)+' nights':'';return ['Leaving '+(span||'any time'),n].filter(Boolean).join(' · ');}
   return w.earliest?tiDayText_(w.earliest)+(w.latest?' → '+tiDayText_(w.latest):''):'No dates yet';}
 // Rows by status; scouted rows under the idea they came from.
-function ariaGroup_(watch,ideas){var g={watching:[],scouting:{},draft:[],booked:[],dropped:[],other:[]};
-  (watch||[]).forEach(function(w){if(w.status==='scouting'){var i=(ideas||{})[w.ref]||{};var k=i.idea||'Scouted';(g.scouting[k]=g.scouting[k]||[]).push(w);}else (g[w.status]||g.other).push(w);});
+// A trip that has already ended isn't shown at all (booked or not): this page is for fares still to find.
+function ariaPast_(w,today){var end=w.latest||w.earliest;return !!(today&&end&&end<today);}
+function ariaGroup_(watch,ideas,today){var g={watching:[],scouting:{},draft:[],booked:[],dropped:[],other:[]};
+  (watch||[]).forEach(function(w){if(ariaPast_(w,today))return;if(w.status==='scouting'){var i=(ideas||{})[w.ref]||{};var k=i.idea||'Scouted';(g.scouting[k]=g.scouting[k]||[]).push(w);}else (g[w.status]||g.other).push(w);});
   ['watching','draft','booked','dropped','other'].forEach(function(k){g[k].sort(function(a,b){return String(a.earliest||'9').localeCompare(String(b.earliest||'9'));});});return g;}
 
 function AriaSpark(props){var h=React.createElement;var pts=props.points||[];if(pts.length<2)return null;
@@ -5042,7 +5045,7 @@ function AriaView(props){var h=React.createElement;
     h('b',{style:{color:TI.hi}},'Connect ARIA’s sheet'),
     h('span',null,'In the Config tab, put the ARIA Travel Tracker’s link in the roster_link_aria row (the same link the Home roster uses).'),
     h('span',{style:{color:TI.mute}},'VERA only reads it. The link stays in your sheet, not in the dashboard’s code.')));
-  var g=ariaGroup_(data.watchlist,data.ideas),gaps=data.gaps||{};
+  var g=ariaGroup_(data.watchlist,data.ideas,data.today),gaps=data.gaps||{};
   var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
     h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 420px), 1fr))',gap:10,alignItems:'start'}},
       rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas,airline:data.airline,requests:data.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:function(){load(true);}});})));};

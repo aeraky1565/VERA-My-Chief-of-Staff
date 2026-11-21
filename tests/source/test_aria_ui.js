@@ -26,7 +26,7 @@ const STATUS = {
     { tripId: 'TRIP-0006', label: 'Desert weekend', status: 'watching', origins: 'IAD', dests: 'PHX', earliest: '2027-03-12', latest: '2027-03-15', ceiling: 300, bestFare: 520, bestSource: 'Expedia', verdict: 'wait', tier: 'Daily', ref: '', dateChange: false, notes: '',
       actionType: 'UNDER_CEILING', actionUrgency: 'High', actionNeeded: 'Under ceiling: $520', actionSince: '2027-02-19', email: { state: 'failed', date: '2027-02-19', text: 'Draft (send failed: quota)' } },
     { tripId: '', ref: 'OPT-ABC', label: 'Spring idea', status: 'scouting', origins: 'IAD', dests: 'LIS', returnFrom: 'BCN', earliest: '2027-03-01', latest: '2027-05-31', nightsMin: 7, nightsMax: 10, bestFare: 1240, bestSource: 'SlickTrip', verdict: 'wait', tier: 'Weekly', dateChange: false, notes: '' },
-    { tripId: 'TRIP-0003', label: 'Old plan', status: 'dropped', earliest: '2027-01-02', ref: '', dateChange: false, notes: '' },
+    { tripId: 'TRIP-0003', label: 'Old plan', status: 'dropped', earliest: '2027-06-02', ref: '', dateChange: false, notes: '' },
   ],
   fares: [
     { tripId: 'TRIP-0001', dateSeen: '2027-02-18', total: 612, farePP: 280, airline: 'UA', stops: '0', depart: '2027-04-05', ret: '2027-04-13', link: 'https://fares.example/abc', flags: [] },
@@ -110,16 +110,23 @@ async function scenario(page, label, width) {
   check(label + ': no sideways scroll', await noScroll(page));
 
   // A booked trip: no fare to find, so no "No fare yet", ceiling or the note ARIA left while deciding.
-  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ceiling: 980, bestFare: null,
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2027-03-06', latest: '2027-03-15', ceiling: 980, bestFare: null,
     tier: 'Weekly', nextCheck: '2026-11-01', notes: 'Ceiling seeded from the flights budget. Likely booked, confirm before watching.', ref: '', dateChange: false }], fares: [], gaps: { count: 0 } }));
   const bk = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Anniversary trip/.test(n.innerText)) || { innerText: '' }).innerText);
   check(label + ': a booked trip says its flights are booked, under Booked', /Booked · 1/i.test(await text(page)) && /✈️ Flights booked/.test(bk), bk);
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0010', label: 'Old anniversary', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ref: '', dateChange: false, notes: '' },
+    { tripId: 'TRIP-0011', label: 'Old watch', status: 'watching', earliest: '2027-01-02', latest: '2027-02-19', ref: '', dateChange: false, notes: '' },
+    { tripId: 'TRIP-0012', label: 'Ends today', status: 'booked', earliest: '2027-02-10', latest: '2027-02-20', ref: '', dateChange: false, notes: '' }], fares: [], gaps: { count: 0 } }));
+  const pastT = await text(page);
+  check(label + ': trips that have already ended don\'t show at all, booked or not; one ending today still does', !/Old anniversary|Old watch/.test(pastT) && /Ends today/.test(pastT), pastT.slice(0, 400));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2027-03-06', latest: '2027-03-15', ceiling: 980, bestFare: null,
+    tier: 'Weekly', nextCheck: '2026-11-01', notes: 'Ceiling seeded from the flights budget. Likely booked, confirm before watching.', ref: '', dateChange: false }], fares: [], gaps: { count: 0 } }));
   check(label + ': …with no "No fare yet", ceiling, checks, or the note ARIA left before it was booked', !/No fare yet|ceiling|next check|Weekly|confirm before watching/.test(bk), bk);
-  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ceiling: 980, bestFare: 1700, travelers: 2, ref: '', dateChange: false, notes: '' }], fares: [], gaps: { count: 0 } }));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2027-03-06', latest: '2027-03-15', ceiling: 980, bestFare: 1700, travelers: 2, ref: '', dateChange: false, notes: '' }], fares: [], gaps: { count: 0 } }));
   check(label + ': …and the last fare ARIA saw, if it saw one, as a quiet note', /✈️ Flights booked\s+last fare ARIA saw \$1,700/.test(await text(page)));
-  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ref: '', dateChange: false, notes: '', lodging: { have: 9, total: 9, kinds: ['cruise'] } }], fares: [], gaps: { count: 0 } }));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2027-03-06', latest: '2027-03-15', ref: '', dateChange: false, notes: '', lodging: { have: 9, total: 9, kinds: ['cruise'] } }], fares: [], gaps: { count: 0 } }));
   check(label + ': lodging from VERA shows under the flights, all nights covered', /✈️ Flights booked\s+🛏️ 9 of 9 nights covered \(cruise\)/.test(await text(page)), await text(page));
-  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ref: '', dateChange: false, notes: '', lodging: { have: 7, total: 9, kinds: ['cruise', 'arranged_stay'] } }], fares: [], gaps: { count: 0 } }));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2027-03-06', latest: '2027-03-15', ref: '', dateChange: false, notes: '', lodging: { have: 7, total: 9, kinds: ['cruise', 'arranged_stay'] } }], fares: [], gaps: { count: 0 } }));
   check(label + ': …and a gap points to the trip\'s Summary, in amber', /🛏️ 7 of 9 nights covered: see the trip’s Summary/.test(await text(page)) && await page.$eval('#ariaprobe .aria-lodging', n => getComputedStyle(n).color) === 'rgb(246, 210, 122)');
   if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 
@@ -192,7 +199,7 @@ async function scenario(page, label, width) {
       { tripId: 'T', dateSeen: d, airline: 'Allegiant (G4)', total: 300, farePP: 150, stops: 0, flags: ['excl. bags'] },
       { tripId: 'T', dateSeen: d, airline: 'Spirit (NK)', total: 498, farePP: 249, stops: 1 },
       { tripId: 'T', dateSeen: d, airline: 'Spirit (NK)', total: 520, farePP: 260, stops: 0 },
-      { tripId: 'T', dateSeen: d, airline: 'American (AA)', total: 640, farePP: 320, stops: 0 },
+      { tripId: 'T', dateSeen: d, airline: 'American (AA)', total: 640, farePP: 320, stops: 0, flags: ['basic fare $300 excluded'] },
       { tripId: 'T', dateSeen: d, airline: 'Southwest (WN)', total: 700, farePP: 350, stops: 0 },
       { tripId: 'T', dateSeen: d, airline: 'UA 1234', total: 834, farePP: 417, stops: 0, depart: '2026-12-16', ret: '2026-12-30' },
       { tripId: 'T', dateSeen: old, airline: 'Delta (DL)', total: 200, farePP: 100, stops: 0 }];

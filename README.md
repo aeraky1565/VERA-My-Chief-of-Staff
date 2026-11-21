@@ -703,20 +703,20 @@ What VERA does:
 - It reads Fare Log rows with **Role = `rebook`**, from today or yesterday.
 - It posts "Price drop after booking" when one is lower than what was paid by at least `aria_rebook_min_saving` ($50 a person). The post shows the saving each and in total, the route, an Open link, and a reminder to check the airline's change rules. It posts once per new low, never after the trip leaves, and counts against ARIA's act-now cap.
 
-What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
+What ARIA does: its task prices those trips once a day (step 4c, also kept in `docs/guides/aria-rebook-check.md`).
 
 **Changing a watch ARIA already runs.** A Watching trip's card (on the ARIA tab, and the trip Summary's FLIGHTS · ARIA box) has **✎ Change**. It opens the watch form filled from what ARIA watches now: airports, travelers, ceiling, flex days, airlines and premium. **Save changes** posts `aria_request_watch` with `edit: true` and only the fields that moved; the server keeps the rest.
 - The request keeps its Request ID, Ref and Created.
 - A new **Changes** column says what moved, dated: "2026-11-21: Ceiling Per Person 360→300; Flex Days 1→2". A change that changes nothing writes nothing.
 - The card shows "Changes sent …" until ARIA's next run.
 
-What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
+What ARIA does with it: its task (rule 1e, also kept in `docs/guides/aria-request-changes.md`) overwrites exactly the fields Changes names, even ones typed in the Watchlist, notes "Changed from VERA DATE", and prices the trip again on that run.
 
 **Cheapest vs your airline.** A watched trip's card on the ARIA tab compares two cards, side by side on a computer and stacked on a phone. Both come from the latest day in the Fare Log, and both count only fares that include a carry-on: a fare whose flags say basic, bags extra or no carry-on is left out, unless a flag says the carry-on is included.
 - **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
 - **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
 
-When nothing is cheaper than your airline, the card keeps its one-line pick instead. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
+ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
 
 **Not built yet:** the VERA app push (Firebase).
 
@@ -2424,20 +2424,20 @@ What VERA does:
 - It reads Fare Log rows with **Role = `rebook`**, from today or yesterday.
 - It posts "Price drop after booking" when one is lower than what was paid by at least `aria_rebook_min_saving` ($50 a person). The post shows the saving each and in total, the route, an Open link, and a reminder to check the airline's change rules. It posts once per new low, never after the trip leaves, and counts against ARIA's act-now cap.
 
-What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
+What ARIA does: its task prices those trips once a day (step 4c, also kept in `docs/guides/aria-rebook-check.md`).
 
 **Changing a watch ARIA already runs.** A Watching trip's card (on the ARIA tab, and the trip Summary's FLIGHTS · ARIA box) has **✎ Change**. It opens the watch form filled from what ARIA watches now: airports, travelers, ceiling, flex days, airlines and premium. **Save changes** posts `aria_request_watch` with `edit: true` and only the fields that moved; the server keeps the rest.
 - The request keeps its Request ID, Ref and Created.
 - A new **Changes** column says what moved, dated: "2026-11-21: Ceiling Per Person 360→300; Flex Days 1→2". A change that changes nothing writes nothing.
 - The card shows "Changes sent …" until ARIA's next run.
 
-What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
+What ARIA does with it: its task (rule 1e, also kept in `docs/guides/aria-request-changes.md`) overwrites exactly the fields Changes names, even ones typed in the Watchlist, notes "Changed from VERA DATE", and prices the trip again on that run.
 
 **Cheapest vs your airline.** A watched trip's card on the ARIA tab compares two cards, side by side on a computer and stacked on a phone. Both come from the latest day in the Fare Log, and both count only fares that include a carry-on: a fare whose flags say basic, bags extra or no carry-on is left out, unless a flag says the carry-on is included.
 - **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
 - **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
 
-When nothing is cheaper than your airline, the card keeps its one-line pick instead. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
+ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
 
 **Not built yet:** the VERA app push (Firebase).
 

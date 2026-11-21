@@ -118,8 +118,11 @@ const CONTROLS = [
   ['the change form starts empty', both("var f=ariaEditForm_(row,req);setInit(f);setForm(f);", "var f={edit:true};setInit(f);setForm(f);"), 'test_tripaira_ui.js'],
   ['a watched trip has no Change', both("btn('✎ Change','ts-aria-change',", "false&&btn('✎ Change','ts-aria-change',"), 'test_tripaira_ui.js'],
   // the comparison cards and the Needs a look headings
-  ['basic fares count as carry-on', both("return !/basic|excl\\.? bags|no carry|carry-?on (not|extra)/.test(fl);}", "return true;}"), 'test_aria_ui.js'],
+  ['basic fares count as carry-on', both("return !/basic(?![^|]*excluded)|excl\\.? bags|no carry|carry-?on (not|extra)/.test(fl);}", "return true;}"), 'test_aria_ui.js'],
   ['your airline counts as a cheap option', both("if(f===mine||(mine&&ariaTierOf_(f.airline,cfg,abroad)===ariaTierOf_(mine.airline,cfg,abroad))||seen[k])return false;", "if(seen[k])return false;"), 'test_aria_ui.js'],
+  ['a dropped basic fare counts against the fare', both("basic(?![^|]*excluded)|excl", "basic|excl"), 'test_aria_ui.js'],
+  ['ended trips still show', both("function ariaPast_(w,today){var end=w.latest||w.earliest;return !!(today&&end&&end<today);}", "function ariaPast_(w,today){return false;}"), 'test_aria_ui.js'],
+  ['a trip ending today is hidden', both("return !!(today&&end&&end<today);}", "return !!(today&&end&&end<=today);}"), 'test_aria_ui.js'],
   ['only one cheap option', both("seen[k]=1;return true;}).slice(0,3);", "seen[k]=1;return true;}).slice(0,1);"), 'test_aria_ui.js'],
   ['the cards always stack', both("gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',gap:8}}", "gridTemplateColumns:'1fr',gap:8}}"), 'test_aria_ui.js'],
   ['the headings look like trip names', both("className:'aria-gap-head',style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',", "className:'aria-gap-head',style:{fontSize:13,fontWeight:700,"), 'test_aria_ui.js'],
