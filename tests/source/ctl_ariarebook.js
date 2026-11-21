@@ -14,7 +14,7 @@ const CONTROLS = [
   ['the hotel counts as flights', ar("if (!/^flights?$/i.test(String(b.category || '').trim())) return;", '')],
   ['paid isn’t split by travelers', ar('return total > 0 ? Math.round(total / n) : null;', 'return total > 0 ? Math.round(total) : null;')],
   ['a blank actual sends a paid amount', ar('return total > 0 ? Math.round(total / n) : null;', 'return Math.round(total / n);')],
-  ['Paid Per Person isn’t written to the row', ar('v(r.paidPP), v(r.repriceUntil)];', "'', ''];")],
+  ['Paid Per Person isn’t written to the row', ar('v(r.paidPP), v(r.repriceUntil), v(r.changes)];', "'', '', v(r.changes)];")],
   ['any fare counts, not just rebook', ar("if (String(f.role || '').trim().toLowerCase() !== 'rebook') return;", '')],
   ['a trip that has left still posts', ar("&& r.repriceUntil && today <= r.repriceUntil) byTrip", '&& r.repriceUntil) byTrip')],
   ['a trip still watched counts', ar("if (r.kind === 'watch' && r.status === 'booked' && r.tripId && r.paidPP", "if (r.kind === 'watch' && r.tripId && r.paidPP")],

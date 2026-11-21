@@ -59,7 +59,7 @@ console.log('\na stay request');
 console.log('\nasking ARIA');
 {
   const r1 = run('webStayAriaRequest_(__b)', { __b: { tripId: 'TRIP-AAA', label: 'Coast Trip', place: 'Porto', checkIn: '2027-05-03', nights: 3, travelers: 2, ceilingNight: 180 } });
-  check('the requests tab widens for the new columns first (Place and Ceiling Per Night, then #250’s two)', inserted === 4, inserted);
+  check('the requests tab widens for the new columns first (Place and Ceiling Per Night, then #250’s two, then Changes)', inserted === 5, inserted);
   const row = ARQ[1];
   check('a stay request is written to VERA\'s own tab', r1.ok && ARQ.length === 2 && row[1] === 'stay' && row[2] === 'STAY-TRIP-AAA-2027-05-03' && row[16] === 'Active', J(row));
   check('…with Place and Ceiling Per Night in their columns', row[HEADERS.indexOf('Place')] === 'Porto' && row[HEADERS.indexOf('Ceiling Per Night')] === 180 && row.length === HEADERS.length);

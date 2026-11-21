@@ -32,7 +32,7 @@ console.log('\nWhat was paid');
   check('…two flight rows add up; 2 travelers when unknown', c.ariaPaidPerPerson_([{ category: 'Flights', actual: 600 }, { category: 'flight', actual: 400 }], null) === 500);
   check('…nothing when the actual is blank or 0', c.ariaPaidPerPerson_([{ category: 'Flights', actual: '' }], 2) === null && c.ariaPaidPerPerson_([{ category: 'Flights', actual: 0 }], 2) === null && c.ariaPaidPerPerson_([], 2) === null);
   const r = c.ariaRequestFromRow_(c.ariaRequestToRow_({ id: 'REQ-1', kind: 'watch', ref: '', tripId: 'TRIP-A1', label: 'Lisbon spring', earliest: '2027-04-02', latest: '2027-04-10', status: 'booked', created: 'x', updated: 'y', paidPP: 450, repriceUntil: '2027-04-02' }));
-  check('the request row carries Paid Per Person and Reprice Until, at the end', r.paidPP === 450 && r.repriceUntil === '2027-04-02' && c.ARIA_REQUESTS_HEADERS.slice(-2).join('|') === 'Paid Per Person|Reprice Until' && c.ariaRequestToRow_({}).length === c.ARIA_REQUESTS_HEADERS.length);
+  check('the request row carries Paid Per Person and Reprice Until, just before Changes', r.paidPP === 450 && r.repriceUntil === '2027-04-02' && c.ARIA_REQUESTS_HEADERS.slice(-3, -1).join('|') === 'Paid Per Person|Reprice Until' && c.ariaRequestToRow_({}).length === c.ARIA_REQUESTS_HEADERS.length);
   check('the Fare Log’s Role column is read', /role: 'Role'/.test(ARIA));
 }
 
