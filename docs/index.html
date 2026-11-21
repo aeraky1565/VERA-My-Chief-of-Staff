@@ -8578,6 +8578,7 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
   if(!data)return h('div',{className:'pa-dim'},'Loading the pantry…');
   var items=data.items||[],days=data.daysAhead||7,patch=function(name,f){setData(function(d){return Object.assign({},d,{items:(d.items||[]).map(function(i){return i.normalized===name?Object.assign({},i,f):i;})});});};
   var add=function(i){setBusy(i.normalized);apiGet(apiUrl,apiToken,{action:'pantry_add',name:i.normalized,store:i.store||i.lastStore||''}).then(function(r){patch(i.normalized,{onList:r.store});setMsg((r.already?'Already on the ':'Added to the ')+r.store+' list: '+i.normalized);}).catch(function(e){setErr('Couldn’t add it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
+  var used=function(x,status){setBusy(x.id);setErr('');apiGet(apiUrl,apiToken,{action:'onhand_set',id:x.id,status:status}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');setData(function(d){return Object.assign({},d,{onHand:(d.onHand||[]).filter(function(y){return y.id!==x.id;})});});setMsg(status==='used'?'Marked used: '+x.item:'Taken off On hand: '+x.item);}).catch(function(e){setErr('Couldn’t save it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
   var staple=function(i){var on=!i.staple;patch(i.normalized,{staple:on});apiGet(apiUrl,apiToken,{action:'pantry_staple',name:i.normalized,on:on}).catch(function(e){patch(i.normalized,{staple:!on});setErr('Couldn’t save it: '+((e&&e.message)||e));});};
   var star=function(i){return h('button',{type:'button',className:'pa-star'+(i.staple?' on':''),'aria-pressed':!!i.staple,'aria-label':(i.staple?'Staple: VERA adds it by itself. Tap to stop':'Make it a staple: VERA adds it by itself')+' ('+i.normalized+')',title:i.staple?'Staple: added to the list by itself':'Make it a staple',onClick:function(){staple(i);}},i.staple?'★':'☆');};
   var k=paCounts_(items,days),soon=paSoon_(items,days),groups=paByAisle_(items,days,q);
@@ -8585,6 +8586,11 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
   return h('div',{className:'pa'},
     h('div',{className:'pa-counts'},[['Running out ≤ '+days+' d',k.soon,k.soon?' hot':''],['Tracked',k.tracked,''],['On the list',k.onList,'']].map(function(x){return h('div',{key:x[0],className:'pa-count'+x[2]},h('b',null,x[1]),h('span',null,x[0]));})),
     err&&h('div',{className:'pa-err'},err),msg&&h('div',{className:'pa-msg',role:'status'},msg),
+    (data.onHand||[]).length?h('div',{className:'pa-sect'},'On hand now · '+data.onHand.length):null,
+    (data.onHand||[]).map(function(x){return h('div',{key:x.id,className:'pa-row pa-oh'+(x.useSoon?' soon':''),'data-oh':x.id},
+      h('span',{className:'pa-main'},h('b',null,x.item,x.useSoon?h('span',{className:'pa-when'},'use soon'):null),h('small',null,x.added?'Since '+paShort_(x.added):'This week')),
+      h('button',{type:'button',className:'btn btn-primary pa-used',disabled:!!busy,'aria-label':'Used it: '+x.item,onClick:function(){used(x,'used');}},busy===x.id?'Saving…':'✓ Used it'),
+      h('button',{type:'button',className:'btn pa-gone sm',disabled:!!busy,'aria-label':'Not here any more: '+x.item,title:'Not here any more',onClick:function(){used(x,'removed');}},'×'));}),
     h('div',{className:'pa-sect'},'Running out soon'),
     soon.length?soon.map(function(i){var store=i.store||i.lastStore||'';return h('div',{key:i.normalized,className:'pa-row soon','data-item':i.normalized},
         star(i),
@@ -12104,7 +12110,8 @@ function MpOnHand(props){var h=React.createElement,items=props.items,days=props.
         h('span',{style:{display:'flex',flexDirection:'column',lineHeight:1.25,minWidth:0}},h('span',{style:{fontSize:13,fontWeight:600,color:'#dde1f0'}},x.item),
           h('span',{style:{fontSize:11,color:on?'#8fe0a8':x.useSoon?'#f6d27a':'#8a9abf'}},on?'✓ in '+on+'’s dinner':x.useSoon?'use soon · no dinner yet':'no dinner yet'),
           h('span',{style:{fontSize:10,color:'#6f7fa6'}},mpSourceLabel_(x))),
-        h('button',{type:'button',className:'mp-chip-x','aria-label':'Used up or not here: '+x.item,disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'removed'});},style:{minWidth:32,minHeight:32,background:'transparent',border:0,color:'#8a9abf',cursor:'pointer',fontSize:15}},'×'));})):
+        h('button',{type:'button',className:'mp-chip-used','aria-label':'Used it: '+x.item,title:'Used it',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'used'});},style:{minWidth:32,minHeight:32,background:'transparent',border:0,color:'#8fe0a8',cursor:'pointer',fontSize:15}},'✓'),
+        h('button',{type:'button',className:'mp-chip-x','aria-label':'Not here any more: '+x.item,title:'Not here any more',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'removed'});},style:{minWidth:32,minHeight:32,background:'transparent',border:0,color:'#8a9abf',cursor:'pointer',fontSize:15}},'×'));})):
       h('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Food you check off in Shopping, or pick from a receipt under Done shopping, shows up here. Add anything else you have.'),
     pending.length?h('div',{className:'mp-carried',style:{display:'flex',flexDirection:'column',gap:6}},pending.map(function(x){
       return h('div',{key:x.id,style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',fontSize:12,color:'#aab6d6'}},h('span',{style:{flex:1,minWidth:140}},'Carried over: ',h('b',{style:{fontWeight:600,color:'#dde1f0'}},x.item)),

@@ -599,6 +599,11 @@ function webPantry_() {
   });
   var res = { ok: true, items: items, stores: lists.map(function(s) { return s.storeName; }), daysAhead: daysAhead };
   if (listErr) res.listError = listErr;
+  // This week's food on hand, so it can be marked used from the Pantry tab too.
+  try {
+    res.onHand = ohWeek_(getCurrentWeekStart_()).filter(function(x) { return x.status === 'on hand'; })
+      .map(function(x) { return { id: x.id, item: x.item, useSoon: !!x.useSoon, added: x.added || '' }; });
+  } catch (e) { res.onHandError = e.message; }
   return res;
 }
 

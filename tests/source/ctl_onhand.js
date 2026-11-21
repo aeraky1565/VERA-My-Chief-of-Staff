@@ -65,6 +65,7 @@ const CONTROLS = [
   ['still to buy goes to the first store', both("return props.call('shopping_add',{tabId:pick,text:t});", "return props.call('shopping_add',{tabId:stores[0].id,text:t});"), UI],
   ['Plan it forgets what the dinner uses', both(".then(function(){return ids.length?props.call('meal_extras',{weekStart:props.weekStart,day:day,uses:ids.join(',')}):null;})", ".then(function(){return null;})"), UI],
   ['the planner shows no on hand', full("wi===0&&React.createElement(MpOnHand,", "false&&React.createElement(MpOnHand,"), UI],
+  ['a chip’s ✓ removes instead of used', both("className:'mp-chip-used','aria-label':'Used it: '+x.item,title:'Used it',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'used'});}", "className:'mp-chip-used','aria-label':'Used it: '+x.item,title:'Used it',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'removed'});}"), UI],
   ['a dinner shows no uses', full("!isEditing&&!isEmpty&&React.createElement(MpDayHand,", "false&&React.createElement(MpDayHand,"), UI],
 ];
 

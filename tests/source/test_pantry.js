@@ -71,13 +71,17 @@ console.log('\nthe pantry read');
   const c = ctx({ pantry_staples: 'milk', pantry_restock_days_ahead: '7' }, LISTS);
   const today = new Date().toISOString().slice(0, 10), plus = n => new Date(Date.parse(today) + n * 864e5).toISOString().slice(0, 10);
   c.getPurchaseStats_ = () => [{ normalized: 'milk', lastStore: 'Target', estimatedNext: plus(2), avgDays: 7 }, { normalized: 'paper towels', lastStore: 'Costco', estimatedNext: plus(20), avgDays: 30 }, { normalized: 'rice', lastStore: 'Costco', estimatedNext: '', avgDays: 30 }];
+  c.getCurrentWeekStart_ = () => '2026-11-16'; c.ohWeekAsked = '';
+  c.ohWeek_ = ws => { c.ohWeekAsked = ws; return [{ id: 'OH-1', item: 'Spinach', useSoon: true, status: 'on hand', added: '2026-11-15', source: 'receipt' }, { id: 'OH-2', item: 'Rice', status: 'pending' }, { id: 'OH-3', item: 'Feta', status: 'used' }]; };
   const r = c.webPantry_();
+  check('…and this week’s food on hand, only what’s still on hand', c.ohWeekAsked === '2026-11-16' && J(r.onHand) === J([{ id: 'OH-1', item: 'Spinach', useSoon: true, added: '2026-11-15' }]), J(r.onHand));
   const m = r.items.reduce((o, i) => (o[i.normalized] = i, o), {});
   check('each item: aisle, staple, on a list, days until', m.milk.aisle === 'Dairy & Eggs' && m.milk.staple && m.milk.daysUntil === 2 && m.milk.store === 'Target' && m['paper towels'].onList === 'Costco' && m['paper towels'].store === '' && m.rice.daysUntil === null && m.rice.aisle === 'Pantry', J(r.items));
   check('…and the stores and window', J(r.stores) === J(['Costco', 'Target']) && r.daysAhead === 7);
   const c2 = ctx({}, LISTS); c2.getShoppingList_ = () => { throw new Error('no doc'); }; c2.getPurchaseStats_ = () => [{ normalized: 'milk', estimatedNext: '' }];
   let r2; try { r2 = c2.webPantry_(); } catch (e) { r2 = { error: e.message }; }
   check('a list failure doesn’t cost the pantry', r2.ok && r2.items.length === 1 && r2.listError === 'no doc');
+  check('…nor does an on-hand failure', r2.ok && !r2.onHand && !!r2.onHandError, J(r2));
 }
 
 console.log('\nrunning out and by aisle');
@@ -105,7 +109,7 @@ const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(proc
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'load' });
     await page.evaluate(({ items }) => {
       window.__ev = [];
-      window.apiGet = (u, t, p) => { window.__ev.push(p); if (p.action === 'pantry') return Promise.resolve({ ok: true, items, daysAhead: 7, stores: ['Costco', 'Target'] });
+      window.apiGet = (u, t, p) => { window.__ev.push(p); if (p.action === 'pantry') return Promise.resolve({ ok: true, items, daysAhead: 7, stores: ['Costco', 'Target'], onHand: [{ id: 'OH-1', item: 'Spinach', useSoon: true, added: '2026-11-15' }, { id: 'OH-2', item: 'Feta', useSoon: false, added: '' }] });
         if (p.action === 'pantry_add') return Promise.resolve({ ok: true, store: p.store || 'Costco', already: false }); return Promise.resolve({ ok: true }); };
       document.body.innerHTML = '<div id="pa" style="padding:0 16px"></div>';
       ReactDOM.createRoot(document.getElementById('pa')).render(React.createElement(PantryView, { apiUrl: 'u', apiToken: 't' }));
@@ -113,6 +117,11 @@ const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(proc
     await page.waitForTimeout(300);
     const counts = await page.$$eval('#pa .pa-count', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ')));
     check('counters: running out, tracked, on the list', J(counts) === J(['3 Running out ≤ 7 d', '7 Tracked', '1 On the list']), J(counts));
+    check('On hand now sits on top, with each food', J(await page.$$eval('#pa .pa-oh', ns => ns.map(n => n.dataset.oh))) === J(['OH-1', 'OH-2']) && /On hand now · 2/i.test(await page.$eval('#pa', n => n.innerText)) && /use soon/.test(await page.$eval('#pa .pa-oh[data-oh="OH-1"]', n => n.innerText)));
+    await page.click('#pa .pa-oh[data-oh="OH-1"] .pa-used'); await page.waitForTimeout(80);
+    check('✓ Used it marks it used and drops it from the list', J((await page.evaluate(() => window.__ev)).pop()) === J({ action: 'onhand_set', id: 'OH-1', status: 'used' }) && !(await page.$('#pa .pa-oh[data-oh="OH-1"]')) && /Marked used: Spinach/.test(await page.$eval('#pa', n => n.innerText)));
+    await page.click('#pa .pa-oh[data-oh="OH-2"] .pa-gone'); await page.waitForTimeout(80);
+    check('× takes it off on hand without calling it used', J((await page.evaluate(() => window.__ev)).pop()) === J({ action: 'onhand_set', id: 'OH-2', status: 'removed' }) && !(await page.$('#pa .pa-oh')));
     check('Running out soon first, soonest first', J(await page.$$eval('#pa .pa-row.soon', ns => ns.map(n => n.dataset.item))) === J(['milk', 'olive oil', 'paper towels']));
     check('…on a list says so instead of Add', /✓ On the Target list/.test(await page.$eval('#pa .pa-row[data-item="paper towels"]', n => n.innerText)) && !(await page.$('#pa .pa-row[data-item="paper towels"] .pa-add')));
     check('…Add names the usual store and the confidence', (await page.$eval('#pa .pa-row[data-item="olive oil"] .pa-add', n => n.textContent)) === '🛒 Add to Costco' && /high confidence/.test(await page.$eval('#pa .pa-row[data-item="olive oil"]', n => n.innerText)));

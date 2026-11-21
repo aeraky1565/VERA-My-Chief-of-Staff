@@ -73,11 +73,13 @@ check('both dashboards carry the MealHand block, word for word', block(APP).leng
       await wait(200);
       check(L + ': the panel counts what\'s in a dinner and what to use soon', (await q('.mp-onhand-count'))[0] === '1 of 3 in a dinner · 1 to use soon', JSON.stringify(await q('.mp-onhand-count')));
       const chips = await q('.mp-chip');
-      check(L + ': each chip says where it came from and whether a dinner uses it', chips.length === 3 && /^Cabbage ✓ in Tue’s dinner checked off · Costco, Sun ×$/.test(chips[0]) && /^Spinach use soon · no dinner yet receipt · Costco, Sun ×$/.test(chips[2]) && /^Feta no dinner yet added by you ×$/.test(chips[1]), JSON.stringify(chips));
+      check(L + ': each chip says where it came from and whether a dinner uses it', chips.length === 3 && /^Cabbage ✓ in Tue’s dinner checked off · Costco, Sun ✓ ×$/.test(chips[0]) && /^Spinach use soon · no dinner yet receipt · Costco, Sun ✓ ×$/.test(chips[2]) && /^Feta no dinner yet added by you ✓ ×$/.test(chips[1]), JSON.stringify(chips));
       check(L + ': a carry-over waits for keep or used it', /^Carried over: Rice Keep Used it$/.test((await q('.mp-carried'))[0] || ''), JSON.stringify(await q('.mp-carried')));
       await clickLabel('.mp-soon', 'Mark Feta as use soon');
       check(L + ': the dot marks an item use soon', JSON.stringify(await lastCall()) === '{"action":"onhand_set","id":"OH-2","useSoon":"true"}', JSON.stringify(await lastCall()));
-      await clickLabel('.mp-chip-x', 'Used up or not here: Spinach'); await wait(50);
+      await clickLabel('.mp-chip-used', 'Used it: Feta'); await wait(50);
+      check(L + ': ✓ on a chip marks it used', JSON.stringify(await lastCall()) === '{"action":"onhand_set","id":"OH-2","status":"used"}', JSON.stringify(await lastCall()));
+      await clickLabel('.mp-chip-x', 'Not here any more: Spinach'); await wait(50);
       check(L + ': × takes an item off on hand', JSON.stringify(await lastCall()) === '{"action":"onhand_set","id":"OH-3","status":"removed"}', JSON.stringify(await lastCall()));
       await clickText('.mp-keep', '^Keep$'); await wait(50);
       check(L + ': Keep brings a carry-over in', JSON.stringify(await lastCall()) === '{"action":"onhand_set","id":"OH-4","status":"on hand"}');
@@ -121,7 +123,7 @@ check('both dashboards carry the MealHand block, word for word', block(APP).leng
       await wait(150);
       await clickText('.mp-suggest-week', 'Suggest'); await clickText('.mp-cook', 'What can I make');
       check(L + ': the panel opens Suggest and What can I make', JSON.stringify(await page.evaluate(() => window.__flags)) === '{"suggest":1,"cook":1}');
-      const tgt = await page.$$eval('#ohprobe .mp-soon, #ohprobe .mp-chip-x, #ohprobe .mp-onhand-add input, #ohprobe .mp-onhand-add button, #ohprobe .mp-keep', bs => bs.map(b => Math.round(Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height))));
+      const tgt = await page.$$eval('#ohprobe .mp-soon, #ohprobe .mp-chip-x, #ohprobe .mp-chip-used, #ohprobe .mp-onhand-add input, #ohprobe .mp-onhand-add button, #ohprobe .mp-keep', bs => bs.map(b => Math.round(Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height))));
       check(L + ': its controls are at least 32px', tgt.every(x => x >= 32), JSON.stringify(tgt));
       check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       await page.evaluate(() => window.__mount(MpOnHand, { items: undefined, days: [], weekStart: '2026-10-26', call: window.__call, reload: () => {} })); await wait(100);

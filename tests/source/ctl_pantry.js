@@ -26,6 +26,11 @@ const CONTROLS = [
   ['Add ignores the usual store', swapIn(FULL, "{action:'pantry_add',name:i.normalized,store:i.store||i.lastStore||''}", "{action:'pantry_add',name:i.normalized,store:''}")],
   ['☆ does nothing', swapIn(FULL, "onClick:function(){staple(i);}},i.staple?'★':'☆');", "onClick:function(){}},i.staple?'★':'☆');")],
   ['aisles open', swapIn(FULL, "var isOpen=!!q||!!open[g.aisle];", "var isOpen=true;")],
+  ['the pantry sends no on hand', swapIn(S, "res.onHand = ohWeek_(getCurrentWeekStart_())", "res.onHand = [] || ohWeek_(getCurrentWeekStart_())")],
+  ['the pantry sends used food as on hand', swapIn(S, ".filter(function(x) { return x.status === 'on hand'; })\n      .map(", ".filter(function(x) { return x.status !== 'pending'; })\n      .map(")],
+  ['an on-hand failure costs the pantry', swapIn(S, "  } catch (e) { res.onHandError = e.message; }\n  return res;", "  } catch (e) { throw e; }\n  return res;")],
+  ['Used it on the Pantry tab sends removed', swapIn(FULL, "onClick:function(){used(x,'used');}", "onClick:function(){used(x,'removed');}")],
+  ['a used food stays listed', swapIn(FULL, "onHand:(d.onHand||[]).filter(function(y){return y.id!==x.id;})", "onHand:(d.onHand||[])")],
 ];
 const T = 'test_pantry.js';
 let allBit = true;
