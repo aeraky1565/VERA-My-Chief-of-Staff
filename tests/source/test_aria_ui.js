@@ -70,7 +70,8 @@ async function scenario(page, label, width) {
   await mount(page, STATUS);
   t = await text(page);
   check(label + ': what needs a look comes before the trip list', /Needs a look · 3/i.test(t) && t.indexOf('Needs a look') < t.indexOf('WATCHING'), t.slice(0, 300));
-  check(label + ': …each with why', /ARIA can’t price these/.test(t) && /Coast hop \(2027-05-01\): Missing origin airports, a price ceiling/.test(t) && /Trips ARIA isn’t watching/.test(t) && /Girls weekend/.test(t) && /Dates changed in VERA/.test(t), t.slice(0, 600));
+  check(label + ': …each with why', /ARIA can’t price these/i.test(t) && /Coast hop \(2027-05-01\): Missing origin airports, a price ceiling/.test(t) && /Trips ARIA isn’t watching/i.test(t) && /Girls weekend/.test(t) && /Dates changed in VERA/i.test(t), t.slice(0, 600));
+  check(label + ': the section names stand apart from the trips (small gold capitals, underlined)', await page.$$eval('#ariaprobe .aria-gap-head', ns => ns.length > 0 && ns.every(n => getComputedStyle(n).textTransform === 'uppercase' && parseFloat(getComputedStyle(n).borderBottomWidth) >= 1)));
   check(label + ': trips group by status, scouted ones under their idea', /Watching · 3/i.test(t) && /Scouting · Spring in Europe · 1/i.test(t) && t.indexOf('Watching') < t.indexOf('Scouting'), t);
   const books = await page.$$eval('#ariaprobe .aria-book', ns => ns.map(n => n.innerText));
   check(label + ': Book now comes first, then under your ceiling', books.length === 2 && /BOOK NOW/.test(books[0]) && /UNDER YOUR CEILING/.test(books[1]) && t.toUpperCase().indexOf('BOOK NOW') < t.toUpperCase().indexOf('NEEDS A LOOK'), JSON.stringify(books));
@@ -181,6 +182,40 @@ async function scenario(page, label, width) {
     const host = document.createElement('div'); host.id = 'ariaprobe'; document.body.appendChild(host);
     ReactDOM.createRoot(host).render(React.createElement(AriaBookBanner, { apiUrl: 'https://vera.test/exec', apiToken: 't' })); }); await wait(150);
   check(label + ': …even when the request itself throws', (await page.$eval('#ariaprobe', n => n.innerText)).trim() === '');
+
+  // Side by side: cheapest with a carry-on (flip through up to 3 airlines) vs your airline
+  const cmp = await page.evaluate(() => {
+    const cfg = { tiers: [{ code: 'UA' }, { code: 'STAR', abroad: true }, { code: 'ANY' }], star: { UA: 'United' }, premium: { pp: 75 } };
+    const d = '2026-11-21', old = '2026-11-20';
+    const F = [{ tripId: 'T', dateSeen: d, airline: 'Frontier (F9)', total: 461, farePP: 231, stops: 0, depart: '2026-12-17', ret: '2027-01-05', flags: ['carry-on included in fare'], link: 'https://fares.test/a' },
+      { tripId: 'T', dateSeen: d, airline: 'Frontier (F9)', total: 311, farePP: 156, stops: 0, flags: ['basic fare'] },
+      { tripId: 'T', dateSeen: d, airline: 'Allegiant (G4)', total: 300, farePP: 150, stops: 0, flags: ['excl. bags'] },
+      { tripId: 'T', dateSeen: d, airline: 'Spirit (NK)', total: 498, farePP: 249, stops: 1 },
+      { tripId: 'T', dateSeen: d, airline: 'Spirit (NK)', total: 520, farePP: 260, stops: 0 },
+      { tripId: 'T', dateSeen: d, airline: 'American (AA)', total: 640, farePP: 320, stops: 0 },
+      { tripId: 'T', dateSeen: d, airline: 'Southwest (WN)', total: 700, farePP: 350, stops: 0 },
+      { tripId: 'T', dateSeen: d, airline: 'UA 1234', total: 834, farePP: 417, stops: 0, depart: '2026-12-16', ret: '2026-12-30' },
+      { tripId: 'T', dateSeen: old, airline: 'Delta (DL)', total: 200, farePP: 100, stops: 0 }];
+    const c = ariaCompare_(F, cfg, false, 2);
+    return { cheap: c.cheap.map(f => f.airline), mine: c.mine && c.mine.airline, tier: c.tier, none: ariaCompare_(F.filter(f => !/^UA/.test(f.airline)), cfg, false, 2) };
+  });
+  check(label + ': the cheap side is the 3 cheapest airlines with a carry-on, from the latest day, never basic or bags-extra fares', JSON.stringify(cmp.cheap) === JSON.stringify(['Frontier (F9)', 'Spirit (NK)', 'American (AA)']), JSON.stringify(cmp));
+  check(label + ': …against the best fare on your airline', cmp.mine === 'UA 1234' && cmp.tier === 'United' && cmp.none && cmp.none.mine === null && cmp.none.cheap.length === 3, JSON.stringify(cmp));
+  await page.evaluate(() => { document.querySelectorAll('#ariaprobe').forEach(n => n.remove());
+    const cfg = { tiers: [{ code: 'UA' }, { code: 'ANY' }], star: { UA: 'United' }, premium: { pp: 75 } }, d = '2026-11-21';
+    const F = [{ tripId: 'T', dateSeen: d, airline: 'Frontier (F9)', total: 461, farePP: 231, stops: 0, link: 'https://fares.test/a' }, { tripId: 'T', dateSeen: d, airline: 'Spirit (NK)', total: 498, farePP: 249, stops: 1 },
+      { tripId: 'T', dateSeen: d, airline: 'UA 1234', total: 834, farePP: 417, stops: 0 }];
+    const host = document.createElement('div'); host.id = 'ariaprobe'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(AriaCompare, { cmp: ariaCompare_(F, cfg, false, 2) })); }); await wait(150);
+  let ct = await page.$eval('#ariaprobe', n => n.innerText);
+  check(label + ': the two cards say what they are, price per person and for both, and the gap', /CHEAPEST WITH A CARRY-ON\s*1\/2/.test(ct) && /Frontier \(F9\)\s*\$231\s*pp · \$461 for 2/.test(ct) && /YOUR AIRLINE · UNITED/.test(ct) && /\$417\s*pp · \$834 for 2/.test(ct) && /\+\$186 pp vs this cheap option/.test(ct), ct);
+  await page.evaluate(() => document.querySelector('#ariaprobe .aria-cmp-next').click()); await wait(60);
+  ct = await page.$eval('#ariaprobe', n => n.innerText);
+  check(label + ': › flips to the next cheap airline, and the gap follows', /2\/2/.test(ct) && /Spirit \(NK\)/.test(ct) && /\+\$168 pp vs this cheap option/.test(ct), ct);
+  const lay = await page.evaluate(() => { const host = document.querySelector('#ariaprobe'), at = w => { host.style.width = w + 'px'; const c = host.querySelectorAll('.aria-cmp-card'); return c[0].getBoundingClientRect().top === c[1].getBoundingClientRect().top; };
+    const r = { card: at(377), phone: at(330) }; host.style.width = ''; return r; });
+  check(label + ': side by side in a computer-width ARIA card, stacked in a phone-width one', lay.card === true && lay.phone === false, JSON.stringify(lay));
+  check(label + ': no sideways scroll with the comparison', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
 }
 
 (async () => {

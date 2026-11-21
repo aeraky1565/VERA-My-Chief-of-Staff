@@ -712,6 +712,12 @@ What ARIA needs: its task must price those trips daily. The block to paste into 
 
 What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
 
+**Cheapest vs your airline.** A watched trip's card on the ARIA tab compares two cards, side by side on a computer and stacked on a phone. Both come from the latest day in the Fare Log, and both count only fares that include a carry-on: a fare whose flags say basic, bags extra or no carry-on is left out, unless a flag says the carry-on is included.
+- **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
+- **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
+
+When nothing is cheaper than your airline, the card keeps its one-line pick instead. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
+
 **Not built yet:** the VERA app push (Firebase).
 
 ### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
@@ -2426,6 +2432,12 @@ What ARIA needs: its task must price those trips daily. The block to paste into 
 - The card shows "Changes sent …" until ARIA's next run.
 
 What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
+
+**Cheapest vs your airline.** A watched trip's card on the ARIA tab compares two cards, side by side on a computer and stacked on a phone. Both come from the latest day in the Fare Log, and both count only fares that include a carry-on: a fare whose flags say basic, bags extra or no carry-on is left out, unless a flag says the carry-on is included.
+- **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
+- **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
+
+When nothing is cheaper than your airline, the card keeps its one-line pick instead. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
 
 **Not built yet:** the VERA app push (Firebase).
 
