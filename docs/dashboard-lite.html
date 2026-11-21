@@ -8518,6 +8518,19 @@ function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(
       h('span',{style:{fontSize:12,color:'#9aa9cc',flex:'1 1 220px'}},'From the trip idea "'+p.idea.title+'" in Travel → Trip Ideas. Nothing is added to your itinerary; bookings tick these off as they arrive.')));}
 // Asks the Travel tab to open Trip Ideas on this idea (both dashboards listen for it).
 function tsOpenIdea_(id){if(!id)return;try{window.dispatchEvent(new CustomEvent('vera-open-idea',{detail:{ideaId:id}}));}catch(e){}}
+// Stop watching a trip, asked each time: Pause (ARIA puts it back to Draft; watch again any time) or Drop it
+// (ARIA moves it to Dropped: hidden, no reminders). Works for a watch ARIA started on its own too.
+function AriaStop(props){var h=React.createElement;var _o=React.useState(''),st=_o[0],setSt=_o[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];var t=props.trip||{};
+  var b=function(txt,cls,on,primary){return h('button',{type:'button',className:cls,disabled:st==='busy',onClick:on,style:{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',border:primary?'none':'1px solid #2a3f6f',background:primary?'#8ab4f8':'transparent',color:primary?'#06112a':'#cfe0ff'}},txt);};
+  var go=function(how){setSt('busy');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',tripId:props.tripId,tripKey:t.tripKey||'',label:t.label||'',startDate:t.startDate||'',endDate:t.endDate||'',how:how})
+    .then(function(r){if(r&&r.ok===false)throw new Error(r.error||'Couldn’t stop it');setSt(how);if(props.onDone)props.onDone(how);}).catch(function(e){setSt('ask');setErr(e.message||'Couldn’t stop it');});};
+  if(st==='pause'||st==='drop')return h('span',{className:'aria-stopped',style:{fontSize:12,lineHeight:1.45,color:'#f6d27a'}},st==='pause'?'Paused: ARIA stops pricing it and puts it back to Draft on its next 06:52 run.':'Dropped: ARIA stops pricing it on its next 06:52 run; it moves under Show dropped, with no reminders.');
+  if(!st)return b('Stop watching','ts-aria-stop',function(){setSt('ask');});
+  return h('div',{className:'aria-stop-ask',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:10,border:'1px solid #2a3f6f',background:'#06112a'}},
+    h('span',{style:{fontSize:13,fontWeight:600,color:'#eef1fb'}},'Stop watching this trip?'),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},b(st==='busy'?'Stopping…':'⏸ Pause: back to Draft','aria-stop-pause',function(){go('pause');},true),b('✕ Drop it','aria-stop-drop',function(){go('drop');}),b('Cancel','aria-stop-cancel',function(){setSt('');setErr('');})),
+    h('span',{style:{fontSize:11,color:'#9aa9cc'}},'Pause keeps it as a Draft you can watch again any time. Drop hides it and stops the reminders.'),
+    err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
 // A watch ARIA already runs, as the form's starting values (edit: true), from its Watchlist row and VERA's request.
 function ariaEditForm_(row,req){var r=row||{},q=req||{},v=function(a,b){return a!=null&&a!==''?a:(b!=null?b:'');};
   return {edit:true,origins:v(r.origins,q.origins),dests:v(r.dests,q.dests),returnFrom:v(r.returnFrom,q.returnFrom),travelers:v(r.travelers,q.travelers),ceiling:v(r.ceiling,q.ceiling),flexDays:v(r.flexDays,q.flexDays),airlinePref:v(q.airlinePref),premium:v(q.premium)};}
@@ -8547,11 +8560,11 @@ function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=pr
           (row.bestFare!=null&&row.travelers?' for '+row.travelers:'')+(row.verdict?' · '+({book:'BOOK NOW',wait:'WAIT',skip:'SKIP'})[row.verdict]:'')+(row.lastChecked?' · checked '+row.lastChecked:'')+(row.ceiling!=null?' · ceiling $'+row.ceiling+' pp':'')),
         row.actionNeeded&&h('span',{style:{fontSize:12,color:'#f6d27a'}},'→ '+row.actionNeeded),
         hist.length>1&&typeof AriaSpark==='function'&&h(AriaSpark,{points:hist}),
-        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn('✎ Change','ts-aria-change',function(){var f=ariaEditForm_(row,req);setInit(f);setForm(f);}),req&&btn('Stop watching','ts-aria-stop',stop)),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn('✎ Change','ts-aria-change',function(){var f=ariaEditForm_(row,req);setInit(f);setForm(f);}),h(AriaStop,{tripId:d.tripId,trip:props.trip,apiUrl:props.apiUrl,apiToken:props.apiToken})),
         req&&req.changes&&h('span',{className:'ts-aria-changes',style:{fontSize:12,color:'#9aa9cc'}},'Changes sent '+req.changes+'. ARIA applies them on its next 06:52 run.'))
     :req?h('div',{className:'ts-aria-asked',style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:'#b8c3e0'}},
         h('span',null,'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It starts on its next 06:52 run.'),
-        btn('Stop watching','ts-aria-stop',stop))
+        h(AriaStop,{tripId:d.tripId,trip:props.trip,apiUrl:props.apiUrl,apiToken:props.apiToken}))
     :!d.configured?h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Connect ARIA (Config → roster_link_aria) and it can watch these fares.')
     :form?formView()
     :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
@@ -9856,7 +9869,7 @@ function AriaDraftWatch(props){var h=React.createElement;var w=props.row;var _d=
     watching?(req&&req.changes?h('span',{className:'aria-changes',style:{fontSize:12,lineHeight:1.45,color:TI.acc}},'Changes sent '+req.changes+'. ARIA applies them on its next 06:52 run.'):null)
     :req?h('span',{className:'aria-draft-asked',style:{fontSize:13,lineHeight:1.45,color:TI.acc}},'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It moves this to Watching on its next 06:52 run.'):null,
     h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-      watching?h('button',{type:'button',className:'aria-change',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'✎ Change')
+      watching?[h('button',{key:'c',type:'button',className:'aria-change',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'✎ Change'),h(AriaStop,{key:'s',tripId:w.tripId,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken})]
       :req?h('button',{type:'button',className:'aria-draft-stop',disabled:!!busy,onClick:stop,style:Object.assign(tiBtn_(),{minHeight:40})},busy==='stop'?'Stopping…':'Stop watching')
       :h('button',{type:'button',className:'aria-draft-watch-btn',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'🧭 Watch with ARIA')),
     err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}

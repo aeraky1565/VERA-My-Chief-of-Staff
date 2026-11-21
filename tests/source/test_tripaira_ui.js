@@ -79,9 +79,12 @@ async function scenario(page, label, width) {
     && p.dests === 'LIS' && p.origins === 'IAD, DCA' && String(p.ceiling) === '360' && String(p.flexDays) === '1', JSON.stringify(p));
   t = await text(page);
   check(label + ': …then says when ARIA starts', /Asked ARIA 2027-02-20 to watch IAD, DCA → LIS\. It starts on its next 06:52 run\./.test(t), t.slice(0, 400));
-  await page.evaluate(() => window.__q('.ts-aria-stop').click()); await wait(150);
+  await page.evaluate(() => window.__q('.ts-aria-stop').click()); await wait(80);
+  check(label + ': Stop watching asks first: pause or drop', !!(await page.$('#taprobe .aria-stop-ask')) && (await page.evaluate(() => window.__posts.length)) === 0);
+  await page.evaluate(() => window.__q('.aria-stop-pause').click()); await wait(150);
   const st = await page.evaluate(() => window.__posts.pop());
-  check(label + ': Stop watching withdraws it by trip', st && st.action === 'aria_request_withdraw' && st.tripId === 'TRIP-SET1');
+  check(label + ': …Pause withdraws it by trip, with the trip\'s key, label and dates', st && st.action === 'aria_request_withdraw' && st.tripId === 'TRIP-SET1' && st.how === 'pause' && st.tripKey === TRIP.tripKey && st.startDate === '2027-05-29', JSON.stringify(st));
+  check(label + ': …and says ARIA puts it back to Draft', /Paused: ARIA stops pricing it and puts it back to Draft/.test(await text(page)));
   check(label + ': no sideways scroll with the form', await noScroll(page));
 
   const watching = { tripId: 'TRIP-SET1', label: 'Spring in Europe', status: 'watching', bestFare: 1840, travelers: 2, verdict: 'wait', lastChecked: '2027-02-18', ceiling: 900, actionNeeded: 'Needs watch setup' };
@@ -97,6 +100,14 @@ async function scenario(page, label, width) {
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-plan'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-plan-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-still'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-still-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   check(label + ': no sideways scroll with the plan', await noScroll(page));
+  // Stopping a watch ARIA started on its own (no request from VERA)
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: Object.assign({}, watching, { origins: 'IAD', dests: 'LIS' }), fares, request: null, draft: DRAFT, plan: PLAN }]);
+  check(label + ': a trip ARIA watches on its own still has Stop watching', !!(await page.$('#taprobe .ts-aria-stop')));
+  await page.evaluate(() => window.__q('.ts-aria-stop').click()); await wait(80);
+  await page.evaluate(() => window.__q('.aria-stop-drop').click()); await wait(150);
+  const dp = await page.evaluate(() => window.__posts.pop());
+  check(label + ': …Drop it sends how=drop for the trip', dp && dp.action === 'aria_request_withdraw' && dp.tripId === 'TRIP-SET1' && dp.how === 'drop', JSON.stringify(dp));
+  check(label + ': …and says it moves under Show dropped', /Dropped: ARIA stops pricing it/.test(await text(page)));
   // Changing a watch ARIA already runs
   await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: Object.assign({}, watching, { origins: 'IAD', dests: 'LIS', flexDays: 1 }), fares, request: { kind: 'watch', status: 'active', airlinePref: 'United first', premium: '$75 per person', changes: '2027-02-19: Ceiling Per Person 800→900' }, draft: DRAFT, plan: PLAN }]);
   t = await text(page);

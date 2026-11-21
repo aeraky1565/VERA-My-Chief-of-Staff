@@ -98,6 +98,13 @@ async function scenario(page, label, width) {
   check(label + ': a flagged fare says what it leaves out', /⚠ without bag fees/.test(scout) && /⚠ fare type unknown/.test(scout), scout);
   const coast = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Coast hop/.test(n.innerText)) || { innerText: '' }).innerText);
   check(label + ': a row with no fare says so, and a changed date is flagged', /No fare yet/.test(coast) && /The dates changed in VERA/.test(coast), coast);
+  const coastCard = await page.$$('#ariaprobe .aria-card');
+  let stopAt = -1; for (let i = 0; i < coastCard.length; i++) if (/Coast hop/.test(await coastCard[i].innerText())) stopAt = i;
+  check(label + ': a watched trip on the ARIA page has Stop watching beside ✎ Change', stopAt !== -1 && !!(await coastCard[stopAt].$('.ts-aria-stop')) && !!(await coastCard[stopAt].$('.aria-change')));
+  if (stopAt !== -1) { await (await coastCard[stopAt].$('.ts-aria-stop')).evaluate(n => n.click()); await wait(60); await (await coastCard[stopAt].$('.aria-stop-drop')).evaluate(n => n.click()); await wait(150); }
+  const sp2 = await page.evaluate(() => window.__posts[window.__posts.length - 1]);
+  check(label + ': …Drop it there sends the trip with how=drop', sp2 && sp2.action === 'aria_request_withdraw' && sp2.tripId === 'TRIP-0002' && sp2.how === 'drop' && sp2.startDate === '2027-05-01', JSON.stringify(sp2));
+  await page.evaluate(() => { window.__posts = []; });   // the rest of the page is read only
   check(label + ': dropped rows wait behind a button', !/Old plan/.test(t) && /Show 1 dropped/.test(t));
   await page.evaluate(() => window.__q('.aria-show-dropped').click()); await wait(80);
   check(label + ': …and show on request', /Old plan/.test(await text(page)));

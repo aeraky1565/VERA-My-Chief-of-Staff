@@ -716,7 +716,13 @@ What ARIA does with it: its task (rule 1e, also kept in `docs/guides/aria-reques
 - **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
 - **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
 
-ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
+ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead.
+
+**Stopping a watch.** Every watched trip has **Stop watching**, both on its ARIA page card (beside ✎ Change) and in the trip's FLIGHTS · ARIA box, including a trip ARIA started watching on its own. It asks each time:
+- **⏸ Pause:** back to Draft, and you can watch again any time. VERA writes the request as Withdrawn, and a paused Draft isn't listed under "Still drafts".
+- **✕ Drop it:** the request is Dropped, and ARIA moves the trip under Show dropped, with no reminders.
+
+`aria_request_withdraw` takes `how: pause | drop`. With no request to stop (ARIA's own watch), it writes one from the trip's ID, key, label and dates. Watching again turns the same request back to Active. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
 
 **Not built yet:** the VERA app push (Firebase).
 
@@ -2437,7 +2443,13 @@ What ARIA does with it: its task (rule 1e, also kept in `docs/guides/aria-reques
 - **Cheapest with a carry-on:** up to three airlines, cheapest first, one fare each, flipped with ‹ ›.
 - **Your airline:** the best fare on the first preferred tier of `aria_airline_pref` (e.g. United), with "+$X pp vs this cheap option".
 
-ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
+ARIA's task writes "carry-on included" or "no carry-on" in each fare's Flags, and logs the cheapest fare with a carry-on too. When nothing is cheaper than your airline, the card keeps its one-line pick instead.
+
+**Stopping a watch.** Every watched trip has **Stop watching**, both on its ARIA page card (beside ✎ Change) and in the trip's FLIGHTS · ARIA box, including a trip ARIA started watching on its own. It asks each time:
+- **⏸ Pause:** back to Draft, and you can watch again any time. VERA writes the request as Withdrawn, and a paused Draft isn't listed under "Still drafts".
+- **✕ Drop it:** the request is Dropped, and ARIA moves the trip under Show dropped, with no reminders.
+
+`aria_request_withdraw` takes `how: pause | drop`. With no request to stop (ARIA's own watch), it writes one from the trip's ID, key, label and dates. Watching again turns the same request back to Active. Trips that have already ended (their latest return is before today) aren't shown on the ARIA page at all, booked or not. **Needs a look** names its sections in small gold capitals with a rule under them, so they stand apart from the trip names.
 
 **Not built yet:** the VERA app push (Firebase).
 

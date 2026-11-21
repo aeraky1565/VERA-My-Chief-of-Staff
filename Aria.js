@@ -206,13 +206,16 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
     if (has['id:' + String(t.tripId || '').toUpperCase()] || has['lk:' + k]) return;
     noRow.push({ id: t.tripId, label: t.label, start: t.startDate, why: 'ARIA has no row for this trip yet' });
   });
+  var paused = {};
+  (requests || []).forEach(function(r) { if (r.kind === 'watch' && r.status === 'withdrawn' && r.tripId) paused[String(r.tripId).toUpperCase()] = 1; });
   var lastFare = {};
   (fares || []).forEach(function(f) { if (!lastFare[f.tripId] || f.dateSeen > lastFare[f.tripId]) lastFare[f.tripId] = f.dateSeen; });
   var item = function(w, why) { return { id: w.tripId || w.ref, label: w.label, start: w.earliest, why: why }; };
   var live = (watch || []).filter(function(w) { return w.status === 'watching'; });
   var gaps = {
     noRow: noRow,
-    draft: (watch || []).filter(function(w) { return w.status === 'draft'; }).map(function(w) { return item(w, w.tripId ? 'Still a draft: use Watch with ARIA on its card below, or set it to Watching in the tracker' : 'Still a draft: set it to Watching in the tracker when it’s ready'); }),
+    // A Draft you paused on purpose (its watch request is Withdrawn) isn't a reminder.
+    draft: (watch || []).filter(function(w) { return w.status === 'draft' && !paused[String(w.tripId || '').toUpperCase()]; }).map(function(w) { return item(w, w.tripId ? 'Still a draft: use Watch with ARIA on its card below, or set it to Watching in the tracker' : 'Still a draft: set it to Watching in the tracker when it’s ready'); }),
     // Watching rows ARIA can't price or judge: what it says itself (NEEDS_*, CEILING_NOT_SET), else what VERA can see missing.
     incomplete: live.filter(function(w) { return /^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '') || !w.origins || !w.dests || w.ceiling == null; }).map(function(w) {
       if (/^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '')) return item(w, w.actionNeeded || w.actionType.replace(/_/g, ' ').toLowerCase());
@@ -539,7 +542,7 @@ function ariaPrefFor_(dests, overridePref, overridePremium) {
 // ---- ARIA Requests (VERA's tab; ARIA reads it) -----------------------------------
 
 var ARIA_SCOUT_CAP_ = 3;
-var ARIA_REQUEST_STATUSES_ = ['active', 'withdrawn', 'booked'];
+var ARIA_REQUEST_STATUSES_ = ['active', 'withdrawn', 'booked', 'dropped'];   // withdrawn = paused (ARIA → Draft), dropped = ARIA → Dropped
 
 /** Pure: a 3-letter airport code as written, else the place name ("Home" means the home airports). */
 function ariaAirport_(s) {
@@ -681,20 +684,37 @@ function webSaveAriaRequest_(body) {
 
 /** POST {action:'aria_request_withdraw', ref | tripId} → ARIA stops scouting or watching it (its row goes to Dropped). */
 function webWithdrawAriaRequest_(body) {
-  var ref = String((body && body.ref) || '').trim().toUpperCase(), tid = String((body && body.tripId) || '').trim().toUpperCase();
+  body = body || {};
+  var ref = String(body.ref || '').trim().toUpperCase(), tid = String(body.tripId || '').trim().toUpperCase();
   if (!ref && !tid) return { ok: false, error: 'ref or tripId required' };
+  // Stopping a watched trip: pause (ARIA puts it back to Draft) or drop (ARIA moves it to Dropped). A scout is always withdrawn.
+  var st = !ref && body.how === 'drop' ? 'dropped' : 'withdrawn';
   return tiLocked_(function() {
-    var sh = ariaRequestsSheet_(), now = tiNow_(), n = 0, last = null;
+    var sh = ariaRequestsSheet_(), now = tiNow_(), n = 0, last = null, any = -1;
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
     rows.forEach(function(row, i) {
       var r = ariaRequestFromRow_(row);
+      if (!ref && r.kind === 'watch' && String(r.tripId).toUpperCase() === tid && any === -1) any = i;
       if (r.status !== 'active' || !(ref ? r.ref === ref : (r.kind !== 'stay' && String(r.tripId).toUpperCase() === tid))) return;
-      r.status = 'withdrawn'; r.updated = now;
+      r.status = st; r.updated = now;
       sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++; last = r;
     });
-    if (!n) return { ok: false, error: ref ? 'ARIA isn’t scouting that option' : 'ARIA isn’t watching that trip for you' };
+    if (!n && ref) return { ok: false, error: 'ARIA isn’t scouting that option' };
+    if (!n) {
+      // ARIA started this watch on its own (or an older request was already stopped): tell it through a request row.
+      if (any !== -1) {
+        last = ariaRequestFromRow_(rows[any]); last.status = st; last.updated = now;
+        sh.getRange(any + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(last)]);
+      } else {
+        var start = ariaYmd_(body.startDate), end = ariaYmd_(body.endDate), key = String(body.tripKey || '').trim();
+        last = { id: tiMintId_('REQ-'), kind: 'watch', ref: '', tripId: tid, tripKey: key, label: String(body.label || key.split('|')[1] || '').trim().slice(0, 120),
+          origins: '', dests: '', returnFrom: '', earliest: start || '', latest: end || '', nightsMin: null, nightsMax: null, travelers: null, bags: '',
+          ceiling: null, status: st, created: now, updated: now, flexDays: null };
+        sh.appendRow(ariaRequestToRow_(last));
+      }
+    }
     ariaForget_();
-    return { ok: true, request: last };
+    return { ok: true, request: last, how: st === 'dropped' ? 'drop' : 'pause' };
   });
 }
 

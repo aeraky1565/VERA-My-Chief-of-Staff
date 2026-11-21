@@ -27,3 +27,7 @@ Fields not named in Changes keep the rule you already follow: fill them only whi
 How it fits together:
 - **VERA writes** only to its own ARIA Requests tab. A change keeps the same Request ID, and the
   card says "Changes sent DATE: … ARIA applies them on its next 06:52 run".
+
+Stopping (also in ARIA's task): a watch request with Status **Withdrawn** means paused, so ARIA puts the row back to
+Draft. **Dropped** means ARIA moves the row to Dropped and never prices it. A new Active request for the trip (from
+Draft or Dropped) sets it back to Watching.

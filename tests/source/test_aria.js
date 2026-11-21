@@ -118,6 +118,9 @@ console.log('\nwhat needs a look');
   S.w3 = [{ tripId: 'TRIP-0005', label: 'Ready but unpriced', status: 'watching', origins: 'IAD', dests: 'ORD', ceiling: null, tier: 'Weekly' }];
   const g3 = run('ariaGaps_([], w3, [], [], "2027-02-20")');
   check('…and a row with airports but no ceiling is listed too', g3.incomplete.length === 1 && /Missing a price ceiling/.test(g3.incomplete[0].why), JSON.stringify(g3.incomplete));
+  S.w4 = [{ tripId: 'TRIP-0007', label: 'Paused', status: 'draft' }, { tripId: 'TRIP-0008', label: 'Plain draft', status: 'draft' }];
+  S.rq4 = [{ kind: 'watch', tripId: 'TRIP-0007', status: 'withdrawn' }];
+  check('a Draft you paused on purpose isn\'t in "Still drafts"; an ordinary Draft still is', run('ariaGaps_([], w4, [], rq4, "2027-02-20").draft.map(function(x){return x.id;}).join()') === 'TRIP-0008');
   check('a trip too early to price is not stale', run('ariaGaps_(vt, w2, f, [], "2027-02-20")').stale.length === 0);
   const rf = run('ariaRecentFares_(f, "2027-02-20")');
   check('the dashboard gets the last 90 days of fares, newest first', rf.length === 4 && rf[0].dateSeen === '2027-02-18' && !rf.some(x => x.dateSeen === '2026-09-01'), rf.map(x => x.dateSeen).join());
@@ -439,6 +442,17 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   run('webWatchAriaRequest_({ tripId: "TRIP-ZZZ", tripKey: "2027-08-01|Other", startDate: "2027-08-01", endDate: "2027-08-03", dests: "SEA" })');
   check('Stop watching withdraws it by trip, and only that trip', run('webWithdrawAriaRequest_({ tripId: "TRIP-CHI" })').ok && RQ[1][16] === 'Withdrawn' && RQ.find(r => r[3] === 'TRIP-ZZZ')[16] === 'Active');
   run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: "ORD" })');
+
+  // Stop: pause or drop, also for a watch ARIA started itself
+  const rqN = RQ.length;
+  const dr = run('webWithdrawAriaRequest_({ tripId: "TRIP-NEW", tripKey: "2027-09-01|Fall trip", label: "Fall trip", startDate: "2027-09-01", endDate: "2027-09-05", how: "drop" })');
+  const nr = RQ[RQ.length - 1];
+  check('dropping a trip VERA never asked about adds a Dropped watch request for it', dr.ok && RQ.length === rqN + 1 && nr[1] === 'watch' && nr[3] === 'TRIP-NEW' && nr[4] === '2027-09-01|Fall trip' && nr[5] === 'Fall trip' && nr[16] === 'Dropped', JSON.stringify(nr));
+  run('webWithdrawAriaRequest_({ tripId: "TRIP-NEW", how: "pause" })');
+  check('…stopping it again reuses that row (Withdrawn = paused)', RQ.length === rqN + 1 && RQ[RQ.length - 1][16] === 'Withdrawn');
+  run('webWatchAriaRequest_({ tripId: "TRIP-NEW", tripKey: "2027-09-01|Fall trip", startDate: "2027-09-01", endDate: "2027-09-05", dests: "SEA" })');
+  check('…watching again turns that same row back to Active', RQ.length === rqN + 1 && RQ[RQ.length - 1][16] === 'Active');
+  check('a scout is withdrawn by its ref as before, never dropped', /scouting that option/.test(run('webWithdrawAriaRequest_({ ref: "OPT-NOPE", how: "drop" })').error));
 
   // VERA tells ARIA a trip is booked
   S.readTripRegistry_ = () => ({ byId: { 'TRIP-CHI': { tripId: 'TRIP-CHI', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13' },

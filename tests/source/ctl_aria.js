@@ -126,6 +126,12 @@ const CONTROLS = [
   ['only one cheap option', both("seen[k]=1;return true;}).slice(0,3);", "seen[k]=1;return true;}).slice(0,1);"), 'test_aria_ui.js'],
   ['the cards always stack', both("gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',gap:8}}", "gridTemplateColumns:'1fr',gap:8}}"), 'test_aria_ui.js'],
   ['the headings look like trip names', both("className:'aria-gap-head',style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',", "className:'aria-gap-head',style:{fontSize:13,fontWeight:700,"), 'test_aria_ui.js'],
+  // Stop watching: pause or drop
+  ['drop is sent as a pause', b => ({ [T]: swap(b[T], "var st = !ref && body.how === 'drop' ? 'dropped' : 'withdrawn';", "var st = 'withdrawn';") })],
+  ['an ARIA-only watch can\'t be stopped', b => ({ [T]: swap(b[T], "    if (!n) {\n      // ARIA started", "    if (!n) return { ok: false, error: 'ARIA isn’t watching that trip for you' };\n    if (false) {\n      // ARIA started") })],
+  ['a paused Draft still nags', b => ({ [T]: swap(b[T], "return w.status === 'draft' && !paused[String(w.tripId || '').toUpperCase()]; })", "return w.status === 'draft'; })") })],
+  ['Stop skips the question', both("if(!st)return b('Stop watching','ts-aria-stop',function(){setSt('ask');});", "if(!st)return b('Stop watching','ts-aria-stop',function(){go('pause');});"), 'test_tripaira_ui.js'],
+  ['the ARIA page has no Stop', both(",h(AriaStop,{key:'s',tripId:w.tripId,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken})]", "]"), 'test_aria_ui.js'],
 ];
 
 // Screen controls (third field) run test_aria_ui.js and need a browser.
