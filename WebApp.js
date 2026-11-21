@@ -111,6 +111,7 @@ function doGet(e) {
       case 'flag_mute':       return jsonOut_(webFlagMute_(id));
       case 'flag_unmute':     return jsonOut_(webFlagUnmute_(id));
       case 'flag_raise_held': return jsonOut_(webFlagRaiseHeld_(e.parameter.i));
+      case 'onhand_used':     return jsonOut_(webOnHandSet_({ parameter: { id: id, status: 'used' } }));   // a Used it on a Use soon flag
       case 'complete_task':         return jsonOut_(webCompleteTask_(id));
       case 'add_task':              return jsonOut_(webAddTask_(e));
       case 'update_task':           return jsonOut_(webUpdateTask_(e));
@@ -1033,6 +1034,13 @@ function webGetFlags_(e) {
     };
   });
 
+  // A combined "Use soon" flag carries its foods, for a Used it button each (OnHand.js).
+  try {
+    if (typeof ohFlagItems_ === 'function' && flags.some(function(f) { return f.key.indexOf('ONHAND|OH-') === 0 && !f.resolved; })) {
+      var byId = {}; ohRead_(ohSheet_()).forEach(function(x) { byId[x.id] = x; });
+      flags.forEach(function(f) { if (f.key.indexOf('ONHAND|OH-') === 0) f.items = ohFlagItems_(f.key, byId); });
+    }
+  } catch (ohErr) { Logger.log('webGetFlags_: on hand (non-fatal) — ' + ohErr.message); }
   return { ok: true, count: flags.length, flags: flags };
 }
 
@@ -1273,6 +1281,8 @@ function webResolve_(id) {
   // flag isn't reopened by its check meanwhile (FlagQuiet.js).
   let quietUntil = '';
   try { quietUntil = fqRemember_(row, 'resolved'); } catch (fqErr) { Logger.log('webResolve_: quiet (non-fatal) — ' + fqErr.message); }
+  // A combined "Use soon" flag: Resolve means every food on it was used (OnHand.js).
+  try { if (typeof ohFlagIds_ === 'function') ohMarkUsed_(ohFlagIds_(row[9])); } catch (ohErr) { Logger.log('webResolve_: on hand (non-fatal) — ' + ohErr.message); }
 
   // Signal Learning: record outcome
   try {

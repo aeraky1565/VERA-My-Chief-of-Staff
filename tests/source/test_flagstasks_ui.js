@@ -11,6 +11,7 @@ const ROOT = process.env.VERA_PAGES_ROOT || process.env.VERA_ROOT || REPO;
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
+const J2 = JSON.stringify;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const add = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
@@ -18,7 +19,7 @@ const TODAY = add(0);
 
 const FLAGS = [
   { id: 'F1', date: add(-3), source: 'Vehicles', flag: 'The Civic: service was due, done? Log it on the card', reason: 'Service', urgency: 'High', key: 'vehicle_renewal_VEH-1_service_' + add(-2), due: add(-2), auto: true, clears: 'Clears once the new date is saved on the vehicle’s card.' },
-  { id: 'F2', date: add(-1), source: 'Finance', flag: 'Water bill not marked paid', reason: '$64.20', urgency: 'Medium', key: 'water_bill_nov', due: add(3), auto: false, clears: '' },
+  { id: 'F2', date: add(-1), source: 'Finance', flag: 'Water bill not marked paid', reason: '$64.20', urgency: 'Medium', key: 'water_bill_nov', due: add(3), auto: false, clears: '', items: [{ id: 'OH-1', name: 'spinach' }, { id: 'OH-2', name: 'strawberries' }] },
   { id: 'F3', date: add(-5), source: 'Gym Tracker', flag: 'No gym visit in 9 days', reason: '', urgency: 'Low', key: '', due: '', auto: false, clears: '' },
   { id: 'F4', date: add(-2), source: 'System', flag: 'TESS is late', reason: 'No run logged', urgency: 'Low', key: 'AGENT_HEALTH|TESS', due: '', auto: true, clears: 'Clears on the agent’s next good run.' },
   { id: 'F5', date: add(-9), source: 'Finance', flag: 'Snoozed card fee', reason: '', urgency: 'High', key: 'card_fee', due: '', auto: false, clears: '', snoozedUntil: add(4) },
@@ -74,6 +75,11 @@ const DONE = [{ id: 'TASK-9', task: 'Renew library books', completed: add(-1) }]
     // open Finances: a one-off flag keeps Resolve
     await page.click('.flag-group[data-group="finances"] .flag-group-head'); await wait(100);
     check(L + ': a one-off flag keeps Resolve, and its Due chip', !!(await page.$('.flag-card[data-flag="F2"] .btn-resolve')) && /due /.test(await page.$eval('.flag-card[data-flag="F2"] .flag-due', n => n.textContent).catch(() => '')));
+    // A combined Use soon flag: a Used it per food
+    check(L + ': a flag carrying foods has a Used it each', J2(await page.$$eval('.flag-card[data-flag="F2"] .flag-food-used', ns => ns.map(n => n.textContent))) === J2(['✓ Used spinach', '✓ Used strawberries']));
+    await clearCalls(); await page.click('.flag-card[data-flag="F2"] .flag-food-used[data-item="OH-2"]'); await wait(150);
+    check(L + ': …Used it marks that one food used', (await calls()).some(x => x.action === 'onhand_used' && x.id === 'OH-2'), JSON.stringify(await calls()));
+    await wait(1700);
     check(L + ': the fold is remembered on this phone', /"finances":true/.test(await page.evaluate(() => localStorage.getItem('vera_flag_groups'))));
     // filters
     await page.selectOption('.flag-urg-filter', 'Low'); await wait(80);

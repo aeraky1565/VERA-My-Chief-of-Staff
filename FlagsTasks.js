@@ -29,7 +29,7 @@ var AUTO_FLAG_KINDS_ = [
   { prefix: 'HSAFSA|',           clears: 'Clears once it’s settled in Finances › FSA & HSA.' },
   { prefix: 'UPKEEP|',           clears: 'Clears once the chore is logged as done.' },
   { prefix: 'MYTRIP|',           clears: 'Clears once the trip is sorted in Travel › Trips.' },
-  { prefix: 'ONHAND|',           clears: 'Clears once the item is used up or restocked.' },
+  { prefix: 'ONHAND|',           clears: 'Clears as you tick each food used; Resolve means they’re all used.' },
   { prefix: 'MEALPREP|',         clears: 'Clears once the prep is done.' },
   { prefix: 'PPURCH|',           clears: 'Clears once the purchase is made or dropped.' },
   { prefix: 'PROJECT|',          clears: 'Clears once the project moves on.' },

@@ -39,12 +39,57 @@ function ohRead_(sheet) {
       source: String(r[OH_COL_.SOURCE] || '').trim(), pid: String(r[OH_COL_.PID] || '').trim(),
       useSoon: r[OH_COL_.SOON] === true || String(r[OH_COL_.SOON]).toUpperCase() === 'TRUE',
       status: String(r[OH_COL_.STATUS] || 'on hand').trim().toLowerCase(), note: String(r[OH_COL_.NOTE] || '').trim(),
+      added: r[OH_COL_.ADDED] instanceof Date ? Utilities.formatDate(r[OH_COL_.ADDED], Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(r[OH_COL_.ADDED] || '').slice(0, 10),
     };
   }).filter(function(x) { return x.id; });
 }
 
-function ohRow_(id, weekStart, item, source, pid, useSoon, status, note) {
-  return [id, weekStart, item, normalizeItemName_(item), source, pid || '', !!useSoon, status || 'on hand', tiNow_(), note || ''];
+/** added: the day it was bought (yyyy-MM-dd), so "use soon" counts from then; else now. */
+function ohRow_(id, weekStart, item, source, pid, useSoon, status, note, added) {
+  return [id, weekStart, item, normalizeItemName_(item), source, pid || '', !!useSoon, status || 'on hand', /^\d{4}-\d{2}-\d{2}/.test(String(added || '')) ? String(added) : tiNow_(), note || ''];
+}
+
+// How long each kind of perishable keeps, in days. The first match wins; a Config row
+// shelf_days_<key> (1–60) changes one. "Use soon" is flagged once half of it has passed.
+var OH_SHELF_ = [
+  { key: 'fish',      re: /\b(fish|salmon|shrimp|tuna|cod|tilapia)\b/i, days: 2 },
+  { key: 'chicken',   re: /\bchicken\b/i, days: 2 },
+  { key: 'ground',    re: /\bground\b/i, days: 2 },
+  { key: 'berries',   re: /\b(berr(y|ies)|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies))\b/i, days: 4 },
+  { key: 'avocado',   re: /\bavocados?\b/i, days: 4 },
+  { key: 'leftover',  re: /\bleftovers?\b/i, days: 4 },
+  { key: 'greens',    re: /\b(spinach|lettuce|greens)\b/i, days: 5 },
+  { key: 'herbs',     re: /\b(herbs?|cilantro|parsley|mint)\b/i, days: 5 },
+  { key: 'mushrooms', re: /\bmushrooms?\b/i, days: 5 },
+  { key: 'bananas',   re: /\bbananas?\b/i, days: 5 },
+  { key: 'bread',     re: /\bbread\b/i, days: 6 },
+  { key: 'milk',      re: /\bmilk\b/i, days: 7 },
+  { key: 'cream',     re: /\bcream\b/i, days: 10 },
+  { key: 'yogurt',    re: /\byogh?urt\b/i, days: 14 },
+];
+
+/** Pure: {key, days} for the first kind an item is, a Config shelf_days_<key> winning; null when none. */
+function ohShelf_(name, cfg) {
+  var k = OH_SHELF_.filter(function(x) { return x.re.test(String(name || '')); })[0];
+  if (!k) return null;
+  var o = Number((cfg || {})['shelf_days_' + k.key]);
+  return { key: k.key, days: o >= 1 && o <= 60 ? Math.round(o) : k.days };
+}
+
+/**
+ * Pure: is a use-soon item due for its flag today? Once half its shelf life has passed
+ * since it was bought (at least a day). An item of no known kind that was marked use
+ * soon by hand is due at once: the person asked. → {due, bought, days, dueOn}
+ */
+function ohUseSoonDue_(x, today, cfg) {
+  if (!x || !x.useSoon) return { due: false };
+  var bought = /^\d{4}-\d{2}-\d{2}$/.test(String(x.added || '')) ? x.added : today;
+  var sh = ohShelf_(x.norm || x.item, cfg);
+  if (!sh) return { due: true, late: true, bought: bought, days: 0, dueOn: bought };
+  var dueOn = ohAddDays_(bought, Math.max(1, Math.ceil(sh.days * 0.5)));
+  // Late: three quarters of its life gone. That's when the flag suggests a recipe.
+  var lateOn = ohAddDays_(bought, Math.max(1, Math.ceil(sh.days * 0.75)));
+  return { due: today >= dueOn, late: today >= lateOn, bought: bought, days: sh.days, dueOn: dueOn };
 }
 
 /** Food or not. Household (by the row's Category or the item's aisle) never goes on hand. */
@@ -77,7 +122,7 @@ function ohPlanSync_(weekStart, today, hist, items, meals, prevItems) {
     haveNorm[norm] = true;
     var store = String(r[7] || '').trim();
     append.push(ohRow_(tiMintId_('OH-'), weekStart, name, src, id, OH_PERISHABLE_.test(norm), 'on hand',
-      (src === 'receipt' ? 'receipt' : 'checked off') + (store ? ' · ' + store : '') + ', ' + ohDayName_(day)));
+      (src === 'receipt' ? 'receipt' : 'checked off') + (store ? ' · ' + store : '') + ', ' + ohDayName_(day), day));
   });
   // An untick takes its purchase row back out; its chip goes too (unless it was already used).
   week.forEach(function(x) {
@@ -88,7 +133,7 @@ function ohPlanSync_(weekStart, today, hist, items, meals, prevItems) {
     (prevItems || []).forEach(function(x) {
       if (x.status !== 'on hand' || havePid['CARRY:' + x.id] || haveNorm[x.norm]) return;
       havePid['CARRY:' + x.id] = true;
-      append.push(ohRow_(tiMintId_('OH-'), weekStart, x.item, 'carried', 'CARRY:' + x.id, x.useSoon, 'pending', 'from last week'));
+      append.push(ohRow_(tiMintId_('OH-'), weekStart, x.item, 'carried', 'CARRY:' + x.id, x.useSoon, 'pending', 'from last week', x.added));   // the clock keeps running
     });
   }
   // A dinner whose day has passed used what it was planned with.
@@ -123,7 +168,7 @@ function ohWeek_(weekStart) {
     if (plan.append.length) sheet.getRange(sheet.getLastRow() + 1, 1, plan.append.length, ON_HAND_HEADERS.length).setValues(plan.append);
     if (plan.used.length || plan.del.length || plan.append.length) items = ohRead_(sheet);
     return items.filter(function(x) { return x.weekStart === weekStart && OH_LIVE_[x.status]; })
-      .map(function(x) { return { id: x.id, item: x.item, source: x.source, pid: x.pid, note: x.note, useSoon: x.useSoon, status: x.status }; });
+      .map(function(x) { return { id: x.id, item: x.item, norm: x.norm, source: x.source, pid: x.pid, note: x.note, useSoon: x.useSoon, status: x.status, added: x.added }; });
   });
 }
 
@@ -395,21 +440,39 @@ var MP_PREP_RE_ = /\b(thaw|defrost|marinat\w*|soak\w*|overnight|brine)\b/i;
 
 /**
  * The flags wanted tonight. Pure over its inputs (tomorrow = the day the flag is read).
- *   · use soon: a use-soon item still in no dinner, Wednesday to Saturday, naming the next open night
+ *   · use soon: a use-soon item still in no dinner, once half its shelf life has passed since it was
+ *     bought (ohUseSoonDue_), any day, naming the next open night
  *   · prep: the dinner the day AFTER tomorrow needs thawing, marinating or soaking — the flag
  *     reads "tonight" on the morning it shows up.
  */
-function mpNudgesWanted_(tomorrow, weekStart, items, meals, recipes) {
+function mpNudgesWanted_(tomorrow, weekStart, items, meals, recipes, cfg) {
   var wanted = {};
   var used = {}; (meals || []).forEach(function(m) { (m.uses || []).forEach(function(id) { used[id] = true; }); });
-  var dow = ohDayName_(tomorrow);
-  if (['Wed', 'Thu', 'Fri', 'Sat'].indexOf(dow) !== -1) {
-    var openDay = MEAL_PLAN_DAYS_.filter(function(d, i) { return ohAddDays_(weekStart, i) >= tomorrow && !(meals || []).some(function(m) { return m.day === d && m.mealName; }); })[0];
-    (items || []).forEach(function(x) {
-      if (x.status !== 'on hand' || !x.useSoon || used[x.id]) return;
-      wanted[OH_FLAG_PREFIX_ + x.id] = { urgency: 'Low', flag: 'Use soon: ' + x.item,
-        reason: x.item.charAt(0).toUpperCase() + x.item.slice(1) + ' isn’t in a dinner yet' + (openDay ? '; ' + openDay + ' is open' : '') + '. Plan it in Kitchen → Meal Plan, or mark it used.' };
-    });
+  // ONE flag a night at most: every use-soon food past half its shelf life and in no dinner.
+  // Any day of the week. Once one is three quarters through, a saved recipe that uses them.
+  var openDay = MEAL_PLAN_DAYS_.filter(function(d, i) { return ohAddDays_(weekStart, i) >= tomorrow && !(meals || []).some(function(m) { return m.day === d && m.mealName; }); })[0];
+  var due = [];
+  (items || []).forEach(function(x) {
+    if (x.status !== 'on hand' || !x.useSoon || used[x.id]) return;
+    var d = ohUseSoonDue_(x, tomorrow, cfg);
+    if (d.due) due.push({ x: x, d: d });
+  });
+  if (due.length) {
+    var names = due.map(function(e) { return e.x.item; });
+    var late = due.filter(function(e) { return e.d.late; });
+    var pick = null;
+    if (late.length) {
+      var lateNames = late.map(function(e) { return normalizeItemName_(e.x.item); });
+      pick = mpCook_(recipes, (items || []).filter(function(x) { return x.status === 'on hand'; })).filter(function(r) {
+        return r.have.some(function(h) { return lateNames.indexOf(normalizeItemName_(h.name)) !== -1; });
+      })[0] || null;
+    }
+    var each = due.map(function(e) { return e.x.item + (e.d.days ? ' (bought ' + ohDayName_(e.d.bought) + ', keeps about ' + e.d.days + ' days)' : ''); });
+    var reason = each.join('; ') + '. ' + (due.length === 1 ? 'It isn’t' : 'None is') + ' in a dinner yet' + (openDay ? '; ' + openDay + ' is open' : '') + '.' +
+      (pick ? ' Try ' + pick.name + ': it uses ' + pick.have.map(function(h) { return h.name; }).join(', ') + (pick.missing.length ? ' (you’d need ' + pick.missing.join(', ') + ')' : '') + '.' : '') +
+      ' Tick each one as you use it, or Resolve when they’re all used.';
+    var title = 'Use soon: ' + (names.length <= 3 ? names.join(', ') : names.slice(0, 3).join(', ') + ' and ' + (names.length - 3) + ' more');
+    wanted[OH_FLAG_PREFIX_ + due.map(function(e) { return e.x.id; }).sort().join('+')] = { urgency: late.length ? 'Medium' : 'Low', flag: title, reason: reason };
   }
   var target = ohAddDays_(tomorrow, 1);
   (meals || []).forEach(function(m) {
@@ -434,7 +497,7 @@ function mpSyncNudges_() {
   var meals = getMealPlanWeek_(weekStart);
   var nextWeek = addWeeksToStart_(weekStart, 1);
   if (ohAddDays_(tomorrow, 1) >= nextWeek) meals = meals.concat(getMealPlanWeek_(nextWeek));
-  var wanted = mpNudgesWanted_(tomorrow, weekStart, items, meals, mpTry_(mpReadRecipes_, []));
+  var wanted = mpNudgesWanted_(tomorrow, weekStart, items, meals, mpTry_(mpReadRecipes_, []), mpTry_(function() { return getConfigValues(); }, {}));
   var split = function(prefix) { var o = {}; Object.keys(wanted).forEach(function(k) { if (k.indexOf(prefix) === 0) o[k] = wanted[k]; }); return o; };
   upsertKeyedFlags_(flags, OH_FLAG_PREFIX_, 'Meal Plan', split(OH_FLAG_PREFIX_), today);
   upsertKeyedFlags_(flags, MP_PREP_PREFIX_, 'Meal Plan', split(MP_PREP_PREFIX_), today);
@@ -446,4 +509,27 @@ function mpWeekStartOf_(iso) {
   var p = String(iso).split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
   var dow = d.getUTCDay();
   return ohAddDays_(iso, dow === 0 ? -6 : 1 - dow);
+}
+
+/** The on-hand ids a combined use-soon flag names (its key ONHAND|OH-1+OH-2). */
+function ohFlagIds_(key) {
+  var k = String(key || '');
+  return k.indexOf(OH_FLAG_PREFIX_) === 0 ? k.slice(OH_FLAG_PREFIX_.length).split('+').filter(function(x) { return /^OH-/.test(x); }) : [];
+}
+
+/** Resolving a combined use-soon flag means every food on it was used. → how many were marked. */
+function ohMarkUsed_(ids) {
+  if (!ids || !ids.length) return 0;
+  return tiLocked_(function() {
+    var sheet = ohSheet_(), n = 0;
+    ohRead_(sheet).forEach(function(x) {
+      if (ids.indexOf(x.id) !== -1 && x.status === 'on hand') { sheet.getRange(x.rowNum, OH_COL_.STATUS + 1).setValue('used'); n++; }
+    });
+    return n;
+  });
+}
+
+/** The foods a combined flag names, for its Used it buttons: [{id, name}] in the flag's order. */
+function ohFlagItems_(key, byId) {
+  return ohFlagIds_(key).map(function(id) { var x = byId[id]; return x && x.status === 'on hand' ? { id: id, name: x.item } : null; }).filter(Boolean);
 }

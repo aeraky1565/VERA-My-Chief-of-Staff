@@ -217,31 +217,66 @@ check('…with what you have (use soon marked) and what you need', JSON.stringif
 check('…a recipe using nothing on hand, or missing three or more, is left out', !cook.some(c => c.name === 'Toast' || c.name === 'Feast' || c.name === 'No list'));
 
 console.log('\nthe nightly flags');
-const its = [{ id: 'OH-1', item: 'spinach', useSoon: true, status: 'on hand' }, { id: 'OH-2', item: 'feta', useSoon: true, status: 'on hand' }, { id: 'OH-3', item: 'rice', useSoon: false, status: 'on hand' }];
+const its = [{ id: 'OH-1', item: 'spinach', norm: 'spinach', useSoon: true, status: 'on hand', added: '2026-10-25' }, { id: 'OH-2', item: 'feta', useSoon: true, status: 'on hand', added: '2026-10-25' }, { id: 'OH-3', item: 'rice', useSoon: false, status: 'on hand', added: '2026-10-25' }];
 const meals = [{ day: 'Thu', date: '2026-10-29', mealName: 'Salad', uses: ['OH-2'], status: 'Planned', notes: '' },
   { day: 'Fri', date: '2026-10-30', mealName: 'Lemon chicken', uses: [], status: 'Planned', notes: '' },
   { day: 'Sat', date: '2026-10-31', mealName: 'Stew', uses: [], status: 'Skipped', notes: 'needs prep' }];
 const recipes = [{ name: 'Lemon chicken', ingredients: 'chicken, lemon', notes: 'Thaw the chicken overnight.' }];
 let w = run('mpNudgesWanted_("2026-10-29", "' + WS + '", ' + JSON.stringify(its) + ', ' + JSON.stringify(meals) + ', ' + JSON.stringify(recipes) + ')');
-check('Thursday: a use-soon item in no dinner is flagged, naming the next open night', Object.keys(w).join() === 'ONHAND|OH-1,MEALPREP|2026-10-30' && /Spinach isn’t in a dinner yet; Sat is open/.test(w['ONHAND|OH-1'].reason) === false && /Spinach isn’t in a dinner yet; Sun is open/.test(w['ONHAND|OH-1'].reason), JSON.stringify(w));
+check('Thursday: a use-soon food in no dinner, past half its shelf life, is flagged, naming the next open night', Object.keys(w).join() === 'ONHAND|OH-1,MEALPREP|2026-10-30' && /^spinach \(bought Sun, keeps about 5 days\)\. It isn’t in a dinner yet; Sun is open\./.test(w['ONHAND|OH-1'].reason), JSON.stringify(w));
 check('…one already in a dinner, or not use soon, isn\'t', !w['ONHAND|OH-2'] && !w['ONHAND|OH-3']);
 check('prep: the day after tomorrow\'s dinner needs thawing, flagged for tonight', w['MEALPREP|2026-10-30'].flag === 'Prep tonight: Lemon chicken' && /needs thawing — do it tonight/.test(w['MEALPREP|2026-10-30'].reason) && w['MEALPREP|2026-10-30'].date === '2026-10-29');
 w = run('mpNudgesWanted_("2026-10-27", "' + WS + '", ' + JSON.stringify(its) + ', ' + JSON.stringify(meals) + ', ' + JSON.stringify(recipes) + ')');
-check('early in the week, no use-soon nudge yet', !Object.keys(w).some(k => /^ONHAND/.test(k)));
+check('before half its shelf life (spinach keeps 5 days: bought Sun, due Wed) there’s no nudge', !Object.keys(w).some(k => /^ONHAND/.test(k)));
+{
+  // #shelf: a use-soon flag only once half the shelf life has passed (OnHand.js OH_SHELF_).
+  check('shelf lives: chicken 2, berries 4, yogurt 14; Config shelf_days_<kind> wins', run('ohShelf_("chicken thighs")').days === 2 && run('ohShelf_("blueberries")').days === 4
+    && run('ohShelf_("greek yogurt")').days === 14 && run('ohShelf_("blueberries", { shelf_days_berries: "6" })').days === 6 && run('ohShelf_("rice")') === null);
+  const due = (item, added, today, cfg) => run('ohUseSoonDue_(' + JSON.stringify({ item, norm: item, useSoon: true, added }) + ', "' + today + '", ' + JSON.stringify(cfg || {}) + ')');
+  check('not due on the day it’s bought', due('strawberries', '2026-11-20', '2026-11-20').due === false);
+  check('…nor before half its life; due on the day half has passed (berries: 4 days → day 2)', due('strawberries', '2026-11-20', '2026-11-21').due === false && due('strawberries', '2026-11-20', '2026-11-22').due === true);
+  check('chicken (2 days) is due the next day', due('chicken', '2026-11-20', '2026-11-21').due === true && due('chicken', '2026-11-20', '2026-11-20').due === false);
+  check('a Config override moves it', due('strawberries', '2026-11-20', '2026-11-22', { shelf_days_berries: 10 }).due === false);
+  check('an item of no known kind, marked use soon by hand, is due at once', due('feta', '2026-11-20', '2026-11-20').due === true);
+  check('not use soon, never due', run('ohUseSoonDue_({ item: "milk", useSoon: false, added: "2026-11-01" }, "2026-11-20", {})').due === false);
+  const sun = run('mpNudgesWanted_("2026-11-01", "' + WS + '", ' + JSON.stringify([{ id: 'OH-9', item: 'chicken', norm: 'chicken', useSoon: true, status: 'on hand', added: '2026-10-30' }]) + ', [], [])');
+  check('any day of the week, not only Wednesday to Saturday, and the reason says when it was bought', !!sun['ONHAND|OH-9'] && /^chicken \(bought Fri, keeps about 2 days\)/.test(sun['ONHAND|OH-9'].reason), JSON.stringify(sun));
+  // ONE combined flag, a recipe once a food is three quarters through.
+  const foods = [{ id: 'OH-7', item: 'spinach', norm: 'spinach', useSoon: true, status: 'on hand', added: '2026-11-17' },
+                 { id: 'OH-5', item: 'strawberries', norm: 'strawberries', useSoon: true, status: 'on hand', added: '2026-11-19' },
+                 { id: 'OH-6', item: 'yogurt', norm: 'yogurt', useSoon: true, status: 'on hand', added: '2026-11-19' },
+                 { id: 'OH-8', item: 'feta', norm: 'feta', useSoon: false, status: 'on hand', added: '2026-11-19' }];
+  const recs = [{ name: 'Spinach feta pie', ingredients: 'spinach; feta; eggs', notes: '' }, { name: 'Berry parfait', ingredients: 'strawberries; yogurt; granola', notes: '' }];
+  let cw = run('mpNudgesWanted_("2026-11-21", "2026-11-16", ' + JSON.stringify(foods) + ', [], ' + JSON.stringify(recs) + ', {})');
+  const ck = Object.keys(cw).filter(k => /^ONHAND/.test(k));
+  check('one flag for every food due, keyed by their ids; a food not yet half through is left off', ck.length === 1 && ck[0] === 'ONHAND|OH-5+OH-7' && /^Use soon: spinach, strawberries$/.test(cw[ck[0]].flag), JSON.stringify(cw));
+  check('…spinach is three quarters through (5 days, bought Tue): a saved recipe that uses it, and what it needs', /Try Spinach feta pie: it uses spinach, feta \(you’d need eggs\)\./.test(cw[ck[0]].reason) && cw[ck[0]].urgency === 'Medium', cw[ck[0]].reason);
+  cw = run('mpNudgesWanted_("2026-11-21", "2026-11-16", ' + JSON.stringify(foods.slice(1)) + ', [], ' + JSON.stringify(recs) + ', {})');
+  const ck2 = Object.keys(cw).filter(k => /^ONHAND/.test(k));
+  check('only half through: no recipe yet, and Low', ck2.length === 1 && !/Try /.test(cw[ck2[0]].reason) && cw[ck2[0]].urgency === 'Low', JSON.stringify(cw));
+  const many = ['a', 'b', 'c', 'd', 'e'].map((n, i) => ({ id: 'OH-' + (20 + i), item: 'fish ' + n, norm: 'fish ' + n, useSoon: true, status: 'on hand', added: '2026-11-18' }));
+  cw = run('mpNudgesWanted_("2026-11-21", "2026-11-16", ' + JSON.stringify(many) + ', [], [], {})');
+  check('a long list names three and how many more', /^Use soon: fish a, fish b, fish c and 2 more$/.test(cw[Object.keys(cw)[0]].flag));
+  check('the flag’s ids come back from its key', JSON.stringify(run('ohFlagIds_("ONHAND|OH-5+OH-7")')) === '["OH-5","OH-7"]' && run('ohFlagIds_("MEALPREP|x")').length === 0);
+  check('Resolve on it marks every food used; Used it marks one; the flags carry their foods', /ohMarkUsed_\(ohFlagIds_\(row\[9\]\)\)/.test(WEB) && /case 'onhand_used':\s+return jsonOut_\(webOnHandSet_\(\{ parameter: \{ id: id, status: 'used' \} \}\)\)/.test(WEB) && /f\.items = ohFlagItems_\(f\.key, byId\)/.test(WEB));
+  check('a purchase row is stamped with the day it was bought; a carried one keeps its original day', /ohDayName_\(day\), day\)\);/.test(OH) && /'pending', 'from last week', x\.added\)\);/.test(OH));
+  check('the row reads its Added day', /added: r\[OH_COL_\.ADDED\] instanceof Date/.test(OH));
+}
 w = run('mpNudgesWanted_("2026-10-30", "' + WS + '", [], ' + JSON.stringify(meals) + ', [])');
 check('a skipped dinner needs no prep, even marked "needs prep"', !w['MEALPREP|2026-10-31']);
 w = run('mpNudgesWanted_("2026-10-30", "' + WS + '", [], ' + JSON.stringify(meals.map(m => Object.assign({}, m, { status: 'Planned' }))) + ', [])');
 check('…but a planned one marked "needs prep" does', w['MEALPREP|2026-10-31'] && /needs prep the night before/.test(w['MEALPREP|2026-10-31'].reason));
 check('the Monday of any date', run('mpWeekStartOf_("2026-11-01")') === WS && run('mpWeekStartOf_("2026-10-26")') === WS && run('mpWeekStartOf_("2026-10-28")') === WS);
-fresh({ onHand: [['OH-1', WS, 'Spinach', 'spinach', 'manual', '', true, 'on hand', '', '']], meals: [meal('Fri', '2026-10-30', 'Stew', [], 'Planned')] });
+fresh({ onHand: [['OH-1', WS, 'Spinach', 'spinach', 'manual', '', true, 'on hand', '2026-10-24', '']], meals: [meal('Fri', '2026-10-30', 'Stew', [], 'Planned')] });
 S.sheets['Meal Plan'].rows[1][7] = 'soak the beans';
 S.__today = '2026-10-28';
 run('mpSyncNudges_()');
 const fl = S.sheets['Flags'].rows.slice(1);
 check('the nightly step writes both kinds as Meal Plan flags', fl.some(r => r[9] === 'ONHAND|OH-1' && r[2] === 'Meal Plan') && fl.some(r => r[9] === 'MEALPREP|2026-10-30' && r[3] === 'Prep tonight: Stew'), JSON.stringify(fl.map(r => r[9])));
 S.__today = '2026-10-31';
+run('webOnHandSet_({ parameter: { id: "OH-1", status: "used" } })');
 run('mpSyncNudges_()');
-check('…and resolves them once they no longer apply', S.sheets['Flags'].rows.slice(1).every(r => r[8] === 'Yes'), JSON.stringify(S.sheets['Flags'].rows.slice(1).map(r => [r[9], r[8]])));
+check('…and resolves them once they no longer apply (the spinach used, the prep day passed)', S.sheets['Flags'].rows.slice(1).every(r => r[8] === 'Yes'), JSON.stringify(S.sheets['Flags'].rows.slice(1).map(r => [r[9], r[8]])));
 S.__today = TODAY;
 
 console.log('\nfood or not, in Purchase History');
