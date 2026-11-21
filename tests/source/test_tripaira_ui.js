@@ -97,6 +97,19 @@ async function scenario(page, label, width) {
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-plan'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-plan-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-still'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-still-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   check(label + ': no sideways scroll with the plan', await noScroll(page));
+  // Changing a watch ARIA already runs
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: Object.assign({}, watching, { origins: 'IAD', dests: 'LIS', flexDays: 1 }), fares, request: { kind: 'watch', status: 'active', airlinePref: 'United first', premium: '$75 per person', changes: '2027-02-19: Ceiling Per Person 800→900' }, draft: DRAFT, plan: PLAN }]);
+  t = await text(page);
+  check(label + ': a watched trip offers ✎ Change, and says what was last sent', !!(await page.$('#taprobe .ts-aria-change')) && /Changes sent 2027-02-19: Ceiling Per Person 800→900\. ARIA applies them on its next 06:52 run\./.test(t), t.slice(0, 600));
+  await page.evaluate(() => window.__q('.ts-aria-change').click()); await wait(80);
+  const ev = await page.evaluate(() => ['origins', 'dests', 'travelers', 'ceiling', 'flexDays', 'airlinePref'].map(k => (document.querySelector('#taprobe .ts-aria-' + k) || {}).value));
+  check(label + ': …the form starts from what ARIA watches now', JSON.stringify(ev) === JSON.stringify(['IAD', 'LIS', '2', '900', '1', 'United first']), JSON.stringify(ev));
+  check(label + ': …and says ARIA takes the changes', /ARIA puts the changes in its Watchlist on its next run/.test(await text(page)) && /Save changes/.test(await text(page)));
+  await page.evaluate(() => window.__set(window.__q('.ts-aria-ceiling'), '750')); await wait(40);
+  await page.evaluate(() => window.__q('.ts-aria-send').click()); await wait(200);
+  const ep = await page.evaluate(() => window.__posts.pop());
+  check(label + ': Save changes sends only what moved, as an edit', ep && ep.action === 'aria_request_watch' && ep.edit === true && String(ep.ceiling) === '750' && ep.dests === 'LIS' && !('origins' in ep) && !('flexDays' in ep) && !('airlinePref' in ep), JSON.stringify(ep));
+  check(label + ': no sideways scroll with the change form', await noScroll(page));
   const opened = await page.evaluate(() => new Promise(r => { const f = e => { window.removeEventListener('vera-open-idea', f); r(e.detail); }; window.addEventListener('vera-open-idea', f);
     window.__q('.ts-plan .ts-plan-idea').click(); setTimeout(() => r(null), 300); }));
   check(label + ': "Open the idea" asks the Travel tab for that idea', opened && opened.ideaId === 'IDEA-1', JSON.stringify(opened));

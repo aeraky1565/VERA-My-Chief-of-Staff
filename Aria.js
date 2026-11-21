@@ -609,7 +609,7 @@ function ariaRequestToRow_(r) {
   var st = String(r.status || '').toLowerCase();
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
     v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays),
-    v(r.airlinePref), v(r.premium), v(r.place), v(r.ceilingNight), v(r.paidPP), v(r.repriceUntil)];
+    v(r.airlinePref), v(r.premium), v(r.place), v(r.ceilingNight), v(r.paidPP), v(r.repriceUntil), v(r.changes)];
 }
 
 /** Pure: a row → a request. */
@@ -625,7 +625,7 @@ function ariaRequestFromRow_(row) {
     status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]),
     airlinePref: String(row[20] || '').trim(), premium: String(row[21] || '').trim(),
     place: String(row[22] || '').trim(), ceilingNight: ariaMoney_(row[23]),
-    paidPP: ariaMoney_(row[24]), repriceUntil: d(row[25]) };   // a booked trip's price paid, for the rebook check (#250)
+    paidPP: ariaMoney_(row[24]), repriceUntil: d(row[25]), changes: String(row[26] || '').trim() };   // a booked trip's price paid, for the rebook check (#250)
 }
 
 /** Every request, from VERA's tab ([] when there is none yet). */
@@ -1019,12 +1019,36 @@ function webTripAria_(p) {
  * origins, dests, returnFrom, travelers, ceiling, flexDays} → asks ARIA to watch a
  * calendar trip's flights. One watch request per trip: asking again refreshes it.
  */
+// What a changed watch can change, as ARIA's columns name it (the Changes cell uses these words).
+var ARIA_EDIT_FIELDS_ = [['origins', 'Origin Airports'], ['dests', 'Destination Airports'], ['returnFrom', 'Return-From Airports'],
+  ['earliest', 'Earliest Depart'], ['latest', 'Latest Return'], ['travelers', 'Travelers'], ['ceiling', 'Ceiling Per Person'],
+  ['flexDays', 'Flex Days'], ['airlinePref', 'Airline Preference'], ['premium', 'Airline Premium PP']];
+
+/** Pure: the fields that differ between a watch request and its change, in words ("Ceiling Per Person 360→300; Flex Days 1→2"). '' when none. */
+function ariaRequestChanges_(old, req) {
+  var s = function(v) { return v == null ? '' : String(v).trim(); };
+  return ARIA_EDIT_FIELDS_.filter(function(f) { return s(req[f[0]]) !== s((old || {})[f[0]]); })
+    .map(function(f) { return f[1] + ' ' + (s((old || {})[f[0]]) || 'blank') + '→' + (s(req[f[0]]) || 'blank'); }).join('; ');
+}
+
+/** Pure: an edit keeps what it left blank. Fields sent empty (or not sent) take the old request's value. */
+function ariaKeepBlank_(req, old, body) {
+  if (!old) return req;
+  var out = Object.assign({}, req);
+  ARIA_EDIT_FIELDS_.forEach(function(f) {
+    var sent = body[f[0] === 'earliest' ? 'startDate' : f[0] === 'latest' ? 'endDate' : f[0]];
+    if (sent == null || String(sent).trim() === '') out[f[0]] = old[f[0]];
+  });
+  return out;
+}
+
 function webWatchAriaRequest_(body) {
   body = body || {};
   var tripId = String(body.tripId || '').trim().toUpperCase(), tripKey = String(body.tripKey || '').trim();
   var start = ariaYmd_(body.startDate), end = ariaYmd_(body.endDate), dests = String(body.dests || '').trim().slice(0, 60);
   if (!tripId || !start || !end) return { ok: false, error: 'tripId and the trip dates are required' };
-  if (!dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };
+  var edit = body.edit === true || body.edit === 'true';
+  if (!dests && !edit) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };
   var travelers = parseInt(body.travelers, 10), flex = parseInt(body.flexDays, 10), ceiling = ariaMoney_(body.ceiling);
   var req = { kind: 'watch', ref: '', tripId: tripId, tripKey: tripKey, label: String(body.label || tripKey.split('|')[1] || '').trim().slice(0, 120),
     origins: String(body.origins || '').trim().slice(0, 60), dests: dests, returnFrom: ariaAirport_(body.returnFrom),
@@ -1037,11 +1061,21 @@ function webWatchAriaRequest_(body) {
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
     var at = -1;
     rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });
+    var old = at === -1 ? null : ariaRequestFromRow_(rows[at]);
+    // A change to a watch ARIA already runs: blanks keep what was there, and Changes says what moved,
+    // so ARIA's task overwrites those fields in its Watchlist (it otherwise fills only blank ones).
+    if (edit) {
+      req = ariaKeepBlank_(req, old, body);
+      if (!req.dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };
+      var what = ariaRequestChanges_(old || {}, req);
+      if (old && !what) return { ok: true, request: old, unchanged: true };
+      req.changes = now.slice(0, 10) + ': ' + what;
+    } else if (old) req.changes = old.changes;
     req.status = 'active'; req.updated = now;
-    if (at === -1) { req.id = tiMintId_('REQ-'); req.created = now; sh.appendRow(ariaRequestToRow_(req)); }
-    else { var old = ariaRequestFromRow_(rows[at]); req.id = old.id; req.created = old.created || now; req.ref = old.ref; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(req)]); }
+    if (!old) { req.id = tiMintId_('REQ-'); req.created = now; sh.appendRow(ariaRequestToRow_(req)); }
+    else { req.id = old.id; req.created = old.created || now; req.ref = old.ref; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(req)]); }
     ariaForget_();
-    Logger.log('aria_request_watch: watch request ' + (at === -1 ? 'added' : 'refreshed'));
+    Logger.log('aria_request_watch: watch request ' + (!old ? 'added' : edit ? 'changed' : 'refreshed'));
     return { ok: true, request: req };
   });
 }

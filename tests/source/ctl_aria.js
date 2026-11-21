@@ -29,7 +29,7 @@ const CONTROLS = [
   ['the ceiling comes from transport, not flights', b => ({ [T]: swap(b[T], "if (String(r.category || '').toLowerCase() !== 'flights') return;", "if (String(r.category || '').toLowerCase() !== 'transport') return;") })],
   ['the ceiling is not per person', b => ({ [T]: swap(b[T], "return any && travelers > 0 ? Math.round(total / travelers) : null;", "return any && travelers > 0 ? Math.round(total) : null;") })],
   ['one way booked is booked', b => ({ [T]: swap(b[T], "return { out: out, back: back, both: out && back };", "return { out: out, back: back, both: out || back };") })],
-  ['a watch needs no destination', b => ({ [T]: swap(b[T], "  if (!dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };\n", "") })],
+  ['a watch needs no destination', b => ({ [T]: swap(b[T], "  if (!dests && !edit) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };\n", "") })],
   ['finding the trip mints an ID', b => ({ [T]: swap(b[T], "{ mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }", "{ mint: true }) || '').toUpperCase(); } catch (e) {} }") })],
   ['asking again adds a second watch', b => ({ [T]: swap(b[T], "rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });", "") })],
   ['a trip ARIA watches on its own is never told booked', b => ({ [T]: swap(b[T], "if (['watching', 'draft', 'scouting'].indexOf(w.status) !== -1 && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w };", "") })],
@@ -108,6 +108,15 @@ const CONTROLS = [
   ['an airline written by name isn\'t matched', both("if(!star[code]){var byName='';", "if(false){var byName='';")],
   ['what was typed for the trip isn\'t sent', b => ({ [T]: swap(b[T], "  var pref = String(overridePref || '').trim(), prem = String(overridePremium || '').trim();", "  var pref = '', prem = '';") })],
   ['the rule leaves out "abroad"', b => ({ [T]: swap(b[T], "    var abroad = /\\babroad\\b|\\binternational/.test(s);", "    var abroad = false;") })],
+  // changing a watch ARIA already runs
+  ['an edit wipes what it left blank', b => ({ [T]: swap(b[T], "      req = ariaKeepBlank_(req, old, body);\n", "") })],
+  ['an edit mints a new request', b => ({ [T]: swap(b[T], "    if (!old) { req.id = tiMintId_('REQ-');", "    if (true) { req.id = tiMintId_('REQ-');") })],
+  ['Changes lists every field', b => ({ [T]: swap(b[T], "return ARIA_EDIT_FIELDS_.filter(function(f) { return s(req[f[0]]) !== s((old || {})[f[0]]); })", "return ARIA_EDIT_FIELDS_.filter(function(f) { return true; })") })],
+  ['an ordinary ask drops the last Changes', b => ({ [T]: swap(b[T], "    } else if (old) req.changes = old.changes;", "    }") })],
+  ['Changes isn\'t written to the row', b => ({ [T]: swap(b[T], "v(r.paidPP), v(r.repriceUntil), v(r.changes)];", "v(r.paidPP), v(r.repriceUntil), ''];") })],
+  ['the change sends every field', both("if(!form||!form.edit)return form;", "return form;"), 'test_tripaira_ui.js'],
+  ['the change form starts empty', both("var f=ariaEditForm_(row,req);setInit(f);setForm(f);", "var f={edit:true};setInit(f);setForm(f);"), 'test_tripaira_ui.js'],
+  ['a watched trip has no Change', both("btn('✎ Change','ts-aria-change',", "false&&btn('✎ Change','ts-aria-change',"), 'test_tripaira_ui.js'],
 ];
 
 // Screen controls (third field) run test_aria_ui.js and need a browser.

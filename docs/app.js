@@ -1164,11 +1164,17 @@ function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(
       h('span',{style:{fontSize:12,color:'#9aa9cc',flex:'1 1 220px'}},'From the trip idea "'+p.idea.title+'" in Travel → Trip Ideas. Nothing is added to your itinerary; bookings tick these off as they arrive.')));}
 // Asks the Travel tab to open Trip Ideas on this idea (both dashboards listen for it).
 function tsOpenIdea_(id){if(!id)return;try{window.dispatchEvent(new CustomEvent('vera-open-idea',{detail:{ideaId:id}}));}catch(e){}}
+// A watch ARIA already runs, as the form's starting values (edit: true), from its Watchlist row and VERA's request.
+function ariaEditForm_(row,req){var r=row||{},q=req||{},v=function(a,b){return a!=null&&a!==''?a:(b!=null?b:'');};
+  return {edit:true,origins:v(r.origins,q.origins),dests:v(r.dests,q.dests),returnFrom:v(r.returnFrom,q.returnFrom),travelers:v(r.travelers,q.travelers),ceiling:v(r.ceiling,q.ceiling),flexDays:v(r.flexDays,q.flexDays),airlinePref:v(q.airlinePref),premium:v(q.premium)};}
+// What a change sends: only the fields that moved (the server keeps the rest), plus where it flies to.
+function ariaEditBody_(form,init){if(!form||!form.edit)return form;var out={edit:true,dests:form.dests},i=init||{};
+  Object.keys(form).forEach(function(k){if(k!=='edit'&&String(form[k]==null?'':form[k]).trim()!==String(i[k]==null?'':i[k]).trim())out[k]=form[k];});return out;}
 // ARIA on this trip's flights: its fares and verdict when it watches them, else a form to ask it to.
 // initialForm opens the form already filled (the ARIA tab's Draft cards use it).
-function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=props.ends;var _f=React.useState(props.initialForm||null),form=_f[0],setForm=_f[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=props.ends;var _f=React.useState(props.initialForm||null),form=_f[0],setForm=_f[1];var _i=React.useState(props.initialForm||null),init=_i[0],setInit=_i[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
   var booked=ends&&ends.arrival===true&&ends.departure===true;var row=d.row,req=d.request;
-  var send=function(){setBusy('send');setErr('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'aria_request_watch',tripId:d.tripId,tripKey:props.trip.tripKey,label:props.trip.label,startDate:props.trip.startDate,endDate:props.trip.endDate},form))
+  var send=function(){setBusy('send');setErr('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'aria_request_watch',tripId:d.tripId,tripKey:props.trip.tripKey,label:props.trip.label,startDate:props.trip.startDate,endDate:props.trip.endDate},ariaEditBody_(form,init)))
     .then(function(){setBusy('');setForm(null);props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t ask ARIA');});};
   var stop=function(){setBusy('stop');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',tripId:d.tripId}).then(function(){setBusy('');props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t stop it');});};
   var inp=function(k,lbl,ph,type){return h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,fontWeight:600,color:'#9aa9cc',minWidth:0}},lbl,
@@ -1180,31 +1186,34 @@ function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=pr
   return h('div',{className:'ts-aria',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
     h('span',{style:{fontSize:12,color:'#9aa9cc',fontWeight:700,letterSpacing:'.06em'}},'✈️ FLIGHTS · 🧭 ARIA'),
     booked?h('span',{className:'ts-aria-booked',style:{fontSize:13,color:'#8fe0a8'}},'✅ Booked out and back.'+(row&&row.status!=='booked'?' VERA tells ARIA, so it stops pricing them.':''))
+    :form&&form.edit?formView()
     :urgent&&typeof AriaBookCard==='function'?h(AriaBookCard,{row:row,fares:d.fares,ideas:{}})
     :row&&row.status!=='dropped'&&row.status!=='draft'?h('div',{className:'ts-aria-row',style:{display:'flex',flexDirection:'column',gap:4,fontSize:13,color:'#dde1f0'}},
         h('span',null,row.bestFare!=null?h('b',{style:{fontSize:16,color:'#eef1fb'}},'$'+String(row.bestFare).replace(/\B(?=(\d{3})+(?!\d))/g,',')):'No fare yet',
           (row.bestFare!=null&&row.travelers?' for '+row.travelers:'')+(row.verdict?' · '+({book:'BOOK NOW',wait:'WAIT',skip:'SKIP'})[row.verdict]:'')+(row.lastChecked?' · checked '+row.lastChecked:'')+(row.ceiling!=null?' · ceiling $'+row.ceiling+' pp':'')),
         row.actionNeeded&&h('span',{style:{fontSize:12,color:'#f6d27a'}},'→ '+row.actionNeeded),
         hist.length>1&&typeof AriaSpark==='function'&&h(AriaSpark,{points:hist}),
-        req&&btn('Stop watching','ts-aria-stop',stop))
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn('✎ Change','ts-aria-change',function(){var f=ariaEditForm_(row,req);setInit(f);setForm(f);}),req&&btn('Stop watching','ts-aria-stop',stop)),
+        req&&req.changes&&h('span',{className:'ts-aria-changes',style:{fontSize:12,color:'#9aa9cc'}},'Changes sent '+req.changes+'. ARIA applies them on its next 06:52 run.'))
     :req?h('div',{className:'ts-aria-asked',style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:'#b8c3e0'}},
         h('span',null,'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It starts on its next 06:52 run.'),
         btn('Stop watching','ts-aria-stop',stop))
     :!d.configured?h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Connect ARIA (Config → roster_link_aria) and it can watch these fares.')
-    :form?h('div',{className:'ts-aria-form',style:{display:'flex',flexDirection:'column',gap:8}},
+    :form?formView()
+    :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:13,color:'#b8c3e0'}},row&&row.status==='draft'?'ARIA has this trip as a Draft: it isn’t pricing it yet.':'ARIA isn’t watching these flights.'),
+        btn('🧭 Watch with ARIA','ts-aria-watch',function(){setForm(Object.assign({},d.draft||{}));},true)),
+    err&&!form&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));
+  function formView(){return h('div',{className:'ts-aria-form',style:{display:'flex',flexDirection:'column',gap:8}},
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 130px), 1fr))',gap:8}},
           inp('origins','From','IAD, DCA, BWI'),inp('dests','To','e.g. ORD'),inp('returnFrom','Home from (if different)','optional'),
           inp('travelers','Travelers','2','number'),inp('ceiling','Ceiling per person ($)','e.g. 360','number'),inp('flexDays','Flex (± days)','1','number')),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',gap:8}},
           inp('airlinePref','Airlines (blank: your usual rule)',d.airlines?d.airlines.home+' · abroad: '+d.airlines.abroad:'United first, then any airline'),
           inp('premium','Pay more for them, per person ($ or %)',d.airlines?d.airlines.premium.replace(' per person',''):'75')),
-        h('span',{style:{fontSize:12,color:'#9aa9cc'}},props.trip.startDate+' → '+props.trip.endDate+'. ARIA fills only what’s still blank in its Watchlist; anything you typed there stays.'),
+        h('span',{style:{fontSize:12,color:'#9aa9cc'}},props.trip.startDate+' → '+props.trip.endDate+(form.edit?'. Change what you like: ARIA puts the changes in its Watchlist on its next run.':'. ARIA fills only what’s still blank in its Watchlist; anything you typed there stays.')),
         err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err),
-        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');if(props.onCancel)props.onCancel();})))
-    :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
-        h('span',{style:{fontSize:13,color:'#b8c3e0'}},row&&row.status==='draft'?'ARIA has this trip as a Draft: it isn’t pricing it yet.':'ARIA isn’t watching these flights.'),
-        btn('🧭 Watch with ARIA','ts-aria-watch',function(){setForm(Object.assign({},d.draft||{}));},true)),
-    err&&!form&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?(form.edit?'Saving…':'Asking…'):(form.edit?'Save changes':'Ask ARIA to watch'),'ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');if(props.onCancel)props.onCancel();})));}}
 // Unbooked nights in runs: one stay request per run (issue #238). missing: the night dates with no place to sleep.
 function tsNightRuns_(missing){var runs=[];(missing||[]).slice().sort().forEach(function(d){var r=runs[runs.length-1];if(r&&tsAddDays_(r.to,1)===d){r.to=d;r.nights++;}else runs.push({from:d,to:d,nights:1});});return runs;}
 // Hotels for the open nights, watched by ARIA (issue #238): each run of nights with no place to sleep gets
@@ -2442,7 +2451,7 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var booked=w.
     !booked&&w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
     idea&&idea.idea&&h('span',{style:{fontSize:12,color:TI.acc}},'From the trip idea "'+idea.idea+'"'),
     !booked&&w.notes&&h('span',{className:'aria-notes',style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
-    w.status==='draft'&&w.tripId&&props.apiUrl&&h(AriaDraftWatch,{row:w,requests:props.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:props.onChange||function(){}}),
+    (w.status==='draft'||w.status==='watching')&&w.tripId&&props.apiUrl&&h(AriaDraftWatch,{row:w,requests:props.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:props.onChange||function(){}}),
     latest&&latest.link&&h('a',{href:latest.link,target:'_blank',rel:'noopener noreferrer',className:'aria-link',style:{fontSize:13,fontWeight:600,color:TI.acc,alignSelf:'flex-start',minHeight:32,display:'inline-flex',alignItems:'center'}},'Open this fare ↗'));}
 
 // A Draft card's way to watch: the trip Summary's own form (TsAriaFlights), filled by trip_aria on
@@ -2454,12 +2463,15 @@ function AriaDraftWatch(props){var h=React.createElement;var w=props.row;var _d=
   var open=function(){setBusy('open');setErr('');apiGet(props.apiUrl,props.apiToken,{action:'trip_aria',tripId:trip.tripId,tripKey:trip.tripKey,label:trip.label,startDate:trip.startDate,endDate:trip.endDate})
     .then(function(r){setBusy('');if(r&&r.ok)setData(r);else setErr((r&&r.error)||'Couldn’t open the form');}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t open the form');});};
   var stop=function(){setBusy('stop');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',tripId:w.tripId}).then(function(){setBusy('');props.onChange();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t stop it');});};
-  if(data)return h(TsAriaFlights,{data:Object.assign({},data,{row:null,request:null,configured:true}),ends:null,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,initialForm:Object.assign({},data.draft||{}),
+  var watching=w.status==='watching';
+  if(data)return h(TsAriaFlights,{data:Object.assign({},data,{row:null,request:null,configured:true}),ends:null,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,initialForm:watching?ariaEditForm_(w,req):Object.assign({},data.draft||{}),
     onCancel:function(){setData(null);},reload:function(){setData(null);props.onChange();}});
   return h('div',{className:'aria-draft-watch',style:{display:'flex',flexDirection:'column',gap:6}},
-    req?h('span',{className:'aria-draft-asked',style:{fontSize:13,lineHeight:1.45,color:TI.acc}},'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It moves this to Watching on its next 06:52 run.'):null,
+    watching?(req&&req.changes?h('span',{className:'aria-changes',style:{fontSize:12,lineHeight:1.45,color:TI.acc}},'Changes sent '+req.changes+'. ARIA applies them on its next 06:52 run.'):null)
+    :req?h('span',{className:'aria-draft-asked',style:{fontSize:13,lineHeight:1.45,color:TI.acc}},'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It moves this to Watching on its next 06:52 run.'):null,
     h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-      req?h('button',{type:'button',className:'aria-draft-stop',disabled:!!busy,onClick:stop,style:Object.assign(tiBtn_(),{minHeight:40})},busy==='stop'?'Stopping…':'Stop watching')
+      watching?h('button',{type:'button',className:'aria-change',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'✎ Change')
+      :req?h('button',{type:'button',className:'aria-draft-stop',disabled:!!busy,onClick:stop,style:Object.assign(tiBtn_(),{minHeight:40})},busy==='stop'?'Stopping…':'Stop watching')
       :h('button',{type:'button',className:'aria-draft-watch-btn',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'🧭 Watch with ARIA')),
     err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
 

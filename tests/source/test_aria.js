@@ -52,7 +52,7 @@ const S = vm.createContext({
   Logger: { log: m => { S.logs.push(String(m)); } },
   logs: [],
   TABS: { TRIP_META: 'TripMeta', ARIA_REQUESTS: 'ARIA Requests' }, TRIP_META_HEADERS: new Array(11).fill(''),
-  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
+  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night', 'Paid Per Person', 'Reprice Until', 'Changes'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
 });
 S.getSpreadsheet = () => ({ getSheetByName: () => tab([new Array(11).fill('h'), ['2027-07-01|Beach drive', '', '', '', '', '', '', 'Driving', '', '', '']]) });
 S.readTripRegistry_ = () => ({ rows: [
@@ -426,6 +426,16 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   check('…asking again refreshes the one request', RQ.length === 2 && RQ[1][7] === 'MDW' && RQ[1][15] === 400);
   status = Object.assign({}, status, { requests: run('ariaReadRequests_()') });
   check('the trip then shows its request', run(q).request && run(q).request.dests === 'MDW');
+  const before = RQ[1].slice();
+  const e1 = run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", edit: true, ceiling: "300", flexDays: "2" })');
+  check('a change keeps the request: same ID, Ref and Created, one row', e1.ok && RQ.length === 2 && RQ[1][0] === before[0] && RQ[1][2] === before[2] && RQ[1][17] === before[17], JSON.stringify(RQ[1]));
+  check('…what it left blank stays (airports, travelers)', RQ[1][7] === 'MDW' && RQ[1][6] === 'IAD' && RQ[1][15] === 300 && RQ[1][19] === 2, JSON.stringify(RQ[1]));
+  check('…and Changes says only what moved, dated', /^\d{4}-\d{2}-\d{2}: Ceiling Per Person 400→300; Flex Days blank→2$/.test(String(RQ[1][26])), String(RQ[1][26]));
+  const e2 = run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", edit: true, ceiling: "300" })');
+  check('…a change that changes nothing writes nothing', e2.ok && e2.unchanged === true && /Ceiling Per Person 400→300/.test(String(RQ[1][26])));
+  run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", origins: "IAD", dests: "MDW", ceiling: "400" })');
+  check('…an ordinary ask keeps the last Changes', /Ceiling Per Person 400→300/.test(String(RQ[1][26])) && RQ[1][15] === 400, JSON.stringify(RQ[1]));
+  check('the pure change list', run('ariaRequestChanges_({ ceiling: 360, dests: "ORD" }, { ceiling: 300, dests: "ORD", flexDays: 1 })') === 'Ceiling Per Person 360→300; Flex Days blank→1' && run('ariaRequestChanges_({ ceiling: 3 }, { ceiling: 3 })') === '');
   run('webWatchAriaRequest_({ tripId: "TRIP-ZZZ", tripKey: "2027-08-01|Other", startDate: "2027-08-01", endDate: "2027-08-03", dests: "SEA" })');
   check('Stop watching withdraws it by trip, and only that trip', run('webWithdrawAriaRequest_({ tripId: "TRIP-CHI" })').ok && RQ[1][16] === 'Withdrawn' && RQ.find(r => r[3] === 'TRIP-ZZZ')[16] === 'Active');
   run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: "ORD" })');
@@ -500,7 +510,7 @@ console.log('\nairline preference: United first, Star Alliance abroad, within a 
   check('…or what was typed for this trip', run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').airlinePref === 'Lufthansa only' && run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').premium === '$50 per person');
   S.getConfigValues = () => ({});
   const row = run('ariaRequestToRow_({ id: "REQ-1", kind: "watch", status: "active", airlinePref: "United (UA) first, then any airline", premium: "$75 per person" })');
-  check('the request row carries the airline columns ARIA reads, then Place and Ceiling Per Night (#238), then Paid Per Person and Reprice Until (#250)', row.length === 26 && row[20] === 'United (UA) first, then any airline' && row[21] === '$75 per person' && run('ariaRequestFromRow_')(row).airlinePref === 'United (UA) first, then any airline');
+  check('the request row carries the airline columns ARIA reads, then Place and Ceiling Per Night (#238), then Paid Per Person and Reprice Until (#250), then Changes', row.length === 27 && row[20] === 'United (UA) first, then any airline' && row[21] === '$75 per person' && run('ariaRequestFromRow_')(row).airlinePref === 'United (UA) first, then any airline');
   check('the watch and scout requests are given the rule', /ariaPrefFor_\(dests, String\(body\.airlinePref/.test(SRC) && /var ap = ariaPrefFor_\(req\.dests, '', ''\)/.test(SRC));
 }
 
@@ -527,7 +537,7 @@ const cr = code => vm.runInContext(code, C);
 }
 
 console.log('\nwiring');
-check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night', 'Paid Per Person', 'Reprice Until'];") !== -1);
+check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP', 'Place', 'Ceiling Per Night', 'Paid Per Person', 'Reprice Until', 'Changes'];") !== -1);
 check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch', (() => { const R = fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8'); const i = R.indexOf('function hourlyCheck() {'), a = R.indexOf('maybeSyncAriaFlags_(new Date());', i), b = R.indexOf("reminders_enabled", i); return i !== -1 && a !== -1 && a < b; })());
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));

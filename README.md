@@ -705,6 +705,13 @@ What VERA does:
 
 What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
 
+**Changing a watch ARIA already runs.** A Watching trip's card (on the ARIA tab, and the trip Summary's FLIGHTS · ARIA box) has **✎ Change**. It opens the watch form filled from what ARIA watches now: airports, travelers, ceiling, flex days, airlines and premium. **Save changes** posts `aria_request_watch` with `edit: true` and only the fields that moved; the server keeps the rest.
+- The request keeps its Request ID, Ref and Created.
+- A new **Changes** column says what moved, dated: "2026-11-21: Ceiling Per Person 360→300; Flex Days 1→2". A change that changes nothing writes nothing.
+- The card shows "Changes sent …" until ARIA's next run.
+
+What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
+
 **Not built yet:** the VERA app push (Firebase).
 
 ### Notes (`Notes.js`, `NotesTab`, `LinkedNotes`, #252)
@@ -2412,6 +2419,13 @@ What VERA does:
 - It posts "Price drop after booking" when one is lower than what was paid by at least `aria_rebook_min_saving` ($50 a person). The post shows the saving each and in total, the route, an Open link, and a reminder to check the airline's change rules. It posts once per new low, never after the trip leaves, and counts against ARIA's act-now cap.
 
 What ARIA needs: its task must price those trips daily. The block to paste into ARIA's prompt is in `docs/guides/aria-rebook-check.md`.
+
+**Changing a watch ARIA already runs.** A Watching trip's card (on the ARIA tab, and the trip Summary's FLIGHTS · ARIA box) has **✎ Change**. It opens the watch form filled from what ARIA watches now: airports, travelers, ceiling, flex days, airlines and premium. **Save changes** posts `aria_request_watch` with `edit: true` and only the fields that moved; the server keeps the rest.
+- The request keeps its Request ID, Ref and Created.
+- A new **Changes** column says what moved, dated: "2026-11-21: Ceiling Per Person 360→300; Flex Days 1→2". A change that changes nothing writes nothing.
+- The card shows "Changes sent …" until ARIA's next run.
+
+What ARIA needs: by default it fills only blank Watchlist fields. To make it overwrite the fields named in Changes, paste the block in `docs/guides/aria-request-changes.md` into its prompt.
 
 **Not built yet:** the VERA app push (Firebase).
 
