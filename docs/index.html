@@ -8587,7 +8587,7 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
     h('div',{className:'pa-counts'},[['Running out ≤ '+days+' d',k.soon,k.soon?' hot':''],['Tracked',k.tracked,''],['On the list',k.onList,'']].map(function(x){return h('div',{key:x[0],className:'pa-count'+x[2]},h('b',null,x[1]),h('span',null,x[0]));})),
     err&&h('div',{className:'pa-err'},err),msg&&h('div',{className:'pa-msg',role:'status'},msg),
     (data.onHand||[]).length?h('div',{className:'pa-sect'},'On hand now · '+data.onHand.length):null,
-    (data.onHand||[]).map(function(x){return h('div',{key:x.id,className:'pa-row pa-oh'+(x.useSoon?' soon':''),'data-oh':x.id},
+    (data.onHand||[]).map(function(x){return h('div',{key:x.id,className:'pa-row pa-oh'+(x.useSoon?' ohsoon':''),'data-oh':x.id},
       h('span',{className:'pa-main'},h('b',null,x.item,x.useSoon?h('span',{className:'pa-when'},'use soon'):null),h('small',null,x.added?'Since '+paShort_(x.added):'This week')),
       h('button',{type:'button',className:'btn btn-primary pa-used',disabled:!!busy,'aria-label':'Used it: '+x.item,onClick:function(){used(x,'used');}},busy===x.id?'Saving…':'✓ Used it'),
       h('button',{type:'button',className:'btn pa-gone sm',disabled:!!busy,'aria-label':'Not here any more: '+x.item,title:'Not here any more',onClick:function(){used(x,'removed');}},'×'));}),
