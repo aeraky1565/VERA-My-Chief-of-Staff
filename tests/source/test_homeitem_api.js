@@ -36,6 +36,7 @@ function run(fn, sheet, params) {
     HOME_ITEM_HEADERS: HDRS,
     getSpreadsheet: () => ({ getSheetByName: n => n === 'Home Items' ? sheet : null }),
     Number, String, parseInt, isNaN, Error, Object,
+    tgAny_: () => false,   // no tech fields in these requests (TechGear.js, tested in test_techgear.js)
   };
   vm.createContext(ctx);
   vm.runInContext(extractFn(fn) + '\nRESULT = ' + fn + '({ parameter: P });',
