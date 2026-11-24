@@ -203,6 +203,8 @@ function doGet(e) {
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
       case 'home_item_links':       return jsonOut_(webHomeItemLinks_(e));     // HomeSteward.js
       case 'home_item_snooze':      return jsonOut_(webHomeItemSnooze_(e));    // HomeSteward.js
+      case 'tech_item_save':        return jsonOut_(webTechItemSave_(e));      // TechGear.js
+      case 'tech_support_lookup':   return jsonOut_(webTechSupportLookup_(e)); // TechGear.js
       case 'ideas':                 return jsonOut_(webGetIdeas_());
       case 'add_idea':              return jsonOut_(webAddIdea_(e));
       case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
@@ -3848,7 +3850,8 @@ function webGetHomesteward_() {
   var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
   // Up to Manual (HomeSteward.js: Receipt and Manual follow Notes).
-  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(HS_MANUAL_COL_, sheet.getMaxColumns())).getValues();
+  // …and the tech columns after them (TechGear.js).
+  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.min(TG_LAST_COL_, sheet.getMaxColumns())).getValues();
   var today = new Date(); today.setHours(0, 0, 0, 0);
   var tz    = Session.getScriptTimeZone();
 
@@ -3861,11 +3864,11 @@ function webGetHomesteward_() {
     try { var d = new Date(v); return Math.round((d - today) / 86400000); } catch (ex) { return null; }
   }
 
-  var items = [];
+  var items = [], todayIso = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   data.forEach(function(row, idx) {
     var item = String(row[0] || '').trim();
     if (!item) return;
-    items.push({
+    items.push(Object.assign({
       row:            idx + 2,
       item:           item,
       category:       String(row[1] || '').trim(),
@@ -3879,7 +3882,7 @@ function webGetHomesteward_() {
       manual:         String(row[9] || '').trim(),
       warrantyDays:   daysDiff(row[3]),
       serviceDays:    daysDiff(row[5]),
-    });
+    }, tgFields_(row, todayIso)));
   });
   return { ok: true, items: items };
 }
@@ -3943,6 +3946,12 @@ function webAddHomeItem_(e) {
     if (!hsLinkOk_(p.receipt) || !hsLinkOk_(p.manual)) return { ok: true, item: item, action: 'created', warning: 'The links weren’t saved: a link has to start with http:// or https://' };
     hsEnsureLinkCols_(sheet);
     sheet.getRange(sheet.getLastRow(), HS_RECEIPT_COL_, 1, 2).setValues([[(p.receipt || '').trim(), (p.manual || '').trim()]]);
+  }
+  // A tech item's own fields (TechGear.js), only when given.
+  if (tgAny_(p)) {
+    var tech;
+    try { tech = tgClean_(p); } catch (err) { return { ok: true, item: item, action: 'created', warning: 'The tech details weren’t saved: ' + err.message }; }
+    tgWrite_(sheet, sheet.getLastRow(), tech);
   }
   return { ok: true, item: item, action: 'created' };
 }

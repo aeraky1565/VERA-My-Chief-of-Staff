@@ -69,6 +69,8 @@ var FEATURES_ = [
   { k: 'takeouts', n: 'Takeouts', e: '🥡', a: 'Home & food', kind: 'Screens', d: 'Takeout log and favourites.', t: ['Screen'], v: 'sees' },
   { k: 'home_upkeep', n: 'Home upkeep reminders', e: '🛠️', a: 'Home & food', kind: 'Background checks', d: 'Filters, gutters and service visits coming due.', t: ['Nightly step', 'Flag', 'Slack'], v: 'sees',
     steps: ['checkHomeServiceOverdue_', 'hfSyncUpkeepReminders_'], notif: ['home_service'] },
+  { k: 'tech_gear', n: 'Tech gear reminders', e: '💻', a: 'Home & food', kind: 'Background checks', d: 'Protection plans ending, security updates ending and the trade-in window for laptops, tablets, phones and watches.', t: ['Nightly step', 'Flag'], v: 'sees',
+    steps: ['checkTechGear_'], cfg: [{ c: 'tech_plan_days_ahead', l: 'Plan ending', type: 'num', def: '30', u: 'days ahead' }, { c: 'tech_support_days_ahead', l: 'Support ending', type: 'num', def: '90', u: 'days ahead' }, { c: 'tech_tradein_days_ahead', l: 'Trade-in window', type: 'num', def: '180', u: 'days before support ends' }] },
   { k: 'coupons', n: 'Coupons', e: '🎟️', a: 'Home & food', kind: 'Background checks', d: 'Expiring coupons, scratched off, then removed.', t: ['Nightly step', 'Slack'], v: 'sees',
     steps: ['checkExpiringCoupons_', 'purgeExpiredCoupons_'], notif: ['coupon_expiry'] },
   { k: 'usps_scan', n: 'USPS mail scan', e: '📬', a: 'Home & food', kind: 'Background checks', d: 'Reads Informed Delivery emails for today’s mail and packages.', t: ['Daily', 'Email inbox'], v: 'na',
