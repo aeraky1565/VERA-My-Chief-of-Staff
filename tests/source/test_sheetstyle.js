@@ -22,7 +22,8 @@ function fakeSheet(name, headers, log, extra) {
   const sh = {
     _name: name, _rules: rules, _index: 0,
     getName: () => name, getMaxRows: () => 50, getLastColumn: () => headers.length,
-    getIndex: () => sh._index,
+    getIndex: () => sh._index, _hidden: !!(extra && extra.hidden),
+    isSheetHidden: () => sh._hidden, hideSheet: () => { log.push([name, 'hide']); sh._hidden = true; }, showSheet: () => { log.push([name, 'show']); sh._hidden = false; },
     getBandings: () => bandings.map(b => ({ remove: () => { log.push([name, 'removeBanding']); bandings = bandings.filter(x => x !== b); } })),
     getConditionalFormatRules: () => sh._rules,
     setConditionalFormatRules: r => { log.push([name, 'setRules', r.length]); sh._rules = r; },
@@ -87,7 +88,14 @@ console.log('\nareas and tab order');
   const o = run(c, 'ssOrder_(__n)', { __n: names });
   check('Config stays first', o[0] === 'Config', J(o));
   check('Access is always second, right after Config', o[1] === 'Access', J(o));
-  check('…still second when there is no Config tab', run(c, 'ssOrder_(__n)', { __n: ['Bills', 'Access', 'Flags'] })[1] === 'Access');
+  check('…right after Config: first when there is no Config tab, then Flags', J(run(c, 'ssOrder_(__n)', { __n: ['Bills', 'Access', 'Flags'] })) === J(['Access', 'Flags', 'Bills']));
+  check('Flags is pinned third whatever its case', J(run(c, 'ssOrder_(__n)', { __n: ['Tasks', 'FLAGS', 'Access', 'CONFIG'] })) === J(['CONFIG', 'Access', 'FLAGS', 'Tasks']));
+  check('Flags is always third', o[2] === 'Flags', J(o));
+  check('within a group, tabs follow the group\'s own list (Tasks, Projects, Chores, Ideas, PTO)', J(o.slice(3, 8)) === J(['Tasks', 'Projects', 'Chores', 'Ideas', 'PTO']), J(o));
+  const live = ['Flag Quiet', 'Appointment Contacts', 'Eye Rx', 'Eye Usual', 'Eye Orders', 'Coverage', 'Coverage Questions', 'Perk Log', 'Perks', 'Run Log'];
+  check('every tab in the live sheet has a group (none left ungrouped)', live.every(n => run(c, 'ssAreaOf_(__t)', { __t: n }) !== null), J(live.filter(n => run(c, 'ssAreaOf_(__t)', { __t: n }) === null)));
+  check('…Flag Quiet with Today, the Eyes and Coverage tabs with Health, Run Log with VERA\'s own', run(c, 'ssAreaOf_("Flag Quiet").id') === 'today' && run(c, 'ssAreaOf_("Eye Rx").id') === 'health' && run(c, 'ssAreaOf_("Perks").id') === 'health' && run(c, 'ssAreaOf_("Run Log").id') === 'internal');
+  check('a tab no group names is still coloured, as Other', run(c, 'ssGroupOf_("Scratch").id') === 'other' && /^#[0-9a-f]{6}$/i.test(run(c, 'ssGroupOf_("Scratch").color')) && run(c, 'ssPlan_([{name:"Scratch",headers:["A"],maxRows:5}])').ops.some(x => x.op === 'tabColor' && x.color === run(c, 'SS_OTHER_.color')));
   check('areas in order: today, travel, money, home, health, career, life', o.indexOf('Flags') < o.indexOf('Trips') && o.indexOf('Trips') < o.indexOf('Bills') &&
         o.indexOf('Bills') < o.indexOf('Recipes') && o.indexOf('Recipes') < o.indexOf('Gym Log') && o.indexOf('Gym Log') < o.indexOf('Career Ladder') &&
         o.indexOf('Career Ladder') < o.indexOf('Goals'), J(o));
@@ -169,6 +177,36 @@ console.log('\napplying it');
   check('…and leaves no half-done marker behind', !c.__props.SS_STYLE_DONE);
 }
 
+console.log('\nVERA\'s own tabs go last and are hidden');
+{
+  const c = ctx();
+  const order = ['System Log', 'Config', 'Run Log', 'Bills', 'Career Wins', 'Flags'];
+  const sheets = {};
+  order.forEach((n, i) => {
+    sheets[n] = fakeSheet(n, ['A', 'Amount'], c.log, { hidden: n === 'System Log' || n === 'Career Wins' });
+    sheets[n]._index = i + 1;
+  });
+  const moves = [];
+  const ss = {
+    getSheets: () => order.map(n => sheets[n]), getSheetByName: n => sheets[n],
+    setActiveSheet: sh => { ss._active = sh; c.log.push([sh.getName(), 'active']); },
+    moveActiveSheet: i => { if (ss._active._hidden) c.log.push(['', 'MOVED HIDDEN']); moves.push([ss._active.getName(), i]); },
+  };
+  c.__ss = ss;
+  run(c, 'ssApply_(__ss)');
+  const plan = run(c, 'ssOrder_(__n)', { __n: order });
+  const tail = plan.slice(-2);
+  check('the internal tabs come last in the order', J(tail.slice().sort()) === J(['Run Log', 'System Log']), J(plan));
+  check('both internal tabs end hidden', sheets['System Log']._hidden && sheets['Run Log']._hidden);
+  check('a hidden internal tab is shown just to move it, then hidden again',
+    c.log.findIndex(x => x[0] === 'System Log' && x[1] === 'show') < c.log.findIndex(x => x[0] === 'System Log' && x[1] === 'hide') && moves.some(m => m[0] === 'System Log'));
+  check('no tab is moved while hidden', !c.log.some(x => x[1] === 'MOVED HIDDEN'));
+  check('a tab hidden by hand elsewhere stays hidden and is not moved', sheets['Career Wins']._hidden && !moves.some(m => m[0] === 'Career Wins') && !c.log.some(x => x[0] === 'Career Wins' && x[1] === 'show'));
+  check('Bills and Config stay visible', !sheets.Bills._hidden && !sheets.Config._hidden);
+  const lastActive = c.log.filter(x => x[1] === 'active').pop();
+  check('the run ends on Config', lastActive && lastActive[0] === 'Config', J(lastActive));
+}
+
 console.log('\na long run stops in time and resumes');
 {
   let now = 0;
@@ -198,6 +236,10 @@ console.log('\nnew tabs');
   const cfg = fakeSheet('Config', ['Setting', 'Value'], c.log); c.__cfg = cfg; const before = c.log.length;
   run(c, 'ssStyleNewTab_(__cfg, 2)');
   check('…but never Config', c.log.length === before);
+  check('…and an ordinary new tab stays visible', !sh._hidden);
+  const rl = fakeSheet('Memory Notes', ['A', 'B'], c.log); c.__rl = rl;
+  run(c, 'ssStyleNewTab_(__rl, 2)');
+  check('a new internal tab starts hidden', rl._hidden === true);
   check('ensureSheet styles a tab it creates', /setFrozenRows\(1\);\s*\n\s*\/\/[^\n]*\n\s*if \(typeof ssStyleNewTab_ === 'function'\) ssStyleNewTab_\(sheet, headers\.length\);/.test(CODE));
   check('the style never runs in the nightly run', !/styleVeraSheet|ssApply_/.test(CODE));
 }

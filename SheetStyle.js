@@ -11,7 +11,9 @@
 //   - every data tab: a navy header row (white, bold), row 1 frozen, column A
 //     frozen when a tab has more than 8 columns, and white / light-blue banding;
 //   - a tab colour per area, and the tabs ordered by area (Config first, Access
-//     second, VERA's internal tabs last and visible);
+//     second, Flags third, every other tab in a coloured group, "Other" for a tab
+//     no group names, VERA's internal grey tabs last and hidden, since VERA reads
+//     them by name; Sheets can't italicise a tab name);
 //   - per column, by header name: money as $#,##0.00, prose wrapped, JSON and ID
 //     lists clipped;
 //   - colours: Urgency High / Medium / Low; Status done / open / closed / overdue;
@@ -40,7 +42,6 @@ var SS_NAVY_  = '#1a1a2e';
 var SS_WHITE_ = '#ffffff';
 var SS_BAND_  = '#f3f6fb';
 var SS_SKIP_  = ['Config', 'Access'];
-var SS_FIXED_ = { Config: 0, Access: 1 };    // zero-based tab positions that never change: Config 1st, Access 2nd
 
 // Tab names are matched without regard to case, the way Google's getSheetByName
 // matches them: the live sheet calls its Config tab "CONFIG", and an exact match
@@ -56,7 +57,7 @@ function ssFind_(names, want) {
 
 // Areas in tab order. A tab is matched by exact name, then by prefix.
 var SS_AREAS_ = [
-  { id: 'today',    color: '#c9a84c', tabs: ['Flags', 'Tasks', 'Projects', 'Summaries', 'Metrics', 'Morning Routine', 'Chores',
+  { id: 'today',    color: '#c9a84c', tabs: ['Flags', 'Flag Quiet', 'Tasks', 'Projects', 'Summaries', 'Metrics', 'Morning Routine', 'Chores',
     'ChoresForOthers', 'Ideas', 'Email Follow-ups', 'Important Dates', 'Monthly Reviews', 'PTO', 'PTO Memory'] },
   { id: 'travel',   color: '#3d7be0', tabs: ['Trips', 'TripMeta', 'Itinerary', 'PackingItems', 'LuggageProfiles', 'Bags',
     'Traveler Items', 'Traveler Profiles', 'Gift Place Ideas', 'TripRecommendations', 'TravelLegs', 'Bucket List',
@@ -69,13 +70,13 @@ var SS_AREAS_ = [
   { id: 'home',     color: '#e07b39', tabs: ['HouseholdInfo', 'Home Items', 'Vehicles', 'On Hand', 'Purchase History',
     'Grocery Runs', 'Meal Plan', 'Recipes'],
     prefixes: ['Takeout ', 'NEIGHBORHOOD_'] },
-  { id: 'health',   color: '#d9548f', tabs: ['Wellness Log', 'Gym Log', 'Prescriptions', 'Family Planning', 'Cycle Log',
-    'Wish List', 'Gatherings'],
+  { id: 'health',   color: '#d9548f', tabs: ['Wellness Log', 'Gym Log', 'Prescriptions', 'Appointment Contacts', 'Eye Rx', 'Eye Usual',
+    'Eye Orders', 'Coverage', 'Coverage Questions', 'Perks', 'Perk Log', 'Family Planning', 'Cycle Log', 'Wish List', 'Gatherings'],
     prefixes: ['FP ', 'Gift '] },
   { id: 'career',   color: '#7b5cd6', tabs: [], prefixes: ['Career '] },
   { id: 'life',     color: '#1f9e9e', tabs: ['Goals', 'Habits', 'HabitLog', 'Books', 'Courses', 'Skills', 'Shared Interests', 'Resources'],
     prefixes: ['Experiment'] },
-  { id: 'internal', color: '#8a94a6', tabs: ['System Log', 'Processed Emails', 'SignalLearning', 'Generation Inputs', 'Reminders Memory', 'VERA State'],
+  { id: 'internal', color: '#8a94a6', tabs: ['System Log', 'Run Log', 'Processed Emails', 'SignalLearning', 'Generation Inputs', 'Reminders Memory', 'VERA State'],
     prefixes: ['Memory '] },
 ];
 
@@ -112,26 +113,33 @@ function ssAreaOf_(name) {
   return null;
 }
 
+// A tab in no area still gets grouped and coloured: "Other", just before VERA's internal tabs.
+var SS_OTHER_ = { id: 'other', color: '#a3725a', tabs: [] };
+
+/** Pure: a tab's area, or Other when no area names it. */
+function ssGroupOf_(name) { return ssAreaOf_(name) || SS_OTHER_; }
+
 /**
- * Pure: the tab order. Config first; the areas in order; tabs in no area after the
- * last named area and before VERA's internal tabs, in their current order; Access
- * always second, right after Config. names: the current order.
+ * Pure: the tab order. Config first, Access second, Flags third; then the areas in
+ * order, each in the order its list names its tabs (tabs matched by prefix after
+ * those, in their current order); tabs in no area grouped as Other before VERA's
+ * internal tabs, in their current order. names: the current order.
  */
 function ssOrder_(names) {
-  var rest = (names || []).filter(function(n) { return !ssSkip_(n); });
+  var flags = ssFind_(names, 'Flags');
+  var rest = (names || []).filter(function(n) { return !ssSkip_(n) && n !== flags; });
   var rank = function(n) {
     var a = ssAreaOf_(n);
-    if (!a) return SS_AREAS_.length - 1.5;   // before internal
+    if (!a) return SS_AREAS_.length - 1.5;   // Other: before internal
     return SS_AREAS_.indexOf(a);
   };
-  var sorted = rest.map(function(n, i) { return { n: n, r: rank(n), i: i }; })
-    .sort(function(x, y) { return x.r - y.r || x.i - y.i; })
+  var within = function(n) { var a = ssAreaOf_(n), k = a ? a.tabs.indexOf(n) : -1; return k === -1 ? 1000 : k; };
+  var sorted = rest.map(function(n, i) { return { n: n, r: rank(n), w: within(n), i: i }; })
+    .sort(function(x, y) { return x.r - y.r || x.w - y.w || x.i - y.i; })
     .map(function(x) { return x.n; });
-  var out = sorted.slice();
-  var config = ssFind_(names, 'Config'), access = ssFind_(names, 'Access');
-  if (config) out.unshift(config);
-  if (access) out.splice(Math.min(SS_FIXED_.Access, out.length), 0, access);
-  return out;
+  var out = [];
+  [ssFind_(names, 'Config'), ssFind_(names, 'Access'), flags].forEach(function(n) { if (n) out.push(n); });
+  return out.concat(sorted);
 }
 
 /** Pure: how a column is formatted, from its header: 'money' | 'prose' | 'code' | ''. */
@@ -177,8 +185,7 @@ function ssPlan_(tabs) {
     ops.push({ op: 'header', sheet: t.name, cols: cols });
     ops.push({ op: 'freeze', sheet: t.name, rows: 1, cols: cols > 8 ? 1 : 0 });
     ops.push({ op: 'band', sheet: t.name, cols: cols, rows: rows });
-    var area = ssAreaOf_(t.name);
-    if (area) ops.push({ op: 'tabColor', sheet: t.name, color: area.color });
+    ops.push({ op: 'tabColor', sheet: t.name, color: ssGroupOf_(t.name).color });
     headers.forEach(function(h, i) {
       var kind = ssColumnKind_(h);
       if (kind) ops.push({ op: 'format', sheet: t.name, col: i + 1, kind: kind, rows: rows });
@@ -291,12 +298,21 @@ function ssApply_(ss) {
   if (!remaining.length) {
     plan.order.forEach(function(name, i) {
       var sh = ss.getSheetByName(name);
-      if (!sh || sh.getIndex() === i + 1) return;
-      // A hidden tab (VERA State) is left where it is: activating it to move it would show it.
-      if (sh.isSheetHidden && sh.isSheetHidden()) return;
-      ss.setActiveSheet(sh);
-      ss.moveActiveSheet(i + 1);
+      if (!sh) return;
+      // VERA's own (grey) tabs go last and are hidden: VERA reads them by name, so hidden
+      // changes nothing for it. A tab hidden by hand anywhere else is left where it is.
+      var internal = ssGroupOf_(name).id === 'internal';
+      var hidden = !!(sh.isSheetHidden && sh.isSheetHidden());
+      if (sh.getIndex() !== i + 1) {
+        if (hidden && !internal) return;
+        if (hidden) sh.showSheet();   // a hidden tab can't be made active to move it
+        ss.setActiveSheet(sh);
+        ss.moveActiveSheet(i + 1);
+      }
+      if (internal && !(sh.isSheetHidden && sh.isSheetHidden())) sh.hideSheet();
     });
+    var cfg = ss.getSheetByName('Config');
+    if (cfg) ss.setActiveSheet(cfg);   // end on Config, the first tab
     ordered = true;
     props.deleteProperty(SS_PROGRESS_PROP_);
   } else {
@@ -318,8 +334,8 @@ function ssStyleNewTab_(sheet, cols) {
         .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false)
         .setHeaderRowColor(SS_NAVY_).setFirstRowColor(SS_WHITE_).setSecondRowColor(SS_BAND_);
     }
-    var area = ssAreaOf_(name);
-    if (area) sheet.setTabColor(area.color);
+    sheet.setTabColor(ssGroupOf_(name).color);
+    if (ssGroupOf_(name).id === 'internal' && !sheet.isSheetHidden()) sheet.hideSheet();   // VERA's own tabs start hidden
     if (cols > 8) sheet.setFrozenColumns(1);
   } catch (e) { Logger.log('ssStyleNewTab_: ' + e.message); }
 }
