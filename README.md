@@ -99,6 +99,8 @@ Two dashboards share one backend: the full dashboard (`docs/index.html`, built f
 | **Life** | Quick capture · Coming up · Growth (Now, Goals, Habits, Learning, Trials, Review) · Explore (Places, Trip lessons, Things we love, Ideas, Giving, Notes) |
 | **System** | Reference (Assistants, Documents) · Checks (Test, API health, Agent health, Run log, Trip IDs, Script Properties) · Settings (Notifications, Trip emails, Config, Feature flags, People & access) |
 
+**Practice logs from language apps (#259, `PracticeLogs.js`).** A language app such as ÉLISE keeps its own practice log in its own Sheet: a tab (default `Practice`) with a header row, one row per day, where VERA reads only `date` (yyyy-MM-dd), `minutes`, `theme` and `note`. Each night (step `plNightly_`, right after the Growth step), for the last 7 days, VERA logs each new day on the app's Growth goal with `lgLogPractice_`, which marks Growth's 8-week strip and the habit's year grid. If a day's minutes went up since the last run, it logs only the difference. What was sent is kept in the VERA State tab under `PRACTICE_LOG_SYNCED` for 60 days, so a rerun never counts twice. VERA never writes to the app's Sheet, and an unreadable Sheet is logged by tab name and skipped. To add an app, add one item to the Config row `practice_logs`: `[{"sheet": "<spreadsheet id>", "tab": "Practice", "goal": "GOAL-…"}]`.
+
 **Full dashboard Home.**
 - **Left column:**
   - **Today:** the shared Joint Chaos calendar (`get_todays_events`), with a chip for the next trip, or the days until home while you're on one.
@@ -4888,6 +4890,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `FamilyPlanning.js` · `Cycle.js` | One shared family plan; the cycle tracker under Trying |
 | `CareerCredentials.js` | Certifications and degrees, renewal reminders, shared with the job agent (#223) |
 | `Life.js` · `LifeGrowth.js` · `ComingUp.js` · `QuickCapture.js` | Life: Explore, Growth, Coming up and Quick capture (#222) |
+| `PracticeLogs.js` | Language-app practice logs (ÉLISE and later apps) read each night into a Growth goal (#259) |
 | `System.js` | The System tab's data |
 | `appsscript.json` | OAuth scopes: Sheets, Calendar, UrlFetch, Mail, Drive, Tasks, Triggers, External requests |
 | `docs/app.js` | **The dashboard source — edit this.** React app in `React.createElement` form (no JSX) |

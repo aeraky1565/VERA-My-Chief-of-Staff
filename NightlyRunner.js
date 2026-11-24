@@ -130,6 +130,7 @@ function nightlySteps_() {
     S('carCredNightly_', 3, function() { carCredNightly_(); }),
     S('tpNightly_', 3, function() { tpNightly_(); }),
     S('lgNightly_', 3, function() { lgNightly_(); }),
+    S('plNightly_', 3, function() { plNightly_(); }),   // language-app practice logs → Growth (#259)
     S('checkGenerationInputs_', 3, function() { checkGenerationInputs_(); }),
     S('seedWishListInitialsConfig_', 3, function() { seedWishListInitialsConfig_(); }),
     S('seedFlightPollConfig_', 3, function() { seedFlightPollConfig_(); }),

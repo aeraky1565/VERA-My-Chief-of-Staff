@@ -248,7 +248,7 @@ function veraStateProps_(bundle) {
 
 // ---- caches and histories: the hidden VERA State tab ------------------------------
 
-var VERA_STORE_KEYS_    = ['FLIGHT_STATUS_CACHE', 'FLIGHT_DAYS', 'EXPLORER_HISTORY', 'WKND_PLAN_HISTORY'];
+var VERA_STORE_KEYS_    = ['FLIGHT_STATUS_CACHE', 'FLIGHT_DAYS', 'EXPLORER_HISTORY', 'WKND_PLAN_HISTORY', 'PRACTICE_LOG_SYNCED'];
 var VERA_STORE_HEADERS_ = ['Key', 'Value', 'Updated'];
 var VERA_STORE_MAX_     = 45000;   // a cell holds 50,000 characters
 var _veraStoreCache_    = null;    // the tab's rows, read once per execution
