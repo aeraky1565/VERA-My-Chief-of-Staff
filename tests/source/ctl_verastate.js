@@ -32,7 +32,7 @@ const CONTROLS = [
   ['the weekend history back on its property', b => ({ 'WeekendPlanner.js': swap(b['WeekendPlanner.js'], "    veraStoreSet_('WKND_PLAN_HISTORY', JSON.stringify(updated));", "    PropertiesService.getScriptProperties().setProperty('WKND_PLAN_HISTORY', JSON.stringify(updated));") })],
   ['the watchdog stamp moved into the bundle', b => ({ 'MailCounter.js': swap(b['MailCounter.js'], "    props.setProperty('USPS_SCAN_START', new Date().toISOString());", "    mail.setProperty('USPS_SCAN_START', new Date().toISOString());") })],
   ['the tab left out of the styling', b => ({ 'SheetStyle.js': swap(b['SheetStyle.js'], ", 'Reminders Memory', 'VERA State'],", ", 'Reminders Memory'],") })],
-  ['the styling moves a hidden tab', b => ({ 'SheetStyle.js': swap(b['SheetStyle.js'], "      if (sh.isSheetHidden && sh.isSheetHidden()) return;\n", "") })],
+  ['the styling moves a hand-hidden tab', b => ({ 'SheetStyle.js': swap(b['SheetStyle.js'], "        if (hidden && !internal) return;\n", "") })],
 ];
 let allBit = true;
 CONTROLS.forEach(([name, mut]) => {

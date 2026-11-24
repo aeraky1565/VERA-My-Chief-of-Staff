@@ -11,7 +11,7 @@ const swap = (src, from, to) => { if (src.indexOf(from) === -1) throw new Error(
 const S = 'SheetStyle.js', W = 'WebApp.js', T = 'TripIds.js';
 const CONTROLS = [
   ['skip matches case exactly again', b => ({ [S]: swap(b[S], "  return SS_SKIP_.some(function(s) { return s.toLowerCase() === l; });", "  return SS_SKIP_.indexOf(name) !== -1;") })],
-  ['Config found only by its exact name', b => ({ [S]: swap(b[S], "  var config = ssFind_(names, 'Config'), access", "  var config = (names || []).indexOf('Config') !== -1 ? 'Config' : null, access") })],
+  ['Config found only by its exact name', b => ({ [S]: swap(b[S], "[ssFind_(names, 'Config'), ssFind_(names, 'Access'), flags]", "[((names || []).indexOf('Config') !== -1 ? 'Config' : null), ssFind_(names, 'Access'), flags]") })],
   ['new tabs skip by exact name', b => ({ [S]: swap(b[S], "    if (ssSkip_(name) || !cols) return;", "    if (SS_SKIP_.indexOf(name) !== -1 || !cols) return;") })],
   ['Config\'s first column not frozen again', b => ({ [S]: swap(b[S], "    if (sh.getFrozenColumns() !== 1) sh.setFrozenColumns(1);\n", "") })],
   ['the styling run doesn\'t restore Config', b => ({ [S]: swap(b[S], "function styleVeraSheet() {\n  restoreConfigTab_();", "function styleVeraSheet() {") })],

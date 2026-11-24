@@ -198,7 +198,7 @@ console.log('\nthe call sites');
         && /veraStoreGet_\(FLIGHT_DAYS_PROP_\)/.test(fl) && /veraStoreSet_\(FLIGHT_DAYS_PROP_/.test(fl) && !/props\.(?:get|set)Property\(FLIGHT_DAYS_PROP_/.test(fl));
   check('the two histories too', /veraStoreGet_\('EXPLORER_HISTORY'\)/.test(src('Reminders.js')) && /veraStoreSet_\('EXPLORER_HISTORY'/.test(src('Reminders.js'))
         && /veraStoreGet_\('WKND_PLAN_HISTORY'\)/.test(src('WeekendPlanner.js')) && /veraStoreSet_\('WKND_PLAN_HISTORY'/.test(src('WeekendPlanner.js')));
-  check('the styling never moves (and so never shows) a hidden tab', /if \(sh\.isSheetHidden && sh\.isSheetHidden\(\)\) return;\n\s*ss\.setActiveSheet\(sh\);/.test(src('SheetStyle.js')));
+  check('the styling leaves a hand-hidden tab alone, and shows an internal one only to move it', /if \(hidden && !internal\) return;\n\s*if \(hidden\) sh\.showSheet\(\);/.test(src('SheetStyle.js')));
   check('the tab is in TABS and styled with VERA\'s internal tabs', /VERA_STATE:\s*'VERA State'/.test(code) && /id: 'internal'[^\n]*'VERA State'/.test(src('SheetStyle.js')));
 }
 

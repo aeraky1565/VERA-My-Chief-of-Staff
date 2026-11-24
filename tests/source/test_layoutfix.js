@@ -30,7 +30,7 @@ console.log('\n(a) the Config tab, whatever its case');
   const names = ['Flags', 'Tasks', 'Trips', 'Bills', 'Career State', 'CONFIG', 'System Log', 'Access', 'Mystery Tab'];
   const order = vm.runInContext('ssOrder_(' + J(names) + ')', c);
   check('"CONFIG" goes first, under its own name', order[0] === 'CONFIG' && order.indexOf('Config') === -1, J(order));
-  check('…and "access" in any case keeps its fixed place', vm.runInContext('ssOrder_(' + J(names.map(n => n === 'Access' ? 'ACCESS' : n)) + ')', c).indexOf('ACCESS') === Math.min(13, names.length - 1));
+  check('…and "access" in any case is second', vm.runInContext('ssOrder_(' + J(names.map(n => n === 'Access' ? 'ACCESS' : n)) + ')', c).indexOf('ACCESS') === 1);
   const plan = vm.runInContext('ssPlan_(' + J(names.map(n => ({ name: n, maxRows: 10, headers: ['Setting', 'Value', 'What it does', 'Where it’s used'] }))) + ')', c);
   check('"CONFIG" and "Access" are never styled', !plan.ops.some(o => /^(config|access)$/i.test(o.sheet)), J(plan.ops.filter(o => /config|access/i.test(o.sheet))));
   check('…while other tabs are', plan.ops.some(o => o.sheet === 'Flags' && o.op === 'band'));
