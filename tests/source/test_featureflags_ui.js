@@ -62,7 +62,7 @@ const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ ke
       const groups = await page.$$eval('.ff-group h3', n => n.map(x => x.textContent));
       check(L + 'grouped by area, all nine', J(groups) === J(['Travel', 'Health', 'Home & food', 'Money', 'People & gifts', 'Work & career', 'Daily life', 'Assistants', 'System']), J(groups));
       const stats = await page.$$eval('.ff-stat', n => n.map(x => x.innerText.replace(/\s+/g, ' ')));
-      check(L + 'counts: features, on, off, paused', /^50 Features/i.test(stats[0]) && /1 Paused/i.test(stats[3]) && /2 Off/i.test(stats[2]), J(stats));
+      check(L + 'counts: features, on, off, paused', /^51 Features/i.test(stats[0]) && /1 Paused/i.test(stats[3]) && /2 Off/i.test(stats[2]), J(stats));
       check(L + 'a paused one says when it comes back, with Resume now', /Back Jan 2/i.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)) && /Resume now/.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)));
       check(L + 'last activity from the run times', /Last ran 2 h ago/.test(await page.$eval('.ff-row[data-k="gym_tracker"]', n => n.innerText)) && /Last ran 4 min ago/.test(await page.$eval('.ff-row[data-k="flight_status"]', n => n.innerText)));
       check(L + 'who sees it, shown only', /Victoria sees it/.test(await page.$eval('.ff-row[data-k="pantry"]', n => n.innerText)) && /Owner only/.test(await page.$eval('.ff-row[data-k="notes"]', n => n.innerText)));
@@ -133,7 +133,7 @@ const ROWS = Object.keys(CFG).map(k => ({ key: k, value: CFG[k] })).concat([{ ke
       console.log('\nFeature map ' + L);
       await mount('SysFeatureMap', FLAGS_FIT_OFF); await wait(250);
       const n0 = await page.$$eval('.fm-node', n => n.length);
-      check(L + 'the map draws settings, features and where you see them', n0 > 60 && (await page.$$eval('.fm-node.ft', n => n.length)) === 50 && (await page.$$eval('.fm-node.out', n => n.length)) > 5, n0);
+      check(L + 'the map draws settings, features and where you see them', n0 > 60 && (await page.$$eval('.fm-node.ft', n => n.length)) === 51 && (await page.$$eval('.fm-node.out', n => n.length)) > 5, n0);
       check(L + 'an off feature is dashed', await page.$eval('[data-mnode="fitness"]', n => n.classList.contains('off')));
       await page.click('[data-mnode="gym_tracker"]'); await wait(80);
       if (process.env.FF_SHOT) await page.screenshot({ path: process.env.FF_SHOT + '-map-' + width + '.png' });
