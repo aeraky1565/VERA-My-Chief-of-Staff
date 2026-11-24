@@ -86,7 +86,8 @@ console.log('\nareas and tab order');
     'Tasks', 'Projects', 'Access', 'PTO', 'Ideas', 'Chores'];
   const o = run(c, 'ssOrder_(__n)', { __n: names });
   check('Config stays first', o[0] === 'Config', J(o));
-  check('Access stays at position 14', o[13] === 'Access', J(o));
+  check('Access is always second, right after Config', o[1] === 'Access', J(o));
+  check('…still second when there is no Config tab', run(c, 'ssOrder_(__n)', { __n: ['Bills', 'Access', 'Flags'] })[1] === 'Access');
   check('areas in order: today, travel, money, home, health, career, life', o.indexOf('Flags') < o.indexOf('Trips') && o.indexOf('Trips') < o.indexOf('Bills') &&
         o.indexOf('Bills') < o.indexOf('Recipes') && o.indexOf('Recipes') < o.indexOf('Gym Log') && o.indexOf('Gym Log') < o.indexOf('Career Ladder') &&
         o.indexOf('Career Ladder') < o.indexOf('Goals'), J(o));
@@ -163,7 +164,7 @@ console.log('\napplying it');
   const fr = sheets.Flags._rules;
   check('a re-run drops only its own old rules and keeps hand-made ones', fr.indexOf(theirs) !== -1 && fr.indexOf(ours) === -1 && fr.length === 1 + 4, fr.length);
   check('money is formatted', log.some(x => x[0] === 'Bills' && x[1] === 'numberFormat' && x[2] === 2 && x[3] === '$#,##0.00'));
-  check('tabs are put in order: Config 1st, today before money; Access, already in place, is not moved', J(moves) === J([['Config', 1], ['Flags', 2], ['Bills', 3]]), J(moves));
+  check('tabs are put in order: Config 1st, Access 2nd, today before money; Flags, already in place, is not moved', J(moves) === J([['Config', 1], ['Access', 2], ['Bills', 4]]), J(moves));
   check('it reports what it did', r.styled === 2 && r.remaining.length === 0 && r.ordered === true, J(r));
   check('…and leaves no half-done marker behind', !c.__props.SS_STYLE_DONE);
 }

@@ -10,8 +10,8 @@
 //
 //   - every data tab: a navy header row (white, bold), row 1 frozen, column A
 //     frozen when a tab has more than 8 columns, and white / light-blue banding;
-//   - a tab colour per area, and the tabs ordered by area (Config first, Access at
-//     position 14, VERA's internal tabs last and visible);
+//   - a tab colour per area, and the tabs ordered by area (Config first, Access
+//     second, VERA's internal tabs last and visible);
 //   - per column, by header name: money as $#,##0.00, prose wrapped, JSON and ID
 //     lists clipped;
 //   - colours: Urgency High / Medium / Low; Status done / open / closed / overdue;
@@ -40,7 +40,7 @@ var SS_NAVY_  = '#1a1a2e';
 var SS_WHITE_ = '#ffffff';
 var SS_BAND_  = '#f3f6fb';
 var SS_SKIP_  = ['Config', 'Access'];
-var SS_FIXED_ = { Config: 0, Access: 13 };   // zero-based tab positions that never change
+var SS_FIXED_ = { Config: 0, Access: 1 };    // zero-based tab positions that never change: Config 1st, Access 2nd
 
 // Tab names are matched without regard to case, the way Google's getSheetByName
 // matches them: the live sheet calls its Config tab "CONFIG", and an exact match
@@ -115,7 +115,7 @@ function ssAreaOf_(name) {
 /**
  * Pure: the tab order. Config first; the areas in order; tabs in no area after the
  * last named area and before VERA's internal tabs, in their current order; Access
- * back at position 14. names: the current order.
+ * always second, right after Config. names: the current order.
  */
 function ssOrder_(names) {
   var rest = (names || []).filter(function(n) { return !ssSkip_(n); });

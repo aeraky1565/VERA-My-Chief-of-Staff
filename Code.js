@@ -4205,7 +4205,8 @@ function morningNudge() {
  */
 /**
  * sortTabsAlphabetically — run from the Apps Script editor.
- * Config first, Flags second, everything else alphabetical (case-insensitive).
+ * Config first, Access second, Flags third, everything else alphabetical
+ * (case-insensitive; the live tab is named "CONFIG", so the pins match any case).
  *
  * Safe to re-run, and safe to re-run after a timeout: tabs already in the right
  * place are skipped, so a second run picks up where the first stopped rather
@@ -4236,7 +4237,9 @@ function sortTabsAlphabetically() {
 
   // Only pin what actually exists, or `ordered` outgrows the book and the last
   // move runs off the end.
-  var pinned = ['Config', 'Flags'].filter(function(n) { return names.indexOf(n) !== -1; });
+  var pinned = ['Config', 'Access', 'Flags'].map(function(p) {
+    return names.filter(function(n) { return n.toLowerCase() === p.toLowerCase(); })[0];
+  }).filter(Boolean);
   var rest   = names
     .filter(function(n) { return pinned.indexOf(n) === -1; })
     .sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
