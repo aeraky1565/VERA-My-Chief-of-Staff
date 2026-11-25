@@ -12,6 +12,7 @@ const T = 'test_agora.js', U = 'test_agora_ui.js';
 const CONTROLS = [
   ['coming-soon teachers dropped', ag("return list.filter(function(x) { return x && (x.name || x.sheet); })", "return list.filter(function(x) { return x && x.sheet && x.goal; })")],
   ['">B1" read as B1', ag("  if (last[1] !== '>') return lv;", "  return lv;")],
+  ['her Config level is ignored', ag("    if (!level) level = tab.level;", "    level = tab.level;")],
   ['any app link kept', ag("app: /^https:\\/\\//i.test(app) ? app : ''", "app: app")],
   ['level from the first row, not the latest', ag("if (lv && d >= levelDate) { level = lv; levelDate = d; }", "if (lv && !level) { level = lv; levelDate = d; }")],
   ['dozing ignores her target', ag("var allow = target ? Math.ceil(7 / target) : 3;", "var allow = 3;")],

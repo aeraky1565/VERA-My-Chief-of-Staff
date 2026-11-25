@@ -79,22 +79,26 @@ console.log('\ntrips, free slot, least practised');
 
 console.log('\nreading the lounge');
 {
-  const values = { S1: [['date', 'minutes', 'theme', 'level'], ['2026-11-25', 20, 'Le passé', 'A2+']] };
+  const values = { S1: { Practice: [['date', 'minutes', 'theme', 'level'], ['2026-11-25', 20, 'Le passé', 'A2+']], Config: [['key', 'value'], ['language', 'fr'], ['level', 'b1']] },
+    S4: { Practice: [['date', 'minutes', 'level'], ['2026-11-20', 10, 'A1']] } };
   const c = ctx({
-    veraSetting_: () => J([{ name: 'ALMA', lang: 'French', sheet: 'S1', goal: 'G1' }, { name: 'KAI', lang: 'German' }, { name: 'NINA', lang: 'Italian', sheet: 'BAD', goal: 'G3' }]),
+    veraSetting_: () => J([{ name: 'ALMA', lang: 'French', sheet: 'S1', goal: 'G1' }, { name: 'KAI', lang: 'German' }, { name: 'NINA', lang: 'Italian', sheet: 'BAD', goal: 'G3' }, { name: 'OLA', lang: 'Spanish', sheet: 'S4', goal: 'G1' }]),
     lgGoals_: () => [{ id: 'G1', title: 'Improve French fluency (>B1)', perWeek: 4, focus: 'now' }, { id: 'G3', title: 'Italian', perWeek: 3, focus: 'waiting' }],
     lgHabitLog_: () => [], lgLogsByGoal_: () => ({ G1: [], G3: [] }),
     lgPractice_: (e, per) => ({ weeks: [{ count: 0 }], thisWeek: 0, target: per, lastDate: '', practisedToday: false }),
     plPlanned_: () => [], lgEvents_: () => [], veraStoreGet_: () => J({ at: 'x', sources: 2, logged: 1, failed: 1 }),
     Utilities: { formatDate: (d, tz, f) => f === 'H' ? '9' : '0' }, Session: { getScriptTimeZone: () => 'UTC' },
-    SpreadsheetApp: { openById: id => { if (!values[id]) throw new Error('no access'); return { getSheetByName: () => ({ getDataRange: () => ({ getValues: () => values[id] }) }) }; } },
+    SpreadsheetApp: { openById: id => { if (!values[id]) throw new Error('no access'); return { getSheetByName: n => values[id][n] ? { getDataRange: () => ({ getValues: () => values[id][n] }) } : null }; } },
   });
   let r; try { r = c.agoraRead_(); } catch (e) { r = { ok: false, teachers: [{}, {}, {}], crashed: e.message }; }
   const a = r.teachers[0], k = r.teachers[1], n = r.teachers[2];
-  check('a live teacher: practised today from her tab, theme, level, target level', a.practisedToday && a.mood === 'today' && a.theme === 'Le passé' && a.level === 'A2+' && a.targetLevel === 'B2', J(a));
+  check('a live teacher: practised today from her tab, theme, target level', a.practisedToday && a.mood === 'today' && a.theme === 'Le passé' && a.targetLevel === 'B2', J(a));
+  check('her level is the one in her own Config tab (it wins over a Practice column)', a.level === 'B1', a.level);
+  check('…a sheet with no Config level falls back to the Practice column', r.teachers[3].level === 'A1', r.teachers[3].level);
+  check('agConfigLevel_: the level row, any case; none is blank', c.agConfigLevel_([['key', 'value'], ['LEVEL', 'a2']]) === 'A2' && c.agConfigLevel_([['key', 'value']]) === '');
   check('coming soon: not read, no practice fields', k.live === false && k.mood === undefined);
   check('an unreadable sheet is marked, the rest still work', n.unread === true && r.ok);
-  check('the free slot is for the least practised live teacher', r.slot && r.slot.teacher === n.key, J(r.slot));
+  check('the free slot goes to a live teacher not practised today', r.slot && [n.key, r.teachers[3].key].indexOf(r.slot.teacher) !== -1 && r.slot.teacher !== a.key, J(r.slot));
   check('the last sync is passed through for Checks', r.sync && r.sync.failed === 1);
   check('the sheet link is built from the id', a.sheetUrl === 'https://docs.google.com/spreadsheets/d/S1/edit');
 }

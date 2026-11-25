@@ -15,7 +15,8 @@
 //     last lesson is longer than the target allows: ceil(7 / target) days, 3 with no target)
 //     · waiting;
 //   - this week (goal practice, lgPractice_), this month (lessons + minutes from her tab),
-//     today's theme, her level (a `level` column in her Practice tab, latest row wins) and
+//     today's theme, her level (the `level` row of her own Config tab, which her app teaches at;
+//     a `level` column in her Practice tab is only a fallback) and
 //     the goal's target level (from the goal title, e.g. "(>B1)");
 //   - a trip within 45 days to a country where her language is spoken (plPlanned_);
 // and one free slot today (20+ min, 06:00–22:00, after now) for the teacher practised least.
@@ -69,6 +70,12 @@ function agRows_(values) {
     by[d] = { date: d, minutes: (p ? p.minutes : 0) + m, theme: p && p.theme ? p.theme : theme };
   });
   return { rows: Object.keys(by).sort().map(function(d) { return by[d]; }), level: level };
+}
+
+/** Pure: her own level setting, from her sheet's Config tab (key | value rows): the `level` row, else ''. */
+function agConfigLevel_(values) {
+  var row = (values || []).filter(function(r) { return r && String(r[0]).trim().toLowerCase() === 'level'; })[0];
+  return row ? lfStr_(row[1], 8).toUpperCase() : '';
 }
 
 /**
@@ -157,9 +164,14 @@ function agoraRead_() {
     if (!t.live) return out;
     var g = goals.filter(function(x) { return x.id === t.goal; })[0] || null;
     var p = g ? lgPractice_(by[g.id], g.perWeek, today) : null;
-    var tab = { rows: [], level: '' }, unread = false;
-    try { tab = agRows_(SpreadsheetApp.openById(t.sheet).getSheetByName(t.tab).getDataRange().getValues()); }
+    var tab = { rows: [], level: '' }, unread = false, ss = null;
+    try { ss = SpreadsheetApp.openById(t.sheet); tab = agRows_(ss.getSheetByName(t.tab).getDataRange().getValues()); }
     catch (e) { unread = true; Logger.log('agoraRead_: could not read ' + t.name + '’s ' + t.tab + ' tab'); }
+    // Her level is the one her own app teaches at: the `level` row of her Config tab. A level
+    // column in her Practice tab is only a fallback for a teacher whose sheet has no such row.
+    var level = '';
+    try { var cfgTab = ss && ss.getSheetByName('Config'); if (cfgTab) level = agConfigLevel_(cfgTab.getDataRange().getValues()); } catch (e) {}
+    if (!level) level = tab.level;
     var todayRow = tab.rows.filter(function(r) { return r.date === today; })[0] || null;
     var practisedToday = !!todayRow || !!(p && p.practisedToday);
     var last = [p && p.lastDate, tab.rows.length ? tab.rows[tab.rows.length - 1].date : ''].filter(function(x) { return x && x <= today; }).sort().pop() || '';
@@ -170,7 +182,7 @@ function agoraRead_() {
       lastDate: last, daysSince: last ? lfDays_(last, today) : null, practisedToday: practisedToday,
       theme: todayRow ? todayRow.theme : '', minutesToday: todayRow ? todayRow.minutes : 0,
       mood: agMood_(pp, practisedToday, today), month: agMonth_(tab.rows, today),
-      level: tab.level, targetLevel: g ? agTargetLevel_(g.title) : '', trip: agTripFor_(t.countries, planned, today, AG_TRIP_DAYS_),
+      level: level, targetLevel: g ? agTargetLevel_(g.title) : '', trip: agTripFor_(t.countries, planned, today, AG_TRIP_DAYS_),
       days: tab.rows.filter(function(r) { return lfDays_(r.date, today) < 7 && r.date <= today; }).map(function(r) { return r.date; }) });
   });
   var slot = null, who = agNeglected_(teachers);
