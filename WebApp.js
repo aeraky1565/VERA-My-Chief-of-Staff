@@ -294,6 +294,7 @@ function doGet(e) {
       case 'life_tax_giving':            return jsonOut_(webLifeTaxGiving_(e.parameter)); // Life.js
       case 'life_weekend_wishes':        return jsonOut_(webLifeWeekendWishes_());      // Life.js
       case 'life_growth':                return jsonOut_(webLifeGrowth_());             // LifeGrowth.js
+      case 'agora':                      return jsonOut_(webAgora_(e.parameter));       // Agora.js
       case 'life_review':                return jsonOut_(webLifeReview_());             // LifeGrowth.js
       case 'coming_up':                  return jsonOut_(webComingUp_());               // ComingUp.js
       case 'coming_up_leave_by':         return jsonOut_(webComingUpLeaveBy_(e.parameter)); // ComingUp.js

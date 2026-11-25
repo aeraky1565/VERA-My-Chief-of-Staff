@@ -111,7 +111,7 @@ const clickText = async (page, sel, text) => {
     const gsubs = await page.$$eval('#lfprobe .vn-chips .subtab-btn', ns => ns.map(n => n.textContent));
     check(L + ': Grow’s subtabs, opening on Now', JSON.stringify(gsubs) === JSON.stringify(['Now', 'Goals', 'Habits']) && (await txt('.vn-chips .subtab-btn.active')) === 'Now', JSON.stringify(gsubs));
     const allSubs = await page.$$eval('#lfprobe .vn-tile', ns => ns.map(n => n.title));
-    check(L + ': every subtab in a group of three', JSON.stringify(allSubs) === JSON.stringify(['Now · Goals · Habits', 'Learning · Trials · Review', 'Places · Trip lessons · Things we love', 'Ideas · Giving · Notes']), JSON.stringify(allSubs));
+    check(L + ': every subtab in its group, the Lounge first in Learn', JSON.stringify(allSubs) === JSON.stringify(['Now · Goals · Habits', 'Lounge · Learning · Trials · Review', 'Places · Trip lessons · Things we love', 'Ideas · Giving · Notes']), JSON.stringify(allSubs));
 
 
 

@@ -106,6 +106,8 @@ function plNightly_() {
     });
   });
   veraStoreSet_(PL_SYNCED_KEY_, JSON.stringify(plPrune_(synced, plShift_(today, -PL_KEEP_DAYS_))));
+  // What the last run did, for the AGORA roll call in System › Checks (Agora.js).
+  try { veraStoreSet_('PRACTICE_LOG_LAST', JSON.stringify({ at: new Date().toISOString(), sources: sources.length, logged: logged, failed: failed })); } catch (e) {}
   Logger.log('plNightly_: ' + sources.length + ' log(s), ' + logged + ' day(s) logged, ' + failed + ' unreadable');
   return { ok: !failed, sources: sources.length, logged: logged, failed: failed };
 }
