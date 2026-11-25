@@ -71,10 +71,18 @@ function agRows_(values) {
   return { rows: Object.keys(by).sort().map(function(d) { return by[d]; }), level: level };
 }
 
-/** Pure: the target level in a goal title, e.g. "Improve French fluency (>B1)" → "B1". */
+/**
+ * Pure: the target level in a goal title. ">B1" means beyond B1, so the next level (B2);
+ * "=>A2", ">=A2", "≥A2" or a bare "A2" mean that level itself.
+ */
 function agTargetLevel_(title) {
-  var m = String(title || '').toUpperCase().match(/\b[ABC][12]\b/g);
-  return m ? m[m.length - 1] : '';
+  var s = String(title || '').toUpperCase(), re = /(=>|>=|≥|>)?\s*\b([ABC][12])\b/g, m, last = null;
+  while ((m = re.exec(s))) last = m;
+  if (!last) return '';
+  var lv = last[2];
+  if (last[1] !== '>') return lv;
+  var i = AG_LEVELS_.indexOf(lv);
+  return i !== -1 && i < AG_LEVELS_.length - 1 ? AG_LEVELS_[i + 1] : lv;
 }
 
 /** Pure: the mood. p: lgPractice_ result (or null); practisedToday from the live tab too. */

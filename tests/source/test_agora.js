@@ -44,7 +44,9 @@ console.log('\nher Practice tab');
   check('rows merged by date, oldest first, theme kept', J(t.rows.map(r => [r.date, r.minutes, r.theme])) === J([['2026-11-20', 15, ''], ['2026-11-24', 15, 'Les soldes'], ['2026-11-25', 20, 'Le passé']]));
   check('level from the latest row that has one', t.level === 'A2+');
   check('no level column: blank', c.agRows_([['date', 'minutes'], ['2026-11-25', 5]]).level === '');
-  check('target level from the goal title', c.agTargetLevel_('Improve French fluency (>B1)') === 'B1' && c.agTargetLevel_('Improve German Understanding (=>A2)') === 'A2' && c.agTargetLevel_('Read more') === '');
+  check('target level from the goal title: ">B1" is beyond B1, so B2', c.agTargetLevel_('Improve French fluency (>B1)') === 'B2', c.agTargetLevel_('Improve French fluency (>B1)'));
+  check('…"=>A2", ">=A2", "≥A2" and a bare level mean that level', c.agTargetLevel_('Improve German Understanding (=>A2)') === 'A2' && c.agTargetLevel_('German (>=A2)') === 'A2' && c.agTargetLevel_('German (≥A2)') === 'A2' && c.agTargetLevel_('Reach B1') === 'B1');
+  check('…">C2" stays C2; no level is blank', c.agTargetLevel_('(>C2)') === 'C2' && c.agTargetLevel_('Read more') === '');
   check('this month', J(c.agMonth_(t.rows, '2026-11-25')) === J({ lessons: 3, minutes: 50 }));
 }
 
@@ -89,7 +91,7 @@ console.log('\nreading the lounge');
   });
   let r; try { r = c.agoraRead_(); } catch (e) { r = { ok: false, teachers: [{}, {}, {}], crashed: e.message }; }
   const a = r.teachers[0], k = r.teachers[1], n = r.teachers[2];
-  check('a live teacher: practised today from her tab, theme, level, target level', a.practisedToday && a.mood === 'today' && a.theme === 'Le passé' && a.level === 'A2+' && a.targetLevel === 'B1', J(a));
+  check('a live teacher: practised today from her tab, theme, level, target level', a.practisedToday && a.mood === 'today' && a.theme === 'Le passé' && a.level === 'A2+' && a.targetLevel === 'B2', J(a));
   check('coming soon: not read, no practice fields', k.live === false && k.mood === undefined);
   check('an unreadable sheet is marked, the rest still work', n.unread === true && r.ok);
   check('the free slot is for the least practised live teacher', r.slot && r.slot.teacher === n.key, J(r.slot));
