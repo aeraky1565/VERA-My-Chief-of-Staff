@@ -1497,7 +1497,7 @@ function TripSummaryView(props){
               new Date(a.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})),
             h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('strong',{style:{fontWeight:600}},a.title),h('span',{style:{fontSize:12,color:'#b8c3e0'}},a.detail)));}))),
     h(TsTripAria,{trip:trip,items:props.items,ends:s.ends,nights:s.nights,today:todayIso,card:card,label:label,apiUrl:props.apiUrl,apiToken:props.apiToken}),
-    h(TsAgoraTeacher,{trip:trip,card:card,label:label,apiUrl:props.apiUrl,apiToken:props.apiToken}),
+    typeof TsAgoraTeacher==='function'&&h(TsAgoraTeacher,{trip:trip,card:card,label:label,apiUrl:props.apiUrl,apiToken:props.apiToken}),
     // Where you sleep
     s.stays.length>0&&h('section',{style:card,'aria-label':'Where you sleep'},
       h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',alignItems:'baseline'}},

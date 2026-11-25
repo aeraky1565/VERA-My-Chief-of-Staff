@@ -23,7 +23,7 @@ const CONTROLS = [
   ['nothing is remembered', swap(P, "  veraStoreSet_(PL_SYNCED_KEY_, JSON.stringify(plPrune_(synced, plShift_(today, -PL_KEEP_DAYS_))));\n", "")],
   ['the log line names the sheet', swap(P, "Logger.log('plNightly_: could not read the ' + src.tab + ' tab of a practice log');", "Logger.log('plNightly_: could not read ' + src.sheet);")],
   ['the step isn\'t in the nightly list', swap('NightlyRunner.js', "    S('plNightly_', 3, function() { plNightly_(); }),", "")],
-  ['the key isn\'t a VERA State key', swap('Settings.js', ", 'PRACTICE_LOG_SYNCED']", "]")],
+  ['the key isn\'t a VERA State key', swap('Settings.js', ", 'PRACTICE_LOG_SYNCED',", ",")],
 ];
 let allBit = true;
 CONTROLS.forEach(([name, mut]) => {
