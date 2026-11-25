@@ -10,6 +10,18 @@
 
 // ---- Read -------------------------------------------------------------------
 
+/**
+ * A HabitLog Date cell as 'yyyy-MM-dd'. Sheets turns a written '2026-11-18' into a real
+ * date, which getValues() hands back as a Date; String() of that is "Wed Nov 18 2026 …",
+ * so a text compare never matched and the year grid showed nothing.
+ */
+function hbYmd_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var s = String(v == null ? '' : v).trim();
+  var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : s;
+}
+
 function getHabits_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.HABITS);
@@ -40,7 +52,7 @@ function getHabitLog_(year) {
       return {
         id:      String(r[0] || '').trim(),
         habitId: String(r[1] || '').trim(),
-        date:    String(r[2] || '').trim(),
+        date:    hbYmd_(r[2]),
         notes:   String(r[3] || '').trim(),
       };
     })
@@ -156,7 +168,7 @@ function logHabitCompletion_(habitId, date, notes) {
   if (sheet.getLastRow() >= 2) {
     var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, HABIT_LOG_HEADERS.length).getValues();
     for (var i = 0; i < existing.length; i++) {
-      if (String(existing[i][1]).trim() === habitId && String(existing[i][2]).trim() === date) {
+      if (String(existing[i][1]).trim() === habitId && hbYmd_(existing[i][2]) === hbYmd_(date)) {
         return { ok: true, id: String(existing[i][0]).trim(), alreadyLogged: true };
       }
     }
@@ -174,7 +186,7 @@ function unlogHabitCompletion_(habitId, date) {
   if (!sheet || sheet.getLastRow() < 2) return { ok: true };
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, HABIT_LOG_HEADERS.length).getValues();
   for (var i = data.length - 1; i >= 0; i--) {
-    if (String(data[i][1]).trim() === habitId && String(data[i][2]).trim() === date) {
+    if (String(data[i][1]).trim() === habitId && hbYmd_(data[i][2]) === hbYmd_(date)) {
       sheet.deleteRow(i + 2);
       return { ok: true };
     }
