@@ -284,6 +284,7 @@ function doGet(e) {
       case 'pantry_staple':            return jsonOut_(webPantryStaple_(e));
       case 'pantry_add':               return jsonOut_(webPantryAdd_(e));
       case 'pantry_used':              return jsonOut_(webPantryUsed_(e));
+      case 'pantry_to_home':           return jsonOut_(webPantryToHome_(e));   // HomePurchases.js
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
       // Career tab

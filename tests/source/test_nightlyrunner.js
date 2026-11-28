@@ -156,7 +156,7 @@ console.log('\nThe list itself');
   const R = world();
   const list = R.nightlySteps_(), names = list.map(s => s.n), at = n => names.indexOf(n);
   check('every step once', new Set(names).size === names.length, names.filter((n, i) => names.indexOf(n) !== i).join());
-  check('90 steps: all 85 the two halves ran, the flags write and Signal Learning inside the budget, Eyes, practice logs (#259) and tech gear', names.length === 90 && at('checkTechGear_') === at('checkHomeServiceOverdue_') + 1 && at('checkEyes_') !== -1 && at('plNightly_') === at('lgNightly_') + 1 && at('writeFlags') !== -1 && at('recordFlagsGenerated_') !== -1, String(names.length));
+  check('91 steps: all 85 the two halves ran, the flags write and Signal Learning inside the budget, Eyes, practice logs (#259) tech gear and season reminders', names.length === 91 && at('checkSeasonalReminders_') === at('checkTechGear_') + 1 && at('checkTechGear_') === at('checkHomeServiceOverdue_') + 1 && at('checkEyes_') !== -1 && at('plNightly_') === at('lgNightly_') + 1 && at('writeFlags') !== -1 && at('recordFlagsGenerated_') !== -1, String(names.length));
   check('groups in order: noticed, data, writers, analysis, housekeeping', list.every((s, i) => i === 0 || s.g >= list[i - 1].g));
   check('the trip emails come right after the trip-key steps they need', at('adoptLegacyTripKeys_') < at('tripIdStampAll_') && at('tripIdStampAll_') < at('checkPreTripBriefings_') && at('checkPreTripBriefings_') < at('checkPostTripCapture_') && at('checkPostTripCapture_') < 6);
   check('gym, refills and the important dates are in the first group', ['checkGymSessions_', 'checkRefills_', 'checkImportantDates_', 'checkNoGiftIdea_'].every(n => list[at(n)].g === 1));

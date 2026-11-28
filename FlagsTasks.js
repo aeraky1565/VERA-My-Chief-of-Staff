@@ -49,6 +49,7 @@ var AUTO_FLAG_KINDS_ = [
   { prefix: 'no_gift_',          clears: 'Clears once a gift idea is added for them, or the day passes.' },
   { prefix: 'home_service_overdue_', clears: 'Clears once the service is logged as done.' },
   { prefix: 'rx_refill_',        clears: 'Clears once the refill is marked in Health › Prescriptions.' },
+  { prefix: 'SEASON|',           clears: 'Clears once the season has passed; resolve it when you’ve checked what you still have.' },
   { prefix: 'TECH|',             clears: 'Clears once the date is updated on the item in Home Front › Warranties & Service, or has passed.' },
   { prefix: 'EYES|',             clears: 'Clears once a new prescription or a contacts order is saved in Health › Care › Eyes.' },
   { prefix: 'tax_late_',         clears: 'Clears once the document is marked received in Finances › Tax.' },

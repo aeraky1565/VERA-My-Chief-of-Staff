@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_groceryrun_out');
 
-const FILES = ['GroceryRun.js', 'Pantry.js', 'Groceries.js', 'OnHand.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['GroceryRun.js', 'Pantry.js', 'Groceries.js', 'HomePurchases.js', 'OnHand.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -31,20 +31,20 @@ const CONTROLS = [
   ['the purchase rows ignore the date', pan("if (fresh.length) logPurchaseItems_(fresh, 'receipt', today);", "if (fresh.length) logPurchaseItems_(fresh, 'receipt');"), SRVT],
   ['any list item can be ticked', gq("if (!it || it.done || gqItemText_(it.text).toLowerCase() !== String(t.item || '').toLowerCase()) return;", 'if (!it) return;'), SRVT],
   ['“always count” is ignored', gq("if (body.always === true || body.always === 'true') {", 'if (false) {'), SRVT],
-  ['“not this one” still logs a run', gq("if (counted !== 'none' && Number(run.total) > 0) {", 'if (Number(run.total) > 0) {'), SRVT],
-  ['a total-only run says receipt', gq("source: items.length ? 'receipt' : 'typed',", "source: 'receipt',"), SRVT],
+  ['“not this one” still logs a run', gq("var groceries = counted !== 'none' && Number(run.total) > 0;", 'var groceries = Number(run.total) > 0;'), SRVT],
+  ['a total-only run says receipt', gq("source: items.length || homeLines.length ? 'receipt' : 'typed',", "source: 'receipt',"), SRVT],
   ['“just the food” counts everything', gq("counted: counted === 'food' ? 'food' : 'all'", "counted: 'all'"), SRVT],
   ['switched-off stores are offered', gq('if (set[k] === true) add(k);', 'add(k);'), SRVT],
   ['the read doesn’t see the lists', gq("'MY LISTS: ' + JSON.stringify(names.slice(0, 150));", "'MY LISTS: []';"), SRVT],
   ['an unreadable receipt isn’t reported', gq('if (!r.items.length && r.total == null) return { ok: false,', 'if (false) return { ok: false,'), SRVT],
   // screens
-  ['non-food starts picked', both('picks:(r.items||[]).map(function(x){return x.food!==false;})', 'picks:(r.items||[]).map(function(x){return true;})')],
+  ['every line starts as a grocery', both('kinds:(r.items||[]).map(rcKind_)', "kinds:(r.items||[]).map(function(){return 'grocery';})")],
   ['list matches start unticked', both('ticks:(r.items||[]).map(function(x){return !!x.tabId;})', 'ticks:(r.items||[]).map(function(x){return false;})')],
   ['ticks aren’t sent', both('ticks:lines.map(function(x,i){return f.ticks[i]&&x.tabId?', 'ticks:lines.map(function(x,i){return false?')],
   ['who doesn’t default to you', both("var me=GQ_PEOPLE.filter(function(p){return String(p).toLowerCase()===String(props.who||'').toLowerCase();})[0]||GQ_PEOPLE[0];", 'var me=GQ_PEOPLE[0];')],
   ['an unknown store isn’t asked about', both('var showCount=f.counts!==true;', 'var showCount=false;')],
   ['the date isn’t sent', both("{action:'gq_log',store:f.store.trim(),date:f.date,", "{action:'gq_log',store:f.store.trim(),date:'',")],
-  ['a run saves with no total', both("if(f.counted!=='none'&&!(total>0)&&!picked.length){setErr('Enter the total paid.');return;}\n    if(f.counted!=='none'&&!(total>0)){setErr('Enter the total paid, or pick “Not this one”.');return;}", '')],
+  ['a run saves with no total', both("if(f.counted!=='none'&&!(total>0)&&!picked.length&&!(homeAmt>0)){setErr('Enter the total paid.');return;}\n    if(f.counted!=='none'&&!(total>0)&&!(homeAmt>0)){setErr('Enter the total paid, or pick “Not this one”.');return;}", '')],
   ['no Home quick action', app(",React.createElement(GroceryRunButton,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed',variant:'tile'})", '')],
   ['no Quick capture chip', app("h(GroceryRunButton,{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed',variant:'chip'}),", '')],
   ['no button at the top of lite’s Lists', b => ({ [L]: swap(b[L], `        {activeTab === 'shopping' && shopSub === 'lists' && <GroceryRunButton apiUrl={apiUrl} apiToken={apiToken} who="Victoria" variant="tile" />}\n`, '') })],

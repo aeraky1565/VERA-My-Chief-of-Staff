@@ -125,6 +125,7 @@ function nightlySteps_() {
     S('checkWarrantiesExpiring_', 3, function() { checkWarrantiesExpiring_(); }),
     S('checkHomeServiceOverdue_', 3, function() { checkHomeServiceOverdue_(); }),
     S('checkTechGear_', 3, function() { checkTechGear_(); }),
+    S('checkSeasonalReminders_', 3, function() { checkSeasonalReminders_(); }),
     S('seedNetWorthMappingConfig_', 3, function() { seedNetWorthMappingConfig_(); }),
     S('checkPlannerCdMaturity_', 3, function() { checkPlannerCdMaturity_(); }),
     S('fsNightly_', 3, function() { fsNightly_(); }),

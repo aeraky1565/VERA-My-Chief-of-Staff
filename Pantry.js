@@ -372,7 +372,7 @@ var RECEIPT_MIMES_   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
  * Reads a receipt photo with Claude and returns its items, each tied to the line on the
  * store's list it is (or ''), so "KS ORG BANANAS 3LB" lands on "Bananas".
  * listNames: the store's list as shown (VERA's markers stripped).
- * @returns {Array<{name, qty, price, food, match}>}
+ * @returns {Array<{name, qty, price, food, kind, match}>}
  */
 function readReceipt_(imageB64, mime, listNames) {
   var b64 = String(imageB64 || '');
@@ -385,6 +385,7 @@ function readReceipt_(imageB64, mime, listNames) {
     'Return ONLY a JSON array (no markdown fences), one object per item:\n' +
     '{"name": plain lowercase item name without brand codes or sizes, "qty": number or null, ' +
     '"price": the line total as a number or null, "food": true if it is food or drink, else false, ' +
+    '"kind": "grocery" for food and drink, "supply" for household things that get used up (paper towels, detergent, trash bags, soap), "home" for things you keep (decorations, holiday and seasonal items, furniture, gadgets, tools, toys, gifts, clothes), ' +
     '"match": the exact text of the matching entry from MY LIST below, or "" if none matches}.\n' +
     'Skip totals, tax, discounts, bag fees and payment lines.\n' +
     'MY LIST: ' + JSON.stringify(names);
@@ -419,7 +420,11 @@ function receiptClean_(text, listNames) {
   var num = function(v) { if (v === null || v === undefined || v === '') return null; var n = Number(String(v).replace(/[^0-9.\-]/g, '')); return isFinite(n) && String(v).match(/\d/) ? n : null; };
   return arr.filter(function(x) { return x && String(x.name || '').trim(); }).slice(0, 100).map(function(x) {
     var match = allowed[String(x.match || '').trim().toLowerCase()] || '';
-    return { name: String(x.name).trim().slice(0, 80), qty: num(x.qty), price: num(x.price), food: x.food !== false, match: match };
+    var food = x.food !== false;
+    // grocery | supply | home (HomePurchases.js): food → grocery, other non-food → supply unless the reader said home.
+    var kind = String(x.kind || '').trim().toLowerCase();
+    if (['grocery', 'supply', 'home'].indexOf(kind) === -1 || (kind === 'grocery' && !food)) kind = food ? 'grocery' : 'supply';
+    return { name: String(x.name).trim().slice(0, 80), qty: num(x.qty), price: num(x.price), food: food, kind: kind, match: match };
   });
 }
 
@@ -435,8 +440,8 @@ function receiptLog_(storeName, items, onDate) {
     var name = String((x && x.name) || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
     var price = x && x.price !== null && x.price !== undefined && x.price !== '' && isFinite(Number(x.price)) ? Number(x.price) : null;
     var qty   = x && x.qty   !== null && x.qty   !== undefined && x.qty   !== '' && isFinite(Number(x.qty))   ? Number(x.qty)   : null;
-    return { name: name, norm: normalizeItemName_(name), price: price, qty: qty, food: !(x && x.food === false) };
-  }).filter(function(x) { return x.norm; });
+    return { name: name, norm: normalizeItemName_(name), price: price, qty: qty, food: !(x && x.food === false), home: !!(x && String(x.kind || '').toLowerCase() === 'home') };
+  }).filter(function(x) { return x.norm && !x.home; });   // home things (decor, furniture) never go in the pantry
   if (!clean.length) return { ok: false, error: 'No items picked.' };
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) throw new Error('Purchase History is busy — try again.');

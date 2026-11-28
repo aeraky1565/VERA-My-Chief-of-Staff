@@ -48,7 +48,7 @@ function grClean_(raw) {
   raw = raw || {};
   return { id: grStr_(raw.id, 40), date: grYmd_(raw.date), store: grStr_(raw.store, 60), who: grOneOf_(raw.who, GR_PEOPLE_, ''),
     card: grStr_(raw.card, 80), total: grMoney_(raw.total), source: grOneOf_(raw.source, GR_SOURCES_, 'typed'),
-    counted: grOneOf_(raw.counted, GR_COUNTED_, 'all'), itemsTotal: grMoney_(raw.itemsTotal) };
+    counted: grOneOf_(raw.counted, GR_COUNTED_, 'all'), itemsTotal: grMoney_(raw.itemsTotal), homeTotal: grMoney_(raw.homeTotal) };
 }
 
 /** Pure: a receipt's total for how the run counts: every line, or only the food lines. */
@@ -133,8 +133,9 @@ function grEarned_(total, reward) {
 }
 
 /** Pure: the "Groceries" row of the Budget tab's rows ({label, value}), as a number, or null. */
-function grBudgetFrom_(rows) {
-  var row = (rows || []).filter(function(r) { return String(r.label || '').trim().toLowerCase() === 'groceries'; })[0];
+function grBudgetFrom_(rows, label) {
+  var want = String(label || 'groceries').toLowerCase().replace(/\s+/g, ' ');
+  var row = (rows || []).filter(function(r) { return String(r.label || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\band\b/, '&') === want; })[0];
   return row ? grMoney_(row.value) : null;
 }
 
@@ -146,16 +147,21 @@ function grStoreList_(storeNames, setting) {
 
 // ---- sheets and settings -------------------------------------------------------
 
-function grSheet_() { return ensureSheet(getSpreadsheet(), TABS.GROCERY_RUNS, GROCERY_RUN_HEADERS); }
+function grSheet_() {
+  var sh = ensureSheet(getSpreadsheet(), TABS.GROCERY_RUNS, GROCERY_RUN_HEADERS);
+  // A tab made before Home & seasonal gains its Home Total header the first time it's read.
+  try { var n = GROCERY_RUN_HEADERS.length; if (sh.getLastColumn() < n && sh.getLastRow() >= 1) sh.getRange(1, n).setValue(GROCERY_RUN_HEADERS[n - 1]); } catch (e) {}
+  return sh;
+}
 function grToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
 function grLocked_(fn) { var l = LockService.getScriptLock(); l.waitLock(10000); try { return fn(); } finally { l.releaseLock(); } }
 function grRowToRun_(r) {
-  var x = grClean_({ id: r[0], date: grYmd_(r[1]), store: r[2], who: r[3], card: r[4], total: r[5], source: r[6], counted: r[7], itemsTotal: r[8] });
+  var x = grClean_({ id: r[0], date: grYmd_(r[1]), store: r[2], who: r[3], card: r[4], total: r[5], source: r[6], counted: r[7], itemsTotal: r[8], homeTotal: r[11] });
   x.created = String(r[9] || ''); x.updated = String(r[10] || '');
   return x;
 }
 function grRunToRow_(x, created, updated) {
-  return [x.id, x.date, x.store, x.who, x.card, x.total, x.source, x.counted, x.itemsTotal == null ? '' : x.itemsTotal, created, updated];
+  return [x.id, x.date, x.store, x.who, x.card, x.total, x.source, x.counted, x.itemsTotal == null ? '' : x.itemsTotal, created, updated, x.homeTotal == null ? '' : x.homeTotal];
 }
 function grAll_() {
   var sh = grSheet_();
@@ -198,8 +204,8 @@ function grCardsAndRewards_() {
   return { cards: cards, rewards: rewards, programs: programs };
 }
 
-function grBudget_() {
-  try { var b = webGetBudget_(); return b && b.ok ? grBudgetFrom_(b.rows) : null; } catch (e) { return null; }
+function grBudget_(label) {
+  try { var b = webGetBudget_(); return b && b.ok ? grBudgetFrom_(b.rows, label) : null; } catch (e) { return null; }
 }
 
 // ---- endpoints -----------------------------------------------------------------------
@@ -209,7 +215,8 @@ function webGrocerySetup_(p) {
   var store = grStr_(p && p.store, 60), setting = grStoreSetting_(), cr = grCardsAndRewards_(), today = grToday_();
   var people = {};
   GR_PEOPLE_.forEach(function(w) { people[w] = { suggested: grBestCard_(cr.cards, cr.rewards, w, cr.programs), cards: grCardsFor_(cr.cards, w).map(function(c) { return c.name; }) }; });
-  return { ok: true, store: store, counts: grIsGroceryStore_(store, setting), people: people,
+  var keep = Number((getConfigValues() || {})['home_keep_min']);
+  return { ok: true, store: store, counts: grIsGroceryStore_(store, setting), people: people, keepMin: keep > 0 ? keep : 50,
     month: { spent: grMonthTotals_(grAll_(), today.slice(0, 7)).total, budget: grBudget_() } };
 }
 
@@ -222,22 +229,38 @@ function webGroceryMonth_(p) {
     return { card: c, total: Math.round(t.byCard[c] * 100) / 100, earned: grEarned_(t.byCard[c], rw) };
   }).sort(function(a, b) { return b.total - a.total; });
   var pace = ym === today.slice(0, 7) ? grPaceLine_(runs, today, budget) : null;
-  return { ok: true, ym: ym, today: today, total: t.total, budget: budget, byWho: t.byWho, cards: cards, runs: t.runs, pace: pace,
+  // Home & seasonal: its own line, from the Home Purchases tab (HomePurchases.js).
+  var home = null;
+  if (typeof hpMonth_ === 'function') { try { home = hpMonth_(ym); home.budget = grBudget_('home & seasonal'); } catch (e) { home = null; } }
+  return { ok: true, ym: ym, today: today, total: t.total, budget: budget, byWho: t.byWho, cards: cards, runs: t.runs, pace: pace, home: home,
     stores: grStoreList_((getShoppingList_() || []).map(function(s) { return s.storeName; }), grStoreSetting_()) };
 }
 
-/** POST {action:'grocery_log', run} → a run saved for today (or the date given). */
+/**
+ * POST {action:'grocery_log', run} → a run saved for today (or the date given).
+ * run.total is what counts as groceries (groceries and supplies); run.homeTotal and run.home
+ * ([{name, price, amount, season}]) are the Home & seasonal part, written to Home Purchases.
+ * A run can be home only (total 0).
+ */
 function webGroceryLog_(body) {
-  var x = grClean_(body && body.run);
+  var raw = (body && body.run) || {}, x = grClean_(raw);
+  var homeLines = Array.isArray(raw.home) ? raw.home.slice(0, 100) : [];
+  if (x.homeTotal == null && homeLines.length && typeof hpClean_ === 'function') {
+    var hs = homeLines.map(hpClean_).reduce(function(n, l) { return n + (l.amount != null ? l.amount : l.price || 0); }, 0);
+    x.homeTotal = hs > 0 ? Math.round(hs * 100) / 100 : null;
+  }
   if (!x.store) return { ok: false, error: 'Which store?' };
   if (!x.who) return { ok: false, error: 'Who went?' };
-  if (x.total == null || x.total <= 0) return { ok: false, error: 'Enter the total' };
+  if (!(x.total > 0) && !(x.homeTotal > 0)) return { ok: false, error: 'Enter the total' };
+  if (x.total == null) x.total = 0;
   if (!x.date) x.date = grToday_();
   return grLocked_(function() {
     var now = new Date().toISOString();
     x.id = 'GR-' + Utilities.getUuid().replace(/-/g, '').substring(0, 10).toUpperCase();
     grSheet_().appendRow(grRunToRow_(x, now, now));
-    return { ok: true, run: x, month: grMonthTotals_(grAll_(), x.date.slice(0, 7)).total };
+    var home = [];
+    if (x.homeTotal > 0 && typeof hpLog_ === 'function') home = hpLog_(hpRowsForRun_(x, homeLines, x.homeTotal));
+    return { ok: true, run: x, home: home, month: grMonthTotals_(grAll_(), x.date.slice(0, 7)).total };
   });
 }
 
@@ -252,7 +275,7 @@ function webGroceryUpdate_(body) {
       var stored = grRowToRun_(sh.getRange(k + 2, 1, 1, GROCERY_RUN_HEADERS.length).getValues()[0]), merged = Object.assign({}, stored);
       Object.keys(raw).forEach(function(f) { if (raw[f] !== undefined) merged[f] = raw[f]; });
       var x = grClean_(merged);
-      if (!x.who || x.total == null || x.total <= 0 || !x.date) return { ok: false, error: 'A run needs who went, a date and a total' };
+      if (!x.who || x.total == null || !x.date || (!(x.total > 0) && !(x.homeTotal > 0))) return { ok: false, error: 'A run needs who went, a date and a total' };
       sh.getRange(k + 2, 1, 1, GROCERY_RUN_HEADERS.length).setValues([grRunToRow_(x, stored.created, new Date().toISOString())]);
       return { ok: true, run: x };
     }
@@ -266,7 +289,11 @@ function webGroceryDelete_(body) {
   return grLocked_(function() {
     var sh = grSheet_(), n = sh.getLastRow();
     var ids = n >= 2 ? sh.getRange(2, 1, n - 1, 1).getValues() : [];
-    for (var k = 0; k < ids.length; k++) if (String(ids[k][0]).trim() === id) { sh.deleteRow(k + 2); return { ok: true, id: id }; }
+    for (var k = 0; k < ids.length; k++) if (String(ids[k][0]).trim() === id) {
+      sh.deleteRow(k + 2);
+      var home = 0; if (typeof hpDeleteRun_ === 'function') { try { home = hpDeleteRun_(id); } catch (e) {} }
+      return { ok: true, id: id, homeRemoved: home };
+    }
     return { ok: false, error: 'That run no longer exists' };
   });
 }

@@ -71,6 +71,8 @@ var FEATURES_ = [
     steps: ['checkHomeServiceOverdue_', 'hfSyncUpkeepReminders_'], notif: ['home_service'] },
   { k: 'tech_gear', n: 'Tech gear reminders', e: '💻', a: 'Home & food', kind: 'Background checks', d: 'Protection plans ending, security updates ending and the trade-in window for laptops, tablets, phones and watches.', t: ['Nightly step', 'Flag'], v: 'sees',
     steps: ['checkTechGear_'], cfg: [{ c: 'tech_plan_days_ahead', l: 'Plan ending', type: 'num', def: '30', u: 'days ahead' }, { c: 'tech_support_days_ahead', l: 'Support ending', type: 'num', def: '90', u: 'days ahead' }, { c: 'tech_tradein_days_ahead', l: 'Trade-in window', type: 'num', def: '180', u: 'days before support ends' }] },
+  { k: 'home_seasonal', n: 'Home & seasonal', e: '🎄', a: 'Home & food', kind: 'Background checks', d: 'Decor, seasonal things and furniture from grocery runs: their own budget line, kept out of the pantry, and a reminder before each season of what you bought last time.', t: ['Nightly step', 'Flag'], v: 'sees',
+    steps: ['checkSeasonalReminders_'], cfg: [{ c: 'season_remind_weeks', l: 'Remind', type: 'num', def: '8', u: 'weeks before a season' }, { c: 'home_keep_min', l: 'Offer Home Items from', type: 'num', def: '50', u: 'dollars' }] },
   { k: 'coupons', n: 'Coupons', e: '🎟️', a: 'Home & food', kind: 'Background checks', d: 'Expiring coupons, scratched off, then removed.', t: ['Nightly step', 'Slack'], v: 'sees',
     steps: ['checkExpiringCoupons_', 'purgeExpiredCoupons_'], notif: ['coupon_expiry'] },
   { k: 'usps_scan', n: 'USPS mail scan', e: '📬', a: 'Home & food', kind: 'Background checks', d: 'Reads Informed Delivery emails for today’s mail and packages.', t: ['Daily', 'Email inbox'], v: 'na',

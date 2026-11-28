@@ -77,7 +77,7 @@ function gqClean_(text, open, storeNames, today) {
   var store = gqStoreMatch_(obj.store, storeNames);
   var used = {};
   var items = lines.map(function(l) {
-    var x = { name: l.name, qty: l.qty, price: l.price, food: l.food, match: '', tabId: '', index: -1, onList: '' };
+    var x = { name: l.name, qty: l.qty, price: l.price, food: l.food, kind: l.kind, match: '', tabId: '', index: -1, onList: '' };
     if (l.match) {
       var cands = (open || []).filter(function(o) { return o.text.toLowerCase() === l.match.toLowerCase() && !used[o.tabId + '|' + o.index]; });
       var pick = cands.filter(function(o) { return o.store === store; })[0] || cands[0];
@@ -95,7 +95,8 @@ function gqSummary_(o) {
   var bits = [];
   if (o.added || o.filled) bits.push((o.added + o.filled) + ' item' + (o.added + o.filled === 1 ? '' : 's') + ' in the pantry' + (o.useSoon.length ? ', ' + o.useSoon.length + ' use soon (' + o.useSoon.slice(0, 3).join(', ') + ')' : ''));
   if (o.ticked.length) bits.push('Ticked off: ' + o.ticked.map(function(t) { return t.item + ' (' + t.store + ')'; }).join(', '));
-  if (o.run) bits.push('$' + o.run.total.toFixed(2) + ' to groceries' + (o.run.card ? ' on ' + o.run.card : '') + ', ' + o.run.date + (o.run.who ? ', by ' + o.run.who : ''));
+  if (o.run && o.run.total > 0) bits.push('$' + o.run.total.toFixed(2) + ' to groceries' + (o.run.card ? ' on ' + o.run.card : '') + ', ' + o.run.date + (o.run.who ? ', by ' + o.run.who : ''));
+  if (o.run && o.run.homeTotal > 0) bits.push('$' + o.run.homeTotal.toFixed(2) + ' to Home & seasonal');
   if (o.left) bits.push(o.left + ' left out of the pantry');
   return bits;
 }
@@ -124,6 +125,7 @@ function gqRead_(imageB64, mime, names) {
     'Return ONLY a JSON object (no markdown fences): {"store": the store name as printed, "date": the purchase date as YYYY-MM-DD or null, ' +
     '"total": the amount paid including tax as a number or null, "items": [one object per purchased item: {"name": plain lowercase item name ' +
     'without brand codes or sizes, "qty": number or null, "price": the line total as a number or null, "food": true if it is food or drink, else false, ' +
+    '"kind": "grocery" for food and drink, "supply" for household things that get used up (paper towels, detergent, trash bags, soap), "home" for things you keep (decorations, holiday and seasonal items, furniture, gadgets, tools, toys, gifts, clothes), ' +
     '"match": the exact text of the matching entry from MY LISTS below, or "" if none matches}]}.\n' +
     'Skip totals, tax, discounts, bag fees and payment lines in items.\n' +
     'MY LISTS: ' + JSON.stringify(names.slice(0, 150));
@@ -177,8 +179,10 @@ function webGqLog_(body) {
   if (!store) return { ok: false, error: 'Which store?' };
   var items = (Array.isArray(body.items) ? body.items : []).slice(0, GQ_MAX_LINES_);
   var run = body.run || {}, counted = String(run.counted || 'all');
-  if (!items.length && (counted === 'none' || !(Number(run.total) > 0))) return { ok: false, error: 'Pick something for the pantry, or enter the total.' };
-  if (counted !== 'none' && !run.who) return { ok: false, error: 'Who went?' };
+  var homeTotal = Number(run.homeTotal) > 0 ? Number(run.homeTotal) : 0, homeLines = Array.isArray(run.home) ? run.home : [];
+  var groceries = counted !== 'none' && Number(run.total) > 0;
+  if (!items.length && !groceries && !homeTotal) return { ok: false, error: 'Pick something for the pantry, or enter the total.' };
+  if ((groceries || homeTotal) && !run.who) return { ok: false, error: 'Who went?' };
   var out = { ok: true, added: 0, filled: 0, ticked: [], run: null, useSoon: [], left: Math.max(0, Number(body.left) || 0) };
   if (items.length) {
     var r = receiptLog_(store, items, date);
@@ -197,9 +201,10 @@ function webGqLog_(body) {
     try { toggleShoppingItem_(s.tabId, it.index); out.ticked.push({ item: gqItemText_(it.text), store: s.storeName }); } catch (e) { Logger.log('gq tick: ' + e.message); }
   });
   if (body.always === true || body.always === 'true') { try { webGroceryStoresSave_({ stores: (function() { var o = {}; o[store] = true; return o; })() }); } catch (e) {} }
-  if (counted !== 'none' && Number(run.total) > 0) {
-    var g = webGroceryLog_({ run: { date: date, store: store, who: run.who, card: run.card, total: run.total, source: items.length ? 'receipt' : 'typed',
-      counted: counted === 'food' ? 'food' : 'all', itemsTotal: run.itemsTotal } });
+  // Home & seasonal is logged even when the run doesn't count as groceries.
+  if (groceries || homeTotal) {
+    var g = webGroceryLog_({ run: { date: date, store: store, who: run.who, card: run.card, total: groceries ? run.total : 0, source: items.length || homeLines.length ? 'receipt' : 'typed',
+      counted: counted === 'food' ? 'food' : 'all', itemsTotal: run.itemsTotal, homeTotal: homeTotal || '', home: homeLines } });
     if (!g.ok) { out.runError = g.error; } else { out.run = g.run; out.month = g.month; }
   }
   out.date = date; out.store = store;

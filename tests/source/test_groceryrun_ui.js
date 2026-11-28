@@ -15,7 +15,7 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const APP = read('docs/app.js'), LITE = read('docs/dashboard-lite.html'), CODE = read('Code.js');
-const SRV = [(fs.existsSync(path.join(ROOT, 'Settings.js')) ? read('Settings.js') : fs.readFileSync(path.join(__dirname, '..', '..', 'Settings.js'), 'utf8'))].concat(['Pantry.js', 'Groceries.js', 'GroceryRun.js'].map(read)).join('\n');
+const SRV = [(fs.existsSync(path.join(ROOT, 'Settings.js')) ? read('Settings.js') : fs.readFileSync(path.join(__dirname, '..', '..', 'Settings.js'), 'utf8'))].concat(['Pantry.js', 'Groceries.js', 'GroceryRun.js', 'HomePurchases.js'].map(read)).join('\n');
 const PERISH = (read('OnHand.js').match(/var OH_PERISHABLE_\s*=[^\n]*\n/) || [''])[0];
 const START = '// ---- GroceryRun (', END = '// ---- /GroceryRun ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
@@ -116,23 +116,24 @@ function apiPost(u, t, b) { CALLS.push(b.action); window.LAST = clone(b); return
     await snap(page);
     check(L + ': one read, then the review', (await page.evaluate(() => CLAUDE)) === 1 && !!(await page.$('.gq-lines')));
     check(L + ': store and date from the receipt', (await page.$eval('.gq-store', n => n.value).catch(() => '')) === 'Costco' && (await page.$eval('.gq-date', n => n.value)) === '2026-11-07' && /Not today/.test(await text(page, '.gq-date-note')));
-    check(L + ': the lines; non-food starts off', (await page.$$('.gq-line')).length === 5 && (await page.$$eval('.gq-pick', ns => ns.map(n => n.checked ? 1 : 0).join(''))) === '11101');
+    check(L + ': the lines; paper towels are a supply, so they start on too', (await page.$$('.gq-line')).length === 5 && (await page.$$eval('.gq-pick', ns => ns.map(n => n.checked ? 1 : 0).join(''))) === '11111'
+      && (await page.$$eval('.gq-line', ns => ns.map(n => n.dataset.kind).join())) === 'grocery,grocery,grocery,supply,grocery');
     check(L + ': list matches say which list, ticked by default', (await page.$$eval('.gq-tickrow', ns => ns.map(n => n.innerText).join('|'))) === 'On your Costco list: tick it off|On your Trader Joe\'s list: tick it off' && (await page.$$eval('.gq-tick', ns => ns.every(n => n.checked))));
     check(L + ': who is you; the best grocery card, with why', (await page.$eval('.gq-who', n => n.value)) === 'Ahmed' && /You/.test(await text(page, '.gq-who')) && (await page.$eval('.gq-card', n => n.value)) === 'Blue Cash' && /6% back at supermarkets/.test(await text(page, '.gq-why')));
     check(L + ': the total with tax, the lines’ sum, the month', (await page.$eval('.gq-total', n => n.value)) === '64.18' && /The lines add up to \$47\.75; the rest is tax/.test(await text(page, '.gq-sum-lines')) && /\$464 of \$700 with this/.test(await text(page, '.gq-month')) && !(await page.$('.gq-count')), await text(page, '.gq-sum-lines'));
-    check(L + ': the save button says it all', (await text(page, '.gq-save')) === 'Add 4 to Pantry · log $64.18');
+    check(L + ': the save button says it all', (await text(page, '.gq-save')) === 'Add 5 to Pantry · log $64.18');
     await page.click('.gq-line[data-i="2"] .gq-tick'); await wait(80);
     await page.click('.gq-line[data-i="4"] .gq-pick'); await wait(80);
     await page.selectOption('.gq-card', 'Gold');
-    check(L + ': unpicking a line updates the button', (await text(page, '.gq-save')) === 'Add 3 to Pantry · log $64.18');
+    check(L + ': unpicking a line updates the button', (await text(page, '.gq-save')) === 'Add 4 to Pantry · log $64.18');
     await tap(page, '.gq-save'); await wait(200);
     const ph = await sheet(page, 'Purchase History');
-    check(L + ': the pantry: 3 rows on the receipt’s date, at Costco', ph.length === 3 && ph.every(r => r[4] === '2026-11-07' && r[7] === 'Costco' && r[9] === 'receipt') && ph.map(r => r[1]).join() === 'Organic eggs,baby spinach,Greek yogurt', JSON.stringify(ph.map(r => r[1])));
+    check(L + ': the pantry: 4 rows on the receipt’s date, at Costco', ph.length === 4 && ph.every(r => r[4] === '2026-11-07' && r[7] === 'Costco' && r[9] === 'receipt') && ph.map(r => r[1]).join() === 'Organic eggs,baby spinach,Greek yogurt,paper towels', JSON.stringify(ph.map(r => r[1])));
     check(L + ': only the ticked list item came off', (await page.evaluate(() => TOGGLES.join())) === 'T1:3');
     const runs = await sheet(page, 'Grocery Runs');
     check(L + ': the run: that date, Costco, you, Gold, $64.18, from the receipt', runs.length === 2 && runs[1][1] === '2026-11-07' && runs[1][2] === 'Costco' && runs[1][3] === 'Ahmed' && runs[1][4] === 'Gold' && runs[1][5] === 64.18 && runs[1][6] === 'receipt', JSON.stringify(runs[1]));
     const sum = await text(page, '.gq-saved');
-    check(L + ': the summary', /Costco run logged/.test(sum) && /3 items in the pantry, 2 use soon \(baby spinach, Greek yogurt\)/.test(sum) && /Ticked off: Organic eggs \(Costco\)/.test(sum) && /\$64\.18 to groceries on Gold, 2026-11-07, by Ahmed/.test(sum) && /2 left out of the pantry/.test(sum), sum);
+    check(L + ': the summary', /Costco run logged/.test(sum) && /4 items in the pantry, 2 use soon \(baby spinach, Greek yogurt\)/.test(sum) && /Ticked off: Organic eggs \(Costco\)/.test(sum) && /\$64\.18 to groceries on Gold, 2026-11-07, by Ahmed/.test(sum) && /1 left out of the pantry/.test(sum), sum);
     check(L + ': every button at least 36 px; no sideways scroll; no errors', (await buttons(page)).every(x => x >= 35.5) && await noScroll(page) && errs.length === 0, errs.join(' | ') + JSON.stringify((await buttons(page)).filter(x => x < 35.5)));
     await tap(page, '.gq-done');
     check(L + ': Done closes it', !(await page.$('.gq-overlay')));

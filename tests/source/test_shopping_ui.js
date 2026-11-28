@@ -137,20 +137,27 @@ check('…otherwise new, or non-food when the model says so', kind({ name: 'pear
       check(L + ': …the sheet fits the screen', await page.$eval('#shopprobe .shop-sheet', n => n.getBoundingClientRect().width <= window.innerWidth));
       await page.evaluate(() => { window.__scan = { ok: true, items: [
         { name: 'olive oil', price: 12.99, qty: 1, food: true, match: 'olive oil' }, { name: 'bananas', price: 1.79, qty: null, food: true, match: 'Bananas' },
-        { name: 'blueberries', price: 4.99, qty: 1, food: true, match: '' }, { name: 'paper towels', price: 21.99, qty: 1, food: false, match: '' }] }; });
+        { name: 'blueberries', price: 4.99, qty: 1, food: true, match: '' }, { name: 'paper towels', price: 21.99, qty: 1, food: false, match: '' }, { name: 'christmas wreath', price: 15.49, qty: 1, food: false, kind: 'home', match: '' }] }; });
       await page.setInputFiles('#shopprobe .shop-snap input[type=file]', { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([255, 216, 255, 217]) }); await wait(300);
-      const lines = await page.$$eval('#shopprobe .shop-receipt-line', bs => bs.map(b => b.getAttribute('aria-pressed') + '|' + b.innerText.replace(/\s+/g, ' ').trim()));
+      const lines = await page.$$eval('#shopprobe .shop-receipt-line', bs => bs.map(b => b.querySelector('.shop-receipt-pick').getAttribute('aria-pressed') + '|' + b.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': the photo goes to the scan for the store you\'re on', (await page.evaluate(() => JSON.stringify(window.__calls.find(c => c[0] === 'scan')))) === '["scan","t.a","receipt.jpg"]');
-      check(L + ': each line says what saving it will do; food picked, non-food not', lines.length === 4
-        && /^true\|✓ olive oil Already logged when you checked it off · adds the price \$12\.99$/.test(lines[0]) && /^true\|✓ Bananas On your list · checked off too \$1\.79$/.test(lines[1])
-        && /^true\|✓ blueberries Not on the list · a new pantry row \$4\.99$/.test(lines[2]) && /^false\|paper towels Not food · logged only if you tick it \$21\.99$/.test(lines[3]), JSON.stringify(lines));
+      check(L + ': each line says what saving it will do, with its group; groceries and supplies picked, home not', lines.length === 5
+        && /^true\|✓ olive oil Already logged when you checked it off · adds the price 🥕 Grocery \$12\.99$/.test(lines[0]) && /^true\|✓ Bananas On your list · checked off too 🥕 Grocery \$1\.79$/.test(lines[1])
+        && /^true\|✓ blueberries Not on the list · a new pantry row 🥕 Grocery \$4\.99$/.test(lines[2]) && /^true\|✓ paper towels Household supply · a new pantry row 🧻 Supply \$21\.99$/.test(lines[3])
+        && /^false\|christmas wreath Home & seasonal · not in the pantry 🎄 Home \$15\.49 Season/.test(lines[4]), JSON.stringify(lines));
+      check(L + ': a home line gets its season guessed', (await page.$eval('#shopprobe .shop-receipt-line[data-kind="home"] .rc-season-pick', n => n.value).catch(() => '')) === 'Christmas');
+      await page.$eval('#shopprobe .shop-receipt-line:nth-child(3) .rc-chip', b => b.click()); await wait(60);
+      check(L + ': tapping a chip changes the group (Grocery → Supply)', (await page.$eval('#shopprobe .shop-receipt-line:nth-child(3)', n => n.dataset.kind)) === 'supply');
+      await page.$eval('#shopprobe .shop-receipt-line:nth-child(3) .rc-chip', b => b.click()); await page.$eval('#shopprobe .shop-receipt-line:nth-child(3) .rc-chip', b => b.click()); await wait(60);
+      check(L + ': …and round again (Supply → Home → Grocery)', (await page.$eval('#shopprobe .shop-receipt-line:nth-child(3)', n => n.dataset.kind)) === 'grocery'
+        && (await page.$eval('#shopprobe .shop-receipt-line:nth-child(3) .shop-receipt-pick', n => n.getAttribute('aria-pressed'))) === 'true');
       check(L + ': it says food picked also goes to this week\'s on hand', (await page.$eval('#shopprobe .shop-onhand-note', n => n.innerText).catch(() => '')) === 'Food you pick also goes to this week’s On hand in Meal Plan.');
-      check(L + ': the button counts what\'s picked', await page.$eval('#shopprobe .shop-receipt-save', n => n.innerText) === 'Add 3 to Pantry');
+      check(L + ': the button counts what\'s picked (the wreath isn\'t a pantry item)', await page.$eval('#shopprobe .shop-receipt-save', n => n.innerText) === 'Add 4 to Pantry');
       await page.$eval('#shopprobe .shop-receipt-save', b => b.click()); await wait(300);
       const tail = await page.evaluate(() => window.__calls.filter(c => c[0] === 'toggle' || c[0] === 'save').slice(-2));
-      check(L + ': a picked line on the list is checked off first, then everything picked is saved by the list\'s name', JSON.stringify(tail) === JSON.stringify([['toggle', 't.a', 0, false], ['save', 't.a', [{ name: 'olive oil', qty: 1, price: 12.99, food: true }, { name: 'Bananas', qty: null, price: 1.79, food: true }, { name: 'blueberries', qty: 1, price: 4.99, food: true }]]]), JSON.stringify(tail));
+      check(L + ': a picked line on the list is checked off first, then everything picked is saved by the list\'s name', JSON.stringify(tail) === JSON.stringify([['toggle', 't.a', 0, false], ['save', 't.a', [{ name: 'olive oil', qty: 1, price: 12.99, food: true, kind: 'grocery' }, { name: 'Bananas', qty: null, price: 1.79, food: true, kind: 'grocery' }, { name: 'blueberries', qty: 1, price: 4.99, food: true, kind: 'grocery' }, { name: 'paper towels', qty: 1, price: 21.99, food: false, kind: 'supply' }]]]), JSON.stringify(tail));
       const saved = await page.$eval('#shopprobe .shop-sheet-saved', n => n.innerText).catch(() => '');
-      check(L + ': it says what happened', saved === 'Saved to Pantry: prices added to 1 you checked off, 1 more checked off on the list, 1 new item logged from the receipt.', saved);
+      check(L + ': it says what happened', saved === 'Saved to Pantry: prices added to 1 you checked off, 1 more checked off on the list, 2 new items logged from the receipt.', saved);
       await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe .shop-sheet button')).find(b => b.textContent === 'Done').click()); await wait(150);
       check(L + ': Done closes the sheet; the list is as it was', !(await page.$('#shopprobe .shop-sheet')) && /olive oil/.test(await page.$eval('#shopprobe .shop-tab', n => n.innerText)));
       await page.$eval('#shopprobe .shop-done-btn', b => b.click()); await wait(100);

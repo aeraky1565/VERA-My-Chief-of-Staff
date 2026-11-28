@@ -1784,6 +1784,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     .pa-use-w { display: flex; gap: 6px; flex-basis: 100%; justify-content: flex-end; }
     .pa-used2, .pa-have { font-size: 12px; padding: 4px 10px; min-height: 32px; background: transparent; border: 1px solid #2a3654; color: #c8d4e8; }
     .pa-used2 { color: #81c995; border-color: #2c4a3a; }
+    .pa-tohome { font-size: 11.5px; padding: 3px 9px; min-height: 30px; background: transparent; border: 1px solid #4a3260; color: #d7a6f0; }
+    .pa-tohome-w { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; justify-content: flex-end; }
+    .pa-tohome-season { font-size: 12px; min-height: 32px; background: #0a1220; color: #dde1f0; border: 1px solid #2a3a5c; border-radius: 8px; padding: 0 6px; }
     .pa-stale { margin-left: 6px; font-size: 10.5px; font-weight: 600; color: #8b93a8; border: 1px solid #2a3654; border-radius: 999px; padding: 0 6px; }
     .pa-add { font-size: 12px; min-height: 34px; }
     .pa-add.sm { font-size: 11.5px; min-height: 30px; padding: 3px 9px; }
@@ -6819,6 +6822,7 @@ function GroceriesCard(props){var h=React.createElement;
       h('span',{style:{fontSize:14,color:GRC.soft}},d.budget!=null?'of '+grcMoney(d.budget)+' budget':'no Groceries line in the Budget tab')),
     d.budget!=null?h('div',{style:{height:8,borderRadius:4,background:'#13203a',overflow:'hidden'}},h('div',{className:'grc-bar',style:{height:8,width:pct.toFixed(1)+'%',background:over?GRC.bad:GRC.acc}})):null,
     pace&&pace.left!=null?h('span',{className:'grc-pace',style:{fontSize:13,color:over?GRC.bad:GRC.soft}},(pace.left>=0?grcMoney(pace.left)+' left':grcMoney(-pace.left)+' over')+' with '+pace.daysLeft+' day'+(pace.daysLeft===1?'':'s')+' to go · last month at this point: '+grcMoney(pace.lastMonthByNow)):null,
+    d.home&&(d.home.total>0||d.home.budget!=null)?h(GrcHome,{home:d.home}):null,
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8}},['Ahmed','Victoria'].map(function(w){var x=(d.byWho||{})[w]||{total:0,runs:0};
       return h('div',{key:w,className:'grc-who',style:{display:'flex',flexDirection:'column',gap:3,background:GRC.deep,border:'1px solid '+GRC.line,borderRadius:10,padding:'10px 12px'}},
         h('span',{style:{fontSize:11,letterSpacing:'0.06em',textTransform:'uppercase',color:GRC.mute}},w),h('span',{style:{fontSize:17,fontWeight:700,fontVariantNumeric:'tabular-nums'}},grcMoney(x.total)),
@@ -6853,6 +6857,19 @@ function GroceriesCard(props){var h=React.createElement;
           onClick:function(){var o={};o[st.store]=!st.counts;post({action:'grocery_stores_save',stores:o});},
           style:{flexShrink:0,width:52,height:32,borderRadius:16,border:0,padding:3,cursor:'pointer',display:'flex',justifyContent:st.counts?'flex-end':'flex-start',background:st.counts?GRC.acc:'#2a3a5c'}},
           h('span',{style:{width:26,height:26,borderRadius:13,background:'#0d1528',display:'block'}})));})):null);}
+// Home & seasonal (HomePurchases.js): its own line, against a "Home & seasonal" row on the Budget tab, by season.
+var GRC_SEASON_EMOJI={'Christmas':'🎄','Halloween':'🎃','Thanksgiving':'🦃','Easter':'🐣','Ramadan & Eid':'🌙','Summer':'☀️','Other':'🏠'};
+function GrcHome(props){var h=React.createElement,x=props.home,over=x.budget!=null&&x.total>x.budget,pct=x.budget?Math.min(100,x.total/x.budget*100):0;
+  return h('div',{className:'grc-home',style:{display:'flex',flexDirection:'column',gap:8,background:GRC.deep,border:'1px solid #3a2a52',borderRadius:10,padding:'10px 12px'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:13,fontWeight:700,color:'#d7a6f0'}},'🎄 Home & seasonal'),
+      h('span',{style:{fontSize:13,color:GRC.soft,fontVariantNumeric:'tabular-nums'}},h('b',{className:'grc-home-total',style:{fontSize:17,color:GRC.txt}},grcMoney(x.total,true)),x.budget!=null?' of '+grcMoney(x.budget):'')),
+    x.budget!=null?h('div',{style:{height:6,borderRadius:3,background:'#13203a',overflow:'hidden'}},h('div',{className:'grc-home-bar',style:{height:6,width:pct.toFixed(1)+'%',background:over?GRC.bad:'#d7a6f0'}})):
+      h('span',{className:'grc-home-nobudget',style:{fontSize:12,color:'#e9d48a',lineHeight:1.5}},'Add a “Home & seasonal” row to your Budget tab to see this against a budget.'),
+    over?h('span',{style:{fontSize:12,color:GRC.bad}},grcMoney(x.total-x.budget,true)+' over'):null,
+    (x.bySeason||[]).map(function(s){return h('div',{key:s.season,className:'grc-season',style:{display:'flex',justifyContent:'space-between',gap:10,fontSize:13,borderTop:'1px solid #13203a',paddingTop:6}},
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',null,(GRC_SEASON_EMOJI[s.season]||'🏠')+' '+(s.season==='Other'?'Home':s.season)),
+        h('span',{style:{fontSize:11,color:GRC.mute,overflowWrap:'anywhere'}},s.items.slice(0,4).map(function(i){return i.item;}).join(', ')+(s.items.length>4?' and '+(s.items.length-4)+' more':''))),
+      h('span',{style:{fontVariantNumeric:'tabular-nums',flexShrink:0}},grcMoney(s.total,true)));}));}
 // ---- end GroceriesCard ----
 // ---- GroceryRun (Log a grocery run, issue #229) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // A receipt, no shopping list needed: snap it, VERA reads the store, the date, the total and the lines
@@ -6862,6 +6879,51 @@ var GQ_C={card:'#0d1526',deep:'#0a1220',line:'#1e2a44',edge:'#2a3f6f',text:'#dde
 var GQ_INPUT={minHeight:44,borderRadius:10,background:'#0a1220',border:'1px solid #2a3f6f',color:'#dde1f0',padding:'0 10px',fontSize:14,boxSizing:'border-box',width:'100%',minWidth:0};
 var GQ_BTN={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:13,cursor:'pointer'};
 var GQ_PEOPLE=['Ahmed','Victoria'];
+// Receipt lines come in three kinds (HomePurchases.js): grocery and supply go to the pantry and the
+// Groceries line; home (decor, seasonal things, furniture) never goes in the pantry and counts on
+// its own Home & seasonal line. Shared by Done shopping and Log a grocery run.
+var RC_KINDS_={grocery:{label:'🥕 Grocery',bg:'#12261e',br:'#2c4a3a',fg:'#8fe0a8'},supply:{label:'🧻 Supply',bg:'#121f38',br:'#2a3e63',fg:'#8ab4f8'},home:{label:'🎄 Home',bg:'#22173a',br:'#4a3260',fg:'#d7a6f0'}};
+var RC_SEASONS_=['Christmas','Halloween','Thanksgiving','Easter','Ramadan & Eid','Summer','Other'];
+function rcKind_(x){var k=String((x&&x.kind)||'');return k==='grocery'||k==='supply'||k==='home'?k:(x&&x.food===false?'supply':'grocery');}
+function rcNextKind_(k){return k==='grocery'?'supply':k==='supply'?'home':'grocery';}
+function rcSeasonGuess_(name){var t=String(name||'').toLowerCase();
+  if(/christmas|xmas|\bwreath|ornament|stocking|garland|nativity|\btree\b|tinsel|santa|snowman|reindeer/.test(t))return 'Christmas';
+  if(/hallowe?en|pumpkin|costume|skeleton|\bspooky|\bwitch|\bghost|jack.o.lantern|cobweb/.test(t))return 'Halloween';
+  if(/thanksgiving|turkey platter|\bgourd|harvest decor|cornucopia/.test(t))return 'Thanksgiving';
+  if(/easter|egg dye|\bbunny/.test(t))return 'Easter';
+  if(/ramadan|\beid\b|lantern|fanous|crescent/.test(t))return 'Ramadan & Eid';
+  if(/\bpool\b|beach|sprinkler|patio umbrella|\bcooler\b|summer/.test(t))return 'Summer';return '';}
+// Pure: the paid total (tax included; the line sums when blank) shared across the kinds in proportion.
+// mode all → groceries and supplies count as groceries; food → groceries only; none → nothing does.
+function rcSplit_(lines,kinds,paid,mode){var sum={grocery:0,supply:0,home:0},pr=function(l){var v=l&&l.price!=null&&l.price!==''&&isFinite(Number(l.price))?Number(l.price):0;return v;};
+  (lines||[]).forEach(function(l,i){sum[(kinds&&kinds[i])||rcKind_(l)]+=pr(l);});
+  var linesSum=Math.round((sum.grocery+sum.supply+sum.home)*100)/100,p=Number(paid),total=isFinite(p)&&p>0?Math.round(p*100)/100:linesSum,f=linesSum>0?total/linesSum:1;
+  var homeAmts=(lines||[]).map(function(l,i){return ((kinds&&kinds[i])||rcKind_(l))==='home'?Math.round(pr(l)*f*100)/100:null;});
+  var home=Math.round(homeAmts.reduce(function(n,a){return n+(a||0);},0)*100)/100,supply=Math.round(sum.supply*f*100)/100,grocery=Math.max(0,Math.round((total-supply-home)*100)/100);
+  var counted=mode==='none'?0:mode==='food'?grocery:Math.round((grocery+supply)*100)/100;
+  return {grocery:grocery,supply:supply,home:home,linesSum:linesSum,total:total,counted:counted,homeAmts:homeAmts};}
+// The chip, the season pick and the Home Items offer, used by both receipt screens.
+function RcChip(props){var h=React.createElement,k=RC_KINDS_[props.kind]||RC_KINDS_.grocery;
+  return h('button',{type:'button',className:'rc-chip','data-kind':props.kind,'aria-label':props.name+': '+k.label.replace(/^\S+\s/,'')+'. Tap to change',onClick:props.onClick,disabled:props.disabled,
+    style:{flexShrink:0,minHeight:32,padding:'0 10px',borderRadius:999,fontSize:12,fontWeight:600,cursor:'pointer',background:k.bg,border:'1px solid '+k.br,color:k.fg,whiteSpace:'nowrap'}},k.label);}
+function RcSeason(props){var h=React.createElement;
+  return h('label',{className:'rc-season',style:{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'#aab6d6'}},'Season',
+    h('select',{className:'rc-season-pick',value:props.value||'',onChange:function(e){props.onChange(e.target.value);},style:{minHeight:32,borderRadius:8,background:'#0a1220',border:'1px solid #2a3a5c',color:'#dde1f0',fontSize:12,padding:'0 6px'}},
+      h('option',{value:''},'None (a keeper, not seasonal)'),RC_SEASONS_.map(function(x){return h('option',{key:x,value:x},x);})));}
+function RcKeepOffer(props){var h=React.createElement;var _s=React.useState({}),st=_s[0],setSt=_s[1];
+  var items=(props.items||[]).filter(function(x){return x.amount>=(props.min||50);});
+  if(!items.length)return null;
+  var add=function(x,i){setSt(function(o){var n=Object.assign({},o);n[i]='busy';return n;});
+    apiGet(props.apiUrl,props.apiToken,{action:'add_home_item',item:x.name,category:x.season?'Seasonal · '+x.season:'Home',purchaseDate:props.date||'',notes:'Bought at '+props.store+' for $'+Number(x.amount).toFixed(2)})
+      .then(function(r){if(r&&r.ok===false)throw new Error(r.error||'');setSt(function(o){var n=Object.assign({},o);n[i]='done';return n;});})
+      .catch(function(){setSt(function(o){var n=Object.assign({},o);n[i]='err';return n;});});};
+  return h('div',{className:'rc-keep',style:{display:'flex',flexDirection:'column',gap:6,border:'1px dashed #4a3260',borderRadius:12,padding:'10px 12px'}},
+    h('span',{style:{fontSize:13,fontWeight:700,color:'#dde1f0'}},'Keep track of these in Home Items?'),
+    h('span',{style:{fontSize:12,color:'#aab6d6',lineHeight:1.5}},'Warranties & Service keeps the date and price, for warranty claims and returns.'),
+    items.map(function(x,i){var s=st[i];return h('div',{key:i,className:'rc-keep-row',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:44}},
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14,color:'#dde1f0',overflowWrap:'anywhere'}},x.name),h('span',{style:{fontSize:11,color:'#8a9abf'}},props.store+' · $'+Number(x.amount).toFixed(2)+(x.season?' · '+x.season:''))),
+      h('button',{type:'button',className:'rc-keep-add',disabled:s==='busy'||s==='done',onClick:function(){add(x,i);},style:{flexShrink:0,minHeight:40,padding:'0 12px',borderRadius:10,background:'transparent',border:'1px solid '+(s==='done'?'#2f6b45':'#4a3260'),color:s==='done'?'#8fe0a8':s==='err'?'#ffb4a9':'#d7a6f0',fontSize:13,fontWeight:600,cursor:'pointer'}},
+        s==='done'?'✓ Added':s==='busy'?'Adding…':s==='err'?'Try again':'+ Home Items'));}));}
 function gqMoney_(v){var n=Number(String(v==null?'':v).replace(/[^0-9.\-]/g,''));return isFinite(n)&&String(v).match(/\d/)?Math.round(n*100)/100:null;}
 function gqYou_(n,who){return who&&String(n).toLowerCase()===String(who).toLowerCase()?'You':n;}
 function gqTodayC_(){try{if(window.VERA_TODAY)return window.VERA_TODAY;}catch(e){}var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
@@ -6882,7 +6944,8 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
   var me=GQ_PEOPLE.filter(function(p){return String(p).toLowerCase()===String(props.who||'').toLowerCase();})[0]||GQ_PEOPLE[0];
   var cardFor=function(setup,w){var p=setup&&setup.people&&setup.people[w];return p&&p.suggested?p.suggested.card:(p&&p.cards&&p.cards[0])||'';};
   var start=function(r,mode){var setup=r.setup||r;setD(r);setF({mode:mode,store:r.store||'',other:!!(mode==='scan'&&r.store&&!r.knownStore)||!(r.stores||[]).length,date:r.date||r.today||gqTodayC_(),
-      picks:(r.items||[]).map(function(x){return x.food!==false;}),ticks:(r.items||[]).map(function(x){return !!x.tabId;}),who:me,card:cardFor(setup,me),
+      picks:(r.items||[]).map(function(x){return rcKind_(x)!=='home';}),kinds:(r.items||[]).map(rcKind_),seasons:(r.items||[]).map(function(x){return rcKind_(x)==='home'?rcSeasonGuess_(x.name):'';}),homeTyped:'',
+      ticks:(r.items||[]).map(function(x){return !!x.tabId;}),who:me,card:cardFor(setup,me),
       total:r.total!=null?String(r.total):'',counted:setup.counts===false?'food':'all',always:false,counts:setup.counts});setStep('review');};
   var onFile=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;setErr('');setStep('reading');
     resizeImage(file,1600).then(function(img){return apiPost(props.apiUrl,props.apiToken,{action:'gq_scan',image:img.base64,mime:img.mimeType});})
@@ -6891,16 +6954,21 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
   var refreshStore=function(store){apiGet(props.apiUrl,props.apiToken,{action:'gq_setup',store:store}).then(function(r){setF(function(o){return o?Object.assign({},o,{counts:r.counts,counted:r.counts===false?'food':o.counted==='none'?'all':o.counted}):o;});}).catch(function(){});};
   var set=function(k,v){var n=Object.assign({},f);n[k]=v;setF(n);};
   var lines=(d&&d.items)||[];
-  var linesSum=Math.round(lines.reduce(function(s,x,i){return s+(f&&f.counted==='food'&&x.food===false?0:(Number(x.price)||0));},0)*100)/100;
-  var picked=f?lines.filter(function(x,i){return f.picks[i];}):[];
+  // What was paid, shared across groceries, supplies and Home & seasonal (rcSplit_, in the ShopList block).
+  var sp=f?rcSplit_(lines,f.kinds,gqMoney_(f.total),f.counted):null;
+  var linesSum=sp?sp.linesSum:0;
+  var homeAmt=sp?(lines.length?sp.home:(gqMoney_(f.homeTyped)||0)):0;
+  var groceryAmt=f?(f.counted==='none'?0:lines.length?sp.counted:Math.max(0,Math.round(((gqMoney_(f.total)||0)-homeAmt)*100)/100)):0;
+  var picked=f?lines.filter(function(x,i){return f.picks[i]&&f.kinds[i]!=='home';}):[];
+  var homes=f?lines.map(function(x,i){return f.kinds[i]==='home'?{name:x.match||x.name,price:x.price,amount:sp.homeAmts[i],season:f.seasons[i]||''}:null;}).filter(Boolean):[];
   var save=function(){setErr('');var total=gqMoney_(f.total);
-    if(f.counted!=='none'&&!(total>0)&&!picked.length){setErr('Enter the total paid.');return;}
-    if(f.counted!=='none'&&!(total>0)){setErr('Enter the total paid, or pick “Not this one”.');return;}
+    if(f.counted!=='none'&&!(total>0)&&!picked.length&&!(homeAmt>0)){setErr('Enter the total paid.');return;}
+    if(f.counted!=='none'&&!(total>0)&&!(homeAmt>0)){setErr('Enter the total paid, or pick “Not this one”.');return;}
     setStep('saving');
-    apiPost(props.apiUrl,props.apiToken,{action:'gq_log',store:f.store.trim(),date:f.date,always:f.always,left:lines.length-picked.length,
-      items:picked.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price,food:x.food};}),
+    apiPost(props.apiUrl,props.apiToken,{action:'gq_log',store:f.store.trim(),date:f.date,always:f.always,left:lines.length-picked.length-homes.length,
+      items:picked.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price,food:x.food,kind:f.kinds[lines.indexOf(x)]};}),
       ticks:lines.map(function(x,i){return f.ticks[i]&&x.tabId?{tabId:x.tabId,index:x.index,item:x.match}:null;}).filter(Boolean),
-      run:{who:f.who,card:f.card,total:total,counted:f.counted,itemsTotal:lines.length?linesSum:''}})
+      run:{who:f.who,card:f.card,total:groceryAmt,counted:f.counted,itemsTotal:lines.length?linesSum:'',homeTotal:homeAmt||'',home:homes}})
       .then(function(r){setRes(r);setStep('saved');if(props.onDone)props.onDone(r);}).catch(function(x){setErr(x.message);setStep('review');});};
   var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:C.mute,minWidth:0};
   var card={background:C.card,border:'1px solid '+C.line,borderRadius:12,padding:12,display:'flex',flexDirection:'column',gap:10};
@@ -6919,6 +6987,7 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
     h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:'#bbf7d0'}},(res.store||'Grocery')+' run logged'),
     (res.summary||[]).map(function(s,i){return h('div',{key:i,className:'gq-sum',style:{display:'flex',gap:10,fontSize:14,lineHeight:1.5,color:C.text}},h('span',{style:{color:'#86efac',flexShrink:0}},'✓'),h('span',null,s));}),
     res.runError?h('span',{className:'gq-runerr',style:{fontSize:13,color:C.amber}},'The run wasn’t logged: '+res.runError):null,
+    homes.length&&res.run?h(RcKeepOffer,{apiUrl:props.apiUrl,apiToken:props.apiToken,store:res.store||f.store,min:((d.setup||d).keepMin)||50,items:homes,date:res.date||f.date}):null,
     h('span',{style:{fontSize:12,color:'#a7d8bb'}},'Wrong? Edit or remove the run on Finances › Groceries.'),
     h('button',{type:'button',className:'gq-done',onClick:props.onClose,style:Object.assign({},GQ_BTN,{alignSelf:'flex-start',background:'transparent',border:'1px solid #1f5a3a',color:'#bbf7d0'})},'Done'))];
   else{var stores=d.stores||[];var known=stores.indexOf(f.store)!==-1;var showCount=f.counts!==true;
@@ -6929,14 +6998,19 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
             known?null:h('option',{value:''},'Pick a store'),stores.map(function(s){return h('option',{key:s,value:s},s);}),h('option',{value:'__other'},'Another store…'))),
         h('label',{style:lab},f.mode==='scan'&&d.readDate?'Date (from the receipt)':'Date',h('input',{type:'date',className:'gq-date',value:f.date,max:gqTodayC_(),onChange:function(e){set('date',e.target.value);},style:GQ_INPUT})),
         f.date!==gqTodayC_()?h('span',{className:'gq-date-note',style:{gridColumn:'1 / -1',fontSize:12,color:C.mute}},'Not today: it counts toward that day’s pantry week and month.'):null),
-      lines.length?h('div',{key:'lh',style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Pick what goes to the pantry'),h('span',{style:{fontSize:12,color:C.mute}},'Non-food starts off. Things on a shopping list get ticked off it; untick to leave the list alone.')):null,
+      lines.length?h('div',{key:'lh',style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Pick what goes to the pantry'),h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Tap a chip to change its group: 🥕 Grocery and 🧻 Supply go to the pantry; 🎄 Home (decor, seasonal things, furniture) has its own budget line and stays out. Things on a shopping list get ticked off it.')):null,
       lines.length?h('section',{key:'ls',className:'gq-lines','aria-label':'Receipt lines',style:Object.assign({},card,{gap:0,padding:'4px 12px'})},
-        lines.map(function(x,i){var on=f.picks[i];return h('div',{key:i,className:'gq-line','data-i':i,style:{display:'flex',flexDirection:'column',borderTop:i?'1px solid #16213a':'none',padding:'4px 0'}},
-          h('label',{style:{minHeight:48,display:'flex',alignItems:'center',gap:10,cursor:'pointer'}},
-            h('input',{type:'checkbox',className:'gq-pick',checked:on,onChange:function(){var p=f.picks.slice();p[i]=!p[i];set('picks',p);},style:{width:22,height:22,accentColor:C.gold,flexShrink:0}}),
-            h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}},h('span',{style:{fontSize:14,color:on?C.text:C.faint,overflowWrap:'anywhere'}},x.match||x.name),
-              x.food===false?h('span',{style:{fontSize:11,color:C.mute}},'Not food: '+(on?'goes in as household':'not added')):null),
-            h('span',{style:{fontSize:13,color:C.mute,flexShrink:0}},x.price!=null?'$'+Number(x.price).toFixed(2):'')),
+        lines.map(function(x,i){var kd=f.kinds[i]||rcKind_(x),home=kd==='home',on=f.picks[i]&&!home,name=x.match||x.name;
+          var cycle=function(){var k=f.kinds.slice();k[i]=rcNextKind_(kd);var p=f.picks.slice();p[i]=k[i]!=='home';var ss=f.seasons.slice();if(k[i]==='home'&&!ss[i])ss[i]=rcSeasonGuess_(name);setF(Object.assign({},f,{kinds:k,picks:p,seasons:ss}));};
+          return h('div',{key:i,className:'gq-line','data-i':i,'data-kind':kd,style:{display:'flex',flexDirection:'column',borderTop:i?'1px solid #16213a':'none',padding:'4px 0'}},
+          h('div',{style:{minHeight:48,display:'flex',alignItems:'center',gap:8}},
+            h('label',{style:{flex:1,minWidth:0,minHeight:48,display:'flex',alignItems:'center',gap:10,cursor:home?'default':'pointer'}},
+              h('input',{type:'checkbox',className:'gq-pick',checked:on,disabled:home,'aria-label':home?name+': Home & seasonal, not in the pantry':'Pantry: '+name,onChange:function(){var p=f.picks.slice();p[i]=!p[i];set('picks',p);},style:{width:22,height:22,accentColor:C.gold,flexShrink:0}}),
+              h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}},h('span',{style:{fontSize:14,color:on||home?C.text:C.faint,overflowWrap:'anywhere'}},name),
+                home?h('span',{style:{fontSize:11,color:'#d7a6f0'}},'Home & seasonal · not in the pantry'):kd==='supply'?h('span',{style:{fontSize:11,color:C.mute}},'Household supply: '+(on?'goes in the pantry':'not added')):null)),
+            h(RcChip,{kind:kd,name:name,onClick:cycle}),
+            h('span',{style:{fontSize:13,color:C.mute,flexShrink:0,minWidth:52,textAlign:'right'}},x.price!=null?'$'+Number(x.price).toFixed(2):'')),
+          home?h('div',{style:{paddingLeft:32,paddingBottom:4}},h(RcSeason,{value:f.seasons[i],onChange:function(v){var ss=f.seasons.slice();ss[i]=v;set('seasons',ss);}})):null,
           x.tabId?h('label',{className:'gq-tickrow',style:{minHeight:36,display:'flex',alignItems:'center',gap:8,paddingLeft:32,fontSize:12,color:C.blue,cursor:'pointer'}},
             h('input',{type:'checkbox',className:'gq-tick',checked:f.ticks[i],onChange:function(){var t=f.ticks.slice();t[i]=!t[i];set('ticks',t);},style:{width:18,height:18,accentColor:C.blue}}),
             'On your '+x.onList+' list: tick it off'):null);})):null,
@@ -6953,13 +7027,18 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
               (((d.setup||d).people||{})[f.who]||{cards:[]}).cards.concat(f.card&&(((d.setup||d).people||{})[f.who]||{cards:[]}).cards.indexOf(f.card)===-1?[f.card]:[]).map(function(c){return h('option',{key:c,value:c},c);}),h('option',{value:''},'Other / cash')))),
           (((d.setup||d).people||{})[f.who]||{}).suggested?h('span',{className:'gq-why',style:{fontSize:11,color:C.mute}},(((d.setup||d).people||{})[f.who]).suggested.card+': '+(((d.setup||d).people||{})[f.who]).suggested.why):null,
           h('label',{style:lab},f.mode==='scan'&&d.total!=null?'Total paid, tax included (from the receipt)':'Total paid, tax included',h('input',{className:'gq-total',inputMode:'decimal',value:f.total,placeholder:'e.g. 64.18',onChange:function(e){set('total',e.target.value);},style:GQ_INPUT})),
-          lines.length?h('span',{className:'gq-sum-lines',style:{fontSize:11,color:C.mute}},'The lines add up to $'+linesSum.toFixed(2)+(gqMoney_(f.total)>linesSum?'; the rest is tax.':'.')):null,
+          lines.length?h('span',{className:'gq-sum-lines',style:{fontSize:11,color:C.mute}},'The lines add up to $'+linesSum.toFixed(2)+(gqMoney_(f.total)>linesSum?'; the rest is tax, shared across the groups.':'.')):null,
+          lines.length?h('div',{className:'gq-split',style:{display:'flex',flexDirection:'column',gap:4,background:'#0a1220',border:'1px solid #1e2a44',borderRadius:10,padding:'8px 10px'}},
+            [['grocery','Groceries',sp.grocery,f.counted!=='none'],['supply','Supplies',sp.supply,f.counted==='all'],['home','Home & seasonal',sp.home,true]].map(function(r){var k=RC_KINDS_[r[0]];
+              return h('div',{key:r[0],className:'gq-split-'+r[0],style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:12,fontVariantNumeric:'tabular-nums'}},
+                h('span',{style:{color:k.fg}},k.label.split(' ')[0]+' '+r[1]+(r[0]!=='home'&&!r[3]?' · not counted':'')),h('span',{style:{color:r[3]?C.text:C.faint}},'$'+r[2].toFixed(2)));})):
+            h('label',{style:lab},'Of which Home & seasonal, if any (decor, furniture: not groceries)',h('input',{className:'gq-home-typed',inputMode:'decimal',value:f.homeTyped||'',placeholder:'$ (optional)',onChange:function(e){set('homeTyped',e.target.value);},style:GQ_INPUT})),
           (d.setup||d).month&&(d.setup||d).month.budget?h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
             h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:C.mute}},h('span',null,'This month’s groceries'),h('span',{className:'gq-month'},'$'+Math.round(((d.setup||d).month.spent||0)+(gqMoney_(f.total)||0))+' of $'+Math.round((d.setup||d).month.budget)+' with this')),
             h('div',{role:'img','aria-label':'month against budget',style:{height:6,borderRadius:3,background:'#16213a',overflow:'hidden'}},h('div',{style:{width:Math.min(100,Math.round((((d.setup||d).month.spent||0)+(gqMoney_(f.total)||0))/((d.setup||d).month.budget)*100))+'%',height:'100%',background:C.green}}))):null)),
       err?h('span',{key:'e',role:'alert',className:'gq-err',style:{fontSize:13,color:C.red}},err):null,
       h('button',{key:'go',type:'button',className:'gq-save',disabled:!f.store.trim(),onClick:save,style:Object.assign({},GQ_BTN,{minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontWeight:700,fontSize:14,opacity:f.store.trim()?1:0.6})},
-        (picked.length?'Add '+picked.length+' to Pantry':'')+(picked.length&&f.counted!=='none'?' · ':'')+(f.counted!=='none'?'log $'+((gqMoney_(f.total)||0).toFixed(2)):''))];}
+        [picked.length?'Add '+picked.length+' to Pantry':'',f.counted!=='none'?'log $'+groceryAmt.toFixed(2):'',homeAmt>0?'$'+homeAmt.toFixed(2)+' home':''].filter(Boolean).join(' · '))];}
   return h('div',{className:'gq-overlay',role:'dialog','aria-modal':'true','aria-label':'Log a grocery run',style:{position:'fixed',inset:0,background:'rgba(4,8,20,0.78)',zIndex:1000,display:'flex',justifyContent:'center',alignItems:'flex-start',overflowY:'auto',padding:'16px 12px',boxSizing:'border-box'}},
     h('div',{className:'gq-sheet',style:{width:'100%',maxWidth:520,background:'#0b1020',border:'1px solid '+C.line,borderRadius:16,padding:'52px 16px 16px',display:'flex',flexDirection:'column',gap:14,boxSizing:'border-box',position:'relative'}},
       step==='saving'||step==='reading'?null:h('button',{type:'button',className:'gq-close','aria-label':'Close',onClick:props.onClose,style:{position:'absolute',top:8,right:8,minWidth:44,minHeight:44,background:'transparent',border:'none',color:C.mute,fontSize:20,cursor:'pointer'}},'×'),
@@ -8785,6 +8864,7 @@ function paWhen_(d,out){return out?'out':d<0?'out ~'+(-d)+' day'+(d===-1?'':'s')
 function PantryView({apiUrl,apiToken}){var h=React.createElement;
   var _d=React.useState(null),data=_d[0],setData=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];var _o=React.useState({}),open=_o[0],setOpen=_o[1];
   var _q=React.useState(''),q=_q[0],setQ=_q[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var _th=React.useState(null),toHome=_th[0],setToHome=_th[1];
   var load=function(){apiGet(apiUrl,apiToken,{action:'pantry'}).then(function(r){setData(r||{items:[]});}).catch(function(e){setErr('Couldn’t load the pantry: '+((e&&e.message)||e));setData({items:[]});});};
   React.useEffect(function(){if(apiUrl&&apiToken)load();else setData({items:[]});},[apiUrl,apiToken]);
   if(!data)return h('div',{className:'pa-dim'},'Loading the pantry…');
@@ -8795,6 +8875,17 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
       if(kind==='used'){patch(i.normalized,Object.assign({out:true,daysUntil:0,usedOn:r.date||''},r.onList?{onList:r.onList}:{}));setMsg('Ran out: '+i.normalized+(r.onList?' · on the '+r.onList+' list':''));}
       else{patch(i.normalized,{daysUntil:r.daysUntil!=null?r.daysUntil:days+1,estimatedNext:r.estimatedNext||i.estimatedNext});setMsg('Still have '+i.normalized+(r.estimatedNext?' · next ~'+paShort_(r.estimatedNext):''));}})
     .catch(function(e){setErr('Couldn’t save it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
+  // Not a pantry item (a wreath, a lamp): moves it to Home & seasonal (pantry_to_home, HomePurchases.js).
+  var moveHome=function(i,season){setBusy(i.normalized);setErr('');apiGet(apiUrl,apiToken,{action:'pantry_to_home',name:i.normalized,season:season||''}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');
+      setData(function(d){return Object.assign({},d,{items:(d.items||[]).filter(function(x){return x.normalized!==i.normalized;})});});setToHome(null);
+      setMsg('Moved to Home & seasonal: '+i.normalized+(season?' ('+season+')':'')+'. No more running-out guesses for it.');})
+    .catch(function(e){setErr('Couldn’t move it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
+  var homeBtn=function(i,aisle){if(aisle!=='Household'&&aisle!=='Other')return null;
+    if(!toHome||toHome.name!==i.normalized)return h('button',{type:'button',className:'btn pa-tohome sm',disabled:!!busy,title:'Not a pantry item: decor, furniture, something you keep','aria-label':'Not a pantry item: '+i.normalized,onClick:function(){setToHome({name:i.normalized,season:typeof rcSeasonGuess_==='function'?rcSeasonGuess_(i.normalized):''});}},'Not a pantry item');
+    return h('span',{className:'pa-tohome-w'},h('select',{className:'pa-tohome-season','aria-label':'Season for '+i.normalized,value:toHome.season,onChange:function(e){setToHome({name:i.normalized,season:e.target.value});}},
+        h('option',{value:''},'No season (a keeper)'),(typeof RC_SEASONS_!=='undefined'?RC_SEASONS_:[]).map(function(x){return h('option',{key:x,value:x},x);})),
+      h('button',{type:'button',className:'btn btn-primary pa-tohome-go sm',disabled:!!busy,onClick:function(){moveHome(i,toHome.season);}},busy===i.normalized?'Moving…':'Move to Home'),
+      h('button',{type:'button',className:'btn pa-tohome-cancel sm',onClick:function(){setToHome(null);}},'Cancel'));};
   var staple=function(i){var on=!i.staple;patch(i.normalized,{staple:on});apiGet(apiUrl,apiToken,{action:'pantry_staple',name:i.normalized,on:on}).catch(function(e){patch(i.normalized,{staple:!on});setErr('Couldn’t save it: '+((e&&e.message)||e));});};
   var star=function(i){return h('button',{type:'button',className:'pa-star'+(i.staple?' on':''),'aria-pressed':!!i.staple,'aria-label':(i.staple?'Staple: VERA adds it by itself. Tap to stop':'Make it a staple: VERA adds it by itself')+' ('+i.normalized+')',title:i.staple?'Staple: added to the list by itself':'Make it a staple',onClick:function(){staple(i);}},i.staple?'★':'☆');};
   var k=paCounts_(items,days),soon=paSoon_(items,days),groups=paByAisle_(items,days,q);
@@ -8822,7 +8913,7 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
       h('button',{type:'button',className:'pa-fold','aria-expanded':isOpen,onClick:function(){var n=Object.assign({},open);n[g.aisle]=!open[g.aisle];setOpen(n);}},(isOpen?'▾ ':'▸ ')+g.aisle+' · '+g.items.length),
       isOpen&&g.items.map(function(i){return h('div',{key:i.normalized,className:'pa-row','data-item':i.normalized},star(i),
         h('span',{className:'pa-main'},h('b',null,paTitle_(i.normalized),i.stale?h('span',{className:'pa-stale'},'not bought lately'):null),h('small',null,'Every ~'+i.avgDays+' days'+(i.lastDate?' · last '+paShort_(i.lastDate)+(i.lastStore?', '+i.lastStore:''):'')+(i.estimatedNext&&!i.stale?' · next ~'+paShort_(i.estimatedNext):''))),
-        i.onList?h('span',{className:'pa-on'},'✓ '+i.onList):h('button',{type:'button',className:'btn pa-add sm',disabled:!!busy,onClick:function(){add(i);}},'🛒'+(i.lastStore?' '+i.lastStore:' Add')));}));}),
+        i.onList?h('span',{className:'pa-on'},'✓ '+i.onList):h('button',{type:'button',className:'btn pa-add sm',disabled:!!busy,onClick:function(){add(i);}},'🛒'+(i.lastStore?' '+i.lastStore:' Add')),homeBtn(i,g.aisle));}));}),
     !groups.length&&q&&h('div',{className:'pa-dim'},'Nothing called “'+q+'”.'),
     h('div',{className:'pa-dim pa-foot'},'☆ marks a staple: VERA adds staples to the list by itself when they’re due. Everything else waits for your tap.'));}
 // ---- Shopping tab -----------------------------------------------------------
@@ -8857,7 +8948,7 @@ function shopGroup_(items){var by={},done=[];(items||[]).forEach(function(it){va
 // the receipt adds its price), 'list' (on the list, not checked yet), or new / non-food.
 function shopNorm_(t){return String(t||'').toLowerCase().replace(/^🤖\s*/,'').replace(/\s*\(est\..*?\)\s*$/,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();}
 function shopReceiptKind_(line,items){var m=shopNorm_(line&&line.match);if(m){for(var i=0;i<(items||[]).length;i++){if(shopNorm_(shopItemView_(items[i].text).name)===m)return {kind:items[i].done?'match':'list',index:items[i].index};}}return {kind:line&&line.food===false?'nonfood':'new',index:-1};}
-var SHOP_RECEIPT_NOTE_={match:'Already logged when you checked it off · adds the price',list:'On your list · checked off too',new:'Not on the list · a new pantry row',nonfood:'Not food · logged only if you tick it'};
+var SHOP_RECEIPT_NOTE_={match:'Already logged when you checked it off · adds the price',list:'On your list · checked off too',new:'Not on the list · a new pantry row',nonfood:'Household supply · a new pantry row',home:'Home & seasonal · not in the pantry'};
 
 function ShopRow(props){var h=React.createElement,it=props.row.item,view=props.row.view,isVERA=view.vera,busy=props.busy;
   var editing=props.editing;
@@ -8878,22 +8969,30 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
   var _s=React.useState('summary'),step=_s[0],setStep=_s[1];
   var _l=React.useState([]),lines=_l[0],setLines=_l[1];
   var _p=React.useState([]),picks=_p[0],setPicks=_p[1];
+  var _k=React.useState([]),kinds=_k[0],setKinds=_k[1];
+  var _se=React.useState([]),seasons=_se[0],setSeasons=_se[1];
   var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
   var done=store.items.filter(function(i){return i.done;}).map(function(i){return shopItemView_(i.text).name;});
   // Grocery runs: who went, the card and the total go to Groceries in Finances (Groceries.js).
   var gr=props.grocery||null;
   var _g=React.useState(null),gs=_g[0],setGs=_g[1];
-  var _r=React.useState({who:gr&&gr.who==='Victoria'?'Victoria':'Ahmed',card:'',cardTouched:false,count:'',typed:'',total:'',edited:false}),run=_r[0],setRun=_r[1];
+  var _r=React.useState({who:gr&&gr.who==='Victoria'?'Victoria':'Ahmed',card:'',cardTouched:false,count:'',typed:'',homeTyped:'',total:'',edited:false}),run=_r[0],setRun=_r[1];
   var setR=function(o){setRun(function(x){return Object.assign({},x,o);});};
   React.useEffect(function(){if(!gr||!gr.apiUrl)return;apiGet(gr.apiUrl,gr.apiToken,{action:'grocery_setup',store:store.storeName}).then(function(r){if(r&&r.ok)setGs(r);}).catch(function(){});},[store.storeName]);
   var grPerson=gs&&gs.people?gs.people[run.who]||{}:{};
   var grCard=run.cardTouched?run.card:(grPerson.suggested?grPerson.suggested.card:'');
   var grMode=!gs?'none':gs.counts===null?'none':gs.counts?'all':(run.count||(step==='review'||step==='saving'?'food':''));
-  var grSum=function(mode){return Math.round(lines.reduce(function(n,l){var v=l&&l.price!=null&&l.price!==''&&isFinite(Number(l.price))?Number(l.price):0;return mode==='food'&&l.food===false?n:n+v;},0)*100)/100;};
-  var grAmount=function(kind){var t=kind==='receipt'?(run.edited?run.total:String(grSum(grMode))):run.typed;var n=Number(String(t).replace(/[^0-9.]/g,''));return isFinite(n)&&n>0?Math.round(n*100)/100:0;};
-  var grLogs=function(kind){return !!(gs&&gs.counts!==null&&grMode!=='none'&&grMode!==''&&grAmount(kind)>0);};
+  var grNum=function(t){var n=Number(String(t==null?'':t).replace(/[^0-9.]/g,''));return isFinite(n)&&n>0?Math.round(n*100)/100:0;};
+  // What was paid, shared across groceries, supplies and Home & seasonal (rcSplit_).
+  var sp=rcSplit_(lines,kinds,run.edited?grNum(run.total):null,grMode==='none'||grMode===''?'none':grMode);
+  var grCounts=grMode!=='none'&&grMode!=='';
+  var grAmount=function(kind){return !grCounts?0:kind==='receipt'?sp.counted:grNum(run.typed);};
+  var grHome=function(kind){return kind==='receipt'?sp.home:grNum(run.homeTyped);};
+  var grLogs=function(kind){return !!(gs&&gs.counts!==null&&(grAmount(kind)>0||grHome(kind)>0));};
+  var homeLines=function(){return lines.map(function(x,i){return kinds[i]==='home'?{name:x.match||x.name,price:x.price,amount:sp.homeAmts[i],season:seasons[i]||''}:null;}).filter(Boolean);};
   function grLog(kind){if(!grLogs(kind))return Promise.resolve(null);
-    return apiPost(gr.apiUrl,gr.apiToken,{action:'grocery_log',run:{store:store.storeName,who:run.who,card:grCard,total:grAmount(kind),source:kind,counted:grMode==='food'?'food':'all',itemsTotal:kind==='receipt'?grSum('all'):''}})
+    return apiPost(gr.apiUrl,gr.apiToken,{action:'grocery_log',run:{store:store.storeName,who:run.who,card:grCard,total:grAmount(kind),source:kind,counted:grMode==='food'?'food':'all',itemsTotal:kind==='receipt'?sp.linesSum:'',
+      homeTotal:grHome(kind)||'',home:kind==='receipt'?homeLines():[]}})
       .then(function(r){if(r&&r.ok===false)throw new Error(r.error||'Couldn’t log the run');return r;});}
   function grBox(kind){if(!gr||!gs||gs.counts===null)return null;var hh=React.createElement;
     var seg=function(on){return {minHeight:44,borderRadius:10,cursor:'pointer',fontSize:14,background:on?'#1a3060':'#0a1220',border:on?'1px solid #4a6db0':'1px solid #1c2a48',color:on?'#dde1f0':'#aab6d6',fontWeight:on?600:400};};
@@ -8906,40 +9005,47 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
     var cards=[].concat(grCard?[grCard]:[],(grPerson.cards||[]).filter(function(c){return c!==grCard;}));
     return hh('div',{className:'gr-run',style:{display:'flex',flexDirection:'column',gap:12,background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:14}},
       hh('span',{style:{fontSize:12,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#aab6d6'}},'This run'),ask,
-      grMode==='none'||grMode===''?null:hh(React.Fragment,null,
-        kind==='typed'?hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-typed',style:{fontSize:12,color:'#aab6d6'}},'How much was it?'),
+      (!grCounts&&!(grHome(kind)>0))&&kind==='receipt'?null:hh(React.Fragment,null,
+        kind==='typed'&&grCounts?hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-typed',style:{fontSize:12,color:'#aab6d6'}},'How much were the groceries?'),
           hh('input',{id:'gr-typed',className:'gr-typed',inputMode:'decimal',placeholder:'$',value:run.typed,onChange:function(e){setR({typed:e.target.value});},style:{minHeight:52,boxSizing:'border-box',padding:'0 12px',borderRadius:10,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:22,fontWeight:700}})):null,
+        kind==='typed'?hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-home-typed',style:{fontSize:12,color:'#aab6d6'}},'Home & seasonal, if any (decor, furniture: not groceries)'),
+          hh('input',{id:'gr-home-typed',className:'gr-home-typed',inputMode:'decimal',placeholder:'$ (optional)',value:run.homeTyped,onChange:function(e){setR({homeTyped:e.target.value});},style:{minHeight:44,boxSizing:'border-box',padding:'0 12px',borderRadius:10,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:16}})):null,
         hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('span',{style:{fontSize:12,color:'#aab6d6'}},'Who went'),
           hh('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:6}},['Ahmed','Victoria'].map(function(w){return hh('button',{key:w,type:'button',className:'gr-who','aria-pressed':run.who===w,onClick:function(){setR({who:w,cardTouched:false});},style:seg(run.who===w)},w);}))),
         hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-card',style:{fontSize:12,color:'#aab6d6'}},'Card'),
           hh('select',{id:'gr-card',className:'gr-card',value:grCard,onChange:function(e){setR({card:e.target.value,cardTouched:true});},style:{minHeight:48,boxSizing:'border-box',padding:'0 10px',borderRadius:10,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:15}},
             cards.map(function(c){return hh('option',{key:c,value:c},c+(grPerson.suggested&&grPerson.suggested.card===c?' (suggested)':''));}),hh('option',{value:''},'Not on a card')),
           grPerson.suggested&&grCard===grPerson.suggested.card?hh('span',{className:'gr-why',style:{fontSize:12,color:'#8fe3c4'}},grPerson.suggested.why):null),
-        kind==='receipt'?hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-total',style:{fontSize:12,color:'#aab6d6'}},'Total'),
-          hh('input',{id:'gr-total',className:'gr-total',inputMode:'decimal',value:run.edited?run.total:'$'+grSum(grMode).toFixed(2),onChange:function(e){setR({total:e.target.value,edited:true});},style:{minHeight:48,boxSizing:'border-box',padding:'0 12px',borderRadius:10,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:20,fontWeight:700}}),
-          hh('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},(grMode==='food'?'The food lines VERA read':'The sum of every line VERA read, pantry or not')+'. Tax and coupons aren’t in it; edit the total if you want it to match the card.')):null,
+        kind==='receipt'?hh('div',{style:{display:'flex',flexDirection:'column',gap:6}},hh('label',{htmlFor:'gr-total',style:{fontSize:12,color:'#aab6d6'}},'Paid in all, tax included'),
+          hh('input',{id:'gr-total',className:'gr-total',inputMode:'decimal',value:run.edited?run.total:'$'+sp.total.toFixed(2),onChange:function(e){setR({total:e.target.value,edited:true});},style:{minHeight:48,boxSizing:'border-box',padding:'0 12px',borderRadius:10,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:20,fontWeight:700}}),
+          hh('div',{className:'gr-split',style:{display:'flex',flexDirection:'column',gap:4,background:'#0a1220',border:'1px solid #1c2a48',borderRadius:10,padding:'8px 10px'}},
+            [['grocery','Groceries',sp.grocery,grCounts],['supply','Supplies',sp.supply,grCounts&&grMode!=='food'],['home','Home & seasonal',sp.home,true]].map(function(r){var k=RC_KINDS_[r[0]];
+              return hh('div',{key:r[0],className:'gr-split-'+r[0],style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,fontSize:13,fontVariantNumeric:'tabular-nums'}},
+                hh('span',{style:{color:k.fg}},k.label.split(' ')[0]+' '+r[1]+(r[0]!=='home'&&!r[3]?' · not counted':'')),hh('span',{style:{color:r[3]?'#dde1f0':'#6f7fa6'}},'$'+r[2].toFixed(2)));})),
+          hh('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Edit what you paid to match the card; VERA shares the tax across the three. Groceries and supplies count as groceries; Home & seasonal has its own line.')):null,
         m.budget!=null?hh('div',{className:'gr-month',style:{display:'flex',flexDirection:'column',gap:6,borderTop:'1px solid #1e3060',paddingTop:10}},
           hh('div',{style:{display:'flex',justifyContent:'space-between',fontSize:13}},hh('span',{style:{color:'#aab6d6'}},'Groceries this month, with this run'),hh('span',{style:{fontVariantNumeric:'tabular-nums'}},'$'+Math.round(after)+' of $'+Math.round(m.budget))),
           hh('div',{style:{height:6,borderRadius:3,background:'#13203a',overflow:'hidden'}},hh('div',{style:{height:6,width:Math.min(100,after/m.budget*100).toFixed(1)+'%',background:after>m.budget?'#ffb4a9':'#8ab4f8'}}))):null));}
   function onFile(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;setMsg('');setStep('reading');
-    Promise.resolve(props.onScan(f)).then(function(r){var ls=((r&&r.items)||[]).map(function(x){var k=shopReceiptKind_(x,store.items);return Object.assign({},x,{kind:k.kind,index:k.index});});
+    Promise.resolve(props.onScan(f)).then(function(r){var its=(r&&r.items)||[];var ls=its.map(function(x){var k=shopReceiptKind_(x,store.items);return Object.assign({},x,{kind:k.kind,index:k.index});});
       if(!ls.length){setMsg('VERA couldn’t read any items on that photo. Try again in better light, or skip the receipt.');setStep('summary');return;}
-      setLines(ls);setPicks(ls.map(function(x){return x.kind!=='nonfood';}));setStep('review');})
+      var ks=its.map(rcKind_);setLines(ls);setKinds(ks);setSeasons(its.map(function(x,i){return ks[i]==='home'?rcSeasonGuess_(x.name):'';}));setPicks(ks.map(function(k){return k!=='home';}));setStep('review');})
     .catch(function(err){setMsg('Couldn’t read the receipt: '+((err&&err.message)||err));setStep('summary');});}
-  function save(){var chosen=lines.filter(function(x,i){return picks[i];});var logging=grLogs('receipt');if(!chosen.length&&!logging)return;setStep('saving');setMsg('');
+  function loggedNote(){var b=[];if(grAmount('receipt')>0)b.push('$'+grAmount('receipt').toFixed(2)+' to groceries');if(grHome('receipt')>0)b.push('$'+grHome('receipt').toFixed(2)+' to Home & seasonal');return b.length?' Logged '+b.join(' and ')+'.':'';}
+  function save(){var chosen=lines.filter(function(x,i){return picks[i]&&kinds[i]!=='home';});var logging=grLogs('receipt');if(!chosen.length&&!logging)return;setStep('saving');setMsg('');
     var logged=null;
-    grLog('receipt').then(function(r){logged=r;if(!chosen.length){setMsg('Logged $'+grAmount('receipt').toFixed(2)+' to groceries.');setStep('saved');return 'done';}}).then(function(stop){if(stop==='done')return;
+    grLog('receipt').then(function(r){logged=r;if(!chosen.length){setMsg(loggedNote().trim());setStep('saved');return 'done';}}).then(function(stop){if(stop==='done')return;
     var listed=chosen.filter(function(x){return x.kind==='list';});
     var tick=listed.reduce(function(p,x){return p.then(function(){return props.onToggle(x.index,false);});},Promise.resolve());
-    return tick.then(function(){return props.onSave(chosen.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price,food:x.food!==false};}));})
+    return tick.then(function(){return props.onSave(chosen.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price,food:x.food!==false,kind:kinds[lines.indexOf(x)]||rcKind_(x)};}));})
     .then(function(r){var m=chosen.filter(function(x){return x.kind==='match';}).length,parts=[];
       if(m)parts.push('prices added to '+m+' you checked off');if(listed.length)parts.push(listed.length+' more checked off on the list');
       var nw=chosen.length-m-listed.length;if(nw)parts.push(nw+' new item'+(nw===1?'':'s')+' logged from the receipt');
-      setMsg('Saved to Pantry: '+parts.join(', ')+'.'+(logged?' Logged $'+grAmount('receipt').toFixed(2)+' to groceries.':''));setStep('saved');});})
+      setMsg('Saved to Pantry: '+parts.join(', ')+'.'+(logged?loggedNote():''));setStep('saved');});})
     .catch(function(err){setMsg('Couldn’t save: '+((err&&err.message)||err));setStep('review');});}
-  function logTyped(){setStep('saving');setMsg('');grLog('typed').then(function(){setMsg('Logged $'+grAmount('typed').toFixed(2)+' to groceries.');setStep('saved');})
+  function logTyped(){setStep('saving');setMsg('');grLog('typed').then(function(){var b=[];if(grAmount('typed')>0)b.push('$'+grAmount('typed').toFixed(2)+' to groceries');if(grHome('typed')>0)b.push('$'+grHome('typed').toFixed(2)+' to Home & seasonal');setMsg('Logged '+b.join(' and ')+'.');setStep('saved');})
     .catch(function(err){setMsg('Couldn’t log it: '+((err&&err.message)||err));setStep('summary');});}
-  var nPick=picks.filter(Boolean).length;
+  var nPick=picks.filter(function(p,i){return p&&kinds[i]!=='home';}).length;
   var btn=function(primary){return {minHeight:48,borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer',border:primary?'none':'1px solid #2a3a5c',background:primary?'#c9a84c':'transparent',color:primary?'#1a1405':'#cfd8ef'};};
   return h('div',{className:'shop-sheet-backdrop',onClick:function(e){if(e.target===e.currentTarget&&step!=='saving'&&step!=='reading')props.onClose();},style:{position:'fixed',inset:0,background:'rgba(2,6,16,0.72)',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',zIndex:9999}},
     h('div',{role:'dialog','aria-label':'Done shopping at '+store.storeName,className:'shop-sheet',style:{width:'100%',maxWidth:560,maxHeight:'88vh',overflowY:'auto',boxSizing:'border-box',background:'#0d1528',borderTop:'1px solid #2a3a5c',borderRadius:'18px 18px 0 0',padding:'14px 16px 20px',display:'flex',flexDirection:'column',gap:12}},
@@ -8955,23 +9061,30 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
           h('svg',{'aria-hidden':true,width:24,height:24,viewBox:'0 0 24 24',fill:'none',stroke:'#8ab4f8',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M4 8h3l2-3h6l2 3h3v11H4z'}),h('circle',{cx:12,cy:13,r:4})),
           h('span',{style:{display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:15,fontWeight:700}},step==='reading'?'Reading the receipt…':'Snap the receipt'),h('span',{style:{fontSize:12,color:'#8a9abf'}},'Pick what goes to the pantry; prices fill in'))),
         grBox('typed'),
-        gr&&gs&&gs.counts!==null&&grLogs('typed')?h('button',{type:'button',className:'gr-log-typed',onClick:logTyped,disabled:step==='reading',style:btn(true)},'Done · log $'+grAmount('typed').toFixed(2)+' to groceries'):null,
+        gr&&gs&&gs.counts!==null&&grLogs('typed')?h('button',{type:'button',className:'gr-log-typed',onClick:logTyped,disabled:step==='reading',style:btn(true)},'Done · log $'+(grAmount('typed')+grHome('typed')).toFixed(2)+(grHome('typed')>0?(grAmount('typed')>0?' (incl. $'+grHome('typed').toFixed(2)+' home)':' to Home & seasonal'):' to groceries')):null,
         h('button',{type:'button',className:'shop-sheet-close',onClick:props.onClose,disabled:step==='reading',style:btn(!(gr&&gs&&gs.counts!==null&&grLogs('typed')))},gr&&gs&&gs.counts!==null?'Done, don’t log a total':'Done, no receipt'),
         h('span',{style:{fontSize:12,color:'#6f7fa6'}},'Checked items stay crossed out on the list.')),
       (step==='review'||step==='saving')&&h(React.Fragment,null,
         h('span',{style:{fontSize:12,color:'#8a9abf'}},'VERA read '+lines.length+' item'+(lines.length===1?'':'s')+' · the photo isn’t kept'),
         h('span',{className:'shop-onhand-note',style:{fontSize:12,color:'#cfe0ff'}},'Food you pick also goes to this week’s On hand in Meal Plan.'),
-        h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},lines.map(function(x,i){var on=picks[i];
-          return h('button',{key:i,type:'button',className:'shop-receipt-line','aria-pressed':on,onClick:function(){var p=picks.slice();p[i]=!p[i];setPicks(p);},style:{display:'flex',alignItems:'center',gap:12,width:'100%',minHeight:56,padding:'6px 14px',background:'transparent',border:0,borderTop:i?'1px solid #16223c':'none',cursor:'pointer',color:'inherit',textAlign:'left'}},
-            h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:on?'none':'2px solid #4a5d8a'}},on?'✓':''),
-            h('span',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:15,color:on?'#dde1f0':'#6f7fa6'}},x.match||x.name),h('span',{style:{fontSize:11,color:x.kind==='match'?'#8fe0a8':x.kind==='nonfood'?'#6f7fa6':'#aab6d6'}},SHOP_RECEIPT_NOTE_[x.kind])),
-            x.price!==''&&x.price!=null?h('span',{style:{fontSize:13,color:'#aab6d6',fontVariantNumeric:'tabular-nums'}},'$'+Number(x.price).toFixed(2)):null);})),
+        h('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Tap a chip to change its group: 🥕 Grocery and 🧻 Supply go to the pantry; 🎄 Home (decor, seasonal things, furniture) has its own budget line and stays out of the pantry.'),
+        h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},lines.map(function(x,i){var kd=kinds[i]||rcKind_(x),home=kd==='home',on=picks[i]&&!home,name=x.match||x.name;
+          var cycle=function(){var k=kinds.slice();k[i]=rcNextKind_(kd);setKinds(k);var p=picks.slice();p[i]=k[i]!=='home';setPicks(p);if(k[i]==='home'&&!seasons[i]){var ss=seasons.slice();ss[i]=rcSeasonGuess_(name);setSeasons(ss);}};
+          return h('div',{key:i,className:'shop-receipt-line','data-kind':kd,style:{display:'flex',alignItems:'center',gap:8,width:'100%',minHeight:56,padding:'6px 10px 6px 14px',boxSizing:'border-box',borderTop:i?'1px solid #16223c':'none',flexWrap:'wrap'}},
+            h('button',{type:'button',className:'shop-receipt-pick','aria-pressed':on,disabled:home,'aria-label':home?name+': Home & seasonal, not in the pantry':(on?'Leave out of the pantry: ':'Add to the pantry: ')+name,onClick:function(){var p=picks.slice();p[i]=!p[i];setPicks(p);},style:{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:12,minHeight:44,background:'transparent',border:0,padding:0,cursor:home?'default':'pointer',color:'inherit',textAlign:'left'}},
+              h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:home?'2px dashed #4a3260':on?'none':'2px solid #4a5d8a'}},on?'✓':''),
+              h('span',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:15,color:on||home?'#dde1f0':'#6f7fa6',overflowWrap:'anywhere'}},name),
+                h('span',{style:{fontSize:11,color:home?'#d7a6f0':x.kind==='match'?'#8fe0a8':x.kind==='nonfood'?'#8ab4f8':'#aab6d6'}},home?SHOP_RECEIPT_NOTE_.home:SHOP_RECEIPT_NOTE_[x.kind]))),
+            h(RcChip,{kind:kd,name:name,onClick:cycle}),
+            x.price!==''&&x.price!=null?h('span',{style:{fontSize:13,color:'#aab6d6',fontVariantNumeric:'tabular-nums',minWidth:52,textAlign:'right'}},'$'+Number(x.price).toFixed(2)):null,
+            home?h('div',{style:{flexBasis:'100%',paddingLeft:34}},h(RcSeason,{value:seasons[i],onChange:function(v){var ss=seasons.slice();ss[i]=v;setSeasons(ss);}})):null);})),
         grBox('receipt'),
         h('button',{type:'button',className:'shop-receipt-save',onClick:save,disabled:(!nPick&&!grLogs('receipt'))||step==='saving',style:btn(true)},step==='saving'?'Saving…':
-          grLogs('receipt')?(nPick?'Add '+nPick+' to Pantry · log $'+grAmount('receipt').toFixed(2):'Log $'+grAmount('receipt').toFixed(2)+' to groceries'):nPick?'Add '+nPick+' to Pantry':'Nothing picked'),
+          grLogs('receipt')?[nPick?'Add '+nPick+' to Pantry':'',grAmount('receipt')>0?(nPick?'log $':'Log $')+grAmount('receipt').toFixed(2)+(nPick?'':' to groceries'):'',grHome('receipt')>0?'$'+grHome('receipt').toFixed(2)+' home':''].filter(Boolean).join(' · '):nPick?'Add '+nPick+' to Pantry':'Nothing picked'),
         h('button',{type:'button',onClick:function(){setStep('summary');},disabled:step==='saving',style:btn(false)},'Back')),
       step==='saved'&&h(React.Fragment,null,
         h('div',{className:'shop-sheet-saved',role:'status',style:{padding:14,borderRadius:12,background:'#0f2a1c',border:'1px solid #2f6b45',color:'#8fe0a8',fontSize:14,lineHeight:1.5}},msg),
+        gr&&gs&&grHome('receipt')>0?h(RcKeepOffer,{apiUrl:gr.apiUrl,apiToken:gr.apiToken,store:store.storeName,min:gs.keepMin,items:homeLines(),date:(function(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);})()}):null,
         h('button',{type:'button',onClick:props.onClose,style:btn(true)},'Done'))));}
 
 function ShoppingTab(props){var h=React.createElement,stores=props.stores||[],busy=props.busy;

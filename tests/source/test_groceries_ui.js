@@ -97,18 +97,18 @@ const posts = page => page.evaluate(() => window.__posts);
       check(L + ': switching who switches the suggested card', await page.$eval('#grprobe .gr-card', n => n.value) === otherCard);
       check(L + ': the month bar includes this run', /Groceries this month, with this run \$523 of \$800/.test(await text(page, '.gr-month')), await text(page, '.gr-month'));
       await page.fill('#grprobe .gr-total', '39.10');
-      check(L + ': the button says it logs the total too', /Add 2 to Pantry · log \$39\.10/.test(await text(page, '.shop-receipt-save')), await text(page, '.shop-receipt-save'));
+      check(L + ': the button says it logs the total too (paper towels are a supply now: they go in the pantry too)', /Add 3 to Pantry · log \$39\.10/.test(await text(page, '.shop-receipt-save')), await text(page, '.shop-receipt-save'));
       await click(page, '.shop-receipt-save'); await page.waitForTimeout(300);
       const p1 = await posts(page);
       const log = p1.filter(x => x.action === 'grocery_log')[0];
       check(L + ': Save logs the run', log && log.run.store === 'Store A' && log.run.who === other && log.run.card === otherCard && log.run.total === 39.1 &&
             log.run.source === 'receipt' && log.run.counted === 'all' && log.run.itemsTotal === 36.77, JSON.stringify(log));
-      check(L + ': …then saves the pantry as before', p1.findIndex(x => x.action === 'grocery_log') < p1.findIndex(x => x.pantry) && p1.some(x => x.pantry === 't.a' && x.n === 2), JSON.stringify(p1));
+      check(L + ': …then saves the pantry as before', p1.findIndex(x => x.action === 'grocery_log') < p1.findIndex(x => x.pantry) && p1.some(x => x.pantry === 't.a' && x.n === 3), JSON.stringify(p1));
       check(L + ': it says both happened', /Saved to Pantry: .*Logged \$39\.10 to groceries\./.test(await text(page, '.shop-sheet-saved')), await text(page, '.shop-sheet-saved'));
 
       // ---- no receipt ----
       await mountShop(page, who, 'Store A');
-      check(L + ': without a receipt, "How much was it?"', /How much was it\?/.test(await text(page, '.gr-run')) && /Done, don’t log a total/.test(await text(page, '.shop-sheet-close')));
+      check(L + ': without a receipt, "How much were the groceries?" and an optional Home & seasonal amount', /How much were the groceries\?/.test(await text(page, '.gr-run')) && /Home & seasonal, if any/.test(await text(page, '.gr-run')) && /Done, don’t log a total/.test(await text(page, '.shop-sheet-close')));
       check(L + ': nothing to log until there is a total', !(await page.$('#grprobe .gr-log-typed')));
       await page.fill('#grprobe .gr-typed', '64.18');
       await click(page, '.gr-log-typed'); await page.waitForTimeout(200);
@@ -121,11 +121,11 @@ const posts = page => page.evaluate(() => window.__posts);
       await scan(page);
       check(L + ': a non-grocery store asks, defaulting to just the food', /Store B isn’t marked as a grocery store\. Count this run\?/.test(await text(page, '.gr-ask')) &&
             await page.$eval('#grprobe .gr-count[aria-pressed="true"]', n => n.dataset.mode) === 'food');
-      check(L + ': just the food leaves the paper towels out', await page.$eval('#grprobe .gr-total', n => n.value) === '$14.78');
+      check(L + ': just the food leaves the paper towels (a supply) out', /Supplies · not counted/.test(await text(page, '.gr-split-supply')) && /log \$14\.78/.test(await text(page, '.shop-receipt-save')), await text(page, '.shop-receipt-save'));
       await click(page, '.gr-count[data-mode="all"]');
-      check(L + ': all of it puts them back', await page.$eval('#grprobe .gr-total', n => n.value) === '$36.77');
+      check(L + ': all of it puts them back', await page.$eval('#grprobe .gr-total', n => n.value) === '$36.77' && /log \$36\.77/.test(await text(page, '.shop-receipt-save')));
       await click(page, '.gr-count[data-mode="none"]');
-      check(L + ': not this one: no total, nothing to log', !(await page.$('#grprobe .gr-total')) && /^Add 2 to Pantry$/.test(await text(page, '.shop-receipt-save')));
+      check(L + ': not this one: no total, nothing to log', !(await page.$('#grprobe .gr-total')) && /^Add 3 to Pantry$/.test(await text(page, '.shop-receipt-save')));
       await click(page, '.gr-count[data-mode="food"]');
       await click(page, '.shop-receipt-save'); await page.waitForTimeout(300);
       const fb = (await posts(page)).filter(x => x.action === 'grocery_log')[0];
