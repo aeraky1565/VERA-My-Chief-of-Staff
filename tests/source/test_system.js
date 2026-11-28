@@ -55,9 +55,34 @@ check('rate limited more than a day ago is OK again', by('alpha').status === 'ok
 check('no good call in a day is slow', by('news').status === 'slow' && by('news').why === 'No good call in 1d 2h', J(by('news')));
 check('never a good call is slow', by('zeta').status === 'slow' && by('zeta').why === 'No good call on record');
 check('a recent good call is OK', by('weather').status === 'ok' && by('weather').lastSuccessAgo === '2h');
-check('counts add up', J(hh.counts) === J({ ok: 2, slow: 3, failing: 1 }), J(hh.counts));
+check('counts add up', J(hh.counts) === J({ ok: 2, slow: 3, idle: 0, failing: 1 }), J(hh.counts));
 check('failing first, then slow, then OK, by name within each', J(hh.sources.map(s => s.source)) === J(['flights', 'maps', 'news', 'zeta', 'alpha', 'weather']), J(hh.sources.map(s => s.source)));
-check('an empty map is all zeros', J(ctx.sysApiHealth_({}, NOW).counts) === J({ ok: 0, slow: 0, failing: 0 }));
+check('an empty map is all zeros', J(ctx.sysApiHealth_({}, NOW).counts) === J({ ok: 0, slow: 0, idle: 0, failing: 0 }));
+
+console.log('\nhow often each source is called');
+{
+  const D = 24 * H;
+  const S2 = {
+    'open-meteo':     { lastSuccess: NOW - 3 * D, consecutiveFailures: 0 },
+    'sheet:JobAgent': { lastSuccess: NOW - 10 * D, consecutiveFailures: 0 },
+    'hoa-website':    { lastSuccess: NOW - 4 * D, consecutiveFailures: 0 },
+    'slack':          { lastSuccess: NOW - 2 * D, consecutiveFailures: 0 },
+    'googlefit-sleep':{ lastSuccess: NOW - 9 * D, consecutiveFailures: 0 },
+    'sheet:Budget':   { lastSuccess: NOW - 2 * D, consecutiveFailures: 0 },
+    'tavily':         { lastSuccess: NOW - 3 * D, lastFailure: NOW - H, consecutiveFailures: 2, lastError: 'HTTP 401' } };
+  const h2 = ctx.sysApiHealth_(S2, NOW), b2 = n => h2.sources.find(s => s.source === n);
+  check('on demand and quiet: idle, not slow, and it says when it’s used', b2('open-meteo').status === 'idle' && /Not used in 3d/.test(b2('open-meteo').why) && /Only called when you open a trip’s weather or a packing list/.test(b2('open-meteo').explain) && /isn’t failing/.test(b2('open-meteo').explain), J(b2('open-meteo')));
+  check('…the Job Agent sheet too', b2('sheet:JobAgent').status === 'idle' && /you open Career/.test(b2('sheet:JobAgent').explain));
+  check('weekly and on schedule: OK, with a note', b2('hoa-website').status === 'ok' && /once a week/.test(b2('hoa-website').explain), J(b2('hoa-website')));
+  check('weekly and a week missed: slow', ctx.sysApiHealth_({ 'hoa-website': { lastSuccess: NOW - 9 * D, consecutiveFailures: 0 } }, NOW).sources[0].status === 'slow');
+  check('daily and a day without a good call: slow, and says why that matters', b2('slack').status === 'slow' && /a day without a good call is worth a look/.test(b2('slack').explain));
+  check('retired: idle, and says it drops off by itself', b2('googlefit-sleep').status === 'idle' && /drops off by itself after 14 quiet days/.test(b2('googlefit-sleep').explain));
+  check('a summary sheet is daily', b2('sheet:Budget').status === 'slow' && /Summary sheet “Budget”/.test(b2('sheet:Budget').about));
+  check('on demand but failing is still failing', b2('tavily').status === 'failing');
+  check('each known source says what it is and when it’s called', /^Weather for trips and packing · called you open/.test(b2('open-meteo').about) && b2('slack').about !== '');
+  check('the order: failing, slow, idle, ok', J(h2.sources.map(s => s.status)) === J(['failing', 'slow', 'slow', 'idle', 'idle', 'idle', 'ok']), J(h2.sources.map(s => s.status)));
+  check('counts include idle', J(h2.counts) === J({ ok: 1, slow: 2, idle: 3, failing: 1 }), J(h2.counts));
+}
 
 console.log('\nwiring');
 check('the two GET routes', /case 'system_documents':\s+return jsonOut_\(webSystemDocuments_\(\)\);/.test(WEB) && /case 'system_api_health':\s+return jsonOut_\(webSystemApiHealth_\(\)\);/.test(WEB));

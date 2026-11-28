@@ -25,9 +25,10 @@ check('the ⚙ connection settings stay', /className:"btn-settings",onClick:\(\)
 const DOCS = { ok: true, resources: [
   { id: 'RES-1', name: 'Example Leave Policy', category: 'HR & Benefits', appliesTo: 'Ahmed', description: 'An invented policy', url: 'https://example.test/a', tags: '', usedBy: ['Family Planning: Ahmed’s leave policy', 'Chat: VERA can read it when you ask'] },
   { id: 'RES-2', name: 'Example Lease', category: 'Legal', appliesTo: 'Both', description: '', url: 'https://example.test/b', tags: '', usedBy: ['Chat: VERA can read it when you ask'] }] };
-const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
+const HEALTH = { ok: true, counts: { ok: 1, slow: 1, idle: 1, failing: 1 }, sources: [
   { source: 'example-flights', status: 'failing', why: '3 failed calls in a row · HTTP 500' },
-  { source: 'example-maps', status: 'slow', why: 'Rate limited 3h ago' },
+  { source: 'example-maps', status: 'slow', why: 'Rate limited 3h ago', explain: 'The service turned VERA away for asking too often.' },
+  { source: 'example-sheet', status: 'idle', why: 'Not used in 3d', about: 'An invented sheet · called you open Example', explain: 'Only called when you open Example, so quiet days are normal.' },
   { source: 'example-weather', status: 'ok', why: '', lastSuccessAgo: '2h' }] };
 
 (async () => {
@@ -64,9 +65,11 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     const clickTab = clickTab0;
     await clickTab('🩺 API health'); await wait(300);
     check(L + ': API health asks the server', (await page.evaluate(() => window.__calls)).includes('system_api_health'));
-    check(L + ': OK / slow / failing counts', (await txt('.sys-health-counts')) === 'OK 1 SLOW 1 FAILING 1' || (await txt('.sys-health-counts')) === 'OK 1 Slow 1 Failing 1', await txt('.sys-health-counts'));
+    check(L + ': OK / slow / idle / failing counts', /^OK 1 Slow 1 Idle 1 Failing 1$/i.test(await txt('.sys-health-counts')), await txt('.sys-health-counts'));
     const rows = await page.$$eval('#sysprobe .sys-health-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
-    check(L + ': a row per source, worst first, with why', rows.length === 3 && /^Failing example-flights 3 failed calls in a row · HTTP 500$/.test(rows[0]) && /^Slow example-maps Rate limited 3h ago$/.test(rows[1]) && /^OK example-weather Last good call 2h ago$/.test(rows[2]), JSON.stringify(rows));
+    check(L + ': a row per source, worst first, with why', rows.length === 4 && /^Failing example-flights 3 failed calls in a row · HTTP 500$/.test(rows[0]) && /^Slow example-maps Rate limited 3h ago The service turned VERA away for asking too often\.$/.test(rows[1])
+      && /^Idle example-sheet Not used in 3d An invented sheet · called you open Example Only called when you open Example, so quiet days are normal\.$/.test(rows[2]) && /^OK example-weather Last good call 2h ago$/.test(rows[3]), JSON.stringify(rows));
+    check(L + ': a key says what Slow and Idle mean', /Idle: only used when you open a screen or ask/.test(await txt('.sys-health-key')));
     await clickTab('🤖 Assistants'); await wait(200);
     check(L + ': Assistants shows the roster', /VERA/.test(await txt('')) && /TESS/.test(await txt('')));
     await clickTab('🚩 Feature Flags'); await wait(200);
