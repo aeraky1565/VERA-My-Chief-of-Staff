@@ -173,6 +173,10 @@ var VERA_STATE_BUNDLES_ = {
   NIGHT:             ['NIGHTLY_RESUME', 'NIGHTLY_KILLED'],
   // When each nightly/morning step last ran (Features.js), for "last ran …" in Feature Flags.
   STEPS:             ['STEPS_LAST'],
+  // What VERA learned from your corrections (Learning.js): receipt groups and seasons per item,
+  // and the card per store. One property each, so neither can crowd the other past 9 KB.
+  LEARN_ITEMS:       ['LEARN_ITEMS'],
+  LEARN_CARDS:       ['LEARN_CARDS'],
   MAIL:              ['MAIL_COUNTER_PIECES', 'MAIL_COUNTER_PACKAGES', 'MAIL_COUNTER_LAST_SCAN',
                       'MAIL_COUNTER_LAST_SCAN_RUN', 'MAIL_COUNTER_LAST_RESET'],
   // Two bundles on purpose: you set the override from chat or Slack while the

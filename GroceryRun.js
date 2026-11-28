@@ -74,10 +74,12 @@ function gqClean_(text, open, storeNames, today) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) obj = { items: Array.isArray(obj) ? obj : [] };
   var names = []; (open || []).forEach(function(o) { if (names.indexOf(o.text) === -1) names.push(o.text); });
   var lines = receiptClean_(JSON.stringify(Array.isArray(obj.items) ? obj.items : []), names).slice(0, GQ_MAX_LINES_);
+  // What you taught VERA on earlier receipts (Learning.js): the group, and a season per line.
+  if (typeof rlScanLines_ === 'function') lines = rlScanLines_(lines);
   var store = gqStoreMatch_(obj.store, storeNames);
   var used = {};
   var items = lines.map(function(l) {
-    var x = { name: l.name, qty: l.qty, price: l.price, food: l.food, kind: l.kind, match: '', tabId: '', index: -1, onList: '' };
+    var x = { name: l.name, qty: l.qty, price: l.price, food: l.food, kind: l.kind, season: l.season || '', learned: !!l.learned, match: '', tabId: '', index: -1, onList: '' };
     if (l.match) {
       var cands = (open || []).filter(function(o) { return o.text.toLowerCase() === l.match.toLowerCase() && !used[o.tabId + '|' + o.index]; });
       var pick = cands.filter(function(o) { return o.store === store; })[0] || cands[0];
@@ -188,6 +190,7 @@ function webGqLog_(body) {
     var r = receiptLog_(store, items, date);
     if (!r.ok) return r;
     out.added = r.added; out.filled = r.filled;
+    if (typeof rlNoteLines_ === 'function') out.learned = rlNoteLines_(items);   // a group you changed is learned (Learning.js)
     var per = typeof OH_PERISHABLE_ !== 'undefined' ? OH_PERISHABLE_ : null;
     items.forEach(function(x) { if (x.food !== false && per && per.test(normalizeItemName_(x.name))) out.useSoon.push(String(x.name)); });
   }

@@ -110,6 +110,7 @@ function doGet(e) {
       case 'flags_quiet':     return jsonOut_(webFlagsQuiet_());                     // FlagQuiet.js (#258)
       case 'signal_learned':  return jsonOut_(webSignalLearned_());                  // SignalLearning.js (#260)
       case 'signal_keep':     return jsonOut_(webSignalKeep_(e));
+      case 'learn_forget':    return jsonOut_(webLearnForget_(e));                    // Learning.js (B1)
       case 'signal_auto':     return jsonOut_(webSignalAuto_(e));
       case 'signal_regroup':  return jsonOut_(webSignalRegroup_(e));
       case 'flag_mute':       return jsonOut_(webFlagMute_(id));
@@ -1593,7 +1594,9 @@ function webReceiptLog_(body) {
   var b = body || {};
   var s = shopStoreOf_(b.tabId);
   if (!Array.isArray(b.items) || !b.items.length) return { ok: false, error: 'No items picked.' };
-  return receiptLog_(s.storeName, b.items.slice(0, 100));
+  var r = receiptLog_(s.storeName, b.items.slice(0, 100));
+  if (r && r.ok && typeof rlNoteLines_ === 'function') r.learned = rlNoteLines_(b.items.slice(0, 100));   // Learning.js
+  return r;
 }
 
 function webAddShoppingItem_(e) {

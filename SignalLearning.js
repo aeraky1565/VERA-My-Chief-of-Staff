@@ -408,7 +408,10 @@ function slLearned_(rows, today) {
 /** GET signal_learned → what VERA has quieted, what you asked to keep, what you engage with most. */
 function webSignalLearned_() {
   var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  var out = slLearned_(slRows_(), today); out.ok = true; return out;
+  var out = slLearned_(slRows_(), today); out.ok = true;
+  // Receipt groups and seasons per item, and the card per store (Learning.js).
+  if (typeof rlLearnedLists_ === 'function') { try { var rl = rlLearnedLists_(rlItems_(), rlCards_()); out.receipts = rl.items; out.cards = rl.cards; } catch (e) { out.receipts = []; out.cards = []; } }
+  return out;
 }
 /** GET signal_keep — pattern: keep showing it (not quieted again for SL_KEEP_DAYS_ days). */
 function webSignalKeep_(e) { return slSetKept_(e, true); }

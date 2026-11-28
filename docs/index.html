@@ -6910,6 +6910,8 @@ function rcSeasonGuess_(name){var t=String(name||'').toLowerCase();
   if(/easter|egg dye|\bbunny/.test(t))return 'Easter';
   if(/ramadan|\beid\b|lantern|fanous|crescent/.test(t))return 'Ramadan & Eid';
   if(/\bpool\b|beach|sprinkler|patio umbrella|\bcooler\b|summer/.test(t))return 'Summer';return '';}
+// A line's season: what VERA learned for that item (Learning.js sends it with the scan), else a guess from its name.
+function rcSeasonFor_(x){return x&&x.season?String(x.season):rcSeasonGuess_(x&&(x.match||x.name));}
 // Pure: the paid total (tax included; the line sums when blank) shared across the kinds in proportion.
 // mode all → groceries and supplies count as groceries; food → groceries only; none → nothing does.
 function rcSplit_(lines,kinds,paid,mode){var sum={grocery:0,supply:0,home:0},pr=function(l){var v=l&&l.price!=null&&l.price!==''&&isFinite(Number(l.price))?Number(l.price):0;return v;};
@@ -6961,7 +6963,7 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
   var me=GQ_PEOPLE.filter(function(p){return String(p).toLowerCase()===String(props.who||'').toLowerCase();})[0]||GQ_PEOPLE[0];
   var cardFor=function(setup,w){var p=setup&&setup.people&&setup.people[w];return p&&p.suggested?p.suggested.card:(p&&p.cards&&p.cards[0])||'';};
   var start=function(r,mode){var setup=r.setup||r;setD(r);setF({mode:mode,store:r.store||'',other:!!(mode==='scan'&&r.store&&!r.knownStore)||!(r.stores||[]).length,date:r.date||r.today||gqTodayC_(),
-      picks:(r.items||[]).map(function(x){return rcKind_(x)!=='home';}),kinds:(r.items||[]).map(rcKind_),seasons:(r.items||[]).map(function(x){return rcKind_(x)==='home'?rcSeasonGuess_(x.name):'';}),homeTyped:'',
+      picks:(r.items||[]).map(function(x){return rcKind_(x)!=='home';}),kinds:(r.items||[]).map(rcKind_),seasons:(r.items||[]).map(function(x){return rcKind_(x)==='home'?rcSeasonFor_(x):'';}),homeTyped:'',
       ticks:(r.items||[]).map(function(x){return !!x.tabId;}),who:me,card:cardFor(setup,me),
       total:r.total!=null?String(r.total):'',counted:setup.counts===false?'food':'all',always:false,counts:setup.counts});setStep('review');};
   var onFile=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;setErr('');setStep('reading');
@@ -7018,7 +7020,7 @@ function GroceryRunSheet(props){var h=React.createElement,C=GQ_C;
       lines.length?h('div',{key:'lh',style:{display:'flex',flexDirection:'column',gap:4}},h('h2',{style:{margin:0,fontSize:18,fontWeight:700,color:C.text}},'Pick what goes to the pantry'),h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Tap a chip to change its group: 🥕 Grocery and 🧻 Supply go to the pantry; 🎄 Home (decor, seasonal things, furniture) has its own budget line and stays out. Things on a shopping list get ticked off it.')):null,
       lines.length?h('section',{key:'ls',className:'gq-lines','aria-label':'Receipt lines',style:Object.assign({},card,{gap:0,padding:'4px 12px'})},
         lines.map(function(x,i){var kd=f.kinds[i]||rcKind_(x),home=kd==='home',on=f.picks[i]&&!home,name=x.match||x.name;
-          var cycle=function(){var k=f.kinds.slice();k[i]=rcNextKind_(kd);var p=f.picks.slice();p[i]=k[i]!=='home';var ss=f.seasons.slice();if(k[i]==='home'&&!ss[i])ss[i]=rcSeasonGuess_(name);setF(Object.assign({},f,{kinds:k,picks:p,seasons:ss}));};
+          var cycle=function(){var k=f.kinds.slice();k[i]=rcNextKind_(kd);var p=f.picks.slice();p[i]=k[i]!=='home';var ss=f.seasons.slice();if(k[i]==='home'&&!ss[i])ss[i]=rcSeasonFor_(x);setF(Object.assign({},f,{kinds:k,picks:p,seasons:ss}));};
           return h('div',{key:i,className:'gq-line','data-i':i,'data-kind':kd,style:{display:'flex',flexDirection:'column',borderTop:i?'1px solid #16213a':'none',padding:'4px 0'}},
           h('div',{style:{minHeight:48,display:'flex',alignItems:'center',gap:8}},
             h('label',{style:{flex:1,minWidth:0,minHeight:48,display:'flex',alignItems:'center',gap:10,cursor:home?'default':'pointer'}},
@@ -7997,6 +7999,7 @@ function SysLearned({apiUrl,apiToken}){var h=React.createElement;var[d,setD]=Rea
   // The one-time tidy-up: old entries split by dates and wording, merged by kind. Shown first, written only on Merge.
   function merge(){setBusy('__merge');setErr('');apiGet(apiUrl,apiToken,{action:'signal_regroup',dry:'false'}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'');setRg(null);load();}).catch(function(e){setErr(e.message);}).then(function(){setBusy('');});}
   React.useEffect(load,[apiUrl,apiToken]);
+  function forget(type,key){var b=(type==='item'?'i':'c')+key;setBusy(b);setErr('');apiGet(apiUrl,apiToken,{action:'learn_forget',type:type,key:key}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'');load();}).catch(function(e){setErr(e.message);}).then(function(){setBusy('');});}
   function set(action,p){setBusy(p);setErr('');apiGet(apiUrl,apiToken,{action:action,pattern:p}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'');load();}).catch(function(e){setErr(e.message);}).then(function(){setBusy('');});}
   if(err&&!d)return h("div",{className:"sl-err",style:{color:'#f87171',fontSize:13}},err);
   if(!d)return h("div",{className:"loading-text"},"Reading what VERA has learned…");
@@ -8023,6 +8026,16 @@ function SysLearned({apiUrl,apiToken}){var h=React.createElement;var[d,setD]=Rea
       h("button",{type:"button",className:"sl-auto",style:btn,disabled:busy===x.pattern,onClick:function(){set('signal_auto',x.pattern);}},'Let VERA decide again'));}),
     d.engaged.length?sect('What you act on most'):null,
     d.engaged.length?h("div",{className:"sl-engaged",style:{fontSize:13,color:'#dde1f0',lineHeight:1.6}},d.engaged.map(function(x){return x.label+' ('+x.acted+')';}).join(' · ')):null,
+    // Learning.js (B1): what you corrected on receipts, and the card you keep using at a store.
+    (d.receipts||[]).length?sect('From your receipts',d.receipts.length):null,
+    (d.receipts||[]).length?h("div",{style:{fontSize:12,color:'#9aa8c8',lineHeight:1.5}},'Groups and seasons you changed when saving a receipt. The next receipt with the same item starts that way.'):null,
+    (d.receipts||[]).slice(0,30).map(function(x){var g={grocery:'🥕 Grocery',supply:'🧻 Supply',home:'🎄 Home'}[x.kind]||x.kind;return h("div",{key:'i'+x.key,className:"sl-item",'data-key':x.key,style:Object.assign({},card,{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10})},
+      h("span",{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h("b",{style:{fontSize:14,color:'#dde1f0',overflowWrap:'anywhere'}},x.name),h("span",{style:{fontSize:12,color:'#9aa8c8'}},g+(x.kind==='home'&&x.season?' · '+x.season:'')+' · '+x.times+(x.times===1?' time':' times'))),
+      h("button",{type:"button",className:"sl-forget",style:btn,disabled:busy==='i'+x.key,onClick:function(){forget('item',x.key);}},busy==='i'+x.key?'Forgetting…':'Forget'));}),
+    (d.cards||[]).length?sect('Cards by store',d.cards.length):null,
+    (d.cards||[]).map(function(x){return h("div",{key:'c'+x.key,className:"sl-card",'data-key':x.key,style:Object.assign({},card,{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10})},
+      h("span",{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h("b",{style:{fontSize:14,color:'#dde1f0',overflowWrap:'anywhere'}},x.store+' · '+x.who),h("span",{style:{fontSize:12,color:'#9aa8c8'}},x.card+', the last '+x.times+' times. Suggested there over the best grocery rate.')),
+      h("button",{type:"button",className:"sl-forget",style:btn,disabled:busy==='c'+x.key,onClick:function(){forget('card',x.key);}},busy==='c'+x.key?'Forgetting…':'Forget'));}),
     h("div",{style:{fontSize:11,color:'#6b7fa8',marginTop:8}},d.patterns+' kinds of flag tracked.'));}
 function SysApiHealth({apiUrl,apiToken}){var h=React.createElement;var[data,setData]=React.useState(null);var[err,setErr]=React.useState('');function load(){setErr('');apiGet(apiUrl,apiToken,{action:'system_api_health'}).then(function(d){setData(d);}).catch(function(e){setErr(e.message);});}React.useEffect(load,[apiUrl,apiToken]);if(err)return h("div",{className:"sys-health-err",style:{color:'#f87171',fontSize:13}},err);if(!data)return h("div",{className:"loading-text"},"Checking the connections…");var c=data.counts||{ok:0,slow:0,idle:0,failing:0};var COL={ok:'#34d399',slow:'#fbbf24',idle:'#94a3b8',failing:'#f87171'};var LBL={ok:'OK',slow:'Slow',idle:'Idle',failing:'Failing'};return h("div",{className:"sys-health"},h("div",{className:"sys-health-counts",style:{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}},['ok','slow','idle','failing'].map(function(k){return h("div",{key:k,className:"sys-health-count sys-"+k,style:{flex:'1 1 70px',background:'#0d1526',border:'1px solid #1e2a44',borderRadius:10,padding:'10px 12px'}},h("div",{style:{fontSize:11,color:'#6b7fa8',textTransform:'uppercase',letterSpacing:'0.06em'}},LBL[k]),h("div",{style:{fontSize:22,fontWeight:700,color:COL[k],fontVariantNumeric:'tabular-nums'}},c[k]||0));})),(data.sources||[]).length===0?h("div",{style:{fontSize:13,color:'#6b7fa8'}},"No outside calls recorded yet."):h("div",{style:{display:'flex',flexDirection:'column',gap:6}},data.sources.map(function(s){return h("div",{key:s.source,className:"sys-health-row",style:{display:'flex',gap:10,alignItems:'flex-start',background:'#0d1526',border:'1px solid #1e2a44',borderRadius:10,padding:'8px 12px'}},h("span",{className:"sys-health-pill",style:{flexShrink:0,fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999,color:'#0b1020',background:COL[s.status]}},LBL[s.status]),h("div",{style:{minWidth:0,flex:1}},h("div",{style:{fontSize:13,color:'#dde1f0',fontWeight:600,overflowWrap:'anywhere'}},s.source),h("div",{style:{fontSize:12,color:'#6b7fa8',overflowWrap:'anywhere'}},s.why||(s.lastSuccessAgo?'Last good call '+s.lastSuccessAgo+' ago':'')),
   s.about?h("div",{className:"sys-health-about",style:{fontSize:12,color:'#9aa8c8',marginTop:4,lineHeight:1.45,overflowWrap:'anywhere'}},s.about):null,
@@ -9083,7 +9096,7 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
   function onFile(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;setMsg('');setStep('reading');
     Promise.resolve(props.onScan(f)).then(function(r){var its=(r&&r.items)||[];var ls=its.map(function(x){var k=shopReceiptKind_(x,store.items);return Object.assign({},x,{kind:k.kind,index:k.index});});
       if(!ls.length){setMsg('VERA couldn’t read any items on that photo. Try again in better light, or skip the receipt.');setStep('summary');return;}
-      var ks=its.map(rcKind_);setLines(ls);setKinds(ks);setSeasons(its.map(function(x,i){return ks[i]==='home'?rcSeasonGuess_(x.name):'';}));setPicks(ks.map(function(k){return k!=='home';}));setStep('review');})
+      var ks=its.map(rcKind_);setLines(ls);setKinds(ks);setSeasons(its.map(function(x,i){return ks[i]==='home'?rcSeasonFor_(x):'';}));setPicks(ks.map(function(k){return k!=='home';}));setStep('review');})
     .catch(function(err){setMsg('Couldn’t read the receipt: '+((err&&err.message)||err));setStep('summary');});}
   function loggedNote(){var b=[];if(grAmount('receipt')>0)b.push('$'+grAmount('receipt').toFixed(2)+' to groceries');if(grHome('receipt')>0)b.push('$'+grHome('receipt').toFixed(2)+' to Home & seasonal');return b.length?' Logged '+b.join(' and ')+'.':'';}
   function save(){var chosen=lines.filter(function(x,i){return picks[i]&&kinds[i]!=='home';});var logging=grLogs('receipt');if(!chosen.length&&!logging)return;setStep('saving');setMsg('');
@@ -9123,7 +9136,7 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
         h('span',{className:'shop-onhand-note',style:{fontSize:12,color:'#cfe0ff'}},'Food you pick also goes to this week’s On hand in Meal Plan.'),
         h('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Tap a chip to change its group: 🥕 Grocery and 🧻 Supply go to the pantry; 🎄 Home (decor, seasonal things, furniture) has its own budget line and stays out of the pantry.'),
         h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},lines.map(function(x,i){var kd=kinds[i]||rcKind_(x),home=kd==='home',on=picks[i]&&!home,name=x.match||x.name;
-          var cycle=function(){var k=kinds.slice();k[i]=rcNextKind_(kd);setKinds(k);var p=picks.slice();p[i]=k[i]!=='home';setPicks(p);if(k[i]==='home'&&!seasons[i]){var ss=seasons.slice();ss[i]=rcSeasonGuess_(name);setSeasons(ss);}};
+          var cycle=function(){var k=kinds.slice();k[i]=rcNextKind_(kd);setKinds(k);var p=picks.slice();p[i]=k[i]!=='home';setPicks(p);if(k[i]==='home'&&!seasons[i]){var ss=seasons.slice();ss[i]=rcSeasonFor_(x);setSeasons(ss);}};
           return h('div',{key:i,className:'shop-receipt-line','data-kind':kd,style:{display:'flex',alignItems:'center',gap:8,width:'100%',minHeight:56,padding:'6px 10px 6px 14px',boxSizing:'border-box',borderTop:i?'1px solid #16223c':'none',flexWrap:'wrap'}},
             h('button',{type:'button',className:'shop-receipt-pick','aria-pressed':on,disabled:home,'aria-label':home?name+': Home & seasonal, not in the pantry':(on?'Leave out of the pantry: ':'Add to the pantry: ')+name,onClick:function(){var p=picks.slice();p[i]=!p[i];setPicks(p);},style:{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:12,minHeight:44,background:'transparent',border:0,padding:0,cursor:home?'default':'pointer',color:'inherit',textAlign:'left'}},
               h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:home?'2px dashed #4a3260':on?'none':'2px solid #4a5d8a'}},on?'✓':''),

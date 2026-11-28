@@ -399,7 +399,9 @@ function readReceipt_(imageB64, mime, listNames) {
   if (resp.getResponseCode() !== 200) throw new Error('Couldn’t read the receipt right now (HTTP ' + resp.getResponseCode() + ').');
   var json = JSON.parse(resp.getContentText());
   var text = (json.content && json.content[0] && json.content[0].text) || '';
-  return receiptClean_(text, names);
+  var lines = receiptClean_(text, names);
+  // What you taught VERA on earlier receipts (Learning.js): the group, and a season per line.
+  return typeof rlScanLines_ === 'function' ? rlScanLines_(lines) : lines;
 }
 
 /**

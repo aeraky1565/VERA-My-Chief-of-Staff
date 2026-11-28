@@ -149,7 +149,7 @@ console.log('\nreceipt dates in the pantry');
 console.log('\nwiring');
 {
   check('routes', /case 'gq_scan':\s+return jsonOut_\(webGqScan_\(body\)\)/.test(WEB) && /case 'gq_log':\s+return jsonOut_\(webGqLog_\(body\)\)/.test(WEB) && /case 'gq_setup':\s+return jsonOut_\(webGqSetup_\(e\.parameter\)\)/.test(WEB));
-  check('Done shopping’s routes are untouched', /function webReceiptLog_\(body\)[\s\S]*?return receiptLog_\(s\.storeName, b\.items\.slice\(0, 100\)\);/.test(WEB));
+  check('Done shopping’s routes still save the same way (and note what you changed, Learning.js)', /function webReceiptLog_\(body\)[\s\S]*?var r = receiptLog_\(s\.storeName, b\.items\.slice\(0, 100\)\);[\s\S]*?return r;/.test(WEB));
   check('the photo isn’t kept', !/DriveApp|createFile/.test(SRC));
 }
 

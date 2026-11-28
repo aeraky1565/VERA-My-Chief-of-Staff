@@ -230,7 +230,13 @@ function grBudget_(label) {
 function webGrocerySetup_(p) {
   var store = grStr_(p && p.store, 60), setting = grStoreSetting_(), cr = grCardsAndRewards_(), today = grToday_();
   var people = {};
-  GR_PEOPLE_.forEach(function(w) { people[w] = { suggested: grBestCard_(cr.cards, cr.rewards, w, cr.programs), cards: grCardsFor_(cr.cards, w).map(function(c) { return c.name; }) }; });
+  var learned = typeof rlCards_ === 'function' ? rlCards_() : {};
+  GR_PEOPLE_.forEach(function(w) {
+    var mine = grCardsFor_(cr.cards, w).map(function(c) { return c.name; });
+    // The card you keep using at this store wins over the best grocery rate (Learning.js).
+    var used = store && typeof rlCardFor_ === 'function' ? rlCardFor_(learned, store, w, mine) : null;
+    people[w] = { suggested: used || grBestCard_(cr.cards, cr.rewards, w, cr.programs), cards: mine };
+  });
   var keep = Number((getConfigValues() || {})['home_keep_min']);
   return { ok: true, store: store, counts: grIsGroceryStore_(store, setting), people: people, keepMin: keep > 0 ? keep : 50,
     month: { spent: grMonthTotals_(grAll_(), today.slice(0, 7)).total, budget: grBudget_() } };
@@ -276,6 +282,9 @@ function webGroceryLog_(body) {
     grSheet_().appendRow(grRunToRow_(x, now, now));
     var home = [];
     if (x.homeTotal > 0 && typeof hpLog_ === 'function') home = hpLog_(hpRowsForRun_(x, homeLines, x.homeTotal));
+    // Learning.js: a 🎄 Home line or season you changed, and the card used at this store.
+    if (typeof rlNoteLines_ === 'function') rlNoteLines_(homeLines.map(function(l) { return { name: l && (l.name || l.item), kind: 'home', season: l && l.season }; }));
+    if (typeof rlNoteCard_ === 'function') rlNoteCard_(x.store, x.who, x.card);
     return { ok: true, run: x, home: home, month: grMonthTotals_(grAll_(), x.date.slice(0, 7)).total };
   });
 }
