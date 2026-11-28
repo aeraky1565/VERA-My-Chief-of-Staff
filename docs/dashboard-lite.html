@@ -11477,7 +11477,7 @@ function GrcHome(props){var h=React.createElement,x=props.home,over=x.budget!=nu
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('span',{style:{fontSize:13,fontWeight:700,color:'#d7a6f0'}},'🎄 Home & seasonal'),
       h('span',{style:{fontSize:13,color:GRC.soft,fontVariantNumeric:'tabular-nums'}},h('b',{className:'grc-home-total',style:{fontSize:17,color:GRC.txt}},grcMoney(x.total,true)),x.budget!=null?' of '+grcMoney(x.budget):'')),
     x.budget!=null?h('div',{style:{height:6,borderRadius:3,background:'#13203a',overflow:'hidden'}},h('div',{className:'grc-home-bar',style:{height:6,width:pct.toFixed(1)+'%',background:over?GRC.bad:'#d7a6f0'}})):
-      h('span',{className:'grc-home-nobudget',style:{fontSize:12,color:'#e9d48a',lineHeight:1.5}},'Add a “Home & seasonal” row to your Budget tab to see this against a budget.'),
+      h('span',{className:'grc-home-nobudget',style:{fontSize:12,color:'#e9d48a',lineHeight:1.5}},x.budgetLine?'Home & seasonal has no monthly amount yet in Household Split. Put one in its Monthly column to see this against it.':'Add a “Home & seasonal” line to Household Split to see this against a budget.'),
     over?h('span',{style:{fontSize:12,color:GRC.bad}},grcMoney(x.total-x.budget,true)+' over'):null,
     (x.bySeason||[]).map(function(s){return h('div',{key:s.season,className:'grc-season',style:{display:'flex',justifyContent:'space-between',gap:10,fontSize:13,borderTop:'1px solid #13203a',paddingTop:6}},
       h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',null,(GRC_SEASON_EMOJI[s.season]||'🏠')+' '+(s.season==='Other'?'Home':s.season)),

@@ -48,6 +48,9 @@ function ctx(opts) {
   c.getConfigValues = () => c.cfg;
   c.getPurchaseHistorySheet_ = () => c.sheets.PH;
   c.webGetBudget_ = () => ({ ok: true, rows: opts.budget || [] });
+  // Household Split (Budget.js): the bills list, where Home & seasonal lives.
+  c.bgReadTracker_ = () => ({ grid: 'G' });
+  c.bgModel_ = () => ({ ok: true, bills: opts.split || [] });
   c.getShoppingList_ = () => [];
   c.upsertKeyedFlags_ = (sheet, prefix, src, wanted) => { c.flags = { prefix, src, wanted }; };
   c.getSuppressedKeyPatterns_ = () => [];
@@ -98,7 +101,8 @@ console.log('\nthe reminders');
 
 console.log('\nruns');
 {
-  const c = ctx({ budget: [{ label: 'Groceries', value: 900 }, { label: 'Home and seasonal', value: 250 }] });
+  const c = ctx({ budget: [{ label: 'Groceries', value: 900 }, { label: 'Home & seasonal', value: 999 }],
+    split: [{ name: 'Groceries - Costco', amount: 400 }, { name: 'Home & Seasonal', amount: 250 }] });
   let r = c.webGroceryLog_({ run: { store: 'Costco', who: 'Ahmed', card: 'Gold', total: 31.8, source: 'receipt', counted: 'all', homeTotal: 74.2,
     home: [{ name: 'pre-lit tree', price: 50, amount: 53, season: 'Christmas' }, { name: 'ottoman', price: 20, amount: 21.2, season: '' }] } });
   check('a run with home lines: groceries in Total, home in Home Total', r.ok && r.run.total === 31.8 && r.run.homeTotal === 74.2 && c.sheets.GR.rows[1][11] === 74.2, J(r));
@@ -110,10 +114,13 @@ console.log('\nruns');
   const r3 = c.webGroceryLog_({ run: { store: 'Costco', who: 'Ahmed', total: 40, homeTotal: 25, source: 'typed' } });
   check('typed with a home amount: one row', r3.ok && c.sheets.HP.rows[c.sheets.HP.rows.length - 1][2] === 'Home & seasonal' && c.sheets.HP.rows[c.sheets.HP.rows.length - 1][4] === 25);
   const m = c.webGroceryMonth_({ ym: '2026-11' });
-  check('the month: home total, by season, against the "Home and seasonal" row', m.home.total === 114.69 && m.home.budget === 250 && m.home.bySeason[0].season === 'Christmas' && m.home.bySeason[0].total === 68.49 && m.budget === 900, J(m.home));
+  check('the month: home total, by season, against Household Split’s Home & Seasonal line (never the Budget tab)', m.home.total === 114.69 && m.home.budget === 250 && m.home.budgetLine === true && m.home.bySeason[0].season === 'Christmas' && m.home.bySeason[0].total === 68.49 && m.budget === 900, J(m.home));
   const d = c.webGroceryDelete_({ id: r.run.id });
   check('deleting the run removes its home rows', d.ok && d.homeRemoved === 2 && c.sheets.HP.rows.every(x => x[6] !== r.run.id));
-  check('rows without a budget row: budget null', ctx().webGroceryMonth_({ ym: '2026-11' }).home.budget === null);
+  check('no Home & seasonal line: no budget', ctx().webGroceryMonth_({ ym: '2026-11' }).home.budget === null && ctx().webGroceryMonth_({ ym: '2026-11' }).home.budgetLine === false);
+  const blank = ctx({ split: [{ name: 'Home & Seasonal', amount: 0 }] }).webGroceryMonth_({ ym: '2026-11' }).home;
+  check('a line with no amount yet: found, no budget', blank.budgetLine === true && blank.budget === null, J(blank));
+  check('"Home and seasonal" matches too', ctx({ split: [{ name: 'Home and seasonal', amount: 75 }] }).webGroceryMonth_({ ym: '2026-11' }).home.budget === 75);
   check('setup tells the screen the Home Items threshold', ctx({ cfg: { home_keep_min: '75' } }).webGrocerySetup_({ store: 'Costco' }).keepMin === 75 && ctx().webGrocerySetup_({ store: 'Costco' }).keepMin === 50);
 }
 

@@ -204,6 +204,22 @@ function grCardsAndRewards_() {
   return { cards: cards, rewards: rewards, programs: programs };
 }
 
+/**
+ * Pure: a line in Household Split's bills list, by name → { found, amount } (#260: Home & seasonal
+ * lives there, with the rest of the budget). A blank or 0 amount is found but not set yet.
+ */
+function grSplitLine_(bills, rx) {
+  var b = (bills || []).filter(function(x) { return rx.test(String(x.name || '').trim()); })[0];
+  return b ? { found: true, amount: b.amount > 0 ? Math.round(b.amount * 100) / 100 : null } : { found: false, amount: null };
+}
+/** The Home & seasonal budget: its line in Household Split (never the Budget tab). */
+function grHomeBudget_() {
+  try {
+    var t = bgReadTracker_(); if (t.error) return { found: false, amount: null };
+    var m = bgModel_(t.grid); if (!m.ok) return { found: false, amount: null };
+    return grSplitLine_(m.bills, /^home\s*(&|and)\s*seasonal\b/i);
+  } catch (e) { return { found: false, amount: null }; }
+}
 function grBudget_(label) {
   try { var b = webGetBudget_(); return b && b.ok ? grBudgetFrom_(b.rows, label) : null; } catch (e) { return null; }
 }
@@ -231,7 +247,7 @@ function webGroceryMonth_(p) {
   var pace = ym === today.slice(0, 7) ? grPaceLine_(runs, today, budget) : null;
   // Home & seasonal: its own line, from the Home Purchases tab (HomePurchases.js).
   var home = null;
-  if (typeof hpMonth_ === 'function') { try { home = hpMonth_(ym); home.budget = grBudget_('home & seasonal'); } catch (e) { home = null; } }
+  if (typeof hpMonth_ === 'function') { try { home = hpMonth_(ym); var hb = grHomeBudget_(); home.budget = hb.amount; home.budgetLine = hb.found; } catch (e) { home = null; } }
   return { ok: true, ym: ym, today: today, total: t.total, budget: budget, byWho: t.byWho, cards: cards, runs: t.runs, pace: pace, home: home,
     stores: grStoreList_((getShoppingList_() || []).map(function(s) { return s.storeName; }), grStoreSetting_()) };
 }
