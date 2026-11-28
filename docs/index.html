@@ -1781,6 +1781,10 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     .pa-star { font: inherit; background: none; border: 0; color: #6b7590; font-size: 18px; min-width: 32px; min-height: 36px; cursor: pointer; }
     .pa-star.on { color: #fcd34d; }
     .pa-add-w { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .pa-use-w { display: flex; gap: 6px; flex-basis: 100%; justify-content: flex-end; }
+    .pa-used2, .pa-have { font-size: 12px; padding: 4px 10px; min-height: 32px; background: transparent; border: 1px solid #2a3654; color: #c8d4e8; }
+    .pa-used2 { color: #81c995; border-color: #2c4a3a; }
+    .pa-stale { margin-left: 6px; font-size: 10.5px; font-weight: 600; color: #8b93a8; border: 1px solid #2a3654; border-radius: 999px; padding: 0 6px; }
     .pa-add { font-size: 12px; min-height: 34px; }
     .pa-add.sm { font-size: 11.5px; min-height: 30px; padding: 3px 9px; }
     .pa-conf { font-size: 10.5px; color: #6b7590; }
@@ -8777,7 +8781,7 @@ function paSoon_(items,days){return (items||[]).filter(function(i){return i.days
 function paByAisle_(items,days,q){q=String(q||'').trim().toLowerCase();var g={};(items||[]).forEach(function(i){if(i.daysUntil!=null&&i.daysUntil<=days&&!q)return;if(q&&String(i.normalized).toLowerCase().indexOf(q)===-1)return;var a=PA_AISLES_.indexOf(i.aisle)!==-1?i.aisle:'Other';(g[a]=g[a]||[]).push(i);});
   return PA_AISLES_.filter(function(a){return g[a];}).map(function(a){return {aisle:a,items:g[a].sort(function(x,y){return String(x.normalized).localeCompare(String(y.normalized));})};});}
 function paCounts_(items,days){return {soon:paSoon_(items,days).length,tracked:(items||[]).length,onList:(items||[]).filter(function(i){return !!i.onList;}).length};}
-function paWhen_(d){return d<0?'out ~'+(-d)+' day'+(d===-1?'':'s')+' ago':d===0?'~today':'~'+d+' day'+(d===1?'':'s');}
+function paWhen_(d,out){return out?'out':d<0?'out ~'+(-d)+' day'+(d===-1?'':'s')+' ago':d===0?'~today':'~'+d+' day'+(d===1?'':'s');}
 function PantryView({apiUrl,apiToken}){var h=React.createElement;
   var _d=React.useState(null),data=_d[0],setData=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];var _o=React.useState({}),open=_o[0],setOpen=_o[1];
   var _q=React.useState(''),q=_q[0],setQ=_q[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
@@ -8787,6 +8791,10 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
   var items=data.items||[],days=data.daysAhead||7,patch=function(name,f){setData(function(d){return Object.assign({},d,{items:(d.items||[]).map(function(i){return i.normalized===name?Object.assign({},i,f):i;})});});};
   var add=function(i){setBusy(i.normalized);apiGet(apiUrl,apiToken,{action:'pantry_add',name:i.normalized,store:i.store||i.lastStore||''}).then(function(r){patch(i.normalized,{onList:r.store});setMsg((r.already?'Already on the ':'Added to the ')+r.store+' list: '+i.normalized);}).catch(function(e){setErr('Couldn’t add it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
   var used=function(x,status){setBusy(x.id);setErr('');apiGet(apiUrl,apiToken,{action:'onhand_set',id:x.id,status:status}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');setData(function(d){return Object.assign({},d,{onHand:(d.onHand||[]).filter(function(y){return y.id!==x.id;})});});setMsg(status==='used'?'Marked used: '+x.item:'Taken off On hand: '+x.item);}).catch(function(e){setErr('Couldn’t save it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
+  var usedUp=function(i,kind){setBusy(i.normalized);setErr('');apiGet(apiUrl,apiToken,{action:'pantry_used',name:i.normalized,kind:kind}).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');
+      if(kind==='used'){patch(i.normalized,Object.assign({out:true,daysUntil:0,usedOn:r.date||''},r.onList?{onList:r.onList}:{}));setMsg('Ran out: '+i.normalized+(r.onList?' · on the '+r.onList+' list':''));}
+      else{patch(i.normalized,{daysUntil:r.daysUntil!=null?r.daysUntil:days+1,estimatedNext:r.estimatedNext||i.estimatedNext});setMsg('Still have '+i.normalized+(r.estimatedNext?' · next ~'+paShort_(r.estimatedNext):''));}})
+    .catch(function(e){setErr('Couldn’t save it: '+((e&&e.message)||e));}).then(function(){setBusy('');});};
   var staple=function(i){var on=!i.staple;patch(i.normalized,{staple:on});apiGet(apiUrl,apiToken,{action:'pantry_staple',name:i.normalized,on:on}).catch(function(e){patch(i.normalized,{staple:!on});setErr('Couldn’t save it: '+((e&&e.message)||e));});};
   var star=function(i){return h('button',{type:'button',className:'pa-star'+(i.staple?' on':''),'aria-pressed':!!i.staple,'aria-label':(i.staple?'Staple: VERA adds it by itself. Tap to stop':'Make it a staple: VERA adds it by itself')+' ('+i.normalized+')',title:i.staple?'Staple: added to the list by itself':'Make it a staple',onClick:function(){staple(i);}},i.staple?'★':'☆');};
   var k=paCounts_(items,days),soon=paSoon_(items,days),groups=paByAisle_(items,days,q);
@@ -8802,16 +8810,18 @@ function PantryView({apiUrl,apiToken}){var h=React.createElement;
     h('div',{className:'pa-sect'},'Running out soon'),
     soon.length?soon.map(function(i){var store=i.store||i.lastStore||'';return h('div',{key:i.normalized,className:'pa-row soon','data-item':i.normalized},
         star(i),
-        h('span',{className:'pa-main'},h('b',null,paTitle_(i.normalized),h('span',{className:'pa-when'+(i.daysUntil<=2?' r':'')},paWhen_(i.daysUntil))),
+        h('span',{className:'pa-main'},h('b',null,paTitle_(i.normalized),h('span',{className:'pa-when'+(i.out||i.daysUntil<=2?' r':'')},paWhen_(i.daysUntil,i.out))),
           h('small',null,'Every ~'+i.avgDays+' days'+(i.lastDate?' · last '+paShort_(i.lastDate)+(i.lastStore?', '+i.lastStore:''):'')+(i.staple?' · staple, added by itself':''))),
-        i.onList?h('span',{className:'pa-on'},'✓ On the '+i.onList+' list'):h('span',{className:'pa-add-w'},h('button',{type:'button',className:'btn btn-primary pa-add',disabled:!!busy,onClick:function(){add(i);}},busy===i.normalized?'Adding…':'🛒 Add'+(store?' to '+store:'')),h('small',{className:'pa-conf'},PA_CONF_[i.confidence]||'')));})
+        i.onList?h('span',{className:'pa-on'},'✓ On the '+i.onList+' list'):h('span',{className:'pa-add-w'},h('button',{type:'button',className:'btn btn-primary pa-add',disabled:!!busy,onClick:function(){add(i);}},busy===i.normalized?'Adding…':'🛒 Add'+(store?' to '+store:'')),h('small',{className:'pa-conf'},PA_CONF_[i.confidence]||'')),
+        i.out?null:h('span',{className:'pa-use-w'},h('button',{type:'button',className:'btn pa-used2 sm',disabled:!!busy,'aria-label':'Used it, ran out: '+i.normalized,onClick:function(){usedUp(i,'used');}},'✓ Used it'),
+          h('button',{type:'button',className:'btn pa-have sm',disabled:!!busy,'aria-label':'Still have some: '+i.normalized,onClick:function(){usedUp(i,'have');}},'Still have some')));})
       :h('div',{className:'pa-clear'},'✓ Nothing running out in the next '+days+' days.'),
     h('div',{className:'pa-sect'},'Everything else · by aisle'),
     h('input',{className:'pa-search',type:'search',value:q,placeholder:'🔎 Find an item','aria-label':'Find an item',onChange:function(e){setQ(e.target.value);}}),
     groups.map(function(g){var isOpen=!!q||!!open[g.aisle];return h('div',{key:g.aisle,className:'pa-aisle','data-aisle':g.aisle},
       h('button',{type:'button',className:'pa-fold','aria-expanded':isOpen,onClick:function(){var n=Object.assign({},open);n[g.aisle]=!open[g.aisle];setOpen(n);}},(isOpen?'▾ ':'▸ ')+g.aisle+' · '+g.items.length),
       isOpen&&g.items.map(function(i){return h('div',{key:i.normalized,className:'pa-row','data-item':i.normalized},star(i),
-        h('span',{className:'pa-main'},h('b',null,paTitle_(i.normalized)),h('small',null,'Every ~'+i.avgDays+' days'+(i.lastDate?' · last '+paShort_(i.lastDate)+(i.lastStore?', '+i.lastStore:''):'')+(i.estimatedNext?' · next ~'+paShort_(i.estimatedNext):''))),
+        h('span',{className:'pa-main'},h('b',null,paTitle_(i.normalized),i.stale?h('span',{className:'pa-stale'},'not bought lately'):null),h('small',null,'Every ~'+i.avgDays+' days'+(i.lastDate?' · last '+paShort_(i.lastDate)+(i.lastStore?', '+i.lastStore:''):'')+(i.estimatedNext&&!i.stale?' · next ~'+paShort_(i.estimatedNext):''))),
         i.onList?h('span',{className:'pa-on'},'✓ '+i.onList):h('button',{type:'button',className:'btn pa-add sm',disabled:!!busy,onClick:function(){add(i);}},'🛒'+(i.lastStore?' '+i.lastStore:' Add')));}));}),
     !groups.length&&q&&h('div',{className:'pa-dim'},'Nothing called “'+q+'”.'),
     h('div',{className:'pa-dim pa-foot'},'☆ marks a staple: VERA adds staples to the list by itself when they’re due. Everything else waits for your tap.'));}

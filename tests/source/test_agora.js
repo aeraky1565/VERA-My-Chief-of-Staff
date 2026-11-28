@@ -116,7 +116,7 @@ console.log('\nonly the owner');
 
 console.log('\nwiring');
 check('route agora, owner-only, cached', /case 'agora':\s*return jsonOut_\(webAgora_\(e\.parameter\)\)/.test(WEB) && /peopleOwnerOnly_\(\)/.test(AG) && /cache\.put\(AG_CACHE_KEY_/.test(AG));
-check('the nightly sync records what it did', /veraStoreSet_\('PRACTICE_LOG_LAST'/.test(PL) && /'PRACTICE_LOG_LAST'\]/.test(SET));
+check('the nightly sync records what it did', /veraStoreSet_\('PRACTICE_LOG_LAST'/.test(PL) && /'PRACTICE_LOG_LAST'[,\]]/.test(SET));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

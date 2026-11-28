@@ -4185,6 +4185,8 @@ The `Purchase History` tab logs grocery and household purchases with item name, 
 
 **Kitchen › Pantry** (`pantry` route, `PantryView`): counters (running out within the window, tracked, on a list), **Running out soon** first, each with **🛒 Add to <usual store>** (`pantry_add`, which never adds a duplicate and falls back to the first list) or **✓ On the <store> list** when a list already has it (VERA's `🤖 … (est. …)` lines count; checked-off lines don't), then everything else grouped by aisle, folded, with a search. ☆ marks or unmarks a staple (`pantry_staple`).
 
+Each Running out soon row also has **✓ Used it** (it ran out today: the row turns *out*, a staple goes on the list straight away, and the time from the last purchase to that day becomes the newest gap the rate learns from) and **Still have some** (pushes the guess out a third of the item's cycle, at least 2 days). Both go through `pantry_used` and live in the VERA State key `PANTRY_USAGE`, not in Purchase History. Buys within 2 days of each other count as one restock, so a second store or a receipt plus a check-off no longer reads as "every ~1 day". With only one purchase, VERA guesses from the aisle (produce and bakery ~5 days, dairy and meat ~7, frozen ~21, the rest ~30) unless the item has its own default. An item that has been out longer than max(7 days, its cycle) with no purchase is **not bought lately**: it leaves Running out soon, sits in its aisle with that tag, and is never put on the list by itself.
+
 ### Coupons + Expiry
 
 The Coupons tab (Shopping › Coupons, full and lite) lists live coupons first, soonest to expire on top. A coupon expires the day after its date; it then moves into an **Expired** group at the bottom, scratched off, with its copy buttons off, the day it goes and **Delete now**. The full dashboard shows the group open, lite keeps it closed. Seven days after expiry (Config `coupon_keep_expired_days`, 0–60) the nightly `purgeExpiredCoupons_` deletes the row, and `get_coupons` stops sending it that day even if the purge was skipped. Both use `couponIso_` and `couponState_` (Code.js), which read a sheet date, `yyyy-MM-dd` or `M/D/YYYY`. The coupon steps run early in `nightlyRun`, right after the important dates, so the time budget doesn't drop them.
@@ -4700,6 +4702,7 @@ All requests must include `?token=` with the owner's `VERA_WEB_TOKEN` or a perso
 | `purchase_history` | — | Purchase history + consumption predictions |
 | `pantry` | — | Tracked items with aisle, staple, `onList`, `daysUntil` and usual `store`; the list names; the window |
 | `pantry_staple` | `name`, `on` | Marks or unmarks a staple |
+| `pantry_used` | `name`, `kind` (`used` \| `have`) | ✓ Used it or Still have some on Running out soon |
 | `pantry_add` | `name`, `store` | Adds an item to that store's list unless a list already has it |
 | `log_purchase_run` | `items` (JSON) | Log a grocery run |
 | `purchase_suggestions` | — | Pantry auto-restock suggestions |

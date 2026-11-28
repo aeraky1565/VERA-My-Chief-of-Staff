@@ -135,39 +135,94 @@ function calcEMA_(values, alpha) {
  * Returns { avgDays, confidence, dataPoints }
  *   confidence: 'default' | 'learning' | 'building' | 'calibrated'
  */
-function getDepletionRate_(normalizedName) {
+function getDepletionRate_(normalizedName, usage) {
   var cfg   = getConfigValues();
   var alpha = parseFloat(cfg['pantry_ema_alpha'] || '0.3') || 0.3;
-
   var rows  = getPurchaseRows_(normalizedName);
-  if (rows.length < 2) {
-    // Fewer than 2 purchases → no interval to compute
-    var defaultDays = PANTRY_DEFAULTS[normalizedName] || 30;
-    return {
-      avgDays:    defaultDays,
-      confidence: rows.length === 0 ? 'default' : 'learning',
-      dataPoints: rows.length,
-    };
-  }
-
-  // Compute gaps (days) between consecutive purchases
+  // Buys a couple of days apart (two stores, a receipt and a check-off) are one restock.
+  var restocks = pantryRestocks_(rows.map(function(r) { return r.date; }));
   var intervals = [];
-  for (var i = 1; i < rows.length; i++) {
-    var prev = new Date(rows[i - 1].date + 'T00:00:00');
-    var curr = new Date(rows[i].date     + 'T00:00:00');
-    var days = Math.round((curr - prev) / 86400000);
-    if (days > 0) intervals.push(days);
+  for (var i = 1; i < restocks.length; i++) intervals.push(pantryDays_(restocks[i - 1], restocks[i]));
+  // ✓ Used it: last restock → the day it ran out is the best measure there is, so it counts as the newest gap.
+  var u = pantryUsageFor_(usage, normalizedName), lastRestock = restocks[restocks.length - 1];
+  if (u.used && lastRestock && u.used >= lastRestock) {
+    var span = pantryDays_(lastRestock, u.used);
+    if (span >= 1) intervals.push(span);
   }
   if (!intervals.length) {
-    return { avgDays: PANTRY_DEFAULTS[normalizedName] || 30, confidence: 'learning', dataPoints: rows.length };
+    return { avgDays: pantryFirstGuess_(normalizedName), confidence: rows.length ? 'learning' : 'default', dataPoints: rows.length };
   }
-
-  var ema = calcEMA_(intervals, alpha);
   return {
-    avgDays:    Math.round(ema),
-    confidence: rows.length >= 4 ? 'calibrated' : rows.length === 3 ? 'building' : 'learning',
+    avgDays:    Math.max(1, Math.round(calcEMA_(intervals, alpha))),
+    confidence: intervals.length >= 3 ? 'calibrated' : intervals.length === 2 ? 'building' : 'learning',
     dataPoints: rows.length,
   };
+}
+
+// ─── USED IT / STILL HAVE SOME ───────────────────────────────
+// Kitchen › Pantry › Running out soon: ✓ Used it (it ran out today) and Still have some (the
+// guess is early). Kept in the VERA State store as PANTRY_USAGE {item: {used, have}}; Purchase
+// History stays a list of purchases.
+var PANTRY_MERGE_DAYS_ = 2;
+var PANTRY_AISLE_DAYS_ = { 'Produce': 5, 'Bakery': 5, 'Dairy & Eggs': 7, 'Meat & Fish': 7, 'Frozen': 21, 'Pantry': 30, 'Household': 30, 'Other': 30 };
+function pantryDays_(a, b) { return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000); }
+function pantryAddDays_(d, n) { return new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10); }
+/** Purchase dates → the first day of each restock (buys within PANTRY_MERGE_DAYS_ of the last one merge). */
+function pantryRestocks_(dates) {
+  var out = [], prev = '';
+  (dates || []).filter(function(d) { return /^\d{4}-\d{2}-\d{2}/.test(String(d)); }).map(function(d) { return String(d).slice(0, 10); }).sort()
+    .forEach(function(d) { if (!prev || pantryDays_(prev, d) > PANTRY_MERGE_DAYS_) out.push(d); prev = d; });
+  return out;
+}
+/** With one purchase: the item's own default, else its aisle's usual cycle. */
+function pantryFirstGuess_(norm) { return PANTRY_DEFAULTS[norm] || PANTRY_AISLE_DAYS_[pantryAisle_(norm)] || 30; }
+function pantryUsage_() {
+  try { var o = JSON.parse(veraStoreGet_('PANTRY_USAGE') || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; }
+  catch (e) { return {}; }
+}
+function pantryUsageFor_(usage, norm) { var u = (usage || {})[norm]; return u && typeof u === 'object' ? u : {}; }
+/** Days Still have some hides an item: a third of its cycle, at least 2. */
+function pantryHaveDays_(avgDays) { return Math.max(2, Math.round((avgDays || 0) / 3)); }
+/**
+ * When an item runs out, from its last purchase, its rate and what was tapped:
+ * { last, rate, estimatedNext, daysUntil, out, stale }. Used since the last purchase means out
+ * now; Still have some pushes the date out; out longer than max(7, its cycle) is stale (not
+ * bought lately), which keeps it off Running out soon and off the list.
+ */
+function pantryPredict_(norm, usage, today) {
+  var last = getLastPurchase_(norm);
+  var rate = getDepletionRate_(norm, usage);
+  if (!last || !last.date) return { last: last, rate: rate, estimatedNext: '', daysUntil: null, out: false, stale: false };
+  var u = pantryUsageFor_(usage, norm), lastD = String(last.date).slice(0, 10);
+  var out = !!(u.used && u.used >= lastD);
+  var next = out ? u.used : pantryAddDays_(lastD, rate.avgDays);
+  if (!out && u.have && u.have >= lastD) {
+    var pushed = pantryAddDays_(u.have, pantryHaveDays_(rate.avgDays));
+    if (pushed > next) next = pushed;
+  }
+  var daysUntil = pantryDays_(today, next);
+  return { last: last, rate: rate, estimatedNext: next, daysUntil: out ? Math.min(0, daysUntil) : daysUntil, out: out,
+    stale: daysUntil < -Math.max(7, rate.avgDays) };
+}
+function pantryToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+
+/** GET pantry_used — name, kind (used | have): ✓ Used it or Still have some on Running out soon. */
+function webPantryUsed_(e) {
+  var p = (e && e.parameter) || {}, name = normalizeItemName_(p.name || ''), kind = String(p.kind || 'used');
+  if (!name) throw new Error('name required');
+  if (kind !== 'used' && kind !== 'have') throw new Error('kind must be used or have');
+  var usage = pantryUsage_(), today = pantryToday_(), u = pantryUsageFor_(usage, name);
+  if (kind === 'used') { u.used = today; delete u.have; } else { u.have = today; }
+  usage[name] = u;
+  if (!veraStoreSet_('PANTRY_USAGE', JSON.stringify(usage))) throw new Error('That didn’t save.');
+  var res = { ok: true, name: name, kind: kind, date: today };
+  try { var pr = pantryPredict_(name, usage, today); res.daysUntil = pr.daysUntil; res.estimatedNext = pr.estimatedNext; res.avgDays = pr.rate.avgDays; } catch (x) {}
+  // A staple that ran out goes on the list now, not tonight.
+  if (kind === 'used' && pantryStaples_(getConfigValues()).indexOf(name) !== -1) {
+    try { var a = webPantryAdd_({ parameter: { name: name, store: getPreferredStore_(name) } }); res.onList = a.store; }
+    catch (x) { Logger.log('webPantryUsed_: could not add ' + name + ' — ' + x.message); }
+  }
+  return res;
 }
 
 /**
@@ -212,34 +267,25 @@ function getPreferredStore_(normalizedName) {
  */
 function getItemsDue_(daysAhead) {
   var horizon = parseInt(daysAhead, 10) || 7;
-  var today   = new Date();
-  today.setHours(0, 0, 0, 0);
-  var items   = getAllTrackedItems_();
+  var today   = pantryToday_(), usage = pantryUsage_();
   var results = [];
-
-  items.forEach(function(norm) {
+  getAllTrackedItems_().forEach(function(norm) {
     try {
-      var last = getLastPurchase_(norm);
-      if (!last || !last.date) return;
-      var rate = getDepletionRate_(norm);
-      var lastD = new Date(last.date + 'T00:00:00');
-      var emptyD = new Date(lastD.getTime() + rate.avgDays * 86400000);
-      var daysUntil = Math.round((emptyD - today) / 86400000);
-      if (daysUntil <= horizon) {
-        results.push({
-          normalized:     norm,
-          lastDate:       last.date,
-          estimatedEmpty: Utilities.formatDate(emptyD, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-          daysUntil:      daysUntil,
-          store:          getPreferredStore_(norm),
-          confidence:     rate.confidence,
-          dataPoints:     rate.dataPoints,
-          avgDays:        rate.avgDays,
-        });
-      }
+      var pr = pantryPredict_(norm, usage, today);
+      if (!pr.estimatedNext || pr.stale || pr.daysUntil > horizon) return;
+      results.push({
+        normalized:     norm,
+        lastDate:       pr.last.date,
+        estimatedEmpty: pr.estimatedNext,
+        daysUntil:      pr.daysUntil,
+        out:            pr.out,
+        store:          getPreferredStore_(norm),
+        confidence:     pr.rate.confidence,
+        dataPoints:     pr.rate.dataPoints,
+        avgDays:        pr.rate.avgDays,
+      });
     } catch (e) { Logger.log('getItemsDue_ item error [' + norm + ']: ' + e.message); }
   });
-
   results.sort(function(a, b) { return a.daysUntil - b.daysUntil; });
   return results;
 }
@@ -591,7 +637,8 @@ function webPantry_() {
   try { lists = getShoppingList_(); } catch (e) { listErr = e.message; }
   var on = pantryOnLists_(lists), today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var items = getPurchaseStats_().map(function(it) {
-    var d = it.estimatedNext ? Math.round((new Date(it.estimatedNext + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) : null;
+    // Not bought lately (out longer than its cycle): off Running out soon, back in its aisle.
+    var d = it.estimatedNext && !it.stale ? Math.round((new Date(it.estimatedNext + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) : null;
     return Object.assign({}, it, {
       aisle: pantryAisle_(it.normalized), staple: staples.indexOf(it.normalized) !== -1, onList: on[it.normalized] || '',
       daysUntil: d, store: d != null && d <= daysAhead ? (it.lastStore || '') : ''
@@ -709,32 +756,26 @@ function generatePantryFlags_() {
  * Each entry: { normalized, lastItem, lastDate, lastStore, avgDays, confidence, dataPoints, estimatedNext }
  */
 function getPurchaseStats_() {
-  var items = getAllTrackedItems_();
-  var tz    = Session.getScriptTimeZone();
+  var today = pantryToday_(), usage = pantryUsage_();
   var stats = [];
-
-  items.forEach(function(norm) {
+  getAllTrackedItems_().forEach(function(norm) {
     try {
-      var last = getLastPurchase_(norm);
-      var rate = getDepletionRate_(norm);
-      var estimatedNext = '';
-      if (last && last.date) {
-        var nextD = new Date(new Date(last.date + 'T00:00:00').getTime() + rate.avgDays * 86400000);
-        estimatedNext = Utilities.formatDate(nextD, tz, 'yyyy-MM-dd');
-      }
+      var pr = pantryPredict_(norm, usage, today), last = pr.last, u = pantryUsageFor_(usage, norm);
       stats.push({
         normalized:    norm,
         lastItem:      last ? last.item   : norm,
         lastDate:      last ? last.date   : '',
         lastStore:     last ? last.store  : '',
-        avgDays:       rate.avgDays,
-        confidence:    rate.confidence,
-        dataPoints:    rate.dataPoints,
-        estimatedNext: estimatedNext,
+        avgDays:       pr.rate.avgDays,
+        confidence:    pr.rate.confidence,
+        dataPoints:    pr.rate.dataPoints,
+        estimatedNext: pr.estimatedNext,
+        out:           pr.out,
+        stale:         pr.stale,
+        usedOn:        pr.out ? u.used : '',
       });
     } catch (e) { Logger.log('getPurchaseStats_ item error [' + norm + ']: ' + e.message); }
   });
-
   stats.sort(function(a, b) { return a.normalized < b.normalized ? -1 : 1; });
   return stats;
 }
