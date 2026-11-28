@@ -3758,11 +3758,13 @@ function morningNudge() {
     const numRows = sheet ? sheet.getLastRow() - 1 : 0;
     const data    = numRows >= 1 ? sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues() : [];
 
-    // Active = not acknowledged AND not resolved
+    // Active = not acknowledged AND not resolved, and not a kind VERA has quieted (#260: still in Flags)
+    var vqPatterns = [];
+    try { if (typeof getQuietPatterns_ === 'function') vqPatterns = getQuietPatterns_(); } catch (vqErr) {}
     const active = data.filter(function(row) {
       const acknowledged = String(row[6]).toLowerCase();
       const resolved     = String(row[8]).toLowerCase();
-      return acknowledged !== 'yes' && resolved !== 'yes';
+      return acknowledged !== 'yes' && resolved !== 'yes' && !(vqPatterns.length && slIsQuietKey_(String(row[9] || ''), vqPatterns));
     });
 
     // ---- Capacity mode filtering (Issue #8) ---------------------------------

@@ -117,7 +117,7 @@ console.log('\nmove settings now');
 console.log('\nthe panel');
 {
   check('System › Checks › 🔑 Script Properties, after Trip IDs', /\{id:'trip_ids',label:'🧳 Trip IDs'\},\{id:'script_props',label:'🔑 Script Properties'\}/.test(APP) && /cur==='script_props'&&h\(SysScriptProps,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-  check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','run_log','trip_ids','script_props'\]/.test(APP) && /items:\['test','api_health','agent_health','run_log','trip_ids','script_props'\]/.test(LITE));
+  check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','learned','run_log','trip_ids','script_props'\]/.test(APP) && /items:\['test','api_health','agent_health','learned','run_log','trip_ids','script_props'\]/.test(LITE));
   check('index.html is rebuilt with it', read('docs/index.html').includes('function SysScriptProps('));
   const p = (() => { const a = APP.indexOf('function SysScriptProps('); return APP.slice(a, APP.indexOf('\nfunction SysPeople(', a)); })();
   check('it calls only its four actions', J((p.match(/action:'[a-z_]+'/g) || []).concat(p.match(/act\('[a-z_]+'/g) || []).sort()) === J(["act('script_props_clean'", "act('script_props_move_notes'", "act('settings_move'", "action:'script_props'"]), J(p.match(/action:'[a-z_]+'|act\('[a-z_]+'/g)));

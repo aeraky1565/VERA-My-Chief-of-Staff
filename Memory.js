@@ -511,6 +511,14 @@ function sendWeeklyTrendReview_() {
       if (wellnessLine) deltaLines.push(wellnessLine);
     } catch (wErr) { Logger.log('getHealthPerformanceSummaryLine_ error (non-fatal): ' + wErr.message); }
 
+    // What VERA quieted this week (#260), with where to undo it.
+    var learnedLine = '';
+    try {
+      var tzL = Session.getScriptTimeZone(), learned = slLearned_(slRows_(), Utilities.formatDate(new Date(), tzL, 'yyyy-MM-dd'));
+      if (learned.newThisWeek.length) learnedLine = 'VERA quieted ' + learned.newThisWeek.length + ' kind' + (learned.newThisWeek.length === 1 ? '' : 's') + ' of flag this week (' +
+        learned.newThisWeek.slice(0, 3).map(function(x) { return x.label; }).join(', ') + (learned.newThisWeek.length > 3 ? ', …' : '') + '): still in Flags; undo in System › Checks › What VERA learned';
+    } catch (lErr) { Logger.log('sendWeeklyTrendReview_: learned line (non-fatal) — ' + lErr.message); }
+
     if (deltaLines.length === 0) { Logger.log('sendWeeklyTrendReview_: no deltas to report'); return; }
 
     // Call Claude for a brief narrative
@@ -545,7 +553,7 @@ function sendWeeklyTrendReview_() {
     var dateStr  = Utilities.formatDate(today, tz, 'MMM d');
     var header   = '*📊 Weekly Trend Review — ' + dateStr + ' (' + thisWeek + ')*';
     var bullets  = deltaLines.map(function(l) { return '• ' + l; }).join('\n');
-    var message  = header + '\n\n' + bullets + (narrative ? '\n\n_' + narrative + '_' : '');
+    var message  = header + '\n\n' + bullets + (narrative ? '\n\n_' + narrative + '_' : '') + (learnedLine ? '\n\n🧠 ' + learnedLine : '');
 
     // Deliver
     var ch = getNotifChannel_('weekly_trend_review');

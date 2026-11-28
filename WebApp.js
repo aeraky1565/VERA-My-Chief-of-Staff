@@ -108,6 +108,10 @@ function doGet(e) {
       case 'snooze':         return jsonOut_(webSnooze_(id, days, e.parameter.until));
       case 'resolve':        return jsonOut_(webResolve_(id));
       case 'flags_quiet':     return jsonOut_(webFlagsQuiet_());                     // FlagQuiet.js (#258)
+      case 'signal_learned':  return jsonOut_(webSignalLearned_());                  // SignalLearning.js (#260)
+      case 'signal_keep':     return jsonOut_(webSignalKeep_(e));
+      case 'signal_auto':     return jsonOut_(webSignalAuto_(e));
+      case 'signal_regroup':  return jsonOut_(webSignalRegroup_(e));
       case 'flag_mute':       return jsonOut_(webFlagMute_(id));
       case 'flag_unmute':     return jsonOut_(webFlagUnmute_(id));
       case 'flag_raise_held': return jsonOut_(webFlagRaiseHeld_(e.parameter.i));
@@ -1038,6 +1042,12 @@ function webGetFlags_(e) {
       clears:       (flagAutoOf_(r[9]) || {}).clears || '',
     };
   });
+
+  // Quieted by VERA (#260): still listed, under its own group, with Keep showing these.
+  try {
+    var quiet = typeof getQuietPatterns_ === 'function' ? getQuietPatterns_() : [];
+    if (quiet.length) flags.forEach(function(f) { if (slIsQuietKey_(f.key, quiet)) { f.vq = true; f.pattern = extractKeyPattern_(f.key); } });
+  } catch (vqErr) { Logger.log('webGetFlags_: quiet patterns (non-fatal) — ' + vqErr.message); }
 
   // A combined "Use soon" flag carries its foods, for a Used it button each (OnHand.js).
   try {

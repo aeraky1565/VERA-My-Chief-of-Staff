@@ -24,8 +24,8 @@ function fnSrc(src, name) {
 const varSrc = (src, name) => { const a = src.indexOf('var ' + name + '='); return src.slice(a, src.indexOf(';\n', a) + 1); };
 
 console.log('\nwhere it lives');
-check('System › Checks › Trip IDs, after Agent health and the Run log', /\{id:'agent_health',label:'🤖 Agent health'\},\{id:'run_log',label:'🗒️ Run log'\},\{id:'trip_ids',label:'🧳 Trip IDs'\}/.test(APP) && /cur==='trip_ids'&&h\(SysTripIds,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health','run_log','trip_ids'(,'script_props')?\]/.test(APP) && /items:\['test','api_health','agent_health','run_log','trip_ids'(,'script_props')?\]/.test(LITE));
+check('System › Checks › Trip IDs, after Agent health and the Run log', /\{id:'agent_health',label:'🤖 Agent health'\},(\{id:'learned',label:'🧠 What VERA learned'\},)?\{id:'run_log',label:'🗒️ Run log'\},\{id:'trip_ids',label:'🧳 Trip IDs'\}/.test(APP) && /cur==='trip_ids'&&h\(SysTripIds,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
+check('…in the Checks group of both dashboards’ menus (the shared nav block)', /items:\['test','api_health','agent_health',('learned',)?'run_log','trip_ids'(,'script_props')?\]/.test(APP) && /items:\['test','api_health','agent_health',('learned',)?'run_log','trip_ids'(,'script_props')?\]/.test(LITE));
 check('index.html is rebuilt with it', IDX.includes('function SysTripIds('));
 check('the panel reads two things: the count and the orphan list', (fnSrc(APP, 'SysTripIds').match(/action:'[a-z_]+'/g) || []).sort().join() === "action:'trip_id_check',action:'trip_orphans'");
 check('the fixes post their own routes, with "how" (the route is "action")', /action:'trip_orphan_fix',key:o\.key,how:how,tripId:tid/.test(fnSrc(APP, 'TidOrphans')) && /action:'trip_meta_repair',dryRun:dry\?'yes':''/.test(fnSrc(APP, 'TidRepair')));
