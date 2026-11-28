@@ -22,7 +22,7 @@ jobs:
   fast:
     name: node tests + controls
     runs-on: ubuntu-latest
-    # The node tests and controls take about 9 minutes now; 10 cut them off.
+    # The node tests and controls ran about 9 minutes one at a time; the runner now uses every core.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +39,15 @@ jobs:
 
       # The controls are part of this job on purpose: they are what proves the
       # assertions bite, and several have gone vacuous after a refactor.
+      # The runner remembers how long each file takes (and which failed or were flaky)
+      # in tests/.timings.json; keep it between runs so the slowest start first.
+      - name: Restore test timings
+        uses: actions/cache@v4
+        with:
+          path: tests/.timings.json
+          key: test-timings-fast-${{ github.run_id }}
+          restore-keys: test-timings-fast-
+
       - name: Run tests
         run: node tests/run.js --node --controls
 
@@ -65,6 +74,15 @@ jobs:
 
       # These render docs/index.html and docs/dashboard-lite.html from file:// and
       # measure the result, so they need no server and no deployment.
+      # The runner remembers how long each file takes (and which failed or were flaky)
+      # in tests/.timings.json; keep it between runs so the slowest start first.
+      - name: Restore test timings
+        uses: actions/cache@v4
+        with:
+          path: tests/.timings.json
+          key: test-timings-ui-${{ github.run_id }}
+          restore-keys: test-timings-ui-
+
       - name: Run tests
         env:
           PLAYWRIGHT_BROWSERS_PATH: '0'

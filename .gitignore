@@ -15,3 +15,6 @@ tests/source/ctl*/
 
 # Local env (credentials — never commit)
 .env.local
+
+# The test runner's memory of its own runs (tests/run.js)
+tests/.timings.json
