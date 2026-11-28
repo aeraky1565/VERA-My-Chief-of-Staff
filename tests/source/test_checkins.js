@@ -52,7 +52,7 @@ function ctx() {
   vm.runInContext([/var MOVE_GAP_MIN_ = .*;/.exec(NOTIFY)[0], ...['notifMinutes_', 'moveTimes_', 'moveDue_', 'moveDayOff_', 'movePtoOn_', 'checkMovement_', 'moveState_', 'moveTooSoon_', 'moveBusyAt_',
     'moveClock_', 'moveMessage_', 'moveTap_', 'moveDoneToday_', 'eveningExtraLine_', 'eveningFirstTomorrow_', 'eveningUnpaid_', 'eveningContext_'].map(n => extractFn(NOTIFY, n))].join('\n'), c);
   vm.runInContext([/var WELL_MOOD_ = .*;/.exec(SLACK)[0], /var EVENING_MOVE_IDS_ = [\s\S]*?\};/.exec(SLACK)[0],
-    ...['wellShow_', 'buildMorningWellnessBlocks_', 'wellnessAfterTap_', 'buildEveningCheckinBlocks_', 'eveningAfterTap_', 'moveAfterTap_'].map(n => extractFn(SLACK, n))].join('\n'), c);
+    ...['wellShow_', 'buildMorningWellnessBlocks_', 'wellnessAfterTap_', 'buildEveningCheckinBlocks_', 'eveningAfterTap_', 'moveAfterTap_', 'slackNoControls_'].map(n => extractFn(SLACK, n))].join('\n'), c);
   vm.runInContext(['gymWeekDone_', 'eveningReply_', 'eveningMoveLog_'].map(n => extractFn(GYM, n)).join('\n'), c);
   return c;
 }

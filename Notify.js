@@ -521,6 +521,20 @@ function actRemindAfterTap_(blocks, line) {
     if (b.type === 'actions') {
       var els = (b.elements || []).filter(function(e) { return e.action_id !== 'act_remind'; });
       if (els.length) out.push(Object.assign({}, b, { elements: els }));
+    } else if (b.type === 'section' && b.accessory) {
+      // The compact layout (Slack.js slackCompact_): the button on the right, or one choice in a ⋯ menu.
+      var acc = b.accessory, c = Object.assign({}, b);
+      if (acc.action_id === 'act_remind') delete c.accessory;
+      else if (acc.options) {
+        var opts = acc.options.filter(function(o) { return String(o.value || '').indexOf('act_remind::') !== 0; });
+        if (!opts.length) delete c.accessory;
+        else if (opts.length === 1) {   // a menu of one is a button again
+          var v = String(opts[0].value), k = v.indexOf('::');
+          c.accessory = { type: 'button', text: opts[0].text, action_id: v.slice(0, k), value: v.slice(k + 2) };
+          if (opts[0].url) c.accessory.url = opts[0].url;
+        } else c.accessory = Object.assign({}, acc, { options: opts });
+      }
+      out.push(c);
     } else out.push(b);
   });
   out.push({ type: 'context', elements: [{ type: 'mrkdwn', text: line }] });

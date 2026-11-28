@@ -87,7 +87,7 @@ function sendSlackMessage_(channelId, text, blocks, threadTs) {
   if (!token || !channelId) return { ok: false, error: 'not_configured' };
 
   var payload = { channel: channelId, text: String(text || '').substring(0, 3000) };
-  if (blocks)   payload.blocks    = blocks;
+  if (blocks)   payload.blocks    = slackCompact_(blocks);
   if (threadTs) payload.thread_ts = threadTs;
 
   try {
@@ -118,6 +118,74 @@ function sendSlackMessage_(channelId, text, blocks, threadTs) {
   }
 }
 
+// ─── COMPACT LAYOUT ───────────────────────────────────────────────────────────
+// Slack's phone app gives every button in an actions row its own full-width line. Before a
+// message goes out, each actions row becomes small controls on the right of a line:
+//   • 3+ plain choices (check-in answers) → a "Choose" dropdown on the line with its label
+//   • otherwise the first button sits on the right of the text above it, and the rest go
+//     on the next line (the footer, if one follows): one more button, or a ⋯ menu.
+// A menu pick comes back as "action_id::value", and slackNormalizeAction_ turns it back
+// into the button it stands for, so every handler stays the same.
+var SLACK_PICK_SEP_ = '::';
+function slackOpt_(e) {
+  var o = { text: { type: 'plain_text', text: String((e.text && e.text.text) || e.action_id || '').slice(0, 75), emoji: true },
+            value: (String(e.action_id || '') + SLACK_PICK_SEP_ + String(e.value == null ? '' : e.value)).slice(0, 150) };
+  if (e.url) o.url = e.url;
+  return o;
+}
+function slackSoloText_(b) {
+  return b && b.type === 'context' && b.elements && b.elements.length === 1 && b.elements[0].type === 'mrkdwn' ? b.elements[0].text : null;
+}
+/** Pure: the blocks with every actions row turned into compact controls. */
+function slackCompact_(blocks) {
+  if (!blocks || !blocks.length) return blocks;
+  var src = JSON.parse(JSON.stringify(blocks)), out = [];
+  for (var i = 0; i < src.length; i++) {
+    var b = src[i];
+    var els = b.type === 'actions' ? (b.elements || []) : null;
+    if (!els || !els.length || els.some(function(e) { return e.type !== 'button'; })) { out.push(b); continue; }
+    var prev = out[out.length - 1], label = slackSoloText_(prev);
+    var freeSec = prev && prev.type === 'section' && !prev.accessory && prev.text;
+    var plain = els.length >= 3 && els.every(function(e) { return !e.url && !e.style; });
+    if (plain) {
+      var pick = { type: 'static_select', action_id: 'vera_pick_' + (b.block_id || i), placeholder: { type: 'plain_text', text: 'Choose' }, options: els.map(slackOpt_) };
+      if (label != null) out[out.length - 1] = { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: label }, accessory: pick };
+      else out.push({ type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: '_Pick one_' }, accessory: pick });
+      if (!out[out.length - 1].block_id) delete out[out.length - 1].block_id;
+      continue;
+    }
+    var first = els[0], rest = els.slice(1);
+    if (freeSec) prev.accessory = first;
+    else if (label != null) out[out.length - 1] = { type: 'section', text: { type: 'mrkdwn', text: label }, accessory: first };
+    else out.push({ type: 'section', text: { type: 'mrkdwn', text: '_Options_' }, accessory: first });
+    var host = out[out.length - 1];
+    if (!rest.length) { if (b.block_id && !host.block_id) host.block_id = b.block_id; continue; }
+    var foot = slackSoloText_(src[i + 1]);
+    if (foot != null) i++;
+    var more = rest.length === 1 ? rest[0]
+      : { type: 'overflow', action_id: 'vera_more_' + (b.block_id || i), options: rest.slice(0, 5).map(slackOpt_) };
+    var line = { type: 'section', text: { type: 'mrkdwn', text: foot != null ? foot : '_More: ' + rest.map(function(e) { return (e.text && e.text.text) || ''; }).join(' · ') + '_' }, accessory: more };
+    if (b.block_id) line.block_id = b.block_id;
+    out.push(line);
+  }
+  return out;
+}
+/** A dropdown or ⋯ pick → the button it stands for (action_id and value), in place. */
+function slackNormalizeAction_(payload) {
+  var a = payload && payload.actions && payload.actions[0];
+  if (!a || !a.selected_option || a.selected_option.value == null) return payload;
+  var v = String(a.selected_option.value), k = v.indexOf(SLACK_PICK_SEP_);
+  if (k > 0) { a.action_id = v.slice(0, k); a.value = v.slice(k + SLACK_PICK_SEP_.length); }
+  return payload;
+}
+/** Pure: every section's control removed (the message has been answered). */
+function slackNoControls_(blocks) {
+  return (blocks || []).map(function(b) {
+    if (b.type !== 'section' || !b.accessory) return b;
+    var c = Object.assign({}, b); delete c.accessory; return c;
+  });
+}
+
 /**
  * Responds to a slash command or interaction via response_url.
  * @param {string} responseUrl
@@ -139,7 +207,7 @@ function sendSlackResponse_(responseUrl, text, blocks, replaceOriginal) {
     replace_original: replaceOriginal !== false, // default true
     text:             String(text || ''),
   };
-  if (blocks) payload.blocks = blocks;
+  if (blocks) payload.blocks = slackCompact_(blocks);
   try {
     UrlFetchApp.fetch(responseUrl, {
       method:      'post',
@@ -399,7 +467,7 @@ function sendMorningWellnessSlack_(sleepHours, steps) {
     method:      'post',
     contentType: 'application/json',
     headers:     { Authorization: 'Bearer ' + token },
-    payload:     JSON.stringify({ channel: chatChannel, blocks: blocks }),
+    payload:     JSON.stringify({ channel: chatChannel, text: 'Morning check-in: slept, energy, mood', blocks: slackCompact_(blocks) }),
     muteHttpExceptions: true,
   });
 }
@@ -532,7 +600,7 @@ function handleSlackFormPost_(e) {
   // ── Interactive components (button clicks) ────────────────────────────────
   if (payloadStr) {
     try {
-      var payload = JSON.parse(payloadStr);
+      var payload = slackNormalizeAction_(JSON.parse(payloadStr));
       try { veraStateProps_('SLACK').setProperty('SLACK_LAST_INTERACT',
         new Date().toISOString() + ' actionId=' + (payload.actions && payload.actions[0] && payload.actions[0].action_id || '?'));
       } catch(te) {}
@@ -1235,13 +1303,13 @@ var EVENING_MOVE_IDS_ = { evening_move_gym: 'gym', evening_move_walk: 'walk', ev
 
 /** Pure: the evening message after a tap: the question stays, the buttons become the answer. */
 function eveningAfterTap_(blocks, reply) {
-  return (blocks || []).map(function(b) {
+  return slackNoControls_(blocks).map(function(b) {
     return b.block_id === 'evening_move' || (b.type === 'actions' && !b.block_id) ? { type: 'section', block_id: 'evening_move', text: { type: 'mrkdwn', text: reply } } : b;
   });
 }
 /** Pure: the movement message after a tap: the buttons become the reply. */
 function moveAfterTap_(blocks, reply) {
-  return (blocks || []).map(function(b) {
+  return slackNoControls_(blocks).map(function(b) {
     return b.block_id === 'move_row' ? { type: 'section', block_id: 'move_row', text: { type: 'mrkdwn', text: reply } } : b;
   });
 }
